@@ -34,7 +34,7 @@ backend/.gocache/
 node_modules/
 frontend/node_modules/
 frontend/dist/
-package-lock.json
+，package-lock.json
 frontend/package-lock.json
 *.local
 *.tsbuildinfo
@@ -126,6 +126,11 @@ go*.msi
 redis/
 redis.zip
 redis.msi
+dump.rdb
+
+# Go 依赖配置文件（用户要求忽略）
+backend/go.mod
+backend/go.sum
 
 # PostgreSQL 数据目录
 postgres_data/
