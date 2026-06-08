@@ -34,6 +34,8 @@ backend/.gocache/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+package-lock.json
+frontend/package-lock.json
 *.local
 *.tsbuildinfo
 vite.config.d.ts
@@ -111,6 +113,26 @@ backend/data/
 backend/config.yaml
 deploy/config.yaml
 backend/.installed
+
+# ===================
+# 本地开发环境依赖（不应上传到仓库）
+# ===================
+# Go SDK（完整安装包）
+go/
+go*.zip
+go*.msi
+
+# Redis 服务
+redis/
+redis.zip
+redis.msi
+
+# PostgreSQL 数据目录
+postgres_data/
+*.log
+
+# 临时文件
+pw.txt
 
 # ===================
 # 其他
