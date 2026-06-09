@@ -347,6 +347,7 @@ export default {
   // Navigation
   nav: {
     dashboard: '仪表盘',
+    models: '模型广场',
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
@@ -1467,6 +1468,21 @@ export default {
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
       failedToLoad: '加载仪表盘数据失败'
+    },
+
+    models: {
+      title: '模型广场',
+      description: '管理和配置可用的AI模型',
+      copy: '复制模型名称',
+      status: {
+        available: '可用'
+      },
+      categories: {
+        text: '文本',
+        image: '图像',
+        audio: '语音',
+        multimodal: '多模态'
+      }
     },
 
     backup: {

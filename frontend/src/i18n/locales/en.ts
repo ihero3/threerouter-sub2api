@@ -347,6 +347,7 @@ export default {
   // Navigation
   nav: {
     dashboard: 'Dashboard',
+    models: 'Model Plaza',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
@@ -1446,6 +1447,21 @@ export default {
       requestsShort: 'Req',
       tokensShort: 'Tok',
       failedToLoad: 'Failed to load dashboard statistics'
+    },
+
+    models: {
+      title: 'Model Plaza',
+      description: 'Manage and configure available AI models',
+      copy: 'Copy model name',
+      status: {
+        available: 'Available'
+      },
+      categories: {
+        text: 'Text',
+        image: 'Image',
+        audio: 'Audio',
+        multimodal: 'Multimodal'
+      }
     },
 
     backup: {
