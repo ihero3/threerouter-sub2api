@@ -38,6 +38,14 @@
             <span class="text-sm font-medium text-orange-700">LIMITED TIME: FREE 1M TOKENS</span>
           </div>
 
+          <!-- Language Toggle -->
+          <button
+            @click="toggleLanguage"
+            class="rounded-lg p-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+          >
+            {{ currentLang === 'zh' ? '中文' : 'EN' }}
+          </button>
+
           <!-- Theme Toggle -->
           <button
             @click="toggleTheme"
@@ -49,7 +57,7 @@
 
           <!-- Login Button -->
           <button @click="router.push('/login')" class="rounded-lg bg-gray-900 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-800 cursor-pointer">
-            Login
+            {{ currentLang === 'zh' ? '登录' : 'Login' }}
           </button>
         </div>
       </nav>
@@ -65,10 +73,10 @@
             <h1
               class="mb-4 text-4xl font-bold text-gray-900 md:text-5xl lg:text-6xl"
             >
-              Three Router
+              {{ t('home.hero.title') }}
             </h1>
             <p class="mb-6 text-lg text-gray-600 md:text-xl">
-              Enterprise-Grade LLM API Services
+              {{ t('home.hero.subtitle') }}
             </p>
 
             <!-- Feature Tags -->
@@ -77,26 +85,26 @@
                 <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                30% OFF All Chinese AI Models
+                {{ t('home.hero.tags.discount') }}
               </span>
               <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-sm font-medium text-blue-700">
                 <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                US Local Deployment
+                {{ t('home.hero.tags.deployment') }}
               </span>
               <span class="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700">
                 <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                New Users Get 1M Free Tokens
+                {{ t('home.hero.tags.freeTokens') }}
               </span>
             </div>
 
             <!-- CTA Button -->
             <button @click="router.push('/login')" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-green-500/30 transition-all hover:scale-105 hover:shadow-xl cursor-pointer">
-              Get Started Free
+              {{ t('home.hero.cta') }}
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
               </svg>
@@ -152,8 +160,23 @@
         </div>
 
         <!-- Features Grid -->
-        <div class="mb-16 grid gap-6 md:grid-cols-4">
-          <!-- Feature 1: Stable and Reliable -->
+        <div class="mb-16 grid gap-6 md:grid-cols-3">
+          <!-- Feature 1: Unified Gateway -->
+          <div
+            class="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-500/10"
+          >
+            <div
+              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30"
+            >
+              <svg class="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-gray-900">{{ t('home.features.unifiedGateway') }}</h3>
+            <p class="text-sm text-gray-600">{{ t('home.features.unifiedGatewayDesc') }}</p>
+          </div>
+
+          <!-- Feature 2: Multi Account -->
           <div
             class="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:border-emerald-200 hover:shadow-lg hover:shadow-emerald-500/10"
           >
@@ -164,26 +187,11 @@
                 <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900">Stable and Reliable</h3>
-            <p class="text-sm text-gray-600">Intelligently schedule multiple upstream accounts with automatic switching and load balancing. Say goodbye to frequent errors.</p>
+            <h3 class="mb-2 text-lg font-semibold text-gray-900">{{ t('home.features.multiAccount') }}</h3>
+            <p class="text-sm text-gray-600">{{ t('home.features.multiAccountDesc') }}</p>
           </div>
 
-          <!-- Feature 2: US Local Deployment -->
-          <div
-            class="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:border-green-200 hover:shadow-lg hover:shadow-green-500/10"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg shadow-green-500/30"
-            >
-              <svg class="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900">US Local Deployment</h3>
-            <p class="text-sm text-gray-600">All servers hosted in US East/West. Low latency & high reliability for North American users.</p>
-          </div>
-
-          <!-- Feature 3: Pay-as-you-go -->
+          <!-- Feature 3: Balance Quota -->
           <div
             class="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:border-purple-200 hover:shadow-lg hover:shadow-purple-500/10"
           >
@@ -194,34 +202,43 @@
                 <path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900">Pay-as-you-go</h3>
-            <p class="text-sm text-gray-600">Billing based on actual usage. Support setting quota limits. Team usage is clearly visible.</p>
+            <h3 class="mb-2 text-lg font-semibold text-gray-900">{{ t('home.features.balanceQuota') }}</h3>
+            <p class="text-sm text-gray-600">{{ t('home.features.balanceQuotaDesc') }}</p>
           </div>
+        </div>
 
-          <!-- Feature 4: One API Key -->
-          <div
-            class="group rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100 p-6 shadow-sm transition-all duration-300 hover:border-gray-200 hover:shadow-lg"
-          >
-            <div class="mb-6">
-              <h3 class="mb-2 text-xl font-bold text-gray-900">All Models You Need, One API Key</h3>
-              <p class="text-sm text-gray-500">One API, endless possibilities</p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span class="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-600">Claude</span>
-              <span class="rounded-full bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-600">GPT</span>
-              <span class="rounded-full bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-600">Gemini</span>
-              <span class="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600">Antigravity</span>
-              <span class="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600">Deeplens</span>
-              <span class="rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600">Seodream</span>
-              <span class="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-600">Seodance</span>
-              <span class="rounded-full bg-purple-100 px-3 py-1.5 text-xs font-semibold text-purple-600">Seed3D</span>
-            </div>
-            <button class="mt-4 flex items-center gap-1 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700">
-              + 12 More
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+        <!-- Supported AI Models -->
+        <div class="mb-16 rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+          <div class="mb-6 text-center">
+            <h3 class="mb-2 text-xl font-bold text-gray-900">{{ t('home.providers.title') }}</h3>
+            <p class="text-sm text-gray-500">{{ t('home.providers.description') }}</p>
+          </div>
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            <span class="flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">C</span>
+              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.claude') }}</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-green-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-xs font-bold text-white">G</span>
+              <span class="text-sm font-medium text-gray-700">GPT</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">G</span>
+              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.gemini') }}</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">A</span>
+              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.antigravity') }}</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 opacity-60">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-400 text-xs font-bold text-white">+</span>
+              <span class="text-sm font-medium text-gray-500">{{ t('home.providers.more') }}</span>
+              <span class="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">{{ t('home.providers.soon') }}</span>
+            </span>
           </div>
         </div>
 
@@ -265,18 +282,29 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { setLocale } from '@/i18n'
 import Icon from '@/components/icons/Icon.vue'
 import LogoSvg from '@/assets/icons/logo.svg'
+
+const { t } = useI18n()
 
 const router = useRouter()
 
 const isDark = ref(false)
 const currentYear = computed(() => new Date().getFullYear())
+const currentLang = ref<'zh' | 'en'>((localStorage.getItem('sub2api_locale') as 'zh' | 'en') || 'en')
 
 function toggleTheme() {
   isDark.value = !isDark.value
   document.documentElement.classList.toggle('dark', isDark.value)
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+
+function toggleLanguage() {
+  const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
+  currentLang.value = newLang
+  setLocale(newLang)
 }
 
 function initTheme() {

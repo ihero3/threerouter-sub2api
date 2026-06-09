@@ -18,6 +18,16 @@ export default {
       stickySession: 'Session Persistence',
       realtimeBilling: 'Pay As You Go'
     },
+    hero: {
+      title: 'Three Router',
+      subtitle: 'Enterprise-Grade LLM API Services',
+      cta: 'Get Started Free',
+      tags: {
+        discount: '30% OFF All Chinese AI Models',
+        deployment: 'US Local Deployment',
+        freeTokens: 'New Users Get 1M Free Tokens'
+      }
+    },
     // Pain points section
     painPoints: {
       title: 'Sound Familiar?',

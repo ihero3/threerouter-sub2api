@@ -18,6 +18,16 @@ export default {
       stickySession: '会话保持',
       realtimeBilling: '按量计费'
     },
+    hero: {
+      title: 'Three Router',
+      subtitle: '企业级 LLM API 服务',
+      cta: '免费开始使用',
+      tags: {
+        discount: '所有中文 AI 模型 7 折优惠',
+        deployment: '美国本地部署',
+        freeTokens: '新用户获赠 100 万免费 tokens'
+      }
+    },
     // 用户痛点区块
     painPoints: {
       title: '你是否也遇到这些问题？',
