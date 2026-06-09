@@ -241,11 +241,11 @@ const isDark = ref(document.documentElement.classList.contains('dark'))
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())
 
-// Site settings from appStore (cached, no flicker)
-const siteName = computed(() => appStore.siteName)
-const siteLogo = computed(() => appStore.siteLogo)
+// Site settings
+const siteName = computed(() => 'Three Router')
+const siteLogo = computed(() => '/logo.svg')
 const siteVersion = computed(() => appStore.siteVersion)
-const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
+const settingsLoaded = computed(() => true)
 
 // SVG Icon Components
 const DashboardIcon = {
