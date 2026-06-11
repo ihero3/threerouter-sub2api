@@ -71,14 +71,13 @@ interface Model {
 }
 
 const models = ref<Model[]>([
-  { id: '1', name: 'deepseek-v4', provider: 'deepseek', category: 'text', icon: '' },
-  { id: '2', name: 'MiniMax-M3', provider: 'minimax', category: 'text', icon: '' },
-  { id: '3', name: 'kimi-k2.6', provider: 'moonshot', category: 'text', icon: '' },
-  { id: '4', name: 'qwen3.7-max', provider: 'alibaba', category: 'text', icon: '' },
-  { id: '5', name: 'glm-5.1', provider: 'zhipu', category: 'text', icon: '' },
-  { id: '6', name: 'seedance-2.0', provider: 'bytedance', category: 'multimodal', icon: '' },
-  { id: '7', name: 'omni', provider: 'openai', category: 'text', icon: '' },
-  { id: '8', name: 'gpt-5.6', provider: 'openai', category: 'text', icon: '' },
+  { id: '1', name: 'deepseek-v4', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', category: 'text', icon: '' },
+  { id: '2', name: 'MiniMax-M3', provider: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.', category: 'text', icon: '' },
+  { id: '3', name: 'kimi-k2.6', provider: 'Kimi-K2.6 is Moonshot’s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.', category: 'text', icon: '' },
+  { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', category: 'text', icon: '' },
+  { id: '5', name: 'glm-5.1', provider: 'GLM-5.1 is Zhipu AI’s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.', category: 'text', icon: '' },
+  { id: '6', name: 'seedance-2.0', provider: 'Seedance-2.0 is ByteDance’s multimodal video flagship with unified audio-video generation, excelling in cinematic quality, precise camera control and physics-aware motion for professional content.', category: 'multimodal', icon: '' },
+  { id: '7', name: 'gpt-5.6', provider: 'GPT-5.6 is OpenAI’s agent-native flagship with 1M context, excelling in autonomous coding, tool orchestration and long-horizon workflows, topping benchmarks for complex real-world tasks.', category: 'text', icon: '' },
 ])
 
 const providerStyles: Record<string, { gradient: string; icon: string }> = {
