@@ -17,9 +17,9 @@
               class="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-primary-200 hover:shadow-md"
             >
               <div class="flex items-start gap-3">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
+                <div :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', getProviderStyle(model.provider).gradient]">
                   <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" :d="model.icon" />
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="getProviderStyle(model.provider).icon" />
                   </svg>
                 </div>
                 <div class="min-w-0 flex-1">
@@ -83,6 +83,37 @@ const models = ref<Model[]>([
   { id: '10', name: 'bytedance-seedance-1-0', provider: 'bytedance', category: 'multimodal', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
   { id: '11', name: 'bytedance-seedance-1-0-pro', provider: 'bytedance', category: 'multimodal', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
 ])
+
+const providerStyles: Record<string, { gradient: string; icon: string }> = {
+  bytedance: {
+    gradient: 'bg-gradient-to-br from-rose-500 to-orange-500',
+    icon: 'M8 5v14l11-7z'
+  },
+  zhipu: {
+    gradient: 'bg-gradient-to-br from-blue-500 to-indigo-500',
+    icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'
+  },
+  deepseek: {
+    gradient: 'bg-gradient-to-br from-cyan-500 to-teal-500',
+    icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7'
+  },
+  moonshot: {
+    gradient: 'bg-gradient-to-br from-indigo-500 to-purple-600',
+    icon: 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'
+  },
+  openai: {
+    gradient: 'bg-gradient-to-br from-emerald-500 to-green-500',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z'
+  },
+  default: {
+    gradient: 'bg-gradient-to-br from-purple-500 to-blue-500',
+    icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'
+  }
+}
+
+const getProviderStyle = (provider: string) => {
+  return providerStyles[provider] || providerStyles.default
+}
 
 const categoryLabels: Record<string, string> = {
   text: 'admin.models.categories.text',
