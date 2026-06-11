@@ -17,9 +17,9 @@
               class="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-primary-200 hover:shadow-md"
             >
               <div class="flex items-start gap-3">
-                <div :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', getProviderStyle(model.provider).gradient]">
+                <div :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', getProviderStyle(model.vendor).gradient]">
                   <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" :d="getProviderStyle(model.provider).icon" />
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="getProviderStyle(model.vendor).icon" />
                   </svg>
                 </div>
                 <div class="min-w-0 flex-1">
@@ -66,18 +66,19 @@ interface Model {
   id: string
   name: string
   provider: string
+  vendor: string
   category: string
   icon: string
 }
 
 const models = ref<Model[]>([
-  { id: '1', name: 'deepseek-v4', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', category: 'text', icon: '' },
-  { id: '2', name: 'MiniMax-M3', provider: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.', category: 'text', icon: '' },
-  { id: '3', name: 'kimi-k2.6', provider: 'Kimi-K2.6 is Moonshot’s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.', category: 'text', icon: '' },
-  { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', category: 'text', icon: '' },
-  { id: '5', name: 'glm-5.1', provider: 'GLM-5.1 is Zhipu AI’s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.', category: 'text', icon: '' },
-  { id: '6', name: 'seedance-2.0', provider: 'Seedance-2.0 is ByteDance’s multimodal video flagship with unified audio-video generation, excelling in cinematic quality, precise camera control and physics-aware motion for professional content.', category: 'multimodal', icon: '' },
-  { id: '7', name: 'gpt-5.6', provider: 'GPT-5.6 is OpenAI’s agent-native flagship with 1M context, excelling in autonomous coding, tool orchestration and long-horizon workflows, topping benchmarks for complex real-world tasks.', category: 'text', icon: '' },
+  { id: '1', name: 'deepseek-v4', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', vendor: 'deepseek', category: 'text', icon: '' },
+  { id: '2', name: 'MiniMax-M3', provider: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.', vendor: 'minimax', category: 'text', icon: '' },
+  { id: '3', name: 'kimi-k2.6', provider: 'Kimi-K2.6 is Moonshot’s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.', vendor: 'moonshot', category: 'text', icon: '' },
+  { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', vendor: 'alibaba', category: 'text', icon: '' },
+  { id: '5', name: 'glm-5.1', provider: 'GLM-5.1 is Zhipu AI’s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.', vendor: 'zhipu', category: 'text', icon: '' },
+  { id: '6', name: 'seedance-2.0', provider: 'Seedance 2.0 is ByteDance\'s advanced multimodal model with strong capabilities in text generation and image understanding.', vendor: 'bytedance', category: 'multimodal', icon: '' },
+  { id: '7', name: 'gpt-5.6', provider: 'GPT-5.6 is OpenAI\'s latest flagship model with enhanced reasoning capabilities and support for multi-turn conversations.', vendor: 'openai', category: 'text', icon: '' },
 ])
 
 const providerStyles: Record<string, { gradient: string; icon: string }> = {
@@ -101,14 +102,22 @@ const providerStyles: Record<string, { gradient: string; icon: string }> = {
     gradient: 'bg-gradient-to-br from-emerald-500 to-green-500',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z'
   },
+  minimax: {
+    gradient: 'bg-gradient-to-br from-amber-500 to-yellow-500',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z'
+  },
+  alibaba: {
+    gradient: 'bg-gradient-to-br from-orange-500 to-red-500',
+    icon: 'M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+  },
   default: {
     gradient: 'bg-gradient-to-br from-purple-500 to-blue-500',
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'
   }
 }
 
-const getProviderStyle = (provider: string) => {
-  return providerStyles[provider] || providerStyles.default
+const getProviderStyle = (vendor: string) => {
+  return providerStyles[vendor] || providerStyles.default
 }
 
 const categoryLabels: Record<string, string> = {
