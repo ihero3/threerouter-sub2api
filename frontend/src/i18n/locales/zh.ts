@@ -104,6 +104,7 @@ export default {
       description: '一个 API，多种选择',
       supported: '已支持',
       soon: '即将推出',
+      loginToView: '登录查看',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
@@ -1484,6 +1485,7 @@ export default {
       title: '模型广场',
       description: '管理和配置可用的AI模型',
       copy: '复制模型名称',
+      hint: '更多模型通过 API Key 获取',
       status: {
         available: '可用'
       },

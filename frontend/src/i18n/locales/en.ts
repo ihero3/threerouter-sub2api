@@ -104,6 +104,7 @@ export default {
       description: 'One API, Multiple Choices',
       supported: 'Supported',
       soon: 'Soon',
+      loginToView: 'Login to View',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
@@ -1463,6 +1464,7 @@ export default {
       title: 'Model Plaza',
       description: 'Manage and configure available AI models',
       copy: 'Copy model name',
+      hint: 'Access More Models via API Key',
       status: {
         available: 'Available'
       },

@@ -35,7 +35,7 @@
             <svg class="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span class="text-sm font-medium text-orange-700">LIMITED TIME: FREE 1M TOKENS</span>
+            <span class="text-sm font-medium text-orange-700">LIMITED TIME: FREE 10$ TOKENS</span>
           </div>
 
           <!-- Language Toggle -->
@@ -214,30 +214,40 @@
             <p class="text-sm text-gray-500">{{ t('home.providers.description') }}</p>
           </div>
           <div class="flex flex-wrap items-center justify-center gap-3">
-            <span class="flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5">
-              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">C</span>
-              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.claude') }}</span>
+            <span class="flex items-center gap-2 rounded-xl border border-cyan-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500 text-xs font-bold text-white">D</span>
+              <span class="text-sm font-medium text-gray-700">deepseek-v4</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
-            <span class="flex items-center gap-2 rounded-xl border border-green-100 bg-white px-4 py-2.5">
-              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-xs font-bold text-white">G</span>
-              <span class="text-sm font-medium text-gray-700">GPT</span>
+            <span class="flex items-center gap-2 rounded-xl border border-amber-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">M</span>
+              <span class="text-sm font-medium text-gray-700">MiniMax-M3</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500 text-xs font-bold text-white">K</span>
+              <span class="text-sm font-medium text-gray-700">kimi-k2.6</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
+            </span>
+            <span class="flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">Q</span>
+              <span class="text-sm font-medium text-gray-700">qwen3.7-max</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-4 py-2.5">
               <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">G</span>
-              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.gemini') }}</span>
+              <span class="text-sm font-medium text-gray-700">glm-5.1</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
-            <span class="flex items-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-2.5">
-              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">A</span>
-              <span class="text-sm font-medium text-gray-700">{{ t('home.providers.antigravity') }}</span>
+            <span class="flex items-center gap-2 rounded-xl border border-rose-100 bg-white px-4 py-2.5">
+              <span class="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-xs font-bold text-white">S</span>
+              <span class="text-sm font-medium text-gray-700">seedance-2.0</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
-            <span class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 opacity-60">
+            <span @click="router.push('/login')" class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 opacity-60 cursor-pointer hover:opacity-100 transition-opacity">
               <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-400 text-xs font-bold text-white">+</span>
               <span class="text-sm font-medium text-gray-500">{{ t('home.providers.more') }}</span>
-              <span class="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">{{ t('home.providers.soon') }}</span>
+              <span class="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">{{ t('home.providers.loginToView') }}</span>
             </span>
           </div>
         </div>
@@ -252,7 +262,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
               <div class="text-white">
-                <p class="text-lg font-semibold">LIMITED TIME OFFER: Sign up today and get 1,000,000 FREE tokens!</p>
+                <p class="text-lg font-semibold">LIMITED TIME OFFER: Sign up today and get 10$ FREE tokens!</p>
                 <p class="text-sm opacity-80">No credit card required. Expires in 7 days.</p>
               </div>
             </div>
@@ -270,9 +280,6 @@
         <p>&copy; {{ currentYear }} Three Router. All rights reserved.</p>
         <div class="flex items-center gap-6">
           <a href="#" class="transition-colors hover:text-gray-700">Documentation</a>
-          <a href="#" class="transition-colors hover:text-gray-700">Terms of Service</a>
-          <a href="#" class="transition-colors hover:text-gray-700">Privacy Policy</a>
-          <a href="https://github.com" target="_blank" class="transition-colors hover:text-gray-700">GitHub</a>
         </div>
       </div>
     </footer>
