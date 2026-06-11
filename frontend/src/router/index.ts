@@ -393,7 +393,6 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ModelsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
       title: 'Admin Dashboard',
       titleKey: 'admin.dashboard.title',
       descriptionKey: 'admin.dashboard.description'
