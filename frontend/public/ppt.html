@@ -1,0 +1,2613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京培基启智科技有限公司 - 企业介绍</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #0052d9;
+            --secondary-color: #4364f7;
+            --accent-color: #00d4aa;
+            --dark-bg: #0a1628;
+            --light-bg: #f8fafc;
+            --text-dark: #1e293b;
+            --text-light: #94a3b8;
+            --gradient-primary: linear-gradient(135deg, #0052d9 0%, #4364f7 50%, #6e8efb 100%);
+            --gradient-dark: linear-gradient(180deg, #0a1628 0%, #1e3a5f 100%);
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-snap-type: y mandatory;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+            background: var(--dark-bg);
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        /* 幻灯片容器 */
+        .slide {
+            min-height: 100vh;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            scroll-snap-align: start;
+            overflow: hidden;
+        }
+
+        .slide-content {
+            max-width: 1400px;
+            width: 100%;
+            padding: 60px 80px;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 背景效果 */
+        .bg-gradient {
+            position: absolute;
+            inset: 0;
+            background: var(--gradient-dark);
+            z-index: 0;
+        }
+
+        .bg-grid {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            z-index: 1;
+        }
+
+        .bg-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        .glow-1 {
+            top: -200px;
+            right: -100px;
+            background: var(--primary-color);
+        }
+
+        .glow-2 {
+            bottom: -200px;
+            left: -100px;
+            background: var(--accent-color);
+        }
+
+        /* 导航点 */
+        .nav-dots {
+            position: fixed;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .nav-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .nav-dot:hover {
+            background: rgba(255,255,255,0.6);
+            transform: scale(1.2);
+        }
+
+        .nav-dot.active {
+            background: var(--accent-color);
+            border-color: #fff;
+            transform: scale(1.3);
+        }
+
+        /* 页码 */
+        .slide-number {
+            position: absolute;
+            bottom: 40px;
+            left: 80px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.5);
+            z-index: 10;
+        }
+
+        /* 标题样式 */
+        .section-title {
+            font-size: 56px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section-subtitle {
+            font-size: 24px;
+            color: var(--text-light);
+            margin-bottom: 50px;
+        }
+
+        /* 首页幻灯片 */
+        .hero-slide {
+            text-align: center;
+        }
+
+        .hero-slide .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 40px;
+            padding: 20px 40px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-slide .logo img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+        }
+
+        .hero-slide .logo-text h1 {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-slide .logo-text span {
+            font-size: 14px;
+            color: var(--text-light);
+            letter-spacing: 3px;
+        }
+
+        .hero-title {
+            font-size: 72px;
+            font-weight: 800;
+            margin-bottom: 30px;
+            line-height: 1.2;
+        }
+
+        .hero-title span {
+            background: linear-gradient(135deg, #fff 0%, #60a5fa 50%, #00d4aa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-desc {
+            font-size: 24px;
+            color: var(--text-light);
+            max-width: 800px;
+            margin: 0 auto 50px;
+            line-height: 1.8;
+        }
+
+        .hero-tags {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .hero-tag {
+            padding: 12px 30px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 50px;
+            font-size: 16px;
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+
+        .hero-tag:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            transform: translateY(-3px);
+        }
+
+        /* 内容网格 */
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .content-grid-2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .content-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 25px;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-icon {
+            width: 70px;
+            height: 70px;
+            background: var(--gradient-primary);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 25px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .card-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #fff;
+            text-align: center;
+        }
+
+        .card-desc {
+            font-size: 15px;
+            color: var(--text-light);
+            line-height: 1.8;
+            text-align: center;
+        }
+
+        /* 平台软件幻灯片 */
+        .platform-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .platform-card {
+            background: linear-gradient(135deg, rgba(0,82,217,0.2) 0%, rgba(67,100,247,0.1) 100%);
+            border: 1px solid rgba(0,82,217,0.3);
+            border-radius: 24px;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            gap: 30px;
+        }
+
+        .platform-card::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(0,82,217,0.1) 0%, transparent 70%);
+        }
+
+        .platform-image {
+            width: 100px;
+            height: 100px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .platform-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .platform-content {
+            flex: 1;
+        }
+
+        .platform-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            background: var(--primary-color);
+            border-radius: 50px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .platform-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+
+        .platform-desc {
+            font-size: 15px;
+            color: var(--text-light);
+            line-height: 1.8;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+
+        .platform-features {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .platform-feature {
+            padding: 6px 15px;
+            background: rgba(0,82,217,0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            color: #93c5fd;
+        }
+
+        /* 无人机幻灯片 */
+        .drone-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .drone-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: all 0.4s ease;
+        }
+
+        .drone-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .drone-image-container {
+            height: 200px;
+            background: linear-gradient(135deg, rgba(0,212,170,0.2) 0%, rgba(0,82,217,0.1) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .drone-image-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .drone-info {
+            padding: 30px;
+        }
+
+        .drone-model {
+            display: inline-block;
+            padding: 8px 20px;
+            background: var(--accent-color);
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark-bg);
+            margin-bottom: 15px;
+        }
+
+        .drone-info h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .drone-desc {
+            font-size: 14px;
+            color: var(--text-light);
+            line-height: 1.6;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .drone-specs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .drone-spec {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .drone-spec-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
+
+        .drone-spec-label {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        /* 反无设备幻灯片 */
+        .countermeasure-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 25px;
+            margin-top: 50px;
+        }
+
+        .countermeasure-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: all 0.4s ease;
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .countermeasure-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .countermeasure-image {
+            height: 150px;
+            background: linear-gradient(135deg, rgba(251,146,60,0.2) 0%, rgba(236,72,153,0.1) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+        }
+
+        .countermeasure-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .countermeasure-info {
+            padding: 20px;
+        }
+
+        .countermeasure-info h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .countermeasure-info p {
+            font-size: 13px;
+            color: var(--text-light);
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        /* 解决方案幻灯片 */
+        .solution-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .solution-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 40px 35px;
+            text-align: center;
+            transition: all 0.4s ease;
+        }
+
+        .solution-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .solution-icon {
+            width: 160px;
+            height: 160px;
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .solution-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .solution-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .solution-desc {
+            font-size: 14px;
+            color: var(--text-light);
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        /* 技术能力页面 */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            margin-top: 50px;
+        }
+
+        .tech-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 28px;
+            transition: all 0.4s ease;
+            position: relative;
+        }
+
+        .tech-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+        }
+
+        .tech-card.gold {
+            background: linear-gradient(145deg, rgba(251, 191, 36, 0.15) 0%, rgba(253, 224, 71, 0.08) 100%);
+            border-color: rgba(251, 191, 36, 0.4);
+        }
+
+        .tech-card.silver {
+            background: linear-gradient(145deg, rgba(192, 192, 192, 0.15) 0%, rgba(211, 211, 211, 0.08) 100%);
+            border-color: rgba(192, 192, 192, 0.4);
+        }
+
+        .tech-card.bronze {
+            background: linear-gradient(145deg, rgba(205, 127, 50, 0.15) 0%, rgba(205, 140, 100, 0.08) 100%);
+            border-color: rgba(205, 127, 50, 0.4);
+        }
+
+        .tech-rank {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 24px;
+        }
+
+        .tech-icon {
+            font-size: 40px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .tech-card h3 {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .tech-card p {
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .tech-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .tech-tags span {
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+        }
+
+        /* 详细内容页面 */
+        .detail-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+            margin-top: 40px;
+        }
+
+        .detail-image {
+            background: rgba(255,255,255,0.05);
+            border-radius: 24px;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .detail-image img {
+            max-width: 100%;
+            height: 300px;
+            object-fit: contain;
+        }
+
+        .detail-info h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+
+        .detail-info p {
+            font-size: 16px;
+            color: var(--text-light);
+            line-height: 1.8;
+            margin-bottom: 30px;
+        }
+
+        .detail-features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .detail-feature {
+            display: flex;
+            gap: 12px;
+            padding: 15px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .detail-feature .feature-icon {
+            font-size: 28px;
+        }
+
+        .feature-content h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        .feature-content p {
+            font-size: 13px;
+            color: var(--text-light);
+            margin-bottom: 0;
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        /* 四维网格轮播样式 */
+        .image-carousel {
+            width: 100%;
+            overflow: hidden;
+            border-radius: 16px;
+        }
+
+        .carousel-track {
+            display: flex;
+            transition: transform 0.5s ease;
+        }
+
+        .carousel-slide {
+            min-width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .carousel-slide img {
+            max-width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+        }
+
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .carousel-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .carousel-btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.1);
+        }
+
+        .carousel-indicator {
+            font-size: 14px;
+            color: var(--text-light);
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .drone-highlight {
+            padding: 20px;
+            background: rgba(0,82,217,0.15);
+            border-radius: 12px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .drone-highlight strong {
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .drone-highlight ul {
+            margin-top: 12px;
+            padding-left: 20px;
+        }
+
+        .drone-highlight li {
+            color: var(--text-light);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        /* eVTOL专项方案 */
+        .evtol-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+            margin-top: 40px;
+        }
+
+        .evtol-image {
+            background: rgba(255,255,255,0.05);
+            border-radius: 24px;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .evtol-image img {
+            max-width: 100%;
+            height: 280px;
+            object-fit: contain;
+        }
+
+        .evtol-info h3 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+
+        .evtol-info p {
+            font-size: 16px;
+            color: var(--text-light);
+            line-height: 1.8;
+            margin-bottom: 30px;
+        }
+
+        .evtol-features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .evtol-feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            justify-content: center;
+        }
+
+        .feature-icon {
+            font-size: 24px;
+        }
+
+        .feature-text {
+            font-size: 14px;
+            color: #fff;
+        }
+
+        .evtol-scenarios h4 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        .evtol-scenarios ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .evtol-scenarios li {
+            position: relative;
+            padding-left: 24px;
+            font-size: 15px;
+            color: var(--text-light);
+            margin-bottom: 10px;
+        }
+
+        .evtol-scenarios li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        /* 优势幻灯片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 25px 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-number {
+            font-size: 42px;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-light);
+            text-align: center;
+        }
+
+        .advantage-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+            margin-top: 40px;
+        }
+
+        .advantage-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            padding: 25px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .advantage-icon {
+            width: 50px;
+            height: 50px;
+            background: var(--accent-color);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .advantage-text h4 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .advantage-text p {
+            font-size: 14px;
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        /* 联系我们幻灯片 */
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 60px;
+            margin-top: 50px;
+        }
+
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            padding: 30px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .contact-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--gradient-primary);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .contact-label {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 5px;
+        }
+
+        .contact-value {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .contact-form {
+            background: rgba(255,255,255,0.05);
+            border-radius: 24px;
+            padding: 50px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 15px 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 16px;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0,82,217,0.4);
+        }
+
+        /* 结尾幻灯片 */
+        .end-slide {
+            text-align: center;
+        }
+
+        .end-slide .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 50px;
+        }
+
+        .end-slide .logo img {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+        }
+
+        .end-title {
+            font-size: 64px;
+            font-weight: 800;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #fff 0%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .end-subtitle {
+            font-size: 28px;
+            color: var(--text-light);
+            margin-bottom: 50px;
+        }
+
+        .end-contact {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+
+        .end-contact-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 30px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50px;
+            font-size: 18px;
+        }
+
+        /* 动画 */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            .slide-content {
+                padding: 40px 50px;
+            }
+            .section-title {
+                font-size: 42px;
+            }
+            .hero-title {
+                font-size: 52px;
+            }
+            .content-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .platform-grid, .drone-grid, .countermeasure-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .solution-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .slide-content {
+                padding: 30px 25px;
+            }
+            .section-title {
+                font-size: 32px;
+            }
+            .hero-title {
+                font-size: 36px;
+            }
+            .hero-desc {
+                font-size: 18px;
+            }
+            .content-grid,
+            .content-grid-2,
+            .content-grid-4 {
+                grid-template-columns: 1fr;
+            }
+            .platform-grid,
+            .drone-grid,
+            .countermeasure-grid,
+            .solution-grid,
+            .tech-grid,
+            .contact-grid {
+                grid-template-columns: 1fr;
+            }
+            .platform-card {
+                flex-direction: column;
+                text-align: center;
+            }
+            .platform-image {
+                width: 100%;
+            }
+            .nav-dots {
+                right: 15px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            .stat-number {
+                font-size: 36px;
+            }
+            .advantage-list {
+                grid-template-columns: 1fr;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* 导航控制 */
+        .nav-controls {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .nav-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #fff;
+            font-size: 20px;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        /* 进度条 */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            z-index: 1000;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <!-- 进度条 -->
+    <div class="progress-bar" id="progressBar"></div>
+
+    <!-- 导航点 -->
+    <nav class="nav-dots">
+        <div class="nav-dot active" data-slide="0"></div>
+        <div class="nav-dot" data-slide="1"></div>
+        <div class="nav-dot" data-slide="2"></div>
+        <div class="nav-dot" data-slide="3"></div>
+        <div class="nav-dot" data-slide="4"></div>
+        <div class="nav-dot" data-slide="5"></div>
+        <div class="nav-dot" data-slide="6"></div>
+        <div class="nav-dot" data-slide="7"></div>
+        <div class="nav-dot" data-slide="8"></div>
+        <div class="nav-dot" data-slide="9"></div>
+        <div class="nav-dot" data-slide="10"></div>
+        <div class="nav-dot" data-slide="11"></div>
+        <div class="nav-dot" data-slide="12"></div>
+        <div class="nav-dot" data-slide="13"></div>
+        <div class="nav-dot" data-slide="14"></div>
+        <div class="nav-dot" data-slide="15"></div>
+        <div class="nav-dot" data-slide="16"></div>
+        <div class="nav-dot" data-slide="17"></div>
+    </nav>
+
+    <!-- 导航控制 -->
+    <div class="nav-controls">
+        <button class="nav-btn" id="prevBtn">←</button>
+        <button class="nav-btn" id="nextBtn">→</button>
+    </div>
+
+    <!-- 幻灯片1：封面 -->
+    <section class="slide" id="slide-0">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="bg-glow glow-1"></div>
+        <div class="bg-glow glow-2"></div>
+        <div class="slide-content hero-slide">
+            <div class="logo">
+                <img src="https://api.threerouter.com/assets/logo-yYN2TGeY.svg" alt="北京培基启智科技">
+                <div class="logo-text">
+                    <h1>北京培基启智科技有限公司</h1>
+                    <span>THREEROUTER - AI API GATEWAY</span>
+                </div>
+            </div>
+            <h2 class="hero-title">
+                <span>统一API网关</span><br>智能路由降本40-60%
+            </h2>
+            <p class="hero-desc">
+                ThreeRouter 提供统一的AI模型访问接口，兼容OpenAI SDK。<br>
+                通过L1-L5智能路由引擎，根据任务复杂度自动匹配最优性价比模型
+            </p>
+            <div class="hero-tags">
+                <span class="hero-tag">统一API接入</span>
+                <span class="hero-tag">L1-L5智能路由</span>
+                <span class="hero-tag">合规能力</span>
+                <span class="hero-tag">成本优化</span>
+            </div>
+        </div>
+        <div class="slide-number">01 / 18</div>
+    </section>
+
+    <!-- 幻灯片2：目录 -->
+    <section class="slide" id="slide-1">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">目录</h2>
+            <p class="section-subtitle">CONTENTS</p>
+            <div class="content-grid">
+                <div class="card">
+                    <div class="card-icon">🏢</div>
+                    <h3 class="card-title">公司简介</h3>
+                    <p class="card-desc">了解北京培基启智科技的发展历程与核心业务</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔌</div>
+                    <h3 class="card-title">统一API接入</h3>
+                    <p class="card-desc">兼容OpenAI API格式，无缝迁移现有代码</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⚡</div>
+                    <h3 class="card-title">L1-L5智能路由</h3>
+                    <p class="card-desc">根据任务复杂度自动匹配最优模型层级</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🛡️</div>
+                    <h3 class="card-title">合规能力</h3>
+                    <p class="card-desc">EU AI Act合规报告、审计日志等增值服务</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📉</div>
+                    <h3 class="card-title">成本优势</h3>
+                    <p class="card-desc">标准版低于官方定价30%+，智能路由降本40-60%</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💰</div>
+                    <h3 class="card-title">定价方案</h3>
+                    <p class="card-desc">标准版、合规版、旗舰模型多种选择</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🌐</div>
+                    <h3 class="card-title">典型场景</h3>
+                    <p class="card-desc">跨境电商、编程辅助、出海SaaS服务</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🚀</div>
+                    <h3 class="card-title">快速接入</h3>
+                    <p class="card-desc">注册获取API Key，控制台一键切换策略</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🤝</div>
+                    <h3 class="card-title">合作共赢</h3>
+                    <p class="card-desc">携手共创AI成本优化新未来</p>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">02 / 18</div>
+    </section>
+
+    <!-- 幻灯片3：公司简介 -->
+    <section class="slide" id="slide-2">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">公司简介</h2>
+            <p class="section-subtitle">COMPANY PROFILE</p>
+            
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-number">11+</div>
+                    <div class="stat-label">年行业经验</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">10+</div>
+                    <div class="stat-label">专利技术</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">100+</div>
+                    <div class="stat-label">合作伙伴</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">4</div>
+                    <div class="stat-label">核心平台</div>
+                </div>
+            </div>
+
+            <div class="advantage-list">
+                <div class="advantage-item">
+                    <div class="advantage-icon">🎯</div>
+                    <div class="advantage-text">
+                        <h4>战略定位</h4>
+                        <p>统一AI API网关服务商，通过智能路由技术帮助企业优化AI推理成本</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-icon">💡</div>
+                    <div class="advantage-text">
+                        <h4>核心能力</h4>
+                        <p>统一API接入、L1-L5智能路由、企业级合规能力三大核心业务板块</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-icon">🌐</div>
+                    <div class="advantage-text">
+                        <h4>市场布局</h4>
+                        <p>服务跨境电商、编程辅助、出海SaaS等多个AI应用场景</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-icon">🚀</div>
+                    <div class="advantage-text">
+                        <h4>发展愿景</h4>
+                        <p>成为全球领先的AI成本优化服务商，推动AI普惠应用</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">03 / 18</div>
+    </section>
+
+    <!-- 幻灯片4：核心能力 -->
+    <section class="slide" id="slide-3">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">核心能力</h2>
+            <p class="section-subtitle">CORE CAPABILITIES - 统一接入、智能路由、成本优化</p>
+            
+            <div class="platform-grid">
+                <div class="platform-card">
+                    <div class="platform-image">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><rect x="24" y="28" width="32" height="24" rx="3" stroke="#00d4aa" stroke-width="2.5"/><path d="M32 52v4M48 52v4M28 56h24" stroke="#00d4aa" stroke-width="2"/><circle cx="40" cy="40" r="6" stroke="#4364f7" stroke-width="2"/><path d="M40 34v-4M40 46v4M34 40h-4M46 40h4" stroke="#4364f7" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="platform-content">
+                        <span class="platform-badge">核心能力</span>
+                        <h3 class="platform-title">统一API接入</h3>
+                        <p class="platform-desc">完全兼容OpenAI API格式，仅需修改base_url和API Key即可完成切换</p>
+                        <div class="platform-features">
+                            <span class="platform-feature">OpenAI兼容</span>
+                            <span class="platform-feature">无缝迁移</span>
+                            <span class="platform-feature">大规模架构</span>
+                            <span class="platform-feature">零代码重构</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="platform-card">
+                    <div class="platform-image">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><path d="M44 20L32 44h12L36 60l16-24H40l4-16z" stroke="#00d4aa" stroke-width="2.5" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="platform-content">
+                        <span class="platform-badge">核心能力</span>
+                        <h3 class="platform-title">L1-L5智能路由</h3>
+                        <p class="platform-desc">根据任务复杂度自动匹配最优模型层级，实现成本最优配置</p>
+                        <div class="platform-features">
+                            <span class="platform-feature">智能匹配</span>
+                            <span class="platform-feature">成本优化</span>
+                            <span class="platform-feature">质量稳定</span>
+                            <span class="platform-feature">实时调整</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="platform-card">
+                    <div class="platform-image">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><path d="M40 18L22 28v12c0 12 8 22 18 26 10-4 18-14 18-26V28L40 18z" stroke="#00d4aa" stroke-width="2.5" stroke-linejoin="round"/><path d="M34 40l4 4 8-8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="platform-content">
+                        <span class="platform-badge">增值服务</span>
+                        <h3 class="platform-title">合规能力</h3>
+                        <p class="platform-desc">针对出海企业需求，提供EU AI Act合规报告、审计日志等能力</p>
+                        <div class="platform-features">
+                            <span class="platform-feature">合规报告</span>
+                            <span class="platform-feature">审计日志</span>
+                            <span class="platform-feature">跨法域映射</span>
+                            <span class="platform-feature">风险标签</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="platform-card">
+                    <div class="platform-image">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><circle cx="40" cy="40" r="16" stroke="#00d4aa" stroke-width="2.5"/><path d="M40 28v24M36 34h8M36 46h8" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="platform-content">
+                        <span class="platform-badge">核心优势</span>
+                        <h3 class="platform-title">成本优化</h3>
+                        <p class="platform-desc">标准版低于官方定价30%+，智能路由再降40-60%</p>
+                        <div class="platform-features">
+                            <span class="platform-feature">算力补贴</span>
+                            <span class="platform-feature">动态分流</span>
+                            <span class="platform-feature">价格透明</span>
+                            <span class="platform-feature">按需订阅</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">04 / 18</div>
+    </section>
+
+    <!-- 幻灯片5：L1-L5智能路由分层 -->
+    <section class="slide" id="slide-4">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">L1-L5智能路由分层</h2>
+            <p class="section-subtitle">L1-L5 ROUTING - 根据任务复杂度自动匹配模型</p>
+            
+            <div class="detail-content">
+                <div class="detail-image">
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="54" stroke="#4364f7" stroke-width="2" opacity="0.3"/><circle cx="60" cy="36" r="10" stroke="#00d4aa" stroke-width="2.5"/><circle cx="36" cy="72" r="10" stroke="#4364f7" stroke-width="2.5"/><circle cx="84" cy="72" r="10" stroke="#4364f7" stroke-width="2.5"/><path d="M60 46v10M50 62l-8 4M70 62l8 4" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><text x="60" y="40" text-anchor="middle" fill="#00d4aa" font-size="10" font-weight="bold">AI</text><text x="36" y="76" text-anchor="middle" fill="#4364f7" font-size="8">L1</text><text x="84" y="76" text-anchor="middle" fill="#4364f7" font-size="8">L5</text></svg>
+                </div>
+                <div class="detail-info">
+                    <h3>智能路由引擎</h3>
+                    <p>根据任务复杂度自动匹配最优模型层级。简单任务调用轻量模型，复杂推理调用顶级模型，在不影响输出质量的前提下实现成本最优配置。</p>
+                    
+                    <div class="detail-features">
+                        <div class="detail-feature">
+                            <span class="feature-icon">L1</span>
+                            <div class="feature-content">
+                                <h4>L1 - 轻量模型</h4>
+                                <p>7B-14B，适用于文本分类、摘要提取</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">L2</span>
+                            <div class="feature-content">
+                                <h4>L2 - 标准模型</h4>
+                                <p>14B-32B，适用于内容生成、翻译</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">L3</span>
+                            <div class="feature-content">
+                                <h4>L3 - 进阶模型</h4>
+                                <p>32B-70B，适用于复杂推理、代码生成</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">L5</span>
+                            <div class="feature-content">
+                                <h4>L5 - 旗舰模型</h4>
+                                <p>235B+，适用于最复杂任务、深度推理</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">05 / 18</div>
+    </section>
+
+    <!-- 幻灯片6：定价方案 -->
+    <section class="slide" id="slide-5">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">定价方案</h2>
+            <p class="section-subtitle">PRICING - 标准版低于官方定价30%+</p>
+            
+            <div class="tech-grid">
+                <div class="tech-card gold">
+                    <div class="tech-rank">💰</div>
+                    <div class="tech-icon">⭐</div>
+                    <h3>标准版</h3>
+                    <p>DeepSeek V4 / GLM-5.1 / Kimi K2.6</p>
+                    <div class="tech-tags">
+                        <span>$0.22-0.87/M tokens</span>
+                        <span>低于官方价30%+</span>
+                        <span>通用场景</span>
+                    </div>
+                </div>
+                
+                <div class="tech-card silver">
+                    <div class="tech-rank">🛡️</div>
+                    <div class="tech-icon">🔒</div>
+                    <h3>合规版</h3>
+                    <p>含审计日志、EU AI Act合规标签</p>
+                    <div class="tech-tags">
+                        <span>$0.38-1.50/M tokens</span>
+                        <span>合规能力</span>
+                        <span>出海企业</span>
+                    </div>
+                </div>
+                
+                <div class="tech-card bronze">
+                    <div class="tech-rank">👑</div>
+                    <div class="tech-icon">🚀</div>
+                    <h3>旗舰模型</h3>
+                    <p>GPT-5 / Claude Opus 4.6</p>
+                    <div class="tech-tags">
+                        <span>$5.00-5.80/M tokens</span>
+                        <span>智能路由</span>
+                        <span>顶级性能</span>
+                    </div>
+                </div>
+                
+                <div class="tech-card">
+                    <div class="tech-rank">🎯</div>
+                    <div class="tech-icon">📋</div>
+                    <h3>基础合规包</h3>
+                    <p>审计日志、模型风险标签、基础合规报告</p>
+                    <div class="tech-tags">
+                        <span>¥3,500/月</span>
+                        <span>入门级合规</span>
+                        <span>中小团队</span>
+                    </div>
+                </div>
+                
+                <div class="tech-card">
+                    <div class="tech-rank">🏢</div>
+                    <div class="tech-icon">📋</div>
+                    <h3>企业合规包</h3>
+                    <p>EU AI Act全自动合规报告、跨法域合规映射</p>
+                    <div class="tech-tags">
+                        <span>¥14,000/月</span>
+                        <span>企业级合规</span>
+                        <span>出海企业</span>
+                    </div>
+                </div>
+                
+                <div class="tech-card">
+                    <div class="tech-rank">🌟</div>
+                    <div class="tech-icon">🔧</div>
+                    <h3>企业定制</h3>
+                    <p>私有化部署、专属合规咨询、SLA保障</p>
+                    <div class="tech-tags">
+                        <span>¥35,000+/月</span>
+                        <span>定制化服务</span>
+                        <span>大型企业</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">06 / 18</div>
+    </section>
+
+    <!-- 幻灯片7：典型场景 -->
+    <section class="slide" id="slide-6">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">典型场景</h2>
+            <p class="section-subtitle">USE CASES - 跨境电商、编程辅助、出海SaaS</p>
+            
+            <div class="detail-content">
+                <div class="detail-image">
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="54" stroke="#4364f7" stroke-width="2" opacity="0.3"/><rect x="28" y="32" width="64" height="48" rx="4" stroke="#00d4aa" stroke-width="2.5"/><path d="M28 44h64M44 44v36M76 44v36" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/><circle cx="60" cy="62" r="10" stroke="#4364f7" stroke-width="2"/><path d="M56 62l3 3 5-6" stroke="#4364f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="detail-info">
+                    <p>ThreeRouter服务于各类AI应用场景，帮助企业降低成本、提升效率，实现AI普惠应用。</p>
+                    
+                    <div class="detail-features">
+                        <div class="detail-feature">
+                            <span class="feature-icon">🛒</span>
+                            <div class="feature-content">
+                                <h4>跨境电商</h4>
+                                <p>智能客服、商品文案生成、多语言翻译</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">💻</span>
+                            <div class="feature-content">
+                                <h4>编程辅助</h4>
+                                <p>代码补全、代码审查、文档生成</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">🚀</span>
+                            <div class="feature-content">
+                                <h4>出海SaaS服务</h4>
+                                <p>AI代理、智能助手、自动化工作流</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">📝</span>
+                            <div class="feature-content">
+                                <h4>内容创作</h4>
+                                <p>文章写作、营销文案、创意生成</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">07 / 18</div>
+    </section>
+
+    <!-- 幻灯片8：快速接入 -->
+    <section class="slide" id="slide-7">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">快速接入</h2>
+            <p class="section-subtitle">QUICK START - 三步完成接入，即刻享受成本优化</p>
+            
+            <div class="detail-content">
+                <div class="detail-image">
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="54" stroke="#4364f7" stroke-width="2" opacity="0.3"/><path d="M40 80L60 40L80 80" stroke="#00d4aa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M50 60h20" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="30" r="4" fill="#4364f7"/><path d="M60 34v6" stroke="#4364f7" stroke-width="2"/></svg>
+                </div>
+                <div class="detail-info">
+                    <h3>接入流程</h3>
+                    <p>仅需简单三步，即可完成接入并开始使用ThreeRouter服务。</p>
+                    
+                    <div class="detail-features">
+                        <div class="detail-feature">
+                            <span class="feature-icon">1️⃣</span>
+                            <div class="feature-content">
+                                <h4>注册获取API Key</h4>
+                                <p>注册账号，在控制台获取专属API Key</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">2️⃣</span>
+                            <div class="feature-content">
+                                <h4>修改配置</h4>
+                                <p>修改base_url为our_api_endpoint，替换API Key</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">3️⃣</span>
+                            <div class="feature-content">
+                                <h4>开启智能路由</h4>
+                                <p>在控制台开启智能路由，自动优化成本</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">✅</span>
+                            <div class="feature-content">
+                                <h4>开始使用</h4>
+                                <p>享受低于官方价30%+的成本优势</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">08 / 18</div>
+    </section>
+
+    <!-- 幻灯片9：技术优势 -->
+    <section class="slide" id="slide-8">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">技术优势</h2>
+            <p class="section-subtitle">TECHNOLOGY - 大规模架构、智能调度、成本优化</p>
+            
+            <div class="drone-grid">
+                <div class="drone-card">
+                    <div class="drone-image-container">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><rect x="22" y="30" width="36" height="24" rx="3" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 38h20M30 44h14" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="52" cy="50" r="4" stroke="#4364f7" stroke-width="2"/></svg>
+                    </div>
+                    <div class="drone-info">
+                        <span class="drone-model">核心技术</span>
+                        <h3>大规模架构</h3>
+                        <p class="drone-desc">支持百万级QPS并发，99.99%高可用保障</p>
+                        <div class="drone-specs">
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">百万级</div>
+                                <div class="drone-spec-label">QPS并发</div>
+                            </div>
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">99.99%</div>
+                                <div class="drone-spec-label">可用性</div>
+                            </div>
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">50ms</div>
+                                <div class="drone-spec-label">平均延迟</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="drone-card">
+                    <div class="drone-image-container">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><circle cx="40" cy="36" r="8" stroke="#00d4aa" stroke-width="2.5"/><circle cx="26" cy="54" r="6" stroke="#4364f7" stroke-width="2"/><circle cx="54" cy="54" r="6" stroke="#4364f7" stroke-width="2"/><path d="M40 44v4M34 50l-4 2M46 50l4 2" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="drone-info">
+                        <span class="drone-model">智能引擎</span>
+                        <h3>智能调度引擎</h3>
+                        <p class="drone-desc">基于任务复杂度的动态模型选择，实现最优成本配置</p>
+                        <div class="drone-specs">
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">L1-L5</div>
+                                <div class="drone-spec-label">模型分层</div>
+                            </div>
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">实时</div>
+                                <div class="drone-spec-label">路由决策</div>
+                            </div>
+                            <div class="drone-spec">
+                                <div class="drone-spec-value">40-60%</div>
+                                <div class="drone-spec-label">成本优化</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">09 / 18</div>
+    </section>
+
+    <!-- 幻灯片10：API使用示例 -->
+    <section class="slide" id="slide-9">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">API使用示例</h2>
+            <p class="section-subtitle">API EXAMPLE - 完全兼容OpenAI SDK，无缝迁移</p>
+            
+            <div class="detail-content">
+                <div class="detail-image">
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none"><circle cx="60" cy="60" r="54" stroke="#4364f7" stroke-width="2" opacity="0.3"/><rect x="30" y="34" width="60" height="48" rx="4" stroke="#00d4aa" stroke-width="2.5"/><path d="M44 52l-8 8 8 8M76 52l8 8-8 8M64 68l-8 8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="detail-info">
+                    <h3>Python SDK使用</h3>
+                    <p>仅需修改两行配置，即可完成从OpenAI到ThreeRouter的切换。</p>
+                    
+                    <div class="detail-features">
+                        <div class="detail-feature">
+                            <span class="feature-icon">📦</span>
+                            <div class="feature-content">
+                                <h4>安装SDK</h4>
+                                <p>pip install openai</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">🔧</span>
+                            <div class="feature-content">
+                                <h4>配置客户端</h4>
+                                <p>base_url & API Key</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">🚀</span>
+                            <div class="feature-content">
+                                <h4>调用模型</h4>
+                                <p>completions/chat completions</p>
+                            </div>
+                        </div>
+                        <div class="detail-feature">
+                            <span class="feature-icon">⚡</span>
+                            <div class="feature-content">
+                                <h4>智能路由</h4>
+                                <p>自动选择最优模型</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="drone-highlight">
+                        <strong>代码示例：</strong>
+                        <pre style="background: #1e1e1e; padding: 10px; border-radius: 5px; overflow-x: auto;"><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key="your_threerouter_key",
+    base_url="https://api.threerouter.com/v1"
+)
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[{"role": "user", "content": "Hello"}]
+)</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">10 / 18</div>
+    </section>
+
+    <!-- 幻灯片11：合规能力详情 -->
+    <section class="slide" id="slide-10">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">合规能力详情</h2>
+            <p class="section-subtitle">COMPLIANCE - 满足出海企业合规需求</p>
+            
+            <div class="countermeasure-grid">
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="12" width="32" height="40" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M22 22h16M22 30h16M22 38h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>审计日志</h3>
+                        <p>完整的请求追踪与审计记录</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 12L18 20v12c0 10 6 18 12 20 6-2 12-10 12-20V20L30 12z" stroke="#4364f7" stroke-width="2"/><path d="M26 32l3 3 5-6" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>风险标签</h3>
+                        <p>模型风险等级与合规标签</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M22 30h16M30 22v16" stroke="#00d4aa" stroke-width="1.5"/><circle cx="30" cy="30" r="6" stroke="#4364f7" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>EU AI Act报告</h3>
+                        <p>全自动合规报告生成</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="18" stroke="#4364f7" stroke-width="2"/><path d="M20 30c0-6 4-10 10-10M40 30c0 6-4 10-10 10" stroke="#00d4aa" stroke-width="1.5"/><path d="M30 20v20M20 30h20" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>跨法域映射</h3>
+                        <p>多地区合规要求适配</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="20" width="28" height="22" rx="3" stroke="#00d4aa" stroke-width="2"/><circle cx="30" cy="31" r="5" stroke="#4364f7" stroke-width="2"/><path d="M24 20v-4h12v4" stroke="#00d4aa" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>数据隐私</h3>
+                        <p>端到端加密与数据隔离</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="18" width="32" height="28" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M20 28h8M20 34h12M20 40h6" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="40" cy="28" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>使用统计</h3>
+                        <p>详细的API使用分析报告</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M24 30l4 4 8-8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>合规认证</h3>
+                        <p>多项国际安全认证</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 14L18 22v10c0 10 6 18 12 20 6-2 12-10 12-20V22L30 14z" stroke="#4364f7" stroke-width="2"/><circle cx="30" cy="32" r="4" stroke="#00d4aa" stroke-width="2"/><path d="M30 36v4" stroke="#00d4aa" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>安全审计</h3>
+                        <p>定期安全评估与渗透测试</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">11 / 18</div>
+    </section>
+
+    <!-- 幻灯片12：客户案例 -->
+    <section class="slide" id="slide-11">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">客户案例</h2>
+            <p class="section-subtitle">CASE STUDIES - 服务众多知名企业</p>
+            
+            <div class="countermeasure-grid">
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="16" width="32" height="28" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M14 24h32" stroke="#00d4aa" stroke-width="1.5"/><path d="M22 32h16M22 38h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>跨境电商平台</h3>
+                        <p>日均调用百万次，成本降低45%</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="14" width="28" height="32" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M24 24l-4 4 4 4M36 24l4 4-4 4M32 22l-4 12" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>AI编程助手</h3>
+                        <p>代码生成响应提升30%</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="14" width="32" height="32" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M22 24h16M22 30h16M22 36h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>内容创作平台</h3>
+                        <p>多语言支持，质量稳定</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 14L18 24v14c0 8 6 14 12 16 6-2 12-8 12-16V24L30 14z" stroke="#4364f7" stroke-width="2"/><path d="M24 32l4 4 8-8" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>出海SaaS服务商</h3>
+                        <p>合规能力助力海外拓展</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="28" r="10" stroke="#00d4aa" stroke-width="2"/><path d="M26 28c0-2 2-4 4-4s4 2 4 4" stroke="#00d4aa" stroke-width="1.5"/><path d="M20 42c0-6 4-10 10-10s10 4 10 10" stroke="#4364f7" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>智能客服系统</h3>
+                        <p>7×24小时稳定运行</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="16" width="32" height="28" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M20 36v-8M28 36v-12M36 36v-6M44 36v-10" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>数据分析平台</h3>
+                        <p>复杂推理任务精准完成</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="14" width="32" height="32" rx="4" stroke="#00d4aa" stroke-width="2"/><circle cx="24" cy="28" r="4" stroke="#4364f7" stroke-width="1.5"/><circle cx="36" cy="28" r="4" stroke="#4364f7" stroke-width="1.5"/><path d="M22 38c0-2 2-4 4-4h8c2 0 4 2 4 4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>游戏AI开发</h3>
+                        <p>NPC对话智能生成</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="12" width="28" height="36" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M24 22h12M24 28h12M24 34h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="42" r="2" fill="#00d4aa"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>企业级AI应用</h3>
+                        <p>SLA保障，安全可靠</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">12 / 18</div>
+    </section>
+
+    <!-- 幻灯片13：合作伙伴 -->
+    <section class="slide" id="slide-12">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">合作伙伴</h2>
+           <p class="section-subtitle">PARTNERS - 携手共创AI未来</p>
+           
+            <div class="countermeasure-grid">
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="22" cy="24" r="6" stroke="#00d4aa" stroke-width="2"/><circle cx="38" cy="24" r="6" stroke="#4364f7" stroke-width="2"/><path d="M14 42c0-6 4-10 8-10h4c2 0 4 1 5 2M46 42c0-6-4-10-8-10h-4c-2 0-4 1-5 2" stroke="#00d4aa" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>模型厂商</h3>
+                        <p>DeepSeek、GLM、Kimi等</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="20" width="32" height="24" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M22 28h16M22 34h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="42" cy="18" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>云服务商</h3>
+                        <p>阿里云、腾讯云、华为云</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 14L18 22v10c0 10 6 18 12 20 6-2 12-10 12-20V22L30 14z" stroke="#00d4aa" stroke-width="2"/><circle cx="30" cy="32" r="4" stroke="#4364f7" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>安全厂商</h3>
+                        <p>提供安全审计与合规认证</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="16" width="28" height="28" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M24 24h12M24 30h12M24 36h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>渠道伙伴</h3>
+                        <p>共同开拓市场</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="18" y="14" width="24" height="32" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M26 22h8M26 28h8M26 34h6" stroke="#4364f7" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>企业客户</h3>
+                        <p>跨境电商、出海SaaS等</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="14" stroke="#4364f7" stroke-width="2"/><path d="M24 30h12M30 24v12" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="30" cy="30" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>技术伙伴</h3>
+                        <p>API集成与定制开发</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M18 18h24v24H18z" stroke="#4364f7" stroke-width="2"/><path d="M18 28h24M18 38h24" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="48" r="4" stroke="#00d4aa" stroke-width="2"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>高校</h3>
+                        <p>产学研合作、人才培养</p>
+                    </div>
+                </div>
+                
+                <div class="countermeasure-card">
+                    <div class="countermeasure-image">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="18" stroke="#4364f7" stroke-width="2"/><path d="M30 18v24M22 26l4-4 8 8 8-8M22 34l4 4 8-8 8 8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </div>
+                    <div class="countermeasure-info">
+                        <h3>科研院所</h3>
+                        <p>联合研究、技术攻关</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">13 / 18</div>
+    </section>
+
+    <!-- 幻灯片14：服务保障 -->
+    <section class="slide" id="slide-13">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">服务保障</h2>
+            <p class="section-subtitle">SERVICE GUARANTEE - 专业服务，值得信赖</p>
+            
+            <div class="solution-grid">
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M20 12v8l6 4" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/></svg>
+                    </div>
+                    <h3 class="solution-title">7×24支持</h3>
+                    <p class="solution-desc">全天候技术支持，快速响应客户需求</p>
+                </div>
+                
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="16" r="6" stroke="#4364f7" stroke-width="2"/><path d="M12 32c0-4 4-8 8-8s8 4 8 8" stroke="#4364f7" stroke-width="2"/></svg>
+                    </div>
+                    <h3 class="solution-title">专属客服</h3>
+                    <p class="solution-desc">一对一专属客服，全程跟进服务</p>
+                </div>
+                
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M20 6L10 12v8c0 8 5 14 10 16 5-2 10-8 10-16V12L20 6z" stroke="#00d4aa" stroke-width="2"/><path d="M16 20l3 3 5-6" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
+                    <h3 class="solution-title">SLA保障</h3>
+                    <p class="solution-desc">99.99%可用性保障，服务水平协议</p>
+                </div>
+                
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M12 20a8 8 0 0116 0" stroke="#4364f7" stroke-width="2"/><path d="M8 20a12 12 0 0124 0" stroke="#4364f7" stroke-width="2" opacity="0.5"/><path d="M20 20v-8" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="20" r="3" fill="#00d4aa"/></svg>
+                    </div>
+                    <h3 class="solution-title">故障兜底</h3>
+                    <p class="solution-desc">故障自动切换，确保业务连续性</p>
+                </div>
+                
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="8" y="10" width="24" height="20" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M14 18h12M14 24h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="14" r="3" stroke="#4364f7" stroke-width="1.5"/></svg>
+                    </div>
+                    <h3 class="solution-title">实时监控</h3>
+                    <p class="solution-desc">实时监控API调用状态与性能指标</p>
+                </div>
+                
+                <div class="solution-card">
+                    <div class="solution-icon">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="10" y="12" width="20" height="16" rx="3" stroke="#4364f7" stroke-width="2"/><circle cx="20" cy="20" r="4" stroke="#00d4aa" stroke-width="2"/><path d="M20 16v-2M20 24v2M16 20h-2M24 20h2" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                    </div>
+                    <h3 class="solution-title">数据安全</h3>
+                    <p class="solution-desc">端到端加密，数据隔离保护</p>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">14 / 18</div>
+    </section>
+
+    <!-- 幻灯片15：常见问题 -->
+    <section class="slide" id="slide-14">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">常见问题</h2>
+            <p class="section-subtitle">FAQ - 解答您的疑惑</p>
+            
+            <div class="evtol-content">
+                <div class="evtol-image">
+                    <svg width="100" height="100" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="40" stroke="#00d4aa" stroke-width="3"/><path d="M40 40c0-6 4-10 10-10s10 4 10 10c0 4-2 6-6 8-2 1-4 3-4 6v2" stroke="#4364f7" stroke-width="3" stroke-linecap="round"/><circle cx="50" cy="68" r="3" fill="#00d4aa"/></svg>
+                </div>
+                <div class="evtol-info">
+                    <h3>FAQ</h3>
+                    <p>以下是客户常问的问题，帮助您快速了解ThreeRouter</p>
+                    
+                    <div class="evtol-features">
+                        <div class="evtol-feature">
+                            <span class="feature-icon">Q1</span>
+                            <span class="feature-text">如何接入？只需修改base_url和API Key</span>
+                        </div>
+                        <div class="evtol-feature">
+                            <span class="feature-icon">Q2</span>
+                            <span class="feature-text">支持哪些模型？DeepSeek/GLM/Kimi/GPT等</span>
+                        </div>
+                        <div class="evtol-feature">
+                            <span class="feature-icon">Q3</span>
+                            <span class="feature-text">能节省多少成本？标准版30%+，智能路由40-60%</span>
+                        </div>
+                        <div class="evtol-feature">
+                            <span class="feature-icon">Q4</span>
+                            <span class="feature-text">支持合规报告？提供EU AI Act合规能力</span>
+                        </div>
+                    </div>
+                    
+                    <div class="evtol-scenarios">
+                        <h4>更多问题？</h4>
+                        <ul>
+                            <li>联系我们获取详细解答</li>
+                            <li>访问文档中心</li>
+                            <li>加入开发者社区</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">15 / 18</div>
+    </section>
+
+    <!-- 幻灯片16：关于我们 -->
+    <section class="slide" id="slide-15">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">关于我们</h2>
+            <p class="section-subtitle">ABOUT US - 专注AI成本优化</p>
+              <div class="stats-grid">
+                <div class="stat-item">
+                        <div class="stat-number">50<span>%</span></div>
+                        <div class="stat-label">平均成本降低</div>
+                    </div>
+                     <div class="stat-item">
+                        <div class="stat-number">100<span>亿+</span></div>
+                        <div class="stat-label">累计处理Token</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">50<span>ms</span></div>
+                        <div class="stat-label">平均延迟</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">99.99<span>%</span></div>
+                        <div class="stat-label">服务可用性</div>
+                    </div> 
+            </div>
+            
+            <div class="content-grid-4" style="text-align:center;">
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">🚀</div>
+                    <h3 class="card-title">技术领先</h3>
+                    <p class="card-desc">自主研发智能路由引擎，持续优化成本</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">🛡️</div>
+                    <h3 class="card-title">安全可靠</h3>
+                    <p class="card-desc">端到端加密，多重安全保障</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">⚡</div>
+                    <h3 class="card-title">智能调度</h3>
+                    <p class="card-desc">L1-L5智能路由，自动匹配最优模型</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">🤝</div>
+                    <h3 class="card-title">客户至上</h3>
+                    <p class="card-desc">专业服务团队，7×24技术支持</p>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">16 / 18</div>
+    </section>
+
+    <!-- 幻灯片17：发展历程 -->
+    <section class="slide" id="slide-16">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="section-title">发展历程</h2>
+            <p class="section-subtitle">DEVELOPMENT - 持续创新，不断进步</p>
+            
+            <div class="content-grid-4" style="text-align:center;">
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">2015</div>
+                    <h3 class="card-title">公司成立</h3>
+                    <p class="card-desc">北京培基启智科技有限公司正式成立</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">2025</div>
+                    <h3 class="card-title">技术积累</h3>
+                    <p class="card-desc">深耕AI领域，积累核心技术能力</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">2026</div>
+                    <h3 class="card-title">产品发布</h3>
+                    <p class="card-desc">ThreeRouter统一API网关正式上线</p>
+                </div>
+                <div class="card" style="text-align:center;">
+                    <div class="card-icon" style="margin:0 auto 25px;">2026</div>
+                    <h3 class="card-title">快速发展</h3>
+                    <p class="card-desc">服务客户突破1000家，处理Token超100亿</p>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">17 / 18</div>
+    </section>
+
+    <!-- 幻灯片18：联系我们 -->
+    <section class="slide" id="slide-17">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+        <div class="bg-glow glow-1"></div>
+        <div class="bg-glow glow-2"></div>
+        <div class="slide-content end-slide">
+            <div class="logo">
+                <img src="images/logo.svg" alt="北京培基启智科技">
+                <div class="logo-text">
+                    <h1>北京培基启智科技有限公司</h1>
+                    <span>THREEROUTER - AI API GATEWAY</span>
+                </div>
+            </div>
+            <h2 class="end-title">感谢聆听</h2>
+            <p class="end-subtitle">期待与您携手共创AI成本优化新未来</p>
+            
+            <div class="end-contact">
+                <div class="end-contact-item">
+                    <span>📞</span>
+                    <span>15811188600</span>
+                </div>
+                <div class="end-contact-item">
+                    <span>📧</span>
+                    <span>support@threerouter.com</span>
+                </div>
+                <div class="end-contact-item">
+                    <span>📍</span>
+                    <span>北京市丰台区中核路3号院3号楼</span>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">18 / 18</div>
+    </section>
+
+    <script>
+        // 导航点点击
+        const navDots = document.querySelectorAll('.nav-dot');
+        const slides = document.querySelectorAll('.slide');
+        const progressBar = document.getElementById('progressBar');
+        let currentSlideIndex = 0;
+        let isScrolling = false; // 标记是否正在执行平滑滚动
+        
+        function updateNavDots(index) {
+            navDots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === index);
+            });
+        }
+        
+        function goToSlide(index) {
+            if (index < 0 || index >= slides.length || index === currentSlideIndex) return;
+            
+            isScrolling = true;
+            currentSlideIndex = index;
+            updateNavDots(index);
+            
+            // 使用 window.scrollTo 替代 scrollIntoView，避免触发多次滚动事件
+            const targetPosition = slides[index].offsetTop;
+            const startPosition = window.scrollY;
+            const distance = targetPosition - startPosition;
+            const duration = 500; // 滚动持续时间
+            const startTime = performance.now();
+            
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 使用缓动函数
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                window.scrollTo({
+                    top: startPosition + distance * easeProgress,
+                    behavior: 'instant'
+                });
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    isScrolling = false;
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        navDots.forEach((dot, index) => {
+            dot.addEventListener('click', () => goToSlide(index));
+        });
+        
+        // 键盘导航
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (currentSlideIndex < slides.length - 1) {
+                    goToSlide(currentSlideIndex + 1);
+                }
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (currentSlideIndex > 0) {
+                    goToSlide(currentSlideIndex - 1);
+                }
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                goToSlide(0);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                goToSlide(slides.length - 1);
+            }
+        });
+        
+        // 导航按钮
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentSlideIndex > 0) {
+                goToSlide(currentSlideIndex - 1);
+            }
+        });
+        
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentSlideIndex < slides.length - 1) {
+                goToSlide(currentSlideIndex + 1);
+            }
+        });
+        
+        // 滚动进度和导航点更新
+        let scrollTimeout;
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.scrollY;
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const scrollPercent = (scrollTop / docHeight) * 100;
+            progressBar.style.width = scrollPercent + '%';
+            
+            // 如果是程序触发的滚动，跳过索引更新
+            if (isScrolling) return;
+            
+            // 防抖处理，避免频繁更新
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                const slideHeight = window.innerHeight;
+                const calculatedSlide = Math.round(scrollTop / slideHeight);
+                const newSlideIndex = Math.max(0, Math.min(calculatedSlide, slides.length - 1));
+                
+                if (newSlideIndex !== currentSlideIndex) {
+                    currentSlideIndex = newSlideIndex;
+                    updateNavDots(currentSlideIndex);
+                }
+            }, 100);
+        });
+        
+        // 四维网格轮播功能
+        let gridCurrentSlide = 0;
+        const gridTotalSlides = 5;
+        
+        function moveGridCarousel(direction) {
+            gridCurrentSlide = (gridCurrentSlide + direction + gridTotalSlides) % gridTotalSlides;
+            updateGridCarousel();
+        }
+        
+        function updateGridCarousel() {
+            const track = document.querySelector('#gridCarousel .carousel-track');
+            const indicator = document.getElementById('gridIndicator');
+            
+            track.style.transform = `translateX(-${gridCurrentSlide * 100}%)`;
+            indicator.textContent = `${gridCurrentSlide + 1} / ${gridTotalSlides}`;
+        }
+    </script>
+</body>
+</html>
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?ba103c85276b966f9672d8e1173bbb7e";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
