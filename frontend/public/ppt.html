@@ -1257,6 +1257,17 @@
             .evtol-features {
                 gap: 12px;
             }
+            
+            /* 无人机/L1-L5智能路由平板响应式 */
+            .drone-specs {
+                gap: 12px;
+            }
+            
+            /* 内容网格平板响应式 */
+            .content-grid-4 {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
         }
 
         @media (max-width: 768px) {
@@ -1452,6 +1463,78 @@
             .platform-icon {
                 width: 60px;
                 height: 60px;
+            }
+            
+            /* 图片轮播响应式 */
+            .carousel-slide img {
+                max-height: 200px;
+            }
+            .carousel-btn {
+                width: 36px;
+                height: 36px;
+                font-size: 18px;
+            }
+            
+            /* 内容网格响应式 */
+            .content-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            .content-grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .content-grid-4 {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            
+            /* 卡片响应式 */
+            .card {
+                padding: 20px;
+            }
+            .card-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 28px;
+            }
+            .card-title {
+                font-size: 20px;
+            }
+            .card-desc {
+                font-size: 14px;
+            }
+            
+            /* 优势列表响应式 */
+            .advantage-list {
+                gap: 20px;
+            }
+            .advantage-item {
+                padding: 20px;
+            }
+            .advantage-icon {
+                font-size: 32px;
+            }
+            
+            /* 统计数据响应式 */
+            .stat-item {
+                padding: 20px 15px;
+            }
+            
+            /* SVG图标响应式 */
+            .detail-image svg,
+            .evtol-image svg,
+            .drone-image-container svg,
+            .platform-image svg {
+                max-width: 100%;
+                height: auto;
+            }
+            
+            /* 表格响应式 */
+            table {
+                font-size: 12px;
+            }
+            th, td {
+                padding: 8px 6px;
             }
         }
 
@@ -2642,164 +2725,204 @@ response = client.chat.completions.create(
     </section>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // 导航点点击
-            const navDots = document.querySelectorAll('.nav-dot');
-            const slides = document.querySelectorAll('.slide');
-            const progressBar = document.getElementById('progressBar');
-            let currentSlideIndex = 0;
-            let isScrolling = false; // 标记是否正在执行平滑滚动
-            
-            // 验证元素是否存在
-            if (!navDots.length || !slides.length) {
-                console.warn('导航点或幻灯片元素未找到');
-                return;
-            }
-            
-            function updateNavDots(index) {
-                navDots.forEach((dot, i) => {
-                    dot.classList.toggle('active', i === index);
-                });
-            }
-            
-            function goToSlide(index) {
-                if (index < 0 || index >= slides.length || index === currentSlideIndex) return;
+        // 立即执行函数，确保代码在任何情况下都能运行
+        (function() {
+            function initNavigation() {
+                // 导航点点击
+                const navDots = document.querySelectorAll('.nav-dot');
+                const slides = document.querySelectorAll('.slide');
+                const progressBar = document.getElementById('progressBar');
                 
-                isScrolling = true;
-                currentSlideIndex = index;
-                updateNavDots(index);
+                // 验证元素是否存在
+                if (!navDots.length || !slides.length) {
+                    console.warn('导航点或幻灯片元素未找到');
+                    return false;
+                }
                 
-                // 使用 window.scrollTo 替代 scrollIntoView，避免触发多次滚动事件
-                const targetPosition = slides[index].offsetTop;
-                const startPosition = window.scrollY;
-                const distance = targetPosition - startPosition;
-                const duration = 500; // 滚动持续时间
-                const startTime = performance.now();
+                let currentSlideIndex = 0;
+                let isScrolling = false; // 标记是否正在执行平滑滚动
                 
-                function animate(currentTime) {
-                    const elapsed = currentTime - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
+                function updateNavDots(index) {
+                    navDots.forEach((dot, i) => {
+                        dot.classList.toggle('active', i === index);
+                    });
+                }
+                
+                function goToSlide(index) {
+                    if (index < 0 || index >= slides.length) return;
+                    if (index === currentSlideIndex) return;
                     
-                    // 使用缓动函数
-                    const easeProgress = 1 - Math.pow(1 - progress, 3);
+                    isScrolling = true;
+                    currentSlideIndex = index;
+                    updateNavDots(index);
                     
-                    window.scrollTo({
-                        top: startPosition + distance * easeProgress,
-                        behavior: 'instant'
+                    // 使用 window.scrollTo 替代 scrollIntoView，避免触发多次滚动事件
+                    const targetPosition = slides[index].offsetTop;
+                    const startPosition = window.scrollY;
+                    const distance = targetPosition - startPosition;
+                    const duration = 500; // 滚动持续时间
+                    const startTime = performance.now();
+                    
+                    function animate(currentTime) {
+                        const elapsed = currentTime - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        
+                        // 使用缓动函数
+                        const easeProgress = 1 - Math.pow(1 - progress, 3);
+                        
+                        window.scrollTo({
+                            top: startPosition + distance * easeProgress,
+                            behavior: 'instant'
+                        });
+                        
+                        if (progress < 1) {
+                            requestAnimationFrame(animate);
+                        } else {
+                            setTimeout(() => {
+                                isScrolling = false;
+                            }, 50);
+                        }
+                    }
+                    
+                    requestAnimationFrame(animate);
+                }
+                
+                // 为每个导航点添加点击事件
+                navDots.forEach((dot, index) => {
+                    dot.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        goToSlide(index);
                     });
                     
-                    if (progress < 1) {
-                        requestAnimationFrame(animate);
-                    } else {
-                        isScrolling = false;
-                    }
-                }
-                
-                requestAnimationFrame(animate);
-            }
-            
-            // 为每个导航点添加点击事件
-            navDots.forEach((dot, index) => {
-                dot.addEventListener('click', function() {
-                    console.log('点击导航点:', index);
-                    goToSlide(index);
+                    // 添加触摸事件支持
+                    dot.addEventListener('touchstart', function(e) {
+                        e.preventDefault();
+                        goToSlide(index);
+                    });
                 });
-            });
-            
-            // 键盘导航
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-                    e.preventDefault();
-                    if (currentSlideIndex < slides.length - 1) {
-                        goToSlide(currentSlideIndex + 1);
-                    }
-                } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    if (currentSlideIndex > 0) {
-                        goToSlide(currentSlideIndex - 1);
-                    }
-                } else if (e.key === 'Home') {
-                    e.preventDefault();
-                    goToSlide(0);
-                } else if (e.key === 'End') {
-                    e.preventDefault();
-                    goToSlide(slides.length - 1);
-                }
-            });
-            
-            // 导航按钮
-            const prevBtn = document.getElementById('prevBtn');
-            const nextBtn = document.getElementById('nextBtn');
-            
-            if (prevBtn) {
-                prevBtn.addEventListener('click', () => {
-                    if (currentSlideIndex > 0) {
-                        goToSlide(currentSlideIndex - 1);
+                
+                // 键盘导航
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        if (currentSlideIndex < slides.length - 1) {
+                            goToSlide(currentSlideIndex + 1);
+                        }
+                    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        if (currentSlideIndex > 0) {
+                            goToSlide(currentSlideIndex - 1);
+                        }
+                    } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        goToSlide(0);
+                    } else if (e.key === 'End') {
+                        e.preventDefault();
+                        goToSlide(slides.length - 1);
                     }
                 });
-            }
-            
-            if (nextBtn) {
-                nextBtn.addEventListener('click', () => {
-                    if (currentSlideIndex < slides.length - 1) {
-                        goToSlide(currentSlideIndex + 1);
-                    }
-                });
-            }
-            
-            // 滚动进度和导航点更新
-            let scrollTimeout;
-            window.addEventListener('scroll', () => {
-                const scrollTop = window.scrollY;
-                const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-                const scrollPercent = (scrollTop / docHeight) * 100;
-                if (progressBar) {
-                    progressBar.style.width = scrollPercent + '%';
+                
+                // 导航按钮
+                const prevBtn = document.getElementById('prevBtn');
+                const nextBtn = document.getElementById('nextBtn');
+                
+                if (prevBtn) {
+                    prevBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (currentSlideIndex > 0) {
+                            goToSlide(currentSlideIndex - 1);
+                        }
+                    });
                 }
                 
-                // 如果是程序触发的滚动，跳过索引更新
-                if (isScrolling) return;
+                if (nextBtn) {
+                    nextBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (currentSlideIndex < slides.length - 1) {
+                            goToSlide(currentSlideIndex + 1);
+                        }
+                    });
+                }
                 
-                // 防抖处理，避免频繁更新
-                clearTimeout(scrollTimeout);
-                scrollTimeout = setTimeout(() => {
-                    const slideHeight = window.innerHeight;
-                    const calculatedSlide = Math.round(scrollTop / slideHeight);
-                    const newSlideIndex = Math.max(0, Math.min(calculatedSlide, slides.length - 1));
+                // 滚动进度和导航点更新
+                let scrollTimeout;
+                window.addEventListener('scroll', () => {
+                    const scrollTop = window.scrollY;
+                    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+                    const scrollPercent = (scrollTop / docHeight) * 100;
+                    if (progressBar) {
+                        progressBar.style.width = scrollPercent + '%';
+                    }
                     
-                    if (newSlideIndex !== currentSlideIndex) {
-                        currentSlideIndex = newSlideIndex;
-                        updateNavDots(currentSlideIndex);
-                    }
-                }, 100);
-            });
-        });
+                    // 如果是程序触发的滚动，跳过索引更新
+                    if (isScrolling) return;
+                    
+                    // 防抖处理，避免频繁更新
+                    clearTimeout(scrollTimeout);
+                    scrollTimeout = setTimeout(() => {
+                        const slideHeight = window.innerHeight;
+                        const calculatedSlide = Math.round(scrollTop / slideHeight);
+                        const newSlideIndex = Math.max(0, Math.min(calculatedSlide, slides.length - 1));
+                        
+                        if (newSlideIndex !== currentSlideIndex) {
+                            currentSlideIndex = newSlideIndex;
+                            updateNavDots(currentSlideIndex);
+                        }
+                    }, 100);
+                });
+                
+                return true;
+            }
+            
+            // 尝试立即初始化
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                initNavigation();
+            } else {
+                // 如果DOM还没准备好，等待DOMContentLoaded事件
+                document.addEventListener('DOMContentLoaded', initNavigation);
+                // 备用方案：如果DOMContentLoaded没有触发，使用load事件
+                window.addEventListener('load', initNavigation);
+            }
+        })();
         
         // 四维网格轮播功能
-        document.addEventListener('DOMContentLoaded', function() {
-            let gridCurrentSlide = 0;
-            const gridTotalSlides = 5;
-            
-            function moveGridCarousel(direction) {
-                gridCurrentSlide = (gridCurrentSlide + direction + gridTotalSlides) % gridTotalSlides;
-                updateGridCarousel();
-            }
-            
-            function updateGridCarousel() {
-                const track = document.querySelector('#gridCarousel .carousel-track');
-                const indicator = document.getElementById('gridIndicator');
+        (function() {
+            function initCarousel() {
+                let gridCurrentSlide = 0;
+                const gridTotalSlides = 5;
                 
-                if (track) {
-                    track.style.transform = `translateX(-${gridCurrentSlide * 100}%)`;
+                function moveGridCarousel(direction) {
+                    gridCurrentSlide = (gridCurrentSlide + direction + gridTotalSlides) % gridTotalSlides;
+                    updateGridCarousel();
                 }
-                if (indicator) {
-                    indicator.textContent = `${gridCurrentSlide + 1} / ${gridTotalSlides}`;
+                
+                function updateGridCarousel() {
+                    const track = document.querySelector('#gridCarousel .carousel-track');
+                    const indicator = document.getElementById('gridIndicator');
+                    
+                    if (track) {
+                        track.style.transform = `translateX(-${gridCurrentSlide * 100}%)`;
+                    }
+                    if (indicator) {
+                        indicator.textContent = `${gridCurrentSlide + 1} / ${gridTotalSlides}`;
+                    }
                 }
+                
+                // 暴露全局方法供按钮调用
+                window.moveGridCarousel = moveGridCarousel;
+                
+                return true;
             }
             
-            // 暴露全局方法供按钮调用
-            window.moveGridCarousel = moveGridCarousel;
-        });
+            // 尝试立即初始化
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                initCarousel();
+            } else {
+                document.addEventListener('DOMContentLoaded', initCarousel);
+                window.addEventListener('load', initCarousel);
+            }
+        })();
     </script>
 </body>
 </html>
