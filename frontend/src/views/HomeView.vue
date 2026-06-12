@@ -277,9 +277,9 @@
     <!-- Footer -->
     <footer class="relative z-10 border-t border-gray-100 px-6 py-8">
       <div class="mx-auto flex max-w-7xl flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 sm:flex-row sm:text-left">
-        <p>&copy; {{ currentYear }} Three Router. All rights reserved.</p>
+        <p>&copy; {{ currentYear }} Three Router. {{ t('home.footer.allRightsReserved') }}</p>
         <div class="flex items-center gap-6">
-          <a href="#" class="transition-colors hover:text-gray-700">Documentation</a>
+          <a :href="currentLang === 'zh' ? 'readme.html' : 'readme-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.documentation') }}</a>
         </div>
       </div>
     </footer>

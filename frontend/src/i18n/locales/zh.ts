@@ -117,7 +117,8 @@ export default {
       button: '免费注册'
     },
     footer: {
-      allRightsReserved: '保留所有权利。'
+      allRightsReserved: '保留所有权利。',
+      documentation: '文档'
     }
   },
 

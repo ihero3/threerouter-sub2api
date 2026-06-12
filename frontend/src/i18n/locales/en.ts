@@ -117,7 +117,8 @@ export default {
       button: 'Sign Up Free'
     },
     footer: {
-      allRightsReserved: 'All rights reserved.'
+      allRightsReserved: 'All rights reserved.',
+      documentation: 'Documentation'
     }
   },
 
