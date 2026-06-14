@@ -98,7 +98,7 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		}
 
 		// For index.html or SPA routes, serve with injected settings
-		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		if cleanPath == "index.html" || cleanPath == "ppt.html" || !s.fileExists(cleanPath) {
 			s.serveIndexHTML(c)
 			return
 		}
