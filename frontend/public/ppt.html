@@ -28,9 +28,9 @@
             max-width: 100vw;
         }
         
+        /* 关键修复：使用CSS平滑滚动 + 滚动捕捉，完全由浏览器原生控制 */
         html {
             scroll-behavior: smooth;
-            scroll-snap-type: y mandatory;
         }
 
         body {
@@ -48,7 +48,6 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            scroll-snap-align: start;
             overflow: hidden;
         }
 
@@ -185,7 +184,7 @@
         .hero-slide .logo-text h1 {
             font-size: 32px;
             font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            background: linear-gradient(135deg, #00d4aa 0%, #94a3b8 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -205,7 +204,7 @@
         }
 
         .hero-title span {
-            background: linear-gradient(135deg, #fff 0%, #60a5fa 50%, #00d4aa 100%);
+            background: linear-gradient(135deg, #00d4aa 10%, #bdbebe 50%, #00d4aa 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -534,13 +533,53 @@
             color: inherit;
         }
 
+        .countermeasure-card:hover .countermeasure-image::before {
+            border-color: rgba(0,212,170,0.35);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.26), 0 22px 48px rgba(0,212,170,0.12);
+        }
+
+        .countermeasure-card:hover .countermeasure-image svg,
+        .solution-card:hover .solution-icon svg {
+            transform: translateY(-2px);
+        }
+
         .countermeasure-image {
             height: 150px;
-            background: linear-gradient(135deg, rgba(251,146,60,0.2) 0%, rgba(236,72,153,0.1) 100%);
+            background: radial-gradient(circle at 50% 38%, rgba(0,212,170,0.18), rgba(67,100,247,0.08) 48%, rgba(255,255,255,0.035) 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 15px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .countermeasure-image::before {
+            content: '';
+            position: absolute;
+            width: 96px;
+            height: 96px;
+            border-radius: 26px;
+            background: linear-gradient(145deg, rgba(0,212,170,0.14), rgba(67,100,247,0.16));
+            border: 1px solid rgba(255,255,255,0.16);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 18px 40px rgba(0,0,0,0.18);
+            transform: rotate(45deg);
+        }
+
+        .countermeasure-image svg {
+            width: 100%;
+            max-width: 88px;
+            height: auto;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 10px 22px rgba(0, 212, 170, 0.18));
+            transition: transform 0.35s ease, filter 0.35s ease;
+        }
+
+        .countermeasure-image svg * {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
         }
 
         .countermeasure-image img {
@@ -592,13 +631,42 @@
         .solution-icon {
             width: 160px;
             height: 160px;
-            border-radius: 24px;
+            border-radius: 30px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 25px;
             overflow: hidden;
-            background: rgba(255,255,255,0.05);
+            background: radial-gradient(circle at 50% 35%, rgba(0,212,170,0.2), rgba(67,100,247,0.1) 55%, rgba(255,255,255,0.04) 100%);
+            border: 1px solid rgba(255,255,255,0.14);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 18px 42px rgba(0,0,0,0.18);
+            position: relative;
+        }
+
+        .solution-icon::before {
+            content: '';
+            position: absolute;
+            width: 92px;
+            height: 92px;
+            border-radius: 28px;
+            background: linear-gradient(145deg, rgba(0,212,170,0.12), rgba(67,100,247,0.16));
+            border: 1px solid rgba(255,255,255,0.12);
+            transform: rotate(45deg);
+        }
+
+        .solution-icon svg {
+            width: 72px;
+            height: 72px;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 10px 20px rgba(0, 212, 170, 0.18));
+            transition: transform 0.35s ease, filter 0.35s ease;
+        }
+
+        .solution-icon svg * {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
         }
 
         .solution-icon img {
@@ -1158,7 +1226,7 @@
             font-size: 64px;
             font-weight: 800;
             margin-bottom: 30px;
-            background: linear-gradient(135deg, #fff 0%, #60a5fa 100%);
+            background: linear-gradient(135deg, #18d84b 0%, #60a5fa 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -1628,7 +1696,7 @@
                 </div>
             </div>
             <h2 class="hero-title">
-                <span>统一API网关</span><br>智能路由降本40-60%
+                <span>统一API网关</span><br>智能路由降本40-80%
             </h2>
             <p class="hero-desc">
                 ThreeRouter 提供统一的AI模型访问接口，兼容OpenAI SDK。<br>
@@ -1675,7 +1743,7 @@
                 <div class="card">
                     <div class="card-icon">📉</div>
                     <h3 class="card-title">成本优势</h3>
-                    <p class="card-desc">标准版低于官方定价30%+，智能路由降本40-60%</p>
+                    <p class="card-desc">标准版低于官方定价30%+，智能路由降本40-80%</p>
                 </div>
                 <div class="card">
                     <div class="card-icon">💰</div>
@@ -1830,7 +1898,7 @@
                     <div class="platform-content">
                         <span class="platform-badge">核心优势</span>
                         <h3 class="platform-title">成本优化</h3>
-                        <p class="platform-desc">标准版低于官方定价30%+，智能路由再降40-60%</p>
+                        <p class="platform-desc">标准版低于官方定价30%+，智能路由再降40-80%</p>
                         <div class="platform-features">
                             <span class="platform-feature">算力补贴</span>
                             <span class="platform-feature">动态分流</span>
@@ -2060,14 +2128,14 @@
                             <span class="feature-icon">2️⃣</span>
                             <div class="feature-content">
                                 <h4>修改配置</h4>
-                                <p>修改base_url为our_api_endpoint，替换API Key</p>
+                                <p>修改base_url为api.threerouter.com，替换API Key</p>
                             </div>
                         </div>
                         <div class="detail-feature">
                             <span class="feature-icon">3️⃣</span>
                             <div class="feature-content">
                                 <h4>开启智能路由</h4>
-                                <p>在控制台开启智能路由，自动优化成本</p>
+                                <p>在控制台开启智能路由，减少40%~80% Token成本</p>
                             </div>
                         </div>
                         <div class="detail-feature">
@@ -2095,7 +2163,7 @@
             <div class="drone-grid">
                 <div class="drone-card">
                     <div class="drone-image-container">
-                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="36" stroke="#4364f7" stroke-width="2" opacity="0.3"/><rect x="22" y="30" width="36" height="24" rx="3" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 38h20M30 44h14" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="52" cy="50" r="4" stroke="#4364f7" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="30" y="12" width="20" height="12" rx="3" stroke="#00d4aa" stroke-width="2.5"/><rect x="16" y="34" width="18" height="12" rx="3" stroke="#4364f7" stroke-width="2.5"/><rect x="46" y="34" width="18" height="12" rx="3" stroke="#4364f7" stroke-width="2.5"/><rect x="30" y="56" width="20" height="12" rx="3" stroke="#00d4aa" stroke-width="2.5"/><path d="M40 24v10M34 40h12M40 46v10" stroke="#00d4aa" stroke-width="2.5"/><path d="M25 46l15 10M55 46L40 56" stroke="#4364f7" stroke-width="2" opacity="0.8"/></svg>
                     </div>
                     <div class="drone-info">
                         <span class="drone-model">核心技术</span>
@@ -2136,7 +2204,7 @@
                                 <div class="drone-spec-label">路由决策</div>
                             </div>
                             <div class="drone-spec">
-                                <div class="drone-spec-value">40-60%</div>
+                                <div class="drone-spec-value">40-80%</div>
                                 <div class="drone-spec-label">成本优化</div>
                             </div>
                         </div>
@@ -2225,7 +2293,7 @@ response = client.chat.completions.create(
             <div class="countermeasure-grid">
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="12" width="32" height="40" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M22 22h16M22 30h16M22 38h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="18" y="15" width="44" height="50" rx="4" stroke="#00d4aa" stroke-width="2.5"/><path d="M28 28h24M28 38h24M28 48h14" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="62" cy="25" r="5" stroke="#4364f7" stroke-width="1.5"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>审计日志</h3>
@@ -2235,7 +2303,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 12L18 20v12c0 10 6 18 12 20 6-2 12-10 12-20V20L30 12z" stroke="#4364f7" stroke-width="2"/><path d="M26 32l3 3 5-6" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M40 12L24 24v18c0 12 8 20 16 24 8-4 16-12 16-24V24L40 12z" stroke="#4364f7" stroke-width="2.5"/><path d="M34 42l5 5 8-8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>风险标签</h3>
@@ -2245,7 +2313,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M22 30h16M30 22v16" stroke="#00d4aa" stroke-width="1.5"/><circle cx="30" cy="30" r="6" stroke="#4364f7" stroke-width="1.5"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="22" stroke="#00d4aa" stroke-width="2.5"/><path d="M26 40h28M40 26v28" stroke="#00d4aa" stroke-width="2"/><circle cx="40" cy="40" r="8" stroke="#4364f7" stroke-width="2"/><circle cx="40" cy="40" r="3" fill="#00d4aa"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>EU AI Act报告</h3>
@@ -2255,7 +2323,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="18" stroke="#4364f7" stroke-width="2"/><path d="M20 30c0-6 4-10 10-10M40 30c0 6-4 10-10 10" stroke="#00d4aa" stroke-width="1.5"/><path d="M30 20v20M20 30h20" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="24" stroke="#4364f7" stroke-width="2.5"/><path d="M26 40c0-8 6-14 14-14M54 40c0 8-6 14-14 14" stroke="#00d4aa" stroke-width="2"/><path d="M40 24v32M24 40h32" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>跨法域映射</h3>
@@ -2265,7 +2333,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="20" width="28" height="22" rx="3" stroke="#00d4aa" stroke-width="2"/><circle cx="30" cy="31" r="5" stroke="#4364f7" stroke-width="2"/><path d="M24 20v-4h12v4" stroke="#00d4aa" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="20" y="24" width="40" height="30" rx="4" stroke="#00d4aa" stroke-width="2.5"/><circle cx="40" cy="40" r="7" stroke="#4364f7" stroke-width="2"/><path d="M32 24v-6h16v6" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 48h20" stroke="#00d4aa" stroke-width="1.5" stroke-dasharray="4 2"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>数据隐私</h3>
@@ -2275,7 +2343,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="18" width="32" height="28" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M20 28h8M20 34h12M20 40h6" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="40" cy="28" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="18" y="22" width="44" height="36" rx="4" stroke="#4364f7" stroke-width="2.5"/><path d="M26 34h12M26 42h16M26 50h8" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="56" cy="34" r="5" stroke="#00d4aa" stroke-width="1.5"/><path d="M56 42v8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>使用统计</h3>
@@ -2285,7 +2353,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M24 30l4 4 8-8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="22" stroke="#00d4aa" stroke-width="2.5"/><path d="M32 40l6 6 10-10" stroke="#00d4aa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>合规认证</h3>
@@ -2295,7 +2363,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 14L18 22v10c0 10 6 18 12 20 6-2 12-10 12-20V22L30 14z" stroke="#4364f7" stroke-width="2"/><circle cx="30" cy="32" r="4" stroke="#00d4aa" stroke-width="2"/><path d="M30 36v4" stroke="#00d4aa" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M40 14L24 26v14c0 12 8 20 16 24 8-4 16-12 16-24V26L40 14z" stroke="#4364f7" stroke-width="2.5"/><circle cx="40" cy="40" r="6" stroke="#00d4aa" stroke-width="2.5"/><path d="M40 46v8" stroke="#00d4aa" stroke-width="2.5"/><circle cx="40" cy="58" r="3" fill="#00d4aa"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>安全审计</h3>
@@ -2318,7 +2386,7 @@ response = client.chat.completions.create(
             <div class="countermeasure-grid">
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="16" width="32" height="28" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M14 24h32" stroke="#00d4aa" stroke-width="1.5"/><path d="M22 32h16M22 38h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M22 28h42l-5 20H28l-6-28h-8" stroke="#00d4aa" stroke-width="2.5"/><circle cx="32" cy="58" r="4" stroke="#4364f7" stroke-width="2.5"/><circle cx="54" cy="58" r="4" stroke="#4364f7" stroke-width="2.5"/><path d="M32 36h22M34 44h16" stroke="#00d4aa" stroke-width="2" opacity="0.7"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>跨境电商平台</h3>
@@ -2388,7 +2456,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="12" width="28" height="36" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M24 22h12M24 28h12M24 34h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="42" r="2" fill="#00d4aa"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="20" y="18" width="40" height="44" rx="5" stroke="#4364f7" stroke-width="2.5"/><path d="M30 30h18M30 40h14" stroke="#00d4aa" stroke-width="2"/><path d="M25 52l6 6 12-14" stroke="#00d4aa" stroke-width="2.5"/><path d="M54 20l8 8-8 8" stroke="#00d4aa" stroke-width="2" opacity="0.85"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>企业级AI应用</h3>
@@ -2411,7 +2479,7 @@ response = client.chat.completions.create(
             <div class="countermeasure-grid">
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="22" cy="24" r="6" stroke="#00d4aa" stroke-width="2"/><circle cx="38" cy="24" r="6" stroke="#4364f7" stroke-width="2"/><path d="M14 42c0-6 4-10 8-10h4c2 0 4 1 5 2M46 42c0-6-4-10-8-10h-4c-2 0-4 1-5 2" stroke="#00d4aa" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="28" cy="28" r="8" stroke="#00d4aa" stroke-width="2.5"/><circle cx="52" cy="28" r="8" stroke="#4364f7" stroke-width="2.5"/><path d="M18 50c0-8 6-14 10-14h6c3 0 6 2 7 3M62 50c0-8-6-14-10-14h-6c-3 0-6 2-7 3" stroke="#00d4aa" stroke-width="2.5"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>模型厂商</h3>
@@ -2421,7 +2489,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="20" width="32" height="24" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M22 28h16M22 34h10" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="42" cy="18" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="18" y="24" width="44" height="30" rx="4" stroke="#4364f7" stroke-width="2.5"/><path d="M26 36h28M26 44h14" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="56" cy="22" r="5" stroke="#00d4aa" stroke-width="1.5"/><path d="M56 32v4" stroke="#00d4aa" stroke-width="1.5"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>云服务商</h3>
@@ -2431,7 +2499,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 14L18 22v10c0 10 6 18 12 20 6-2 12-10 12-20V22L30 14z" stroke="#00d4aa" stroke-width="2"/><circle cx="30" cy="32" r="4" stroke="#4364f7" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M40 12L24 24v18c0 12 8 20 16 24 8-4 16-12 16-24V24L40 12z" stroke="#00d4aa" stroke-width="2.5"/><circle cx="40" cy="40" r="6" stroke="#4364f7" stroke-width="2.5"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>安全厂商</h3>
@@ -2441,7 +2509,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="16" y="16" width="28" height="28" rx="3" stroke="#4364f7" stroke-width="2"/><path d="M24 24h12M24 30h12M24 36h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="30" cy="30" r="8" stroke="#4364f7" stroke-width="2.5"/><circle cx="52" cy="30" r="8" stroke="#00d4aa" stroke-width="2.5"/><path d="M16 56c0-9 7-16 14-16h4c4 0 7 2 9 5" stroke="#4364f7" stroke-width="2.5"/><path d="M64 56c0-9-7-16-14-16h-4c-4 0-7 2-9 5" stroke="#00d4aa" stroke-width="2.5"/><path d="M34 52h12" stroke="#00d4aa" stroke-width="2" opacity="0.7"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>渠道伙伴</h3>
@@ -2451,7 +2519,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="18" y="14" width="24" height="32" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M26 22h8M26 28h8M26 34h6" stroke="#4364f7" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="22" y="16" width="36" height="40" rx="4" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 28h16M30 38h16M30 48h10" stroke="#4364f7" stroke-width="2" stroke-linecap="round"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>企业客户</h3>
@@ -2461,7 +2529,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="14" stroke="#4364f7" stroke-width="2"/><path d="M24 30h12M30 24v12" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="30" cy="30" r="4" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="20" stroke="#4364f7" stroke-width="2.5"/><path d="M28 40h24M40 28v24" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round"/><circle cx="40" cy="40" r="6" stroke="#00d4aa" stroke-width="2"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>技术伙伴</h3>
@@ -2471,7 +2539,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M18 18h24v24H18z" stroke="#4364f7" stroke-width="2"/><path d="M18 28h24M18 38h24" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="48" r="4" stroke="#00d4aa" stroke-width="2"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M18 28l22-12 22 12-22 12-22-12z" stroke="#00d4aa" stroke-width="2.5"/><path d="M26 36v14c8 5 20 5 28 0V36" stroke="#4364f7" stroke-width="2.5"/><path d="M62 28v16" stroke="#00d4aa" stroke-width="2"/><circle cx="62" cy="48" r="3" fill="#00d4aa"/><path d="M30 50h20" stroke="#4364f7" stroke-width="2" opacity="0.7"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>高校</h3>
@@ -2481,7 +2549,7 @@ response = client.chat.completions.create(
                 
                 <div class="countermeasure-card">
                     <div class="countermeasure-image">
-                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="18" stroke="#4364f7" stroke-width="2"/><path d="M30 18v24M22 26l4-4 8 8 8-8M22 34l4 4 8-8 8 8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="24" stroke="#4364f7" stroke-width="2.5"/><path d="M40 18v44M30 28l4-4 10 10 10-10M30 52l4 4 10-10 10 10" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/></svg>
                     </div>
                     <div class="countermeasure-info">
                         <h3>科研院所</h3>
@@ -2504,7 +2572,7 @@ response = client.chat.completions.create(
             <div class="solution-grid">
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="#00d4aa" stroke-width="2"/><path d="M20 12v8l6 4" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="22" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 14v12l8 5" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round"/><circle cx="30" cy="30" r="4" fill="#4364f7"/></svg>
                     </div>
                     <h3 class="solution-title">7×24支持</h3>
                     <p class="solution-desc">全天候技术支持，快速响应客户需求</p>
@@ -2512,7 +2580,7 @@ response = client.chat.completions.create(
                 
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="16" r="6" stroke="#4364f7" stroke-width="2"/><path d="M12 32c0-4 4-8 8-8s8 4 8 8" stroke="#4364f7" stroke-width="2"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><circle cx="30" cy="22" r="8" stroke="#4364f7" stroke-width="2.5"/><path d="M16 44c0-6 6-12 14-12s14 6 14 12" stroke="#4364f7" stroke-width="2.5"/><circle cx="30" cy="44" r="4" fill="#00d4aa"/></svg>
                     </div>
                     <h3 class="solution-title">专属客服</h3>
                     <p class="solution-desc">一对一专属客服，全程跟进服务</p>
@@ -2520,7 +2588,7 @@ response = client.chat.completions.create(
                 
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M20 6L10 12v8c0 8 5 14 10 16 5-2 10-8 10-16V12L20 6z" stroke="#00d4aa" stroke-width="2"/><path d="M16 20l3 3 5-6" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M30 8L16 16v12c0 10 6 16 14 20 8-4 14-10 14-20V16L30 8z" stroke="#00d4aa" stroke-width="2.5"/><path d="M24 32l4 4 8-8" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </div>
                     <h3 class="solution-title">SLA保障</h3>
                     <p class="solution-desc">99.99%可用性保障，服务水平协议</p>
@@ -2528,7 +2596,7 @@ response = client.chat.completions.create(
                 
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><path d="M12 20a8 8 0 0116 0" stroke="#4364f7" stroke-width="2"/><path d="M8 20a12 12 0 0124 0" stroke="#4364f7" stroke-width="2" opacity="0.5"/><path d="M20 20v-8" stroke="#00d4aa" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="20" r="3" fill="#00d4aa"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><path d="M14 24c4-9 28-9 32 0" stroke="#4364f7" stroke-width="2.5"/><path d="M14 24l16 18 16-18" stroke="#4364f7" stroke-width="2" opacity="0.75"/><path d="M30 24v18" stroke="#00d4aa" stroke-width="2.5"/><rect x="22" y="42" width="16" height="8" rx="3" stroke="#00d4aa" stroke-width="2.5"/><path d="M18 28c2-4 8-6 12-4M42 28c-2-4-8-6-12-4" stroke="#00d4aa" stroke-width="2" opacity="0.8"/></svg>
                     </div>
                     <h3 class="solution-title">故障兜底</h3>
                     <p class="solution-desc">故障自动切换，确保业务连续性</p>
@@ -2536,7 +2604,7 @@ response = client.chat.completions.create(
                 
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="8" y="10" width="24" height="20" rx="3" stroke="#00d4aa" stroke-width="2"/><path d="M14 18h12M14 24h8" stroke="#00d4aa" stroke-width="1.5" stroke-linecap="round"/><circle cx="30" cy="14" r="3" stroke="#4364f7" stroke-width="1.5"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="10" y="14" width="40" height="30" rx="4" stroke="#4364f7" stroke-width="2.5"/><path d="M16 34h6l4-10 6 16 5-12 3 6h4" stroke="#00d4aa" stroke-width="2.5"/><path d="M16 22h10M34 22h10" stroke="#4364f7" stroke-width="2" opacity="0.7"/><circle cx="46" cy="46" r="4" stroke="#00d4aa" stroke-width="2"/></svg>
                     </div>
                     <h3 class="solution-title">实时监控</h3>
                     <p class="solution-desc">实时监控API调用状态与性能指标</p>
@@ -2544,7 +2612,7 @@ response = client.chat.completions.create(
                 
                 <div class="solution-card">
                     <div class="solution-icon">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="10" y="12" width="20" height="16" rx="3" stroke="#4364f7" stroke-width="2"/><circle cx="20" cy="20" r="4" stroke="#00d4aa" stroke-width="2"/><path d="M20 16v-2M20 24v2M16 20h-2M24 20h2" stroke="#00d4aa" stroke-width="1.5"/></svg>
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="14" y="16" width="32" height="22" rx="4" stroke="#4364f7" stroke-width="2.5"/><circle cx="30" cy="27" r="5" stroke="#00d4aa" stroke-width="2.5"/><path d="M30 22v-3M30 32v3M25 27h-3M35 27h3" stroke="#00d4aa" stroke-width="2"/></svg>
                     </div>
                     <h3 class="solution-title">数据安全</h3>
                     <p class="solution-desc">端到端加密，数据隔离保护</p>
@@ -2581,7 +2649,7 @@ response = client.chat.completions.create(
                         </div>
                         <div class="evtol-feature">
                             <span class="feature-icon">Q3</span>
-                            <span class="feature-text">能节省多少成本？标准版30%+，智能路由40-60%</span>
+                            <span class="feature-text">能节省多少成本？标准版30%+，智能路由40-80%</span>
                         </div>
                         <div class="evtol-feature">
                             <span class="feature-icon">Q4</span>
@@ -2725,214 +2793,162 @@ response = client.chat.completions.create(
     </section>
 
     <script>
-        // 立即执行函数，确保代码在任何情况下都能运行
         (function() {
-            function initNavigation() {
-                // 导航点点击
-                const navDots = document.querySelectorAll('.nav-dot');
-                const slides = document.querySelectorAll('.slide');
-                const progressBar = document.getElementById('progressBar');
+            // DOM 元素
+            const slides = document.querySelectorAll('.slide');
+            const navDots = document.querySelectorAll('.nav-dot');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const progressBar = document.getElementById('progressBar');
+            
+            // 验证必要元素
+            if (!slides.length || !navDots.length) {
+                console.error('导航点或幻灯片元素未找到');
+                return;
+            }
+            
+            let currentIndex = 0;
+            
+            // 更新导航点高亮（根据当前滚动位置）
+            function updateActiveDotFromScroll() {
+                const scrollTop = window.scrollY;
+                const windowHeight = window.innerHeight;
                 
-                // 验证元素是否存在
-                if (!navDots.length || !slides.length) {
-                    console.warn('导航点或幻灯片元素未找到');
-                    return false;
+                // 找到当前最接近视口顶部的幻灯片
+                let newIndex = 0;
+                for (let i = 0; i < slides.length; i++) {
+                    const slideTop = slides[i].offsetTop;
+                    const slideBottom = slideTop + slides[i].offsetHeight;
+                    const viewportCenter = scrollTop + windowHeight / 2;
+                    
+                    if (viewportCenter >= slideTop && viewportCenter <= slideBottom) {
+                        newIndex = i;
+                        break;
+                    }
                 }
                 
-                let currentSlideIndex = 0;
-                let isScrolling = false; // 标记是否正在执行平滑滚动
-                
-                function updateNavDots(index) {
+                if (newIndex !== currentIndex) {
+                    currentIndex = newIndex;
                     navDots.forEach((dot, i) => {
-                        dot.classList.toggle('active', i === index);
+                        dot.classList.toggle('active', i === currentIndex);
                     });
                 }
-                
-                function goToSlide(index) {
-                    if (index < 0 || index >= slides.length) return;
-                    if (index === currentSlideIndex) return;
-                    
-                    isScrolling = true;
-                    currentSlideIndex = index;
-                    updateNavDots(index);
-                    
-                    // 使用 window.scrollTo 替代 scrollIntoView，避免触发多次滚动事件
-                    const targetPosition = slides[index].offsetTop;
-                    const startPosition = window.scrollY;
-                    const distance = targetPosition - startPosition;
-                    const duration = 500; // 滚动持续时间
-                    const startTime = performance.now();
-                    
-                    function animate(currentTime) {
-                        const elapsed = currentTime - startTime;
-                        const progress = Math.min(elapsed / duration, 1);
-                        
-                        // 使用缓动函数
-                        const easeProgress = 1 - Math.pow(1 - progress, 3);
-                        
-                        window.scrollTo({
-                            top: startPosition + distance * easeProgress,
-                            behavior: 'instant'
-                        });
-                        
-                        if (progress < 1) {
-                            requestAnimationFrame(animate);
-                        } else {
-                            setTimeout(() => {
-                                isScrolling = false;
-                            }, 50);
-                        }
-                    }
-                    
-                    requestAnimationFrame(animate);
-                }
-                
-                // 为每个导航点添加点击事件
-                navDots.forEach((dot, index) => {
-                    dot.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        goToSlide(index);
-                    });
-                    
-                    // 添加触摸事件支持
-                    dot.addEventListener('touchstart', function(e) {
-                        e.preventDefault();
-                        goToSlide(index);
-                    });
-                });
-                
-                // 键盘导航
-                document.addEventListener('keydown', (e) => {
-                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-                        e.preventDefault();
-                        if (currentSlideIndex < slides.length - 1) {
-                            goToSlide(currentSlideIndex + 1);
-                        }
-                    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                        e.preventDefault();
-                        if (currentSlideIndex > 0) {
-                            goToSlide(currentSlideIndex - 1);
-                        }
-                    } else if (e.key === 'Home') {
-                        e.preventDefault();
-                        goToSlide(0);
-                    } else if (e.key === 'End') {
-                        e.preventDefault();
-                        goToSlide(slides.length - 1);
-                    }
-                });
-                
-                // 导航按钮
-                const prevBtn = document.getElementById('prevBtn');
-                const nextBtn = document.getElementById('nextBtn');
-                
-                if (prevBtn) {
-                    prevBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        if (currentSlideIndex > 0) {
-                            goToSlide(currentSlideIndex - 1);
-                        }
-                    });
-                }
-                
-                if (nextBtn) {
-                    nextBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        if (currentSlideIndex < slides.length - 1) {
-                            goToSlide(currentSlideIndex + 1);
-                        }
-                    });
-                }
-                
-                // 滚动进度和导航点更新
-                let scrollTimeout;
-                window.addEventListener('scroll', () => {
-                    const scrollTop = window.scrollY;
-                    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-                    const scrollPercent = (scrollTop / docHeight) * 100;
-                    if (progressBar) {
-                        progressBar.style.width = scrollPercent + '%';
-                    }
-                    
-                    // 如果是程序触发的滚动，跳过索引更新
-                    if (isScrolling) return;
-                    
-                    // 防抖处理，避免频繁更新
-                    clearTimeout(scrollTimeout);
-                    scrollTimeout = setTimeout(() => {
-                        const slideHeight = window.innerHeight;
-                        const calculatedSlide = Math.round(scrollTop / slideHeight);
-                        const newSlideIndex = Math.max(0, Math.min(calculatedSlide, slides.length - 1));
-                        
-                        if (newSlideIndex !== currentSlideIndex) {
-                            currentSlideIndex = newSlideIndex;
-                            updateNavDots(currentSlideIndex);
-                        }
-                    }, 100);
-                });
-                
-                return true;
             }
             
-            // 尝试立即初始化
-            if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                initNavigation();
-            } else {
-                // 如果DOM还没准备好，等待DOMContentLoaded事件
-                document.addEventListener('DOMContentLoaded', initNavigation);
-                // 备用方案：如果DOMContentLoaded没有触发，使用load事件
-                window.addEventListener('load', initNavigation);
-            }
-        })();
-        
-        // 四维网格轮播功能
-        (function() {
-            function initCarousel() {
-                let gridCurrentSlide = 0;
-                const gridTotalSlides = 5;
-                
-                function moveGridCarousel(direction) {
-                    gridCurrentSlide = (gridCurrentSlide + direction + gridTotalSlides) % gridTotalSlides;
-                    updateGridCarousel();
-                }
-                
-                function updateGridCarousel() {
-                    const track = document.querySelector('#gridCarousel .carousel-track');
-                    const indicator = document.getElementById('gridIndicator');
-                    
-                    if (track) {
-                        track.style.transform = `translateX(-${gridCurrentSlide * 100}%)`;
-                    }
-                    if (indicator) {
-                        indicator.textContent = `${gridCurrentSlide + 1} / ${gridTotalSlides}`;
-                    }
-                }
-                
-                // 暴露全局方法供按钮调用
-                window.moveGridCarousel = moveGridCarousel;
-                
-                return true;
+            // 直接设置当前幻灯片索引（用于点击导航点时立即更新UI）
+            function setCurrentIndex(index) {
+                if (index < 0 || index >= slides.length) return;
+                if (index === currentIndex) return;
+                currentIndex = index;
+                navDots.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === currentIndex);
+                });
             }
             
-            // 尝试立即初始化
-            if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                initCarousel();
-            } else {
-                document.addEventListener('DOMContentLoaded', initCarousel);
-                window.addEventListener('load', initCarousel);
+            // 更新进度条
+            function updateProgressBar() {
+                if (!progressBar) return;
+                const scrollTop = window.scrollY;
+                const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+                const progress = (scrollTop / docHeight) * 100;
+                progressBar.style.width = progress + '%';
             }
+            
+            // 跳转到指定幻灯片
+            function goToSlide(index) {
+                if (index < 0 || index >= slides.length) return;
+                if (index === currentIndex) return;
+                
+                // 立即更新导航点状态，提供即时反馈
+                setCurrentIndex(index);
+                
+                // 滚动到目标幻灯片
+                slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            
+            // 下一页
+            function nextSlide() {
+                if (currentIndex < slides.length - 1) {
+                    goToSlide(currentIndex + 1);
+                }
+            }
+            
+            // 上一页
+            function prevSlide() {
+                if (currentIndex > 0) {
+                    goToSlide(currentIndex - 1);
+                }
+            }
+            
+            // 滚动事件处理（用于更新导航点高亮和进度条）
+            let scrollTimeout = null;
+            function onScroll() {
+                if (scrollTimeout) clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(() => {
+                    updateActiveDotFromScroll();
+                    updateProgressBar();
+                }, 50);
+            }
+            
+            // 绑定导航点点击事件
+            navDots.forEach((dot, index) => {
+                dot.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    goToSlide(index);
+                });
+                // 移动端触摸支持
+                dot.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    goToSlide(index);
+                });
+            });
+            
+            // 绑定按钮事件
+            if (prevBtn) {
+                prevBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    prevSlide();
+                });
+            }
+            if (nextBtn) {
+                nextBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    nextSlide();
+                });
+            }
+            
+            // 键盘事件
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    nextSlide();
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    prevSlide();
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    goToSlide(0);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    goToSlide(slides.length - 1);
+                }
+            });
+            
+            // 监听滚动
+            window.addEventListener('scroll', onScroll);
+            
+            // 初始化
+            setTimeout(() => {
+                updateActiveDotFromScroll();
+                updateProgressBar();
+            }, 100);
+            
+            // 处理窗口大小变化
+            window.addEventListener('resize', () => {
+                setTimeout(updateActiveDotFromScroll, 100);
+            });
         })();
     </script>
 </body>
 </html>
-<script>
-var _hmt = _hmt || [];
-(function() {
-  var hm = document.createElement("script");
-  hm.src = "https://hm.baidu.com/hm.js?b57482524d59421e685e595d722b8088";
-  var s = document.getElementsByTagName("script")[0]; 
-  s.parentNode.insertBefore(hm, s);
-})();
-</script>
-
