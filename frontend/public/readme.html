@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThreeRouter — 统一API网关 | 智能路由降本40-60%</title>
+    <title>ThreeRouter — 统一API网关 | 智能路由降本40-80%</title>
     <style>
         * {
             margin: 0;
@@ -381,7 +381,7 @@
     <div class="container">
         <div class="hero">
             <div class="badge">✦ OpenAI 兼容 | 智能路由引擎</div>
-            <h1>统一API网关，全模型接入<br>智能路由驱动成本优化40-60%</h1>
+            <h1>统一API网关，全模型接入<br>智能路由驱动成本优化40-80%</h1>
             <p>ThreeRouter 提供统一的AI模型访问接口，兼容OpenAI SDK。通过L1-L5智能路由引擎，根据任务复杂度自动匹配最优性价比模型，在不牺牲质量的前提下显著降低推理成本。</p>
             <div class="hero-buttons">
                 <a href="http://api.threerouter.com" class="btn-primary" style="cursor: pointer;">开始免费试用 →</a>
@@ -422,7 +422,7 @@
                     <div class="toggle-option active">
                         <div style="font-size: 20px; font-weight: 700;">🤖 智能路由模式</div>
                         <div style="font-size: 13px; color: #475569; margin: 8px 0;">自动匹配最优性价比模型</div>
-                        <div class="badge-save">成本降低 40-60%</div>
+                        <div class="badge-save">成本降低 40-80%</div>
                         <div style="font-size: 12px; color: #64748b; margin-top: 12px;">系统根据请求复杂度自动分配L1-L5层级，简单任务走轻量模型，复杂任务走高端模型</div>
                     </div>
                     <div class="toggle-option">
@@ -458,7 +458,7 @@
             <pre><code><span style="color:#94a3b8"># 无论控制台选择哪种策略，API调用代码完全不变</span>
 client = OpenAI(base_url="https://api.threerouter.ai/v1", api_key="tr-xxx")
 
-<span style="color:#94a3b8"># 智能路由模式：自动优化成本，平均节省40-60%</span>
+<span style="color:#94a3b8"># 智能路由模式：自动优化成本，平均节省40-80%</span>
 response = client.chat.completions.create(
     model="any",  <span style="color:#94a3b8"># 具体模型参数由控制台策略决定</span>
     messages=[{"role": "user", "content": "翻译商品描述"}]
@@ -486,7 +486,7 @@ response = client.chat.completions.create(
                 </table>
             </div>
             <div class="quote-box">
-                📊 <strong>效果验证</strong>：某跨境电商平台月度 API 调用量 8000 万次，其中 72% 为客服翻译与商品摘要类请求。ThreeRouter 智能路由将此类请求自动分配至 L1/L2 层级，月成本从 $42,000 降至 $16,800，降幅达 60%，输出质量保持稳定。
+                📊 <strong>效果验证</strong>：某跨境电商平台月度 API 调用量 8000 万次，其中 72% 为客服翻译与商品摘要类请求。ThreeRouter 智能路由将此类请求自动分配至 L1/L2 层级，月成本从 $42,000 降至 $16,800，降幅达 80%，输出质量保持稳定。
             </div>
         </section>
 
@@ -519,7 +519,7 @@ response = client.chat.completions.create(
 
         <section>
             <div class="kpi-row">
-                <div class="kpi-item"><div class="kpi-number">40-60%</div><div class="kpi-label">智能路由平均成本降幅</div></div>
+                <div class="kpi-item"><div class="kpi-number">40-80%</div><div class="kpi-label">智能路由平均成本降幅</div></div>
                 <div class="kpi-item"><div class="kpi-number">5-18x</div><div class="kpi-label">模型间价格差距倍数</div></div>
                 <div class="kpi-item"><div class="kpi-number">30%+</div><div class="kpi-label">标准版较官方定价降幅</div></div>
                 <div class="kpi-item"><div class="kpi-number">16.9T</div><div class="kpi-label">行业周Token处理量（2026.3）</div></div>
@@ -569,7 +569,7 @@ response = client.chat.completions.create(
                     <thead><tr><th>维度</th><th>OpenRouter</th><th>直接调用官方API</th><th>ThreeRouter</th></tr></thead>
                     <tbody>
                         <tr><td>定价策略</td><td>官方价或略高</td><td>官方定价</td><td class="highlight">标准版低于官方价30%+</td></tr>
-                        <tr><td>成本优化</td><td>不支持智能路由</td><td>不支持</td><td class="highlight">L1-L5智能路由，降本40-60%</td></tr>
+                        <tr><td>成本优化</td><td>不支持智能路由</td><td>不支持</td><td class="highlight">L1-L5智能路由，降本40-80%</td></tr>
                         <tr><td>策略灵活性</td><td>需代码指定模型</td><td>每请求指定模型</td><td class="highlight">控制台一键切换，代码零改动</td></tr>
                         <tr><td>合规能力</td><td>无</td><td>无</td><td class="highlight">可选增值服务（按需订阅）</td></tr>
                     </tbody>
