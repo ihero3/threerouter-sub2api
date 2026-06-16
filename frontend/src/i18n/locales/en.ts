@@ -7119,4 +7119,18 @@ export default {
     },
   },
 
+  legalDocument: {
+    login: 'Login',
+    loginTerms: 'Login Terms',
+    loadError: 'Failed to load document',
+    loadErrorDesc: 'Please refresh the page and try again.',
+    notFound: 'Document Not Found',
+    notFoundDesc: 'The requested legal document does not exist or has been removed by the administrator.',
+    updatedAt: 'Updated: ',
+    noContent: 'No content available',
+    terms: 'Terms of Service',
+    'usage-policy': 'Usage Policy',
+    'supported-regions': 'Supported Countries and Regions',
+    'service-specific-terms': 'Service-Specific Terms',
+  },
 }

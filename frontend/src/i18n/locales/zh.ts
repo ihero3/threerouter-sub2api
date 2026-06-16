@@ -7298,4 +7298,18 @@ export default {
     },
   },
 
+  legalDocument: {
+    login: '登录',
+    loginTerms: '登录条款',
+    loadError: '文档加载失败',
+    loadErrorDesc: '请稍后刷新页面重试。',
+    notFound: '文档不存在',
+    notFoundDesc: '当前条款文档不存在或已被管理员移除。',
+    updatedAt: '更新日期：',
+    noContent: '暂无正文内容',
+    terms: '服务条款',
+    'usage-policy': '使用政策',
+    'supported-regions': '支持的国家和地区',
+    'service-specific-terms': '服务特定条款',
+  },
 }
