@@ -120,7 +120,6 @@ export default {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
       advantage: 'Our Advantages'
-
     }
     },
   
