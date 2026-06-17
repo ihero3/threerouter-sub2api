@@ -94,6 +94,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 仅对纯文本数组生效；含 image_url 等多模态类型时保持原样由上游自行处理。
 	upstreamBody = normalizeOpenAIChatMessagesContentToString(upstreamBody)
 
+	// DEBUG: 临时调试日志，排查 qwen 400 问题后删除
+	logger.L().Info("DEBUG forwardAsRawChatCompletions",
+		zap.Int64("account_id", account.ID),
+		zap.String("account_name", account.Name),
+		zap.String("original_model", originalModel),
+		zap.String("upstream_model", upstreamModel),
+		zap.String("upstream_body", truncateString(string(upstreamBody), 2000)),
+	)
+
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
 	if policyErr != nil {
@@ -190,6 +199,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 7. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+
+		// DEBUG: 临时调试日志，排查 qwen 400 问题后删除
+		logger.L().Info("DEBUG upstream error response",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("upstream_error_body", truncateString(string(respBody), 2000)),
+			zap.String("url", upstreamReq.URL.String()),
+			zap.String("account_name", account.Name),
+		)
+
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
