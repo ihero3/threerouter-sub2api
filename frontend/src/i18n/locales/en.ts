@@ -118,7 +118,8 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.',
-      documentation: 'Documentation',advantage: 'Our Advantages'
+      documentation: 'Documentation',
+      advantage: 'Our Advantages'
   },
 
   // Key Usage Query Page
