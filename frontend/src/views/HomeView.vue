@@ -226,7 +226,7 @@
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white px-4 py-2.5">
               <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500 text-xs font-bold text-white">K</span>
-              <span class="text-sm font-medium text-gray-700">kimi-k2.6</span>
+              <span class="text-sm font-medium text-gray-700">kimi-k2.7</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2.5">
@@ -236,7 +236,7 @@
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-4 py-2.5">
               <span class="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">G</span>
-              <span class="text-sm font-medium text-gray-700">glm-5.1</span>
+              <span class="text-sm font-medium text-gray-700">glm-5.2</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-rose-100 bg-white px-4 py-2.5">
