@@ -120,6 +120,7 @@ export default {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
       advantage: 'Our Advantages'
+    }
     },
   
 
@@ -7134,5 +7135,4 @@ export default {
     'supported-regions': 'Supported Countries and Regions',
     'service-specific-terms': 'Service-Specific Terms',
   },
-}
 }
