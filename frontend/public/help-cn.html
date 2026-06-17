@@ -1,0 +1,1977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreeRouter 使用教程</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0a0a0f;
+            --secondary: #12121a;
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(148, 163, 184, 0.1);
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--secondary);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 3px;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--secondary);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            object-fit: contain;
+        }
+
+        .sidebar-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05rem;
+            margin-bottom: 0.75rem;
+            padding-left: 0.25rem;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-nav li {
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.625rem 0.75rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .sidebar-nav a:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+        }
+
+        .sidebar-nav a.active {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-light);
+            font-weight: 500;
+        }
+
+        .sidebar-nav .sub-item {
+            padding-left: 2.5rem;
+            font-size: 0.825rem;
+            color: var(--text-muted);
+        }
+
+        .sidebar-nav .sub-item:hover {
+            color: var(--text-secondary);
+        }
+
+        .sidebar-nav .icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+
+        /* Hero */
+        .hero {
+            padding: 160px 2rem 100px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 50%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 100px;
+            font-size: 0.85rem;
+            color: var(--accent-light);
+            margin-bottom: 2rem;
+        }
+
+        .hero h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, var(--accent-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.8;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 2rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        /* Main Content */
+        .main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .section-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .section-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .card-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--accent-light);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-top: 1rem;
+            transition: gap 0.3s;
+        }
+
+        .card-link:hover {
+            gap: 0.7rem;
+        }
+
+        /* Steps */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .step {
+            display: flex;
+            gap: 1.5rem;
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .step:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .step-content h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        /* Code Block */
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .code-lang {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .code-copy {
+            background: none;
+            border: 1px solid #30363d;
+            color: var(--text-muted);
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .code-copy:hover {
+            border-color: var(--accent);
+            color: var(--accent-light);
+        }
+
+        .code-block pre {
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            color: #e6edf3;
+        }
+
+        .code-block code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        /* Table */
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: var(--secondary);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tr:hover td {
+            background: rgba(99, 102, 241, 0.03);
+        }
+
+        /* Tags */
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .tag-success {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+
+        .tag-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .tag-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        .tag-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+        }
+
+        /* Alert */
+        .alert {
+            display: flex;
+            gap: 1rem;
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px;
+            margin: 1.5rem 0;
+            border: 1px solid;
+        }
+
+        .alert-info {
+            background: rgba(59, 130, 246, 0.05);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.05);
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .alert-success {
+            background: rgba(34, 197, 94, 0.05);
+            border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .alert-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .alert p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Accordion */
+        .accordion {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .accordion-item {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .accordion-item:last-child {
+            border-bottom: none;
+        }
+
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem;
+            cursor: pointer;
+            background: var(--secondary);
+            transition: background 0.3s;
+        }
+
+        .accordion-header:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .accordion-header h4 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .accordion-icon {
+            transition: transform 0.3s;
+            color: var(--text-muted);
+        }
+
+        .accordion-item.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        .accordion-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .accordion-item.active .accordion-body {
+            max-height: 2000px;
+        }
+
+        .accordion-content {
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        /* Footer */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Tutorial images */
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+            margin: 1.25rem 0;
+        }
+
+        .tutorial-image {
+            display: block;
+            width: auto;
+            max-width: 100%;
+            max-height: 500px;
+            margin: 1.5rem auto;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: #0d1117;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.32);
+            object-fit: contain;
+        }
+
+        .image-gallery {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .image-gallery .tutorial-image {
+            margin: 0.5rem auto;
+        }
+
+        .image-caption {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            margin-top: -0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                transition: left 0.3s;
+                z-index: 1001;
+            }
+            .sidebar.open {
+                left: 0;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: 120px 1.5rem 60px;
+            }
+            .main {
+                padding: 0 1.5rem 3rem;
+            }
+            .step {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Smooth scroll */
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 80px;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        /* Links */
+        a {
+            color: var(--accent-light);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Lists */
+        ul, ol {
+            padding-left: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* Strong text */
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Paragraph spacing */
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        h2, h3, h4 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <a href="#" class="logo">
+            <img src="logo.svg" alt="ThreeRouter Logo" class="logo-icon">
+            <span>ThreeRouter</span>
+        </a>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">入门指南</div>
+            <ul class="sidebar-nav">
+                <li><a href="#quick-nav"><span class="icon">🧭</span>快速导航</a></li>
+                <li><a href="#getting-started"><span class="icon">💻</span>开始配置</a></li>
+                <li><a href="#register" class="sub-item"><span class="icon">📝</span>注册 ThreeRouter 账号</a></li>
+                <li><a href="#create-key" class="sub-item"><span class="icon">🔑</span>创建所需分组的密钥</a></li>
+                <li><a href="#test-key" class="sub-item"><span class="icon">✅</span>测试密钥</a></li>
+                <li><a href="#cc-switch" class="sub-item"><span class="icon">🔄</span>CC Switch 配置</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">工具配置</div>
+            <ul class="sidebar-nav">
+                <li><a href="#claude-code"><span class="icon">🤖</span>Claude Code</a></li>
+                <li><a href="#claude-plugin" class="sub-item"><span class="icon">🔌</span>VS Code 插件配置</a></li>
+                <li><a href="#claude-desktop" class="sub-item"><span class="icon">🖥️</span>Desktop 配置</a></li>
+                <li><a href="#claude-terminal" class="sub-item"><span class="icon">💻</span>终端配置</a></li>
+                <li><a href="#codex"><span class="icon">💻</span>Codex</a></li>
+                <li><a href="#codex-plugin" class="sub-item"><span class="icon">🔌</span>VS Code 插件配置</a></li>
+                <li><a href="#codex-terminal" class="sub-item"><span class="icon">💻</span>终端配置</a></li>
+                <li><a href="#gemini"><span class="icon">✨</span>Gemini CLI</a></li>
+                <li><a href="#opencode"><span class="icon">📝</span>OpenCode</a></li>
+                  <li><a href="#trae"><span class="icon">🚀</span>Trae</a></li>
+                <li><a href="#trae-custom-model" class="sub-item"><span class="icon">➕</span>添加自定义模型</a></li>
+                <li><a href="#trae-openai-model" class="sub-item"><span class="icon">🔧</span>模型配置</a></li>
+                <li><a href="#openclaw"><span class="icon">🦞</span>OpenClaw 小龙虾</a></li>
+                <li><a href="#hermes"><span class="icon">🐎</span>爱马仕 Hermes</a></li>
+              
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">CLI 教程</div>
+            <ul class="sidebar-nav">
+                <li><a href="#cli"><span class="icon">⚙️</span>命令行工具</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">资源</div>
+            <ul class="sidebar-nav">
+                <li><a href="#faq"><span class="icon">❓</span>常见问题</a></li>
+                <li><a href="#pricing"><span class="icon">💰</span>价格方案</a></li>
+                <li><a href="#referral"><span class="icon">🎁</span>邀请好友福利</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">帮助与支持</div>
+            <ul class="sidebar-nav">
+                <li><a href="#errors"><span class="icon">🔧</span>错误排查</a></li>
+                <li><a href="#contact"><span class="icon">📞</span>联系我们</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Hero -->
+        <section class="hero">
+            <div class="hero-content">
+                <div class="hero-badge">📚 官方使用教程</div>
+                <h1>ThreeRouter<br>使用教程</h1>
+                <p>一个API Key，调用所有AI模型。deepseek-v4、minimax-m3、kimi-k2.6、qwen3.7-max、glm-5.1、seedance-2.0 等多种模型一站式接入，让AI开发更简单。</p>
+                <div class="hero-buttons">
+                    <a href="#getting-started" class="btn btn-primary">开始配置 →</a>
+                    <a href="https://api.threerouter.com/home" target="_blank" class="btn btn-secondary">访问官网</a>
+                </div>
+            </div>
+        </section>
+
+        <main class="main">
+        <!-- Quick Nav -->
+        <section class="section" id="quick-nav">
+            <div class="section-header">
+                <div class="section-icon">🧭</div>
+                <div>
+                    <h2 class="section-title">快速导航</h2>
+                    <p class="section-subtitle">根据您的需求选择对应的教程</p>
+                </div>
+            </div>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">🔑</div>
+                    <h3>获取密钥和安装 CC Switch</h3>
+                    <p>初次体验大模型用户的入门指南，包含密钥创建和 CC Switch 安装。</p>
+                    <a href="#getting-started" class="card-link">查看教程 →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🤖</div>
+                    <h3>Claude Code 配置</h3>
+                    <p>VS Code 插件、官方终端和 Desktop 应用的详细配置方法。</p>
+                    <a href="#claude-code" class="card-link">查看教程 →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💻</div>
+                    <h3>Codex 配置</h3>
+                    <p>OpenAI Codex 的插件安装和终端配置教程。</p>
+                    <a href="#codex" class="card-link">查看教程 →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">✨</div>
+                    <h3>Gemini CLI 配置</h3>
+                    <p>Google Gemini 官方终端的安装和配置方法。</p>
+                    <a href="#gemini" class="card-link">查看教程 →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📝</div>
+                    <h3>OpenCode 配置</h3>
+                    <p>适合没有固定使用模型用户的 OpenCode 配置教程。</p>
+                    <a href="#opencode" class="card-link">查看教程 →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🦞</div>
+                    <h3>小龙虾 / 爱马仕</h3>
+                    <p>OpenClaw 和 Hermes 的配置教程。</p>                   <a href="#openclaw" class="card-link">查看教程 →</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Getting Started -->
+        <section class="section" id="getting-started">
+            <div class="section-header">
+                <div class="section-icon">💻</div>
+                <div>
+                    <h2 class="section-title">开始配置</h2>
+                    <p class="section-subtitle">配置 ThreeRouter 密钥和 CC Switch</p>
+                </div>
+            </div>
+
+            <div class="steps">
+                <div class="step" id="register">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>注册 ThreeRouter 账号</h3>
+                        <p>访问 <a href="https://api.threerouter.com/home" target="_blank">ThreeRouter 官网</a> 注册账号。</p>
+                        <img class="tutorial-image" src="media/image1.png" alt="ThreeRouter 官网首页截图">
+                        <div class="image-caption">ThreeRouter 官网首页</div>
+                    </div>
+                </div>
+                <div class="step" id="create-key">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>创建所需分组的密钥</h3>
+                        <p>登录后进入 API 密钥界面，选择需要的模型分组创建密钥。不同分组对应不同的模型和价格，请根据需求选择。</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image2.png" alt="创建密钥入口截图">
+                            <img class="tutorial-image" src="media/image3.png" alt="选择密钥分组截图">
+                            <img class="tutorial-image" src="media/image4.png" alt="密钥创建完成截图">
+                        </div>
+                    </div>
+                </div>
+                <div class="step" id="test-key">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>测试密钥</h3>
+                        <p>创建密钥后，点击"测试密钥"按钮验证是否正常工作。测试正常可看见请求的耗时和扣费情况。</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image5.png" alt="测试密钥按钮截图">
+                            <img class="tutorial-image" src="media/image6.png" alt="测试密钥成功截图">
+                            <img class="tutorial-image" src="media/image7.png" alt="请求详情悬浮截图">
+                            <img class="tutorial-image" src="media/image8.png" alt="查看请求响应弹窗截图">
+                        </div>
+                    </div>
+                </div>
+                <div class="step" id="cc-switch">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>下载 CC Switch</h3>
+                        <p>CC Switch 是一个帮您的 AI 工具"一键切换线路"的小开关。下载地址可在官网获取，支持夸克网盘、百度网盘和 GitHub。</p>
+                        <p><strong>CC Switch 是什么？</strong>它就是一个帮您的 AI 工具"一键切换线路"的小开关。原本需要手动修改复杂的代码文件，用了这个软件，只需把获取到的"网址"和"密钥"填到框框里，点一下开关就连上了。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>导入密钥到 CC Switch</h3>
+                        <p>打开 ThreeRouter 的 API 密钥界面，选择刚才创建的密钥，点击"导入到 CCS"，如果安装了 CC Switch，会自动打开并提示导入密钥。</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image9.png" alt="导入到 CC Switch 按钮截图">
+                            <img class="tutorial-image" src="media/image10.png" alt="CC Switch 导入提示截图">
+                            <img class="tutorial-image" src="media/image11.png" alt="启用 CC Switch 截图">
+                        </div>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>启用 CC Switch</h3>
+                        <p>导入完成后，启用 CC Switch 即可开始使用。<strong>到这里即配置完成，可以愉快地使用了！</strong></p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h3>终端配置方式（不使用 CC Switch）</h3>
+                        <p>如果您选择不使用 CC Switch，可以直接在终端中配置 API 密钥和 base_url。</p>
+                        <p>在 API 密钥页面复制您的密钥：</p>
+                        <img class="tutorial-image" src="media/image37.png" alt="终端配置方式使用密钥截图">
+                        <p>不同平台的配置选项如下：</p>
+                        <img class="tutorial-image" src="media/image38.png" alt="终端配置方式不同平台配置选项截图">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tools Configuration -->
+        <section class="section" id="tools">
+            <div class="section-header">
+                <div class="section-icon">🛠️</div>
+                <div>
+                    <h2 class="section-title">工具配置教程</h2>
+                    <p class="section-subtitle">各终端工具的详细配置方法</p>
+                </div>
+            </div>
+
+            <!-- Claude Code -->
+            <section class="section" id="claude-code">
+                <div class="section-header">
+                    <div class="section-icon">🤖</div>
+                    <div>
+                        <h2 class="section-title">Claude Code 使用配置教程</h2>
+                        <p class="section-subtitle">VS Code 插件、Desktop 和终端的配置方法</p>
+                    </div>
+                </div>
+
+                <div id="claude-plugin">
+                    <h3>🔌 VS Code 插件配置</h3>
+                    <p>适合通过 VS Code 图形界面安装 Claude Code 插件的用户。其他 IDE 使用方式类似。</p>
+                            <ol>
+                                <li>打开 VS Code 后先选择任意项目文件夹进入工作区。<strong>不然会提示弹窗要求你打开项目文件夹！</strong></li>
+                                <li>打开左侧插件扩展界面进入扩展面板。</li>
+                                <li>搜索 "Claude Code"，出现结果后点击安装。</li>
+                            </ol>
+                            <div class="image-gallery">
+                                <img class="tutorial-image" src="media/image12.png" alt="VS Code 扩展面板截图">
+                                <img class="tutorial-image" src="media/image13.png" alt="搜索 Claude Code 插件截图">
+                                <img class="tutorial-image" src="media/image14.png" alt="Claude Code 插件安装完成截图">
+                            </div>
+                            <p>如果安装了 CC Switch，就可以直接使用了。如有问题请联系群内客服。</p>
+
+                            <h3>Claude Code Desktop 配置（不使用 CC Switch）</h3>
+                            <p>如果您使用的是 Claude Code Desktop 应用，需要通过开发者模式配置第三方推理网关：</p>
+                            <ol>
+                                <li>打开 Claude Code Desktop，点击菜单栏 <strong>Help -> Troubleshooting -> Enable Developer Mode</strong></li>
+                            </ol>
+                            <div class="image-gallery">
+                                <img class="tutorial-image" src="media/image16.png" alt="Claude Code Desktop Help Troubleshooting Enable Developer Mode 截图">
+                                <img class="tutorial-image" src="media/image17.png" alt="Claude Code Desktop Enable 弹窗截图">
+                            </div>
+                            <ol start="3">
+                                <li>启用后，点击菜单栏 <strong>Developer -> Configure Third-Party Inference</strong></li>
+                            </ol>
+                            <img class="tutorial-image" src="media/image18.png" alt="Claude Code Desktop Configure Third-Party Inference 截图">
+                            <ol start="4">
+                                <li>在配置界面中填入 Gateway base URL 和 API key：</li>
+                            </ol>
+                            <img class="tutorial-image" src="media/image19.png" alt="Claude Code Desktop Gateway base URL 和 API key 配置界面截图">
+
+                            <h3>获取API密钥和 base_url</h3>
+                            <p>在 ThreeRouter 官网的 API 密钥页面，您可以复制自己的 API Key 和 base_url。这些信息在多种配置方式中都会用到。</p>
+                            <img class="tutorial-image" src="media/image20.png" alt="获取API密钥和base_url截图">
+
+                <div id="claude-terminal">
+                    <h3>💻 终端配置</h3>
+                    <p>包含官方终端安装和不使用 CC Switch 的配置方法。</p>
+                </div>
+                            <h3>使用官方终端：安装官方 Claude Code 终端</h3>
+                            <img class="tutorial-image" src="media/image15.png" alt="Claude Code 环境变量设置示例截图">
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">Windows</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code># PowerShell
+irm https://claude.ai/install.ps1 | iex
+
+# CMD
+curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd</code></pre>
+                            </div>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">macOS / Linux / WSL</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre>
+                            </div>
+
+                            <h3>不使用 CC Switch 配置方法（Windows）</h3>
+                            <p>Claude Code 不使用 CC Switch 时，可以通过以下方式配置：</p>
+                            <img class="tutorial-image" src="media/image21.png" alt="Claude Code 不同终端配置选项截图">
+                            <p><strong>配置 settings.json</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.claude\settings.json</code>，输入以下配置并保存：</p>
+                            <img class="tutorial-image" src="media/image22.png" alt="Claude Code Windows settings.json 配置示例截图">
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.threerouter.com",
+    "ANTHROPIC_AUTH_TOKEN": "替换为您的API-KEY",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  }
+}</code></pre>
+                            </div>
+
+                            <h3>不使用 CC Switch 配置方法（macOS / Linux）</h3>
+                            <p>创建或编辑 <code>~/.claude/settings.json</code>，并填入以下内容：</p>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "替换为您的API Key",
+    "ANTHROPIC_BASE_URL": "https://api.threerouter.com",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  }
+}</code></pre>
+                            </div>
+
+                            <div class="alert alert-warning">
+                                <span class="alert-icon">⚠️</span>
+                                <div class="alert-content">
+                                    <div class="alert-title">注意</div>
+                                    <p>如果使用 Claude Code 提示 400 错误，大概率是环境变量添加的不对。如果是 CC Switch，可以编辑对应的密钥，添加这一条：<code>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1</code></p>
+                                </div>
+                            </div>
+
+                            <div id="claude-desktop">
+                    <h3>🖥️ Claude Code Desktop 配置（不使用 CC Switch）</h3>
+                    <p>如果您使用的是 Claude Code Desktop 应用，需要通过开发者模式配置第三方推理网关：</p>
+                </div>
+            </section>
+
+            <!-- Codex -->
+            <section class="section" id="codex">
+                <div class="section-header">
+                    <div class="section-icon">💻</div>
+                    <div>
+                        <h2 class="section-title">Codex (OpenAI) 使用配置教程</h2>
+                        <p class="section-subtitle">VS Code 插件和终端的配置方法</p>
+                    </div>
+                </div>
+
+                <div id="codex-plugin">
+                    <h3>🔌 VS Code 插件配置</h3>
+                </div>
+                            <ol>
+                                <li>打开 VS Code 后先选择任意项目文件夹进入工作区。</li>
+                                <li>打开左侧插件扩展界面进入扩展面板。</li>
+                                <li>搜索 "Codex"，出现结果后点击安装。</li>
+                                <li>安装完成后会出现 Codex 的图标。</li>
+                                <li>注意：若之前使用官方或其他平台登录过，请先退出登录，再进行重新配置！</li>
+                            </ol>
+                            <div class="image-gallery">
+                                <img class="tutorial-image" src="media/image24.png" alt="Codex 插件扩展面板截图">
+                                <img class="tutorial-image" src="media/image25.png" alt="搜索 Codex 插件截图">
+                                <img class="tutorial-image" src="media/image26.png" alt="Codex 图标截图">
+                                <img class="tutorial-image" src="media/image27.png" alt="Codex 退出登录提示截图">
+                                <img class="tutorial-image" src="media/image28.png" alt="Codex 配置后界面截图">
+                            </div>
+
+                    <div id="codex-terminal">
+                        <h3>💻 终端配置</h3>
+                        <p>包含官方终端安装和不使用 CC Switch 的配置方法。</p>
+                    </div>
+                            <h3>使用官方终端：安装官方 Codex CLI 终端</h3>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">Terminal</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>npm i -g @openai/codex</code></pre>
+                            </div>
+
+                            <h3>不使用 CC Switch 配置方法（Windows）</h3>
+                            <img class="tutorial-image" src="media/image29.png" alt="Codex 配置选项截图">
+                            <p><strong>配置 config.toml</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.codex\config.toml</code>：</p>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">TOML</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>model_provider = "Deepseek"
+model = "deepseek-v4"
+review_model = "deepseek-v4"
+model_reasoning_effort = "xhigh"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+
+[model_providers.Deepseek]
+name = "Deepseek"
+base_url = "https://api.threerouter.com"
+wire_api = "responses"
+requires_openai_auth = true</code></pre>
+                            </div>
+                            <p><strong>配置 auth.json</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.codex\auth.json</code>：</p>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>{
+  "OPENAI_API_KEY": "替换为您的API Key"
+}</code></pre>
+                            </div>
+                </section>
+
+                <!-- Gemini -->
+                <section class="section" id="gemini">
+                    <div class="section-header">
+                        <div class="section-icon">✨</div>
+                        <div>
+                            <h2 class="section-title">Gemini CLI 使用配置教程</h2>
+                            <p class="section-subtitle">官方终端的安装和配置方法</p>
+                        </div>
+                    </div>
+                    <p>官方扩展目前走的是 Google Cloud (GCP) 路线，所以必须登录自己 Google 账号选择项目空间才可使用。因此不可使用官方扩展。</p>
+
+                    <h3>💻 使用官方终端：安装官方 Gemini CLI 终端</h3>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">Terminal</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>npm install -g @google/gemini-cli</code></pre>
+                            </div>
+
+                            <h3>不使用 CC Switch 配置方法（Windows）</h3>
+                            <img class="tutorial-image" src="media/image30.png" alt="Gemini 配置选项截图">
+                            <p><strong>配置 .env</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.gemini\.env</code>：</p>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">ENV</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>GEMINI_API_KEY=替换为您自己的API-KEY 【不要带引号等特殊符号】
+GOOGLE_GEMINI_BASE_URL=https://api.threerouter.com</code></pre>
+                            </div>
+                            <p><strong>配置 settings.json</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.gemini\settings.json</code>：</p>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>{
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  }
+}</code></pre>
+                            </div>
+                </section>
+
+                <!-- OpenCode -->
+                <section class="section" id="opencode">
+                    <div class="section-header">
+                        <div class="section-icon">📝</div>
+                        <div>
+                            <h2 class="section-title">OpenCode 使用配置教程</h2>
+                            <p class="section-subtitle">适合没有固定使用模型的用户</p>
+                        </div>
+                    </div>
+                    <p>OpenCode 比较特殊，适合没有固定使用模型的用户使用。目前官方扩展并不完善不推荐使用。</p>
+
+                            <h3>使用官方终端：安装官方 OpenCode CLI 终端</h3>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">Terminal</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>npm i -g opencode-ai</code></pre>
+                            </div>
+
+                            <h3>不使用 CC Switch 配置方法（Windows）</h3>
+                            <img class="tutorial-image" src="media/image31.png" alt="OpenCode 配置选项截图">
+                            <p><strong>配置 opencode.json</strong></p>
+                            <p>创建 <strong>(如果不存在)</strong> 或编辑 <code>C:\Users\{用户名}\.config\opencode\opencode.json</code>：</p>
+                            <img class="tutorial-image" src="media/image32.png" alt="OpenCode opencode.json 配置示例截图">
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>{
+  "provider": {
+    "gemini": {
+      "options": {
+        "baseURL": "https://api.threerouter.com/v1beta",
+        "apiKey": "替换为您自己的API-KEY"
+      },
+      "npm": "@ai-sdk/google",
+      "models": {
+        "deepseek-v4": {
+          "name": "DeepSeek-V4",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://opencode.ai/config.json"
+}</code></pre>
+                            </div>
+                </section>
+
+                <!-- Trae -->
+                <section class="section" id="trae">
+                    <div class="section-header">
+                        <div class="section-icon">🚀</div>
+                        <div>
+                            <h2 class="section-title">Trae 配置教程</h2>
+                            <p class="section-subtitle">IDE 的配置方法</p>
+                        </div>
+                    </div>
+                    <p>Trae 是一款支持多种 AI 模型的 IDE，可以通过以下步骤配置 ThreeRouter：</p>
+
+                    <div id="trae-custom-model">
+                        <h3>添加自定义模型</h3>
+                        <p>在 Trae 中添加自定义模型配置：</p>
+                        <img class="tutorial-image" src="media/image50.png" alt="Trae 中添加自定义模型截图">
+                    </div>
+
+                    <div id="trae-openai-model">
+                        <h3>模型配置</h3>
+                        <p>配置 OpenAI 类型的模型连接：</p>
+                        <img class="tutorial-image" src="media/image51.png" alt="Trae 模型配置截图">
+                        <p>配置完成后进行测试：</p>
+                        <img class="tutorial-image" src="media/image52.png" alt="Trae OpenAI 模型测试截图">
+                </section>
+                <!-- OpenClaw -->
+                <section class="section" id="openclaw">
+                    <div class="section-header">
+                        <div class="section-icon">🦞</div>
+                        <div>
+                            <h2 class="section-title">OpenClaw 小龙虾配置教程</h2>
+                            <p class="section-subtitle">OpenClaw 和 Hermes 的配置方法</p>
+                        </div>
+                    </div>
+                    <ol>
+                        <li>打开 API 密钥界面，复制自己的 API-key。（一定要根据您需要的模型来选择不同的分组）</li>
+                        <li>打开小龙虾的配置文件：<code>C:\Users\{用户名}\.openclaw\openclaw.json</code></li>
+                    </ol>
+                    <div class="image-gallery">
+                                <img class="tutorial-image" src="media/image33.png" alt="复制 API Key 截图">
+                                <img class="tutorial-image" src="media/image34.png" alt="OpenClaw 配置完成截图">
+                            </div>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">JSON</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>"models": {
+  "mode": "merge",
+  "providers": {
+    "unity2": {
+      "baseUrl": "https://api.threerouter.com/v1",
+      "apiKey": "替换为您的API-KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4",
+          "name": "deepseek-v4",
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}</code></pre>
+                            </div>
+                            <p>找到配置文件的 <code>"models"</code> 键，将里面的内容替换为上面的即可。一定不要动其他的配置内容。配置更改后，控制台输入 <code>openclaw gateway restart</code> 重启即可。</p>
+                </section>
+
+                <!-- Hermes -->
+                <section class="section" id="hermes">
+                    <div class="section-header">
+                        <div class="section-icon">🐎</div>
+                        <div>
+                            <h2 class="section-title">爱马仕 Hermes 配置教程</h2>
+                            <p class="section-subtitle">Hermes 的配置方法</p>
+                        </div>
+                    </div>
+                    <ol>
+                        <li>打开 API 密钥界面，复制自己的 API-key。（一定要根据您需要的模型来选择不同的分组）</li>
+                        <li>打开爱马仕的配置文件：<code>~/.hermes/config.yaml</code></li>
+                    </ol>
+                            <div class="image-gallery">
+                                <img class="tutorial-image" src="media/image35.png" alt="Hermes 配置文件路径截图">
+                                <img class="tutorial-image" src="media/image36.png" alt="Hermes 配置完成截图">
+                            </div>
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-lang">YAML</span>
+                                    <button class="code-copy" onclick="copyCode(this)">复制</button>
+                                </div>
+                                <pre><code>model:
+  default: deepseek-v4
+  provider: custom
+  base_url: "https://api.threerouter.com/v1"
+  api_key: "输入您的API-KEY"</code></pre>
+                            </div>
+                            <p>找到配置文件后，将 model 和 model 下的内容替换为上面的内容即可。不要动其他的，一定注意格式。保存后使用指令 <code>hermes gateway restart</code> 重启即可。</p>
+                </section>
+
+
+        <!-- CLI Tutorial -->
+        <section class="section" id="cli">
+            <div class="section-header">
+                <div class="section-icon">⌨️</div>
+                <div>
+                    <h2 class="section-title">CLI 中使用教程</h2>
+                    <p class="section-subtitle">命令行工具的高级使用技巧</p>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">🗜️</div>
+                    <h3>压缩上下文以节省额度</h3>
+                    <p>Claude Code 通常会有长上下文，建议您使用以下斜杠命令来压缩以节省点数：</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Command</span>
+                            <button class="code-copy" onclick="copyCode(this)">复制</button>
+                        </div>
+                        <pre><code>/compact [instructions]  # 您可以添加说明</code></pre>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔄</div>
+                    <h3>恢复以前的对话</h3>
+                    <p>使用以下命令可以恢复您上次的对话：</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Command</span>
+                            <button class="code-copy" onclick="copyCode(this)">复制</button>
+                        </div>
+                        <pre><code># 恢复最近的对话
+claude --continue
+
+# 显示交互式对话选择器
+claude --resume</code></pre>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🖼️</div>
+                    <h3>处理图像信息</h3>
+                    <p>您可以使用以下任一方法：</p>
+                    <ul>
+                        <li>将图像拖放到 Claude Code 窗口中（MacOS 端）</li>
+                        <li>复制图像并使用 Ctrl+V 粘贴到 CLI 中（MacOS 端）</li>
+                        <li>提供图像路径：<code>分析这个图像：/path/to/your/image.png</code></li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💭</div>
+                    <h3>深入思考</h3>
+                    <p>您需要通过自然语言，要求其进行深入思考。推荐在复杂问题中使用：</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Example</span>
+                            <button class="code-copy" onclick="copyCode(this)">复制</button>
+                        </div>
+                        <pre><code>> 我需要使用 OAuth2 为我们的 API 实现一个新的身份验证系统。深入思考在我们的代码库中实现这一点的最佳方法。
+
+> 思考这种方法中潜在的安全漏洞
+
+> 更深入地思考我们应该处理的边缘情况</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">CC Switch 切换模型方法</h3>
+            <p>使用 CC Switch 可以方便地在不同模型之间切换，以下是两种常用的切换方法：</p>
+            <div class="image-gallery">
+                <img class="tutorial-image" src="media/image41.png" alt="CC Switch 切换模型方法1截图">
+                <img class="tutorial-image" src="media/image42.png" alt="CC Switch 切换模型方法2截图">
+            </div>
+
+            <h3 style="margin-top: 2rem;">常见的斜杠命令</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>命令</th>
+                            <th>用途</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/bug</code></td><td>报告错误（将对话发送给 Anthropic）</td></tr>
+                        <tr><td><code>/clear</code></td><td>清除对话历史</td></tr>
+                        <tr><td><code>/compact [instructions]</code></td><td>压缩对话，可选择焦点说明</td></tr>
+                        <tr><td><code>/config</code></td><td>查看/修改配置</td></tr>
+                        <tr><td><code>/cost</code></td><td>显示令牌使用统计</td></tr>
+                        <tr><td><code>/doctor</code></td><td>检查 Claude Code 安装的健康状况</td></tr>
+                        <tr><td><code>/help</code></td><td>获取使用帮助</td></tr>
+                        <tr><td><code>/init</code></td><td>使用 CLAUDE.md 指南初始化项目</td></tr>
+                        <tr><td><code>/login</code></td><td>切换 Anthropic 账户</td></tr>
+                        <tr><td><code>/logout</code></td><td>从 Anthropic 账户登出</td></tr>
+                        <tr><td><code>/memory</code></td><td>编辑 CLAUDE.md 记忆文件</td></tr>
+                        <tr><td><code>/review</code></td><td>请求代码审查</td></tr>
+                        <tr><td><code>/status</code></td><td>查看账户和系统状态</td></tr>
+                        <tr><td><code>/vim</code></td><td>进入 vim 模式以切换插入和命令模式</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 2rem;">图像生成（生图）功能</h3>
+            <p>ThreeRouter 支持通过 API 调用图像生成模型，以下是使用步骤：</p>
+            <p><strong>步骤1：</strong>打开测试密钥页面，确认生图功能可用：</p>
+            <img class="tutorial-image" src="media/image43.png" alt="生图功能打开测试密钥页截图">
+            <p><strong>步骤2：</strong>发送生图请求，查看生成结果：</p>
+            <img class="tutorial-image" src="media/image44.png" alt="生图结果截图">
+            <p><strong>步骤3：</strong>使用 curl 脚本调用生图 API：</p>
+            <img class="tutorial-image" src="media/image45.png" alt="生图 curl 脚本截图">
+            <p><strong>步骤4：</strong>使用 Python 脚本调用生图 API：</p>
+            <img class="tutorial-image" src="media/image46.png" alt="生图 python 脚本截图">
+        </section>
+
+        <!-- FAQ -->
+        <section class="section" id="faq">
+            <div class="section-header">
+                <div class="section-icon">❓</div>
+                <div>
+                    <h2 class="section-title">常见问题解答</h2>
+                    <p class="section-subtitle">关于 ThreeRouter 的常见问题</p>
+                </div>
+            </div>
+
+            <div class="accordion">
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>ThreeRouter 是什么？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>一句话概括：</strong>ThreeRouter = 统一API网关 + 智能路由引擎</p>
+                            <p>ThreeRouter 提供统一的AI模型访问接口，兼容 OpenAI SDK。通过 L1-L5 智能路由引擎，根据任务复杂度自动匹配最优性价比模型，在不牺牲质量的前提下显著降低推理成本。</p>
+                            <p><strong>核心能力：</strong></p>
+                            <ul>
+                                <li><strong>🔌 统一API接入</strong>：完全兼容 OpenAI API 格式，仅需修改 base_url 和 API Key 即可完成切换，无需重构现有代码</li>
+                                <li><strong>⚡ L1-L5 智能路由</strong>：根据任务复杂度自动匹配最优模型层级，简单任务调用轻量模型，复杂推理调用顶级模型</li>
+                                <li><strong>💰 成本优化</strong>：智能路由模式下平均成本降低 40-80%，标准版定价低于官方价 30% 以上</li>
+                                <li><strong>🎛️ 策略灵活切换</strong>：控制台一键切换路由策略（智能路由/指定模型），代码零改动，策略变更实时生效</li>
+                            </ul>
+                            <p><strong>类比理解：</strong></p>
+                            <ul>
+                                <li>没有 ThreeRouter：你要买格力、美的、海尔三个牌子的空调，分别找三个经销商、签三份合同、付三笔钱</li>
+                                <li>有 ThreeRouter：一个经销商同时卖多个牌子，你只跟他一个人打交道，还能帮你自动选性价比最高的产品</li>
+                            </ul>
+                            <p><strong>典型效果：</strong>某跨境电商平台月度 API 调用量 8000 万次，ThreeRouter 智能路由将客服翻译与商品摘要类请求自动分配至低成本模型，月成本从 $42,000 降至 $16,800，降幅达 60%，输出质量保持稳定。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>ThreeRouter 都支持哪些模型？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>现已支持多种国产大模型：覆盖通用对话、编程、推理等核心维度。</p>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr><th>厂商</th><th>具体模型示例</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>深度求索</td><td>deepseek-v4</td></tr>
+                                        <tr><td>MiniMax</td><td>minimax-m3</td></tr>
+                                        <tr><td>Moonshot</td><td>kimi-k2.6</td></tr>
+                                        <tr><td>阿里云</td><td>qwen3.7-max</td></tr>
+                                        <tr><td>智谱</td><td>glm-5.1</td></tr>
+                                        <tr><td>阶跃星辰</td><td>seedance-2.0</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p>最新最全的模型可进入模型广场查看：<a href="https://api.threerouter.com/models" target="_blank">ThreeRouter 模型广场</a></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>什么是"分组"和"模型"？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>模型（Model）= 具体的大模型</strong></p>
+                            <p>在 ThreeRouter 里，你可以直接调用的"员工"包括 deepseek-v4、minimax-m3、kimi-k2.6、qwen3.7-max、glm-5.1、seedance-2.0 等。</p>
+                            <img class="tutorial-image" src="media/image39.png" alt="ThreeRouter 模型广场截图">
+                            <p>模型选择示例（以 deepseek-v4 分组为例）：</p>
+                            <img class="tutorial-image" src="media/image40.png" alt="模型选择示例 deepseek-v4 分组选择截图">
+                            <p><strong>分组（Group）= 模型的分类方式</strong></p>
+                            <p>ThreeRouter 在调用时支持按"分组"来选模型。</p>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr><th>分组名</th><th>包含的模型</th><th>适合什么任务</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>deepseek</td><td>deepseek-v4</td><td>通用对话、推理</td></tr>
+                                        <tr><td>minimax</td><td>minimax-m3</td><td>代码生成、安全场景</td></tr>
+                                        <tr><td>kimi</td><td>kimi-k2.6</td><td>中文任务、长文档</td></tr>
+                                        <tr><td>qwen</td><td>qwen3.7-max</td><td>多模态任务</td></tr>
+                                        <tr><td>glm</td><td>glm-5.1</td><td>编程专用</td></tr>
+                                        <tr><td>seedance</td><td>seedance-2.0</td><td>高效推理</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p>💡 你只需要在请求里指定分组名（比如 model="deepseek"），平台会自动从该分组里选一个最合适的模型来响应。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>如何充值？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>充值入口在网站左侧菜单栏，进入充值页面后按需购买即可，支持微信支付 & 支付宝支付。</p>
+                            <ul>
+                                <li><strong>注册即赠：</strong>默认赠送 2 美金，进群赠送 10 美金。</li>
+                                <li><strong>充值汇率：</strong>1 元 = 1 美金（1:1）</li>
+                                <li><strong>企业大额充值：</strong>进 Q 群联系人工客服获取优惠政策。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>有哪些福利？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <ul>
+                                <li>线上首充最高送 160 元。</li>
+                                <li>限量折扣码不定期更新，可用于余额充值或订阅购买。注：折扣码与首充不可叠加。</li>
+                                <li>邀请一名新用户注册成功，无需充值，即可获得 5 刀额度赠与。</li>
+                                <li>您邀请的用户充值后，您可获得 5% 的佣金。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>使用 CC Switch 需要 VPN 吗？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>不需要。</strong></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>页面请求失败？使用中速度太慢了？</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>若出现以上情况，可查看使用中模型的当前状态，有 2 种查看方式：</p>
+                            <img class="tutorial-image" src="media/image57.png" alt="模型可用性检测截图">
+                            <ul>
+                                <li>进 Q 群输入 "/状态检查"，获取最新的全部渠道状态截图。</li>
+                                <li>进网站点击顶栏的 "模型可用性检测" 获取最新的渠道状态。</li>
+                                <li>或直接访问：<a href="https://status.threerouter.com/" target="_blank">https://status.threerouter.com/</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pricing -->
+        <section class="section" id="pricing">
+            <div class="section-header">
+                <div class="section-icon">💱</div>
+                <div>
+                    <h2 class="section-title">关于价格</h2>
+                    <p class="section-subtitle">透明计费，明码标价</p>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <span class="alert-icon">📊</span>
+                <div class="alert-content">
+                    <div class="alert-title">计费标准</div>
+                    <p><strong>充值比例：</strong>1元 = 1美元（充值无溢价）<br>
+                    <strong>结算单位：</strong>采用 credits（积分）计量，按实际使用量扣费，用多少付多少。</p>
+                </div>
+            </div>
+            <img class="tutorial-image" src="media/image58.png" alt="ThreeRouter 模型价格截图">
+ 
+
+            <div class="alert alert-success">
+                <span class="alert-icon">✅</span>
+                <div class="alert-content">
+                    <div class="alert-title">补充说明</div>
+                    <p><strong>明码标价：</strong>官方承诺不做"模型降智"或替换低价模型，每次调用都是真实模型响应<br>
+                    <strong>企业通道：</strong>支持AWS、Alibaba、Seedance 企业渠道，稳定性有保障</p>
+                </div>
+            </div>
+
+           
+
+            <h3 style="margin-top: 2rem;">充值</h3>
+            <p>充值入口功能：</p>
+            <img class="tutorial-image" src="media/image47.png" alt="充值入口截图">
+
+            <div id="referral">
+            <h3 style="margin-top: 2rem;">邀请好友福利</h3>
+            <p>邀请好友注册可获得额外奖励：</p>
+            <img class="tutorial-image" src="media/image55.png" alt="邀请好友福利截图">
+        </div>
+        </section>
+
+        <!-- Error Troubleshooting -->
+        <section class="section" id="errors">
+            <div class="section-header">
+                <div class="section-icon">🔧</div>
+                <div>
+                    <h2 class="section-title">错误排查</h2>
+                    <p class="section-subtitle">遇到问题？对照错误表排查</p>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>错误类别</th>
+                            <th>状态码</th>
+                            <th>常见错误提示</th>
+                            <th>核心原因</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="tag tag-danger">认证失败</span></td>
+                            <td>401</td>
+                            <td>Invalid API Key, Unauthorized</td>
+                            <td>密钥错误。填写的 Key 不正确、已过期或带了多余空格。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">余额不足</span></td>
+                            <td>402</td>
+                            <td>Insufficient quota, Credit limit reached</td>
+                            <td>账号余额不足。账户余额耗尽或该 Key 额度用完。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-danger">权限封禁</span></td>
+                            <td>403</td>
+                            <td>Account deactivated, IP banned</td>
+                            <td>账号封禁/IP拦截。账号违规或请求来源 IP 在黑名单中。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-info">地址错误</span></td>
+                            <td>404</td>
+                            <td>Model not found, Invalid URL</td>
+                            <td>接口地址或模型名填错。Base URL 错误，或不同客户端请求接口不对。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">格式非法</span></td>
+                            <td>400</td>
+                            <td>Invalid payload, Messages is required</td>
+                            <td>环境配置错误、或请求参数不符合规范。检查配置项是否正确。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">上下文超限</span></td>
+                            <td>400</td>
+                            <td>Context length exceeded, Token limit</td>
+                            <td>对话太长。发送的内容超过了该模型支持的最大长度。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">频率过快</span></td>
+                            <td>429</td>
+                            <td>Rate limit reached, Too many requests</td>
+                            <td>请求太频繁。触发了中转站或官方的每分钟次数限制。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-danger">服务器错误</span></td>
+                            <td>500</td>
+                            <td>Internal Server Error</td>
+                            <td>中转站系统故障。需要等待我们处理。</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">内容审查</span></td>
+                            <td>400/403</td>
+                            <td>Sensitive content, Safety filter</td>
+                            <td>触发敏感词。输入或输出内容违反了安全合规策略。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 2rem;">真假官方中转对比</h3>
+            <p>以下是真官方中转和假官方中转的对比，帮助您识别可靠的中转服务：</p>
+            <p><strong>真官方中转报错截图：</strong></p>
+            <img class="tutorial-image" src="media/image59.png" alt="真官方中转报错截图">
+            <p><strong>假官方中转不返回报错：</strong></p>
+            <img class="tutorial-image" src="media/image60.png" alt="假官方中转不返回报错截图">
+            <p><strong>假官方中转照常对话：</strong></p>
+            <img class="tutorial-image" src="media/image61.png" alt="假官方中转照常对话截图">
+
+            <h3 style="margin-top: 2rem;">npm 安装下载</h3>
+            <p>部分工具需要通过 npm 安装，以下是 npm 安装下载页面：</p>
+            <img class="tutorial-image" src="media/image62.png" alt="npm 安装下载页面截图">
+        </section>
+
+        <!-- Contact -->
+        <section class="section" id="contact">
+            <div class="section-header">
+                <div class="section-icon">☎️</div>
+                <div>
+                    <h2 class="section-title">让我们为您服务！</h2>
+                    <p class="section-subtitle">遇到问题？随时联系我们</p>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">💬</div>
+                    <h3>加入官方群</h3>
+                    <p>QQ 群号：964185830</p>
+                    <p>加群领取更多福利！有问题可以在群内咨询客服。</p>
+                </div>
+               
+                <div class="card">
+                    <div class="card-icon">🌐</div>
+                    <h3>访问官网</h3>
+                    <p>访问 ThreeRouter 官网获取更多信息和最新动态。</p>
+                    <a href="https://api.threerouter.com/home" target="_blank" class="card-link">访问官网 →</a>
+                </div>
+            </div>
+        </section>
+    </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-logo">
+                <img src="logo.svg" alt="ThreeRouter Logo" class="logo-icon">
+                <span>ThreeRouter</span>
+            </div>
+            <p>一个API Key，调用所有AI模型。让AI开发更简单。</p>
+            <p style="margin-top: 0.5rem; font-size: 0.8rem;">© 2025 ThreeRouter. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Accordion
+        function toggleAccordion(header) {
+            const item = header.parentElement;
+            const isActive = item.classList.contains('active');
+            
+            // Close all accordion items in the same accordion
+            const accordion = item.closest('.accordion');
+            if (accordion) {
+                accordion.querySelectorAll('.accordion-item').forEach(i => {
+                    i.classList.remove('active');
+                });
+            }
+            
+            // Toggle current item
+            if (!isActive) {
+                item.classList.add('active');
+            }
+        }
+
+        // Copy code
+        function copyCode(btn) {
+            const codeBlock = btn.closest('.code-block');
+            const code = codeBlock.querySelector('pre').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const original = btn.textContent;
+                btn.textContent = '已复制!';
+                btn.style.borderColor = 'var(--success)';
+                btn.style.color = 'var(--success)';
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+
+        // Smooth scroll for nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Nav background on scroll
+        window.addEventListener('scroll', () => {
+            const nav = document.querySelector('.nav');
+            if (window.scrollY > 50) {
+                nav.style.background = 'rgba(10, 10, 15, 0.95)';
+            } else {
+                nav.style.background = 'rgba(10, 10, 15, 0.85)';
+            }
+        });
+    </script>
+</body>
+</html>

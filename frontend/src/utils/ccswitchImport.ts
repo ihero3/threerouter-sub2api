@@ -1,6 +1,6 @@
 import type { GroupPlatform } from '@/types'
 
-export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.4'
+export const OPENAI_CC_SWITCH_CODEX_MODEL = 'deepseek-v4'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
 
@@ -17,12 +17,14 @@ export interface CcSwitchImportDeeplinkInput {
   providerName: string
   apiKey: string
   usageScript: string
+  model?: string
 }
 
 export function resolveCcSwitchImportConfig(
   platform: GroupPlatform | undefined | null,
   clientType: CcSwitchClientType,
-  baseUrl: string
+  baseUrl: string,
+  model?: string
 ): CcSwitchImportConfig {
   switch (platform || 'anthropic') {
     case 'antigravity':
@@ -34,23 +36,25 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'codex',
         endpoint: baseUrl,
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: model || OPENAI_CC_SWITCH_CODEX_MODEL
       }
     case 'gemini':
       return {
         app: 'gemini',
-        endpoint: baseUrl
+        endpoint: baseUrl,
+        model
       }
     default:
       return {
         app: 'claude',
-        endpoint: baseUrl
+        endpoint: baseUrl,
+        model
       }
   }
 }
 
 export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput): string {
-  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl)
+  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl, input.model)
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],

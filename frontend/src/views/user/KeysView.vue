@@ -927,6 +927,7 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :model="selectedKey?.group?.models_list_config?.enabled && selectedKey?.group?.models_list_config?.models?.length > 0 ? selectedKey?.group?.models_list_config?.models[0] : undefined"
       @close="closeUseKeyModal"
     />
 
@@ -1725,13 +1726,21 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     }
   })`
   const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  
+  // Get first model from group's models_list_config if available
+  const modelsListConfig = row.group?.models_list_config
+  const firstModel = modelsListConfig?.enabled && modelsListConfig.models?.length > 0 
+    ? modelsListConfig.models[0] 
+    : undefined
+  
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
     platform,
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    model: firstModel
   })
 
   try {
