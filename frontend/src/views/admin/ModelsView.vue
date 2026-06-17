@@ -84,7 +84,7 @@ interface Model {
 }
 
 const models = ref<Model[]>([
-  { id: '1', name: 'deepseek-v4', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', vendor: 'deepseek', category: 'text', icon: '' },
+  { id: '1', name: 'deepseek-v4-pro', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', vendor: 'deepseek', category: 'text', icon: '' },
   { id: '2', name: 'minimax-m3', provider: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.', vendor: 'minimax', category: 'text', icon: '' },
   { id: '3', name: 'kimi-k2.7', provider: 'Kimi-K2.6 is Moonshot’s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.', vendor: 'moonshot', category: 'text', icon: '' },
   { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', vendor: 'alibaba', category: 'text', icon: '' },

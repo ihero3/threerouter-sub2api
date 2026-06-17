@@ -216,7 +216,7 @@
           <div class="flex flex-wrap items-center justify-center gap-3">
             <span class="flex items-center gap-2 rounded-xl border border-cyan-100 bg-white px-4 py-2.5">
               <span class="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500 text-xs font-bold text-white">D</span>
-              <span class="text-sm font-medium text-gray-700">deepseek-v4</span>
+              <span class="text-sm font-medium text-gray-700">deepseek-v4-pro</span>
               <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-600">{{ t('home.providers.supported') }}</span>
             </span>
             <span class="flex items-center gap-2 rounded-xl border border-amber-100 bg-white px-4 py-2.5">
