@@ -88,6 +88,12 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
 
+	// 3b. 归一化 messages[].content：把数组格式（[{"type":"text","text":"..."}]）
+	// 压平成字符串格式（"..."）。部分上游（如 Qwen/千问）只接受字符串 content，
+	// 拒绝数组 content 并报 "Unexpected item type in content"。
+	// 仅对纯文本数组生效；含 image_url 等多模态类型时保持原样由上游自行处理。
+	upstreamBody = normalizeOpenAIChatMessagesContentToString(upstreamBody)
+
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
 	if policyErr != nil {
@@ -474,6 +480,98 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
+}
+
+// normalizeOpenAIChatMessagesContentToString 把 messages[i].content 从数组格式
+// （[{"type":"text","text":"..."}]）压平成字符串格式（"..."）。
+//
+// 适用场景：Qwen/千问、部分 DeepSeek 等上游只接受字符串 content，拒绝数组 content
+// 并报 "Unexpected item type in content"。
+//
+// 策略：仅当 content 是纯文本数组时才压平；含 image_url 等多模态类型时保持
+// 数组不变，由上游自行处理（或失败）。
+//
+// 该函数幂等且失败时回退到原始 body，不会破坏请求的其他字段。
+func normalizeOpenAIChatMessagesContentToString(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return body
+	}
+
+	msgs := messages.Array()
+	if len(msgs) == 0 {
+		return body
+	}
+
+	result := body
+	changed := false
+
+	for i, msg := range msgs {
+		content := msg.Get("content")
+		if !content.Exists() {
+			continue
+		}
+
+		// content 已经是字符串，无需处理
+		if content.Type == gjson.String {
+			continue
+		}
+
+		// content 是数组——检查是否只含纯文本项
+		if !content.IsArray() {
+			continue
+		}
+
+		parts := content.Array()
+		if len(parts) == 0 {
+			// 空数组 content，置为空字符串，避免上游报 "unexpected array/content"
+			path := fmt.Sprintf("messages.%d.content", i)
+			updated, err := sjson.SetBytes(result, path, "")
+			if err != nil {
+				logger.L().Warn("normalize content: empty array failed",
+					zap.Int("index", i), zap.Error(err))
+				continue
+			}
+			result = updated
+			changed = true
+			continue
+		}
+
+		allText := true
+		var textParts []string
+		for _, part := range parts {
+			typ := part.Get("type").String()
+			switch typ {
+			case "text":
+				t := part.Get("text").String()
+				if t != "" {
+					textParts = append(textParts, t)
+				}
+			default:
+				// image_url / input_text / image_file / 其他未识别类型
+				// 保留数组格式不变，让上游自己处理
+				allText = false
+			}
+		}
+
+		if allText {
+			path := fmt.Sprintf("messages.%d.content", i)
+			flatText := strings.Join(textParts, "\n")
+			updated, err := sjson.SetBytes(result, path, flatText)
+			if err != nil {
+				logger.L().Warn("normalize content: set string failed",
+					zap.Int("index", i), zap.Error(err))
+				continue
+			}
+			result = updated
+			changed = true
+		}
+	}
+
+	if changed {
+		return result
+	}
+	return body
 }
 
 // buildOpenAIChatCompletionsURL 拼接上游 Chat Completions 端点 URL。
