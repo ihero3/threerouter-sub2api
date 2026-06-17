@@ -120,7 +120,8 @@ export default {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
       advantage: 'Our Advantages'
-  },
+    },
+  
 
   // Key Usage Query Page
   keyUsage: {
@@ -7133,4 +7134,5 @@ export default {
     'supported-regions': 'Supported Countries and Regions',
     'service-specific-terms': 'Service-Specific Terms',
   },
+}
 }
