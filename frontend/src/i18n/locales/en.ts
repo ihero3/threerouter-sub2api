@@ -110,7 +110,7 @@ export default {
       antigravity: 'Antigravity',
       more: 'More'
     },
-    // CTA section
+    // CTA section###
     cta: {
       title: 'Ready to Get Started?',
       description: 'Sign up now and get free trial credits to experience seamless AI access',
@@ -120,7 +120,7 @@ export default {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
       advantage: 'Our Advantages'
-      
+
     }
     },
   
