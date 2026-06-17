@@ -526,6 +526,8 @@ export interface Group {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  // 模型列表配置（用户侧需要此字段获取可用模型）
+  models_list_config?: ModelsListConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
