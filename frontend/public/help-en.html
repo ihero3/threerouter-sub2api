@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreeRouter User Guide</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0a0a0f;
+            --secondary: #12121a;
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(148, 163, 184, 0.1);
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: var(--primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--secondary);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 3px;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--secondary);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            object-fit: contain;
+        }
+
+        .sidebar-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05rem;
+            margin-bottom: 0.75rem;
+            padding-left: 0.25rem;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-nav li {
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.625rem 0.75rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .sidebar-nav a:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+        }
+
+        .sidebar-nav a.active {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-light);
+            font-weight: 500;
+        }
+
+        .sidebar-nav .sub-item {
+            padding-left: 2.5rem;
+            font-size: 0.825rem;
+            color: var(--text-muted);
+        }
+
+        .sidebar-nav .sub-item:hover {
+            color: var(--text-secondary);
+        }
+
+        .sidebar-nav .icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+
+        .hero {
+            padding: 160px 2rem 100px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 50%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 100px;
+            font-size: 0.85rem;
+            color: var(--accent-light);
+            margin-bottom: 2rem;
+        }
+
+        .hero h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, var(--accent-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.8;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 2rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .section-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .section-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 0.25rem;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .card-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--accent-light);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-top: 1rem;
+            transition: gap 0.3s;
+        }
+
+        .card-link:hover {
+            gap: 0.7rem;
+        }
+
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .step {
+            display: flex;
+            gap: 1.5rem;
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .step:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .step-content h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.7;
+            text-align: left;
+        }
+
+        .step-content img {
+            display: block;
+            margin: 1.5rem auto;
+            max-width: 100%;
+        }
+
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .code-lang {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .code-copy {
+            background: none;
+            border: 1px solid #30363d;
+            color: var(--text-muted);
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .code-copy:hover {
+            border-color: var(--accent);
+            color: var(--accent-light);
+        }
+
+        .code-block pre {
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            color: #e6edf3;
+        }
+
+        .code-block code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: var(--secondary);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tr:hover td {
+            background: rgba(99, 102, 241, 0.03);
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .tag-success {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+
+        .tag-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .tag-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        .tag-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+        }
+
+        .alert {
+            display: flex;
+            gap: 1rem;
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px;
+            margin: 1.5rem 0;
+            border: 1px solid;
+        }
+
+        .alert-info {
+            background: rgba(59, 130, 246, 0.05);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.05);
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .alert-success {
+            background: rgba(34, 197, 94, 0.05);
+            border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .alert-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .alert p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .accordion {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .accordion-item {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .accordion-item:last-child {
+            border-bottom: none;
+        }
+
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem;
+            cursor: pointer;
+            background: var(--secondary);
+            transition: background 0.3s;
+        }
+
+        .accordion-header:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .accordion-header h4 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .accordion-icon {
+            transition: transform 0.3s;
+            color: var(--text-muted);
+        }
+
+        .accordion-item.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        .accordion-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .accordion-item.active .accordion-body {
+            max-height: 2000px;
+        }
+
+        .accordion-content {
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .image-gallery {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .image-gallery .tutorial-image {
+            margin: 0.5rem auto;
+        }
+
+        .tutorial-image {
+            display: block;
+            width: auto;
+            max-width: 100%;
+            max-height: 500px;
+            margin: 1.5rem auto;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: #0d1117;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.32);
+            object-fit: contain;
+        }
+
+        .image-caption {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            margin-top: -0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                transition: left 0.3s;
+                z-index: 1001;
+            }
+            .sidebar.open {
+                left: 0;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: 120px 1.5rem 60px;
+            }
+            .main {
+                padding: 0 1.5rem 3rem;
+            }
+            .step {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 80px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        a {
+            color: var(--accent-light);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        ul, ol {
+            padding-left: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        h2, h3, h4 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <a href="#" class="logo">
+            <img src="logo.svg" alt="ThreeRouter Logo" class="logo-icon">
+            <span>ThreeRouter</span>
+        </a>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Getting Started</div>
+            <ul class="sidebar-nav">
+                <li><a href="#quick-nav"><span class="icon">🧭</span>Quick Navigation</a></li>
+                <li><a href="#getting-started"><span class="icon">💻</span>Start Configuration</a></li>
+                <li><a href="#register" class="sub-item"><span class="icon">📝</span>Register Account</a></li>
+                <li><a href="#create-key" class="sub-item"><span class="icon">🔑</span>Create API Key</a></li>
+                <li><a href="#test-key" class="sub-item"><span class="icon">✅</span>Test Key</a></li>
+                <li><a href="#cc-switch" class="sub-item"><span class="icon">🔄</span>CC Switch Config</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Tools Configuration</div>
+            <ul class="sidebar-nav">
+                <li><a href="#claude-code"><span class="icon">🤖</span>Claude Code</a></li>
+                <li><a href="#claude-plugin" class="sub-item"><span class="icon">🔌</span>VS Code Plugin</a></li>
+                <li><a href="#claude-desktop" class="sub-item"><span class="icon">🖥️</span>Desktop Config</a></li>
+                <li><a href="#claude-terminal" class="sub-item"><span class="icon">💻</span>Terminal Config</a></li>
+                <li><a href="#codex"><span class="icon">💻</span>Codex</a></li>
+                <li><a href="#codex-plugin" class="sub-item"><span class="icon">🔌</span>VS Code Plugin</a></li>
+                <li><a href="#codex-terminal" class="sub-item"><span class="icon">💻</span>Terminal Config</a></li>
+                <li><a href="#gemini"><span class="icon">✨</span>Gemini CLI</a></li>
+                <li><a href="#opencode"><span class="icon">📝</span>OpenCode</a></li>
+                <li><a href="#trae"><span class="icon">🚀</span>Trae</a></li>
+                <li><a href="#trae-custom-model" class="sub-item"><span class="icon">➕</span>Add Custom Model</a></li>
+                <li><a href="#trae-openai-model" class="sub-item"><span class="icon">🔧</span>Model Config</a></li>
+                <li><a href="#openclaw"><span class="icon">🦞</span>OpenClaw</a></li>
+                <li><a href="#hermes"><span class="icon">🐎</span>Hermes</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">CLI Tutorial</div>
+            <ul class="sidebar-nav">
+                <li><a href="#cli"><span class="icon">⚙️</span>Command Line</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Resources</div>
+            <ul class="sidebar-nav">
+                <li><a href="#faq"><span class="icon">❓</span>FAQ</a></li>
+                <li><a href="#pricing"><span class="icon">💰</span>Pricing</a></li>
+                <li><a href="#referral"><span class="icon">🎁</span>Referral Bonus</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Support</div>
+            <ul class="sidebar-nav">
+                <li><a href="#errors"><span class="icon">🔧</span>Troubleshooting</a></li>
+                <li><a href="#contact"><span class="icon">📞</span>Contact Us</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <div class="main-content">
+        <section class="hero">
+            <div class="hero-content">
+                <div class="hero-badge">📚 Official User Guide</div>
+                <h1>ThreeRouter<br>User Guide</h1>
+                <p>One API Key to access all AI models. DeepSeek-V4, MiniMax-M3, Kimi-K2.6, Qwen3.7-Max, GLM-5.1, Seedance-2.0 and more, making AI development easier.</p>
+                <div class="hero-buttons">
+                    <a href="#getting-started" class="btn btn-primary">Get Started →</a>
+                    <a href="https://api.threerouter.com/home" target="_blank" class="btn btn-secondary">Visit Website</a>
+                </div>
+            </div>
+        </section>
+
+        <main class="main">
+        <section class="section" id="quick-nav">
+            <div class="section-header">
+                <div class="section-icon">🧭</div>
+                <div>
+                    <h2 class="section-title">Quick Navigation</h2>
+                    <p class="section-subtitle">Choose the tutorial based on your needs</p>
+                </div>
+            </div>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">🔑</div>
+                    <h3>Get API Key & Install CC Switch</h3>
+                    <p>Beginner's guide including key creation and CC Switch installation.</p>
+                    <a href="#getting-started" class="card-link">View Tutorial →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🤖</div>
+                    <h3>Claude Code Configuration</h3>
+                    <p>Detailed configuration for VS Code extension, Desktop and Terminal.</p>
+                    <a href="#claude-code" class="card-link">View Tutorial →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💻</div>
+                    <h3>Codex Configuration</h3>
+                    <p>Extension installation and terminal configuration for OpenAI Codex.</p>
+                    <a href="#codex" class="card-link">View Tutorial →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">✨</div>
+                    <h3>Gemini CLI Configuration</h3>
+                    <p>Installation and configuration for Google Gemini CLI.</p>
+                    <a href="#gemini" class="card-link">View Tutorial →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📝</div>
+                    <h3>OpenCode Configuration</h3>
+                    <p>OpenCode configuration tutorial for users without fixed model preferences.</p>
+                    <a href="#opencode" class="card-link">View Tutorial →</a>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🦞</div>
+                    <h3>OpenClaw / Hermes</h3>
+                    <p>Configuration tutorials for OpenClaw and Hermes.</p>
+                    <a href="#openclaw" class="card-link">View Tutorial →</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="getting-started">
+            <div class="section-header">
+                <div class="section-icon">💻</div>
+                <div>
+                    <h2 class="section-title">Start Configuration</h2>
+                    <p class="section-subtitle">Configure ThreeRouter API Key and CC Switch</p>
+                </div>
+            </div>
+
+            <div class="steps">
+                <div class="step" id="register">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Register ThreeRouter Account</h3>
+                        <p>Visit <a href="https://api.threerouter.com/home" target="_blank">ThreeRouter Website</a> to register an account.</p>
+                        <img class="tutorial-image" src="media/image1.png" alt="ThreeRouter Website Homepage">
+                        <div class="image-caption">ThreeRouter Website Homepage</div>
+                    </div>
+                </div>
+                <div class="step" id="create-key">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Create API Key for Required Group</h3>
+                        <p>After logging in, go to the API Keys page and select the model group you need to create a key. Different groups correspond to different models and prices. Choose according to your needs.</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image2.png" alt="Create Key Entry">
+                            <img class="tutorial-image" src="media/image3.png" alt="Select Key Group">
+                            <img class="tutorial-image" src="media/image4.png" alt="Key Created Successfully">
+                        </div>
+                    </div>
+                </div>
+                <div class="step" id="test-key">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Test API Key</h3>
+                        <p>After creating the key, click the "Test Key" button to verify it works correctly. You can see the request latency and cost deduction when the test is successful.</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image5.png" alt="Test Key Button">
+                            <img class="tutorial-image" src="media/image6.png" alt="Test Key Success">
+                            <img class="tutorial-image" src="media/image7.png" alt="Request Details Hover">
+                            <img class="tutorial-image" src="media/image8.png" alt="View Response Modal">
+                        </div>
+                    </div>
+                </div>
+                <div class="step" id="cc-switch">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Download CC Switch</h3>
+                        <p>CC Switch is a tool that helps you "switch AI routes with one click". Download links are available on the official website, supporting Quark Cloud, Baidu Cloud, and GitHub.</p>
+                        <p><strong>What is CC Switch?</strong> It's a switch that helps your AI tools "switch routes with one click". Instead of manually modifying complex configuration files, just fill in the "URL" and "API Key" you obtained, and click the switch to connect.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Import Key to CC Switch</h3>
+                        <p>Open the ThreeRouter API Keys page, select the key you just created, click "Import to CCS". If CC Switch is installed, it will open automatically and prompt to import the key.</p>
+                        <div class="image-gallery">
+                            <img class="tutorial-image" src="media/image9.png" alt="Import to CC Switch Button">
+                            <img class="tutorial-image" src="media/image10.png" alt="CC Switch Import Prompt">
+                            <img class="tutorial-image" src="media/image11.png" alt="Enable CC Switch">
+                        </div>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>Enable CC Switch</h3>
+                        <p>After importing, enable CC Switch to start using. <strong>Configuration is complete! You can now use it.</strong></p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h3>Terminal Configuration (Without CC Switch)</h3>
+                        <p>If you choose not to use CC Switch, you can configure the API key and base_url directly in the terminal.</p>
+                        <p>Copy your key from the API Keys page:</p>
+                        <img class="tutorial-image" src="media/image37.png" alt="Terminal Configuration Key">
+                        <p>Configuration options for different platforms:</p>
+                        <img class="tutorial-image" src="media/image38.png" alt="Terminal Configuration Options">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="tools">
+            <div class="section-header">
+                <div class="section-icon">🛠️</div>
+                <div>
+                    <h2 class="section-title">Tools Configuration</h2>
+                    <p class="section-subtitle">Detailed configuration methods for various tools</p>
+                </div>
+            </div>
+
+            <section class="section" id="claude-code">
+                <div class="section-header">
+                    <div class="section-icon">🤖</div>
+                    <div>
+                        <h2 class="section-title">Claude Code Configuration</h2>
+                        <p class="section-subtitle">VS Code Extension, Desktop and Terminal Configuration</p>
+                    </div>
+                </div>
+
+                <div id="claude-plugin">
+                    <h3>🔌 VS Code Extension Configuration</h3>
+                    <p>Suitable for users installing Claude Code extension via VS Code GUI. Similar for other IDEs.</p>
+                    <ol>
+                        <li>Open VS Code and select any project folder to enter the workspace. <strong>Otherwise, it will prompt you to open a project folder!</strong></li>
+                        <li>Open the Extensions panel from the left sidebar.</li>
+                        <li>Search for "Claude Code" and click Install.</li>
+                    </ol>
+                    <div class="image-gallery">
+                        <img class="tutorial-image" src="media/image12.png" alt="VS Code Extensions Panel">
+                        <img class="tutorial-image" src="media/image13.png" alt="Search Claude Code Extension">
+                        <img class="tutorial-image" src="media/image14.png" alt="Claude Code Installed">
+                    </div>
+                    <p>If CC Switch is installed, you can use it directly. Contact support in the group if you have any issues.</p>
+
+                    <h3>Claude Code Desktop Configuration (Without CC Switch)</h3>
+                    <p>If you are using Claude Code Desktop app, you need to configure third-party inference gateway via developer mode:</p>
+                    <ol>
+                        <li>Open Claude Code Desktop, click menu <strong>Help -> Troubleshooting -> Enable Developer Mode</strong></li>
+                    </ol>
+                    <div class="image-gallery">
+                        <img class="tutorial-image" src="media/image16.png" alt="Enable Developer Mode">
+                        <img class="tutorial-image" src="media/image17.png" alt="Enable Confirmation">
+                    </div>
+                    <ol start="3">
+                        <li>After enabling, click menu <strong>Developer -> Configure Third-Party Inference</strong></li>
+                    </ol>
+                    <img class="tutorial-image" src="media/image18.png" alt="Configure Third-Party Inference">
+                    <ol start="4">
+                        <li>Fill in Gateway base URL and API key in the configuration interface:</li>
+                    </ol>
+                    <img class="tutorial-image" src="media/image19.png" alt="Gateway Configuration">
+
+                    <h3>Get API Key and base_url</h3>
+                    <p>On the ThreeRouter API Keys page, you can copy your API Key and base_url. These are used in multiple configuration methods.</p>
+                    <img class="tutorial-image" src="media/image20.png" alt="Get API Key and base_url">
+
+                <div id="claude-terminal">
+                    <h3>💻 Terminal Configuration</h3>
+                    <p>Includes official terminal installation and configuration without CC Switch.</p>
+                </div>
+                    <h3>Using Official Terminal: Install Claude Code CLI</h3>
+                    <img class="tutorial-image" src="media/image15.png" alt="Environment Variables Setup">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Windows</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code># PowerShell
+irm https://claude.ai/install.ps1 | iex
+
+# CMD
+curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd</code></pre>
+                    </div>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">macOS / Linux / WSL</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre>
+                    </div>
+
+                    <h3>Configuration Without CC Switch (Windows)</h3>
+                    <p>For Claude Code without CC Switch, configure as follows:</p>
+                    <img class="tutorial-image" src="media/image21.png" alt="Configuration Options">
+                    <p><strong>Configure settings.json</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.claude\settings.json</code>, add the following configuration and save:</p>
+                    <img class="tutorial-image" src="media/image22.png" alt="Windows settings.json Example">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.threerouter.com",
+    "ANTHROPIC_AUTH_TOKEN": "Replace with your API-KEY",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  }
+}</code></pre>
+                    </div>
+
+                    <h3>Configuration Without CC Switch (macOS / Linux)</h3>
+                    <p>Create or edit <code>~/.claude/settings.json</code> with the following content:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "Replace with your API Key",
+    "ANTHROPIC_BASE_URL": "https://api.threerouter.com",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  }
+}</code></pre>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <span class="alert-icon">⚠️</span>
+                        <div class="alert-content">
+                            <div class="alert-title">Note</div>
+                            <p>If Claude Code shows 400 error, it's likely due to incorrect environment variables. If using CC Switch, edit the corresponding key and add: <code>CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1</code></p>
+                        </div>
+                    </div>
+
+                    <div id="claude-desktop">
+                    <h3>🖥️ Claude Code Desktop Configuration (Without CC Switch)</h3>
+                    <p>If you are using Claude Code Desktop app, you need to configure third-party inference gateway via developer mode:</p>
+                    </div>
+                </section>
+
+                <section class="section" id="codex">
+                    <div class="section-header">
+                        <div class="section-icon">💻</div>
+                        <div>
+                            <h2 class="section-title">Codex (OpenAI) Configuration</h2>
+                            <p class="section-subtitle">VS Code Extension and Terminal Configuration</p>
+                        </div>
+                    </div>
+
+                    <div id="codex-plugin">
+                        <h3>🔌 VS Code Extension Configuration</h3>
+                    </div>
+                    <ol>
+                        <li>Open VS Code and select any project folder to enter the workspace.</li>
+                        <li>Open the Extensions panel from the left sidebar.</li>
+                        <li>Search for "Codex" and click Install.</li>
+                        <li>The Codex icon will appear after installation.</li>
+                        <li>Note: If you previously logged in with official or other platforms, please log out first before reconfiguring!</li>
+                    </ol>
+                    <div class="image-gallery">
+                        <img class="tutorial-image" src="media/image24.png" alt="Codex Extensions Panel">
+                        <img class="tutorial-image" src="media/image25.png" alt="Search Codex Extension">
+                        <img class="tutorial-image" src="media/image26.png" alt="Codex Icon">
+                        <img class="tutorial-image" src="media/image27.png" alt="Codex Logout Prompt">
+                        <img class="tutorial-image" src="media/image28.png" alt="Codex Configured Interface">
+                    </div>
+
+                    <div id="codex-terminal">
+                        <h3>💻 Terminal Configuration</h3>
+                        <p>Includes official terminal installation and configuration without CC Switch.</p>
+                    </div>
+                    <h3>Using Official Terminal: Install Codex CLI</h3>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Terminal</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>npm i -g @openai/codex</code></pre>
+                    </div>
+
+                    <h3>Configuration Without CC Switch (Windows)</h3>
+                    <img class="tutorial-image" src="media/image29.png" alt="Codex Configuration Options">
+                    <p><strong>Configure config.toml</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.codex\config.toml</code>:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">TOML</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>model_provider = "Deepseek"
+model = "deepseek-v4"
+review_model = "deepseek-v4"
+model_reasoning_effort = "xhigh"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+
+[model_providers.Deepseek]
+name = "Deepseek"
+base_url = "https://api.threerouter.com"
+wire_api = "responses"
+requires_openai_auth = true</code></pre>
+                    </div>
+                    <p><strong>Configure auth.json</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.codex\auth.json</code>:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "OPENAI_API_KEY": "Replace with your API Key"
+}</code></pre>
+                    </div>
+                </section>
+
+                <section class="section" id="gemini">
+                    <div class="section-header">
+                        <div class="section-icon">✨</div>
+                        <div>
+                            <h2 class="section-title">Gemini CLI Configuration</h2>
+                            <p class="section-subtitle">Official Terminal Installation and Configuration</p>
+                        </div>
+                    </div>
+                    <p>The official extension currently uses Google Cloud (GCP) and requires logging into your Google account to select a project space. Therefore, the official extension is not recommended.</p>
+
+                    <h3>💻 Using Official Terminal: Install Gemini CLI</h3>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Terminal</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>npm install -g @google/gemini-cli</code></pre>
+                    </div>
+
+                    <h3>Configuration Without CC Switch (Windows)</h3>
+                    <img class="tutorial-image" src="media/image30.png" alt="Gemini Configuration Options">
+                    <p><strong>Configure .env</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.gemini\.env</code>:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">ENV</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>GEMINI_API_KEY=Replace with your API-KEY 【Do not include quotes or special characters】
+GOOGLE_GEMINI_BASE_URL=https://api.threerouter.com</code></pre>
+                    </div>
+                    <p><strong>Configure settings.json</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.gemini\settings.json</code>:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  }
+}</code></pre>
+                    </div>
+                </section>
+
+                <section class="section" id="opencode">
+                    <div class="section-header">
+                        <div class="section-icon">📝</div>
+                        <div>
+                            <h2 class="section-title">OpenCode Configuration</h2>
+                            <p class="section-subtitle">Suitable for users without fixed model preferences</p>
+                        </div>
+                    </div>
+                    <p>OpenCode is special and suitable for users without fixed model preferences. The official extension is not yet complete and not recommended.</p>
+
+                    <h3>Using Official Terminal: Install OpenCode CLI</h3>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Terminal</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>npm i -g opencode-ai</code></pre>
+                    </div>
+
+                    <h3>Configuration Without CC Switch (Windows)</h3>
+                    <img class="tutorial-image" src="media/image31.png" alt="OpenCode Configuration Options">
+                    <p><strong>Configure opencode.json</strong></p>
+                    <p>Create <strong>(if not exists)</strong> or edit <code>C:\Users\{username}\.config\opencode\opencode.json</code>:</p>
+                    <img class="tutorial-image" src="media/image32.png" alt="OpenCode Configuration Example">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "provider": {
+    "gemini": {
+      "options": {
+        "baseURL": "https://api.threerouter.com/v1beta",
+        "apiKey": "Replace with your API-KEY"
+      },
+      "npm": "@ai-sdk/google",
+      "models": {
+        "deepseek-v4": {
+          "name": "DeepSeek-V4",
+          "limit": {
+            "context": 1048576,
+            "output": 65536
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://opencode.ai/config.json"
+}</code></pre>
+                    </div>
+                </section>
+
+                <section class="section" id="trae">
+                    <div class="section-header">
+                        <div class="section-icon">🚀</div>
+                        <div>
+                            <h2 class="section-title">Trae Configuration</h2>
+                            <p class="section-subtitle">IDE Configuration Methods</p>
+                        </div>
+                    </div>
+                    <p>Trae is an IDE that supports multiple AI models. Configure ThreeRouter using the following steps:</p>
+
+                    <div id="trae-custom-model">
+                        <h3>Add Custom Model</h3>
+                        <p>Add custom model configuration in Trae:</p>
+                        <img class="tutorial-image" src="media/image50.png" alt="Add Custom Model in Trae">
+                    </div>
+
+                    <div id="trae-openai-model">
+                        <h3>Model Configuration</h3>
+                        <p>Configure OpenAI-type model connection:</p>
+                        <img class="tutorial-image" src="media/image51.png" alt="Trae Model Configuration">
+                        <p>Test after configuration:</p>
+                        <img class="tutorial-image" src="media/image52.png" alt="Trae OpenAI Model Test">
+                </section>
+
+                <section class="section" id="openclaw">
+                    <div class="section-header">
+                        <div class="section-icon">🦞</div>
+                        <div>
+                            <h2 class="section-title">OpenClaw Configuration</h2>
+                            <p class="section-subtitle">OpenClaw and Hermes Configuration Methods</p>
+                        </div>
+                    </div>
+                    <ol>
+                        <li>Open the API Keys page and copy your API-key. (Choose different groups according to your model needs)</li>
+                        <li>Open OpenClaw config file: <code>C:\Users\{username}\.openclaw\openclaw.json</code></li>
+                    </ol>
+                    <div class="image-gallery">
+                        <img class="tutorial-image" src="media/image33.png" alt="Copy API Key">
+                        <img class="tutorial-image" src="media/image34.png" alt="OpenClaw Configured">
+                    </div>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">JSON</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>"models": {
+  "mode": "merge",
+  "providers": {
+    "threerouter": {
+      "baseUrl": "https://api.threerouter.com/v1",
+      "apiKey": "Replace with your API-KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4",
+          "name": "deepseek-v4",
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}</code></pre>
+                    </div>
+                    <p>Find the <code>"models"</code> key in the config file and replace its content with the above. Do not modify other configuration. After changing the config, restart with <code>openclaw gateway restart</code> in the terminal.</p>
+                </section>
+
+                <section class="section" id="hermes">
+                    <div class="section-header">
+                        <div class="section-icon">🐎</div>
+                        <div>
+                            <h2 class="section-title">Hermes Configuration</h2>
+                            <p class="section-subtitle">Hermes Configuration Methods</p>
+                        </div>
+                    </div>
+                    <ol>
+                        <li>Open the API Keys page and copy your API-key. (Choose different groups according to your model needs)</li>
+                        <li>Open Hermes config file: <code>~/.hermes/config.yaml</code></li>
+                    </ol>
+                    <div class="image-gallery">
+                        <img class="tutorial-image" src="media/image35.png" alt="Hermes Config Path">
+                        <img class="tutorial-image" src="media/image36.png" alt="Hermes Configured">
+                    </div>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">YAML</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>model:
+  default: deepseek-v4
+  provider: custom
+  base_url: "https://api.threerouter.com/v1"
+  api_key: "Enter your API-KEY"</code></pre>
+                    </div>
+                    <p>Find the config file and replace the model section with the above content. Do not modify other parts. Pay attention to the format. Restart with <code>hermes gateway restart</code> after saving.</p>
+                </section>
+
+        <section class="section" id="cli">
+            <div class="section-header">
+                <div class="section-icon">⌨️</div>
+                <div>
+                    <h2 class="section-title">CLI Usage</h2>
+                    <p class="section-subtitle">Advanced command line techniques</p>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">🗜️</div>
+                    <h3>Compress Context to Save Credits</h3>
+                    <p>Claude Code usually has long contexts. Use the following slash command to compress and save credits:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Command</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>/compact [instructions]  # You can add instructions</code></pre>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔄</div>
+                    <h3>Resume Previous Conversation</h3>
+                    <p>Use the following commands to resume your last conversation:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Command</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code># Resume recent conversation
+claude --continue
+
+# Show interactive conversation selector
+claude --resume</code></pre>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🖼️</div>
+                    <h3>Process Image Information</h3>
+                    <p>You can use any of the following methods:</p>
+                    <ul>
+                        <li>Drag and drop images into Claude Code window (MacOS)</li>
+                        <li>Copy image and paste with Ctrl+V in CLI (MacOS)</li>
+                        <li>Provide image path: <code>Analyze this image: /path/to/your/image.png</code></li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💭</div>
+                    <h3>Deep Thinking</h3>
+                    <p>You need to use natural language to request deep thinking. Recommended for complex problems:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-lang">Example</span>
+                            <button class="code-copy" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>> I need to implement a new authentication system using OAuth2 for our API. Deep think about the best way to implement this in our codebase.
+
+> Think about potential security vulnerabilities in this approach
+
+> Think deeper about edge cases we should handle</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">CC Switch Model Switching</h3>
+            <p>CC Switch allows easy switching between different models. Here are two common methods:</p>
+            <div class="image-gallery">
+                <img class="tutorial-image" src="media/image41.png" alt="CC Switch Model Switching Method 1">
+                <img class="tutorial-image" src="media/image42.png" alt="CC Switch Model Switching Method 2">
+            </div>
+
+            <h3 style="margin-top: 2rem;">Common Slash Commands</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Command</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>/bug</code></td><td>Report a bug (sends conversation to Anthropic)</td></tr>
+                        <tr><td><code>/clear</code></td><td>Clear conversation history</td></tr>
+                        <tr><td><code>/compact [instructions]</code></td><td>Compact conversation with optional focus</td></tr>
+                        <tr><td><code>/config</code></td><td>View/modify configuration</td></tr>
+                        <tr><td><code>/cost</code></td><td>Show token usage statistics</td></tr>
+                        <tr><td><code>/doctor</code></td><td>Check Claude Code installation health</td></tr>
+                        <tr><td><code>/help</code></td><td>Get help</td></tr>
+                        <tr><td><code>/init</code></td><td>Initialize project with CLAUDE.md guide</td></tr>
+                        <tr><td><code>/login</code></td><td>Switch Anthropic account</td></tr>
+                        <tr><td><code>/logout</code></td><td>Logout from Anthropic account</td></tr>
+                        <tr><td><code>/memory</code></td><td>Edit CLAUDE.md memory file</td></tr>
+                        <tr><td><code>/review</code></td><td>Request code review</td></tr>
+                        <tr><td><code>/status</code></td><td>View account and system status</td></tr>
+                        <tr><td><code>/vim</code></td><td>Enter vim mode for insert/command mode switching</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Image Generation</h3>
+            <p>ThreeRouter supports image generation via API. Here are the steps:</p>
+            <p><strong>Step 1:</strong> Open the test key page to confirm image generation is available:</p>
+            <img class="tutorial-image" src="media/image43.png" alt="Image Generation Test Key">
+            <p><strong>Step 2:</strong> Send image generation request and view results:</p>
+            <img class="tutorial-image" src="media/image44.png" alt="Image Generation Result">
+            <p><strong>Step 3:</strong> Use curl script to call image API:</p>
+            <img class="tutorial-image" src="media/image45.png" alt="Image Generation curl Script">
+            <p><strong>Step 4:</strong> Use Python script to call image API:</p>
+            <img class="tutorial-image" src="media/image46.png" alt="Image Generation Python Script">
+        </section>
+
+        <section class="section" id="faq">
+            <div class="section-header">
+                <div class="section-icon">❓</div>
+                <div>
+                    <h2 class="section-title">Frequently Asked Questions</h2>
+                    <p class="section-subtitle">Common questions about ThreeRouter</p>
+                </div>
+            </div>
+
+            <div class="accordion">
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>What is ThreeRouter?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>In short:</strong> ThreeRouter = Unified API Gateway + Smart Routing Engine</p>
+                            <p>ThreeRouter provides a unified AI model access interface compatible with OpenAI SDK. Through the L1-L5 smart routing engine, it automatically matches the optimal cost-performance model based on task complexity, significantly reducing inference costs without sacrificing quality.</p>
+                            <p><strong>Core capabilities:</strong></p>
+                            <ul>
+                                <li><strong>🔌 Unified API Access</strong>: Fully compatible with OpenAI API format. Simply modify base_url and API Key to switch, no code refactoring required</li>
+                                <li><strong>⚡ L1-L5 Smart Routing</strong>: Automatically matches optimal model level based on task complexity. Lightweight models for simple tasks, top-tier models for complex reasoning</li>
+                                <li><strong>💰 Cost Optimization</strong>: 40-80% average cost reduction with smart routing, standard pricing 30% lower than official</li>
+                                <li><strong>🎛️ Flexible Strategy Switching</strong>: One-click routing strategy switch in console (smart routing/specific model), zero code changes, real-time effect</li>
+                            </ul>
+                            <p><strong>Analogy:</strong></p>
+                            <ul>
+                                <li>Without ThreeRouter: You need to buy Gree, Midea, and Haier air conditioners, find three dealers separately, sign three contracts, pay three bills</li>
+                                <li>With ThreeRouter: One dealer sells multiple brands, you only deal with one person, and they help you choose the best value product automatically</li>
+                            </ul>
+                            <p><strong>Typical Results:</strong> A cross-border e-commerce platform with 80 million monthly API calls reduced monthly costs from $42,000 to $16,800 (60% reduction) by routing customer service translation and product summarization requests to low-cost models via ThreeRouter smart routing, with stable output quality.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>What models does ThreeRouter support?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>Multiple Chinese AI models are supported: covering general conversation, programming, reasoning and other core dimensions.</p>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr><th>Provider</th><th>Model Examples</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>DeepSeek</td><td>deepseek-v4</td></tr>
+                                        <tr><td>MiniMax</td><td>minimax-m3</td></tr>
+                                        <tr><td>Moonshot</td><td>kimi-k2.6</td></tr>
+                                        <tr><td>Alibaba Cloud</td><td>qwen3.7-max</td></tr>
+                                        <tr><td>Zhipu</td><td>glm-5.1</td></tr>
+                                        <tr><td>Seedance</td><td>seedance-2.0</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p>For the latest and complete list of models, visit the Model Plaza: <a href="https://api.threerouter.com/models" target="_blank">ThreeRouter Model Plaza</a></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>What are "Groups" and "Models"?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>Model = Specific AI model</strong></p>
+                            <p>In ThreeRouter, the "employees" you can directly call include deepseek-v4, minimax-m3, kimi-k2.6, qwen3.7-max, glm-5.1, seedance-2.0, etc.</p>
+                            <img class="tutorial-image" src="media/image39.png" alt="ThreeRouter Model Plaza">
+                            <p>Model selection example (deepseek-v4 group):</p>
+                            <img class="tutorial-image" src="media/image40.png" alt="Model Selection Example">
+                            <p><strong>Group = Model classification</strong></p>
+                            <p>ThreeRouter supports selecting models by "group" when calling.</p>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr><th>Group Name</th><th>Models Included</th><th>Suitable Tasks</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>deepseek</td><td>deepseek-v4</td><td>General conversation, reasoning</td></tr>
+                                        <tr><td>minimax</td><td>minimax-m3</td><td>Code generation, security scenarios</td></tr>
+                                        <tr><td>kimi</td><td>kimi-k2.6</td><td>Chinese tasks, long documents</td></tr>
+                                        <tr><td>qwen</td><td>qwen3.7-max</td><td>Multimodal tasks</td></tr>
+                                        <tr><td>glm</td><td>glm-5.1</td><td>Programming dedicated</td></tr>
+                                        <tr><td>seedance</td><td>seedance-2.0</td><td>Efficient reasoning</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p>💡 You only need to specify the group name in your request (e.g., model="deepseek"), and the platform will automatically select the most suitable model from that group to respond.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>How to recharge?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>The recharge entrance is in the left menu bar of the website. Go to the recharge page and purchase as needed. WeChat Pay & Alipay are supported.</p>
+                            <ul>
+                                <li><strong>Registration bonus:</strong> Default 2 USD bonus, 10 USD bonus for joining the group.</li>
+                                <li><strong>Recharge rate:</strong> 1 CNY = 1 USD (1:1)</li>
+                                <li><strong>Enterprise bulk recharge:</strong> Join the QQ group and contact customer service for discounts.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>What benefits are available?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <ul>
+                                <li>Up to 160 CNY bonus on first recharge.</li>
+                                <li>Limited discount codes updated regularly for balance recharge or subscription. Note: Discount codes cannot be combined with first recharge bonus.</li>
+                                <li>Invite a new user to register successfully (no recharge required) to get 5 USD credit.</li>
+                                <li>You get 5% commission when your invited users recharge.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>Do I need VPN to use CC Switch?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p><strong>No.</strong></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <h4>Request failed? Too slow during usage?</h4>
+                        <span class="accordion-icon">▼</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-content">
+                            <p>If the above situations occur, you can check the current status of the models in use. There are 2 ways to check:</p>
+                            <img class="tutorial-image" src="media/image57.png" alt="Model Availability Check">
+                            <ul>
+                                <li>Enter the QQ group and type "/status check" to get the latest status screenshot of all channels.</li>
+                                <li>Click "Model Availability Check" in the top bar of the website to get the latest channel status.</li>
+                                <li>Or visit directly: <a href="https://status.threerouter.com/" target="_blank">https://status.threerouter.com/</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="pricing">
+            <div class="section-header">
+                <div class="section-icon">💱</div>
+                <div>
+                    <h2 class="section-title">Pricing</h2>
+                    <p class="section-subtitle">Transparent billing, clear pricing</p>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <span class="alert-icon">📊</span>
+                <div class="alert-content">
+                    <div class="alert-title">Billing Standard</div>
+                    <p><strong>Recharge ratio:</strong> 1 CNY = 1 USD (no premium on recharge)<br>
+                    <strong>Settlement unit:</strong> Uses credits (points) for measurement, deducted by actual usage, pay as you go.</p>
+                </div>
+            </div>
+            <img class="tutorial-image" src="media/image58.png" alt="ThreeRouter Model Prices">
+
+            <div class="alert alert-success">
+                <span class="alert-icon">✅</span>
+                <div class="alert-content">
+                    <div class="alert-title">Additional Notes</div>
+                    <p><strong>Transparent pricing:</strong> Official commitment not to "downgrade models" or replace with cheaper models. Every call gets real model response.<br>
+                    <strong>Enterprise channels:</strong> Supports AWS, Alibaba, Seedance enterprise channels with guaranteed stability.</p>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Recharge</h3>
+            <p>Recharge entrance features:</p>
+            <img class="tutorial-image" src="media/image47.png" alt="Recharge Entrance">
+
+            <div id="referral">
+            <h3 style="margin-top: 2rem;">Referral Bonus</h3>
+            <p>Invite friends to register and earn rewards:</p>
+            <img class="tutorial-image" src="media/image55.png" alt="Referral Bonus">
+        </div>
+        </section>
+
+        <section class="section" id="errors">
+            <div class="section-header">
+                <div class="section-icon">🔧</div>
+                <div>
+                    <h2 class="section-title">Troubleshooting</h2>
+                    <p class="section-subtitle">Encountering issues? Check the error table below</p>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Error Type</th>
+                            <th>Status Code</th>
+                            <th>Common Error Message</th>
+                            <th>Root Cause</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="tag tag-danger">Authentication Failed</span></td>
+                            <td>401</td>
+                            <td>Invalid API Key, Unauthorized</td>
+                            <td>Incorrect API key. The Key you entered is wrong, expired, or contains extra spaces.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">Insufficient Balance</span></td>
+                            <td>402</td>
+                            <td>Insufficient quota, Credit limit reached</td>
+                            <td>Account balance exhausted. Your account balance or the Key's quota has been used up.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-danger">Permission Denied</span></td>
+                            <td>403</td>
+                            <td>Account deactivated, IP banned</td>
+                            <td>Account banned/IP blocked. Account violated terms or request source IP is in blacklist.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-info">URL Error</span></td>
+                            <td>404</td>
+                            <td>Model not found, Invalid URL</td>
+                            <td>Incorrect API endpoint or model name. Base URL is wrong, or different clients use different endpoints.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">Invalid Format</span></td>
+                            <td>400</td>
+                            <td>Invalid payload, Messages is required</td>
+                            <td>Environment configuration error, or request parameters do not meet specifications. Check if configuration is correct.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">Context Overlimit</span></td>
+                            <td>400</td>
+                            <td>Context length exceeded, Token limit</td>
+                            <td>Conversation too long. Content sent exceeds the model's maximum supported length.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">Rate Limit</span></td>
+                            <td>429</td>
+                            <td>Rate limit reached, Too many requests</td>
+                            <td>Too many requests. Triggered the relay or official per-minute limit.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-danger">Server Error</span></td>
+                            <td>500</td>
+                            <td>Internal Server Error</td>
+                            <td>Relay system failure. Please wait for us to resolve it.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="tag tag-warning">Content Moderation</span></td>
+                            <td>400/403</td>
+                            <td>Sensitive content, Safety filter</td>
+                            <td>Triggered sensitive content filter. Input or output violates safety compliance policies.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Real vs Fake Official Relay Comparison</h3>
+            <p>Below is a comparison of real and fake official relays to help you identify reliable relay services:</p>
+            <p><strong>Real official relay error screenshot:</strong></p>
+            <img class="tutorial-image" src="media/image59.png" alt="Real Official Relay Error">
+            <p><strong>Fake official relay no error return:</strong></p>
+            <img class="tutorial-image" src="media/image60.png" alt="Fake Official Relay No Error">
+            <p><strong>Fake official relay continues conversation:</strong></p>
+            <img class="tutorial-image" src="media/image61.png" alt="Fake Official Relay Continues">
+
+            <h3 style="margin-top: 2rem;">npm Installation</h3>
+            <p>Some tools need to be installed via npm. Below is the npm installation page:</p>
+            <img class="tutorial-image" src="media/image62.png" alt="npm Installation Page">
+        </section>
+
+        <section class="section" id="contact">
+            <div class="section-header">
+                <div class="section-icon">☎️</div>
+                <div>
+                    <h2 class="section-title">Let Us Help You!</h2>
+                    <p class="section-subtitle">Need help? Contact us anytime</p>
+                </div>
+            </div>
+
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon">💬</div>
+                    <h3>Join Official Group</h3>
+                    <p>QQ Group: 964185830</p>
+                    <p>Join the group for more benefits! Contact customer service in the group if you have any questions.</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon">🌐</div>
+                    <h3>Visit Website</h3>
+                    <p>Visit ThreeRouter official website for more information and latest updates.</p>
+                    <a href="https://api.threerouter.com/home" target="_blank" class="card-link">Visit Website →</a>
+                </div>
+            </div>
+        </section>
+    </main>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-logo">
+                <img src="logo.svg" alt="ThreeRouter Logo" class="logo-icon">
+                <span>ThreeRouter</span>
+            </div>
+            <p>One API Key to access all AI models. Making AI development easier.</p>
+            <p style="margin-top: 0.5rem; font-size: 0.8rem;">© 2025 ThreeRouter. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        function toggleAccordion(header) {
+            const item = header.parentElement;
+            const isActive = item.classList.contains('active');
+            
+            const accordion = item.closest('.accordion');
+            if (accordion) {
+                accordion.querySelectorAll('.accordion-item').forEach(i => {
+                    i.classList.remove('active');
+                });
+            }
+            
+            if (!isActive) {
+                item.classList.add('active');
+            }
+        }
+
+        function copyCode(btn) {
+            const codeBlock = btn.closest('.code-block');
+            const code = codeBlock.querySelector('pre').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const original = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.borderColor = 'var(--success)';
+                btn.style.color = 'var(--success)';
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        window.addEventListener('scroll', () => {
+            const nav = document.querySelector('.nav');
+            if (window.scrollY > 50) {
+                nav.style.background = 'rgba(10, 10, 15, 0.95)';
+            } else {
+                nav.style.background = 'rgba(10, 10, 15, 0.85)';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -118,7 +118,8 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。',
-      documentation: '文档'
+      documentation: '帮助文档',
+      advantage: '我们的优势'
     }
   },
 
