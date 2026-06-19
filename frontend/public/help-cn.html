@@ -892,9 +892,31 @@
         <div class="sidebar-section">
             <div class="sidebar-title">资源</div>
             <ul class="sidebar-nav">
-                <li><a href="#faq"><span class="icon">❓</span>常见问题</a></li>
                 <li><a href="#pricing"><span class="icon">💰</span>价格方案</a></li>
                 <li><a href="#referral"><span class="icon">🎁</span>邀请好友福利</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">其他实用教程</div>
+            <ul class="sidebar-nav">
+                <li><a href="#real-fake-comparison"><span class="icon">🔍</span>真假官方中转对比</a></li>
+                <li><a href="#npm-install"><span class="icon">📦</span>npm安装教程</a></li>
+                <li><a href="#npm-install-windows" class="sub-item"><span class="icon">🪟</span>Windows系统</a></li>
+                <li><a href="#npm-install-macos" class="sub-item"><span class="icon">🍎</span>Macos/Linux系统</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">常见问题解答</div>
+            <ul class="sidebar-nav">
+                <li><a href="#faq-what-is"><span class="icon">❓</span>ThreeRouter 是什么？</a></li>
+                <li><a href="#faq-supported-models" class="sub-item"><span class="icon">🤖</span>支持哪些模型？</a></li>
+                <li><a href="#faq-group-model" class="sub-item"><span class="icon">�</span>分组和模型？</a></li>
+                <li><a href="#faq-recharge" class="sub-item"><span class="icon">💳</span>如何充值？</a></li>
+                <li><a href="#faq-benefits" class="sub-item"><span class="icon">🎁</span>有哪些福利？</a></li>
+                <li><a href="#faq-vpn" class="sub-item"><span class="icon">🌐</span>需要 VPN 吗？</a></li>
+                <li><a href="#faq-slow" class="sub-item"><span class="icon">🐢</span>速度太慢？</a></li>
             </ul>
         </div>
 
@@ -1603,7 +1625,7 @@ claude --resume</code></pre>
 
             <div class="accordion">
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-what-is" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>ThreeRouter 是什么？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1628,7 +1650,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-supported-models" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>ThreeRouter 都支持哪些模型？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1655,7 +1677,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-group-model" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>什么是"分组"和"模型"？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1688,7 +1710,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-recharge" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>如何充值？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1704,7 +1726,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-benefits" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>有哪些福利？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1720,7 +1742,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-vpn" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>使用 CC Switch 需要 VPN 吗？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1731,7 +1753,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-slow" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>页面请求失败？使用中速度太慢了？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1872,7 +1894,7 @@ claude --resume</code></pre>
                 </table>
             </div>
 
-            <h3 style="margin-top: 2rem;">真假官方中转对比</h3>
+            <h3 id="real-fake-comparison" style="margin-top: 2rem;">真假官方中转对比</h3>
             <p>以下是真官方中转和假官方中转的对比，帮助您识别可靠的中转服务：</p>
             <p><strong>真官方中转报错截图：</strong></p>
             <img class="tutorial-image" src="media/image59.png" alt="真官方中转报错截图">
@@ -1881,9 +1903,25 @@ claude --resume</code></pre>
             <p><strong>假官方中转照常对话：</strong></p>
             <img class="tutorial-image" src="media/image61.png" alt="假官方中转照常对话截图">
 
-            <h3 style="margin-top: 2rem;">npm 安装下载</h3>
-            <p>部分工具需要通过 npm 安装，以下是 npm 安装下载页面：</p>
+            <h3 id="npm-install" style="margin-top: 2rem;">npm安装教程</h3>
+            <p>部分工具需要通过 npm 安装，以下是 npm 安装下载页面，</p>
+            <p id="npm-install-windows">Window 系统：</p>
+            <p>下载地址：<a href="https://nodejs.org/en/download/" target="_blank">https://nodejs.org/en/download/</a></p>
             <img class="tutorial-image" src="media/image62.png" alt="npm 安装下载页面截图">
+            <p>验证：打开一个新的控制台终端，输入:npm --version  ,有输出版本号即安装完毕。</p>
+       <p id="npm-install-macos">Macos / Linux 系统：</p>
+       <pre><code>
+       # Download and install fnm:
+curl -o- https://fnm.vercel.app/install | bash
+
+# Download and install Node.js:
+fnm install 24
+
+# Verify the Node.js version:
+node -v # Should print "v24.15.0".
+
+# Verify npm version:
+npm -v # Should print "11.12.1".</code></pre>
         </section>
 
         <!-- Contact -->

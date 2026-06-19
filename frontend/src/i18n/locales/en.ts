@@ -116,6 +116,80 @@ export default {
       description: 'Sign up now and get free trial credits to experience seamless AI access',
       button: 'Sign Up Free'
     },
+    reviews: {
+      title: 'User Reviews',
+      subtitle: 'Real feedback from developers worldwide, Three Router has become an essential tool for improving programming efficiency',
+      review1: {
+        text: 'Three Router significantly improved my programming efficiency. The API response speed is fast, making daily development much smoother.',
+        name: 'David Z.',
+        role: 'Full-stack Engineer @ Large Internet Company'
+      },
+      review2: {
+        text: 'The pay-as-you-go design is very practical. Even during peak development periods, we don\'t worry about resource shortages. Customer service response is also timely.',
+        name: 'Michael L.',
+        role: 'Tech Lead @ Unicorn Enterprise'
+      },
+      review3: {
+        text: 'The usage process and billing are very clear. Customer service response is fast. The overall experience is worry-free.',
+        name: 'Emily W.',
+        role: 'AI Product Manager @ Top Tech Company'
+      },
+      review4: {
+        text: 'Professional service is really great. Problems are solved quickly. API calls and response speed are very helpful.',
+        name: 'James C.',
+        role: 'Frontend Architect @ Lifestyle Service Platform'
+      },
+      review5: {
+        text: 'As an independent developer, this service saved me a lot of costs. The overall experience is stable, and daily development rarely has interruptions.',
+        name: 'Sarah L.',
+        role: 'Independent Developer / iOS Expert'
+      },
+      review6: {
+        text: 'Team collaboration features are very practical. We can share quotas and manage member permissions uniformly, saving a lot of communication costs.',
+        name: 'Robert Z.',
+        role: 'CTO @ Startup Company'
+      },
+      review7: {
+        text: 'The platform is intelligently designed. Even during peak hours, there\'s no lag. The client experience is very polished.',
+        name: 'Alice S.',
+        role: 'Algorithm Engineer @ Social Media Platform'
+      },
+      review8: {
+        text: 'Pricing is transparent with no hidden fees. Technical support is professional and solves problems quickly. Highly recommended!',
+        name: 'Kevin Z.',
+        role: 'Backend Engineer @ E-commerce Platform'
+      },
+      review9: {
+        text: 'The enterprise version\'s team management and data security capabilities are very practical. The service support gives us peace of mind.',
+        name: 'William W.',
+        role: 'R&D Director @ FinTech Company'
+      },
+      review10: {
+        text: 'API documentation is very detailed, making integration very convenient. Customer service attitude is also great, answering all questions.',
+        name: 'Richard Z.',
+        role: 'Technical Director @ Online Education Platform'
+      },
+      review11: {
+        text: 'I\'ve used many relay services, and this one is the most stable. Fast response speed and high success rate. Very satisfied!',
+        name: 'Thomas W.',
+        role: 'Product Lead @ Smart Hardware Company'
+      },
+      review12: {
+        text: 'Great cost-performance ratio, much cheaper than buying official services directly. Customer service responds quickly, technical support is professional.',
+        name: 'Daniel L.',
+        role: 'Technical VP @ Healthcare Company'
+      },
+      review13: {
+        text: 'Service is stable and reliable, I\'ve been using it for over half a year. Customer service can solve problems promptly when issues arise. Recommended to my team.',
+        name: 'Christopher Y.',
+        role: 'Technical Manager @ Game Development Company'
+      },
+      review14: {
+        text: 'API calls are simple and convenient, documentation is also very complete. Both stability and speed are excellent. Will continue to use it.',
+        name: 'Joseph H.',
+        role: 'Full-stack Developer @ FinTech Company'
+      }
+    },
     footer: {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',

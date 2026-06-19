@@ -116,6 +116,80 @@ export default {
       description: '注册即可获得免费试用额度，体验一站式 AI 服务',
       button: '免费注册'
     },
+    reviews: {
+      title: '用户评价',
+      subtitle: '来自全球开发者的真实反馈，Three Router 已成为提升编程效率的必备工具',
+      review1: {
+        text: 'Three Router 让我的编程效率提升了很多，API 响应速度很快，日常开发顺手了不少。',
+        name: 'David Z.',
+        role: '全栈工程师 @ 大型互联网公司'
+      },
+      review2: {
+        text: '按量额度设计很实用，团队开发高峰期也不用担心资源不够用，客服响应也很及时。',
+        name: 'Michael L.',
+        role: '技术负责人 @ 独角兽企业'
+      },
+      review3: {
+        text: '使用流程和计费都很清晰，客服响应也快，整体体验很省心。',
+        name: 'Emily W.',
+        role: 'AI产品经理 @ 头部科技公司'
+      },
+      review4: {
+        text: '专业服务真的很棒，遇到问题都能快速解决，API 调用和响应速度都很有帮助。',
+        name: 'James C.',
+        role: '前端架构师 @ 生活服务平台'
+      },
+      review5: {
+        text: '作为独立开发者，这个服务帮我节省了大量成本。整体体验稳定，日常开发基本没有中断过。',
+        name: 'Sarah L.',
+        role: '独立开发者 / iOS专家'
+      },
+      review6: {
+        text: '团队协作功能很实用，可以共享额度和统一管理成员权限，省了很多沟通成本。',
+        name: 'Robert Z.',
+        role: 'CTO @ 创业公司'
+      },
+      review7: {
+        text: '平台设计很智能，高峰期也不会卡顿，客户端体验做得很细致。',
+        name: 'Alice S.',
+        role: '算法工程师 @ 社交媒体平台'
+      },
+      review8: {
+        text: '价格透明，没有隐藏费用。技术支持很专业，解决问题很快。强烈推荐！',
+        name: 'Kevin Z.',
+        role: '后端工程师 @ 电商平台'
+      },
+      review9: {
+        text: '企业版的团队管理和数据保障能力很实用，服务支持也让我们很放心。',
+        name: 'William W.',
+        role: '研发总监 @ 金融科技公司'
+      },
+      review10: {
+        text: 'API 文档写得很详细，集成起来非常方便。客服态度也很好，有问必答。',
+        name: 'Richard Z.',
+        role: '技术总监 @ 在线教育平台'
+      },
+      review11: {
+        text: '用了很多中转服务，这个是最稳定的。响应速度快，成功率高，非常满意。',
+        name: 'Thomas W.',
+        role: '产品负责人 @ 智能硬件公司'
+      },
+      review12: {
+        text: '性价比很高，比直接买官方服务便宜很多。客服响应及时，技术支持专业。',
+        name: 'Daniel L.',
+        role: '技术VP @ 医疗健康公司'
+      },
+      review13: {
+        text: '服务稳定可靠，已经用了大半年了。遇到问题客服都能及时解决，推荐给团队了。',
+        name: 'Christopher Y.',
+        role: '技术经理 @ 游戏开发公司'
+      },
+      review14: {
+        text: '接口调用简单方便，文档也很完善。稳定性和速度都很不错，会继续使用的。',
+        name: 'Joseph H.',
+        role: '全栈开发 @ 金融科技公司'
+      }
+    },
     footer: {
       allRightsReserved: '保留所有权利。',
       documentation: '帮助文档',

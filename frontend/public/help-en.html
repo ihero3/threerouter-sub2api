@@ -862,9 +862,31 @@
         <div class="sidebar-section">
             <div class="sidebar-title">Resources</div>
             <ul class="sidebar-nav">
-                <li><a href="#faq"><span class="icon">❓</span>FAQ</a></li>
                 <li><a href="#pricing"><span class="icon">💰</span>Pricing</a></li>
                 <li><a href="#referral"><span class="icon">🎁</span>Referral Bonus</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">Other Tutorials</div>
+            <ul class="sidebar-nav">
+                <li><a href="#real-fake-comparison"><span class="icon">🔍</span>Real vs Fake Comparison</a></li>
+                <li><a href="#npm-install"><span class="icon">📦</span>npm Installation</a></li>
+                <li><a href="#npm-install-windows" class="sub-item"><span class="icon">🪟</span>Windows</a></li>
+                <li><a href="#npm-install-macos" class="sub-item"><span class="icon">🍎</span>Macos/Linux</a></li>
+            </ul>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-title">FAQ</div>
+            <ul class="sidebar-nav">
+                <li><a href="#faq-what-is"><span class="icon">❓</span>What is ThreeRouter?</a></li>
+                <li><a href="#faq-supported-models" class="sub-item"><span class="icon">🤖</span>Supported Models?</a></li>
+                <li><a href="#faq-group-model" class="sub-item"><span class="icon">📁</span>Groups & Models?</a></li>
+                <li><a href="#faq-recharge" class="sub-item"><span class="icon">💳</span>How to Recharge?</a></li>
+                <li><a href="#faq-benefits" class="sub-item"><span class="icon">🎁</span>Benefits?</a></li>
+                <li><a href="#faq-vpn" class="sub-item"><span class="icon">🌐</span>Need VPN?</a></li>
+                <li><a href="#faq-slow" class="sub-item"><span class="icon">🐢</span>Speed Issues?</a></li>
             </ul>
         </div>
 
@@ -1560,7 +1582,7 @@ claude --resume</code></pre>
 
             <div class="accordion">
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-what-is" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>What is ThreeRouter?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1585,7 +1607,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-supported-models" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>What models does ThreeRouter support?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1612,7 +1634,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-group-model" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>What are "Groups" and "Models"?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1645,7 +1667,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-recharge" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>How to recharge?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1661,7 +1683,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-benefits" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>What benefits are available?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1677,7 +1699,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-vpn" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>Do I need VPN to use CC Switch?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1688,7 +1710,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-slow" class="accordion-header" onclick="toggleAccordion(this)">
                         <h4>Request failed? Too slow during usage?</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1824,7 +1846,7 @@ claude --resume</code></pre>
                 </table>
             </div>
 
-            <h3 style="margin-top: 2rem;">Real vs Fake Official Relay Comparison</h3>
+            <h3 id="real-fake-comparison" style="margin-top: 2rem;">Real vs Fake Official Relay Comparison</h3>
             <p>Below is a comparison of real and fake official relays to help you identify reliable relay services:</p>
             <p><strong>Real official relay error screenshot:</strong></p>
             <img class="tutorial-image" src="media/image59.png" alt="Real Official Relay Error">
@@ -1833,9 +1855,27 @@ claude --resume</code></pre>
             <p><strong>Fake official relay continues conversation:</strong></p>
             <img class="tutorial-image" src="media/image61.png" alt="Fake Official Relay Continues">
 
-            <h3 style="margin-top: 2rem;">npm Installation</h3>
+            <h3 id="npm-install" style="margin-top: 2rem;">npm Installation</h3>
             <p>Some tools need to be installed via npm. Below is the npm installation page:</p>
             <img class="tutorial-image" src="media/image62.png" alt="npm Installation Page">
+            
+            <h4 id="npm-install-windows" style="margin-top: 1.5rem;">Windows:</h4>
+            <p>Download: <a href="https://nodejs.org/en/download/" target="_blank">https://nodejs.org/en/download/</a></p>
+            <p>Verify: Open a new terminal and enter <code>npm --version</code>. If a version number appears, installation is complete.</p>
+            
+            <h4 id="npm-install-macos" style="margin-top: 1.5rem;">Macos / Linux:</h4>
+            <pre><code>
+# Download and install fnm:
+curl -o- https://fnm.vercel.app/install | bash
+
+# Download and install Node.js:
+fnm install 24
+
+# Verify the Node.js version:
+node -v # Should print "v24.15.0".
+
+# Verify npm version:
+npm -v # Should print "11.12.1".</code></pre>
         </section>
 
         <section class="section" id="contact">

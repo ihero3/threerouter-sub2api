@@ -271,6 +271,366 @@
             </button>
           </div>
         </div>
+
+        <!-- User Reviews Section -->
+        <div class="mt-16 mb-16">
+          <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">{{ t('home.reviews.title') }}</h2>
+            <p class="text-lg text-gray-600">{{ t('home.reviews.subtitle') }}</p>
+          </div>
+
+          <!-- Row 1: Reviews 1-7 (scroll left) -->
+          <div class="relative overflow-hidden mb-6">
+            <div class="testimonial-track-1 flex gap-6">
+              <!-- First set (1-7) -->
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/1.jpg" alt="David Z." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review1.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review1.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review1.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/2.jpg" alt="Li" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review2.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review2.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review2.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/3.jpg" alt="Emily W." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review3.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review3.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review3.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/4.jpg" alt="Chen" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review4.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review4.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review4.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/5.jpg" alt="Sarah L." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review5.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review5.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review5.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/6.jpg" alt="Zhao" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review6.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review6.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review6.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/7.jpg" alt="Alice S." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review7.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review7.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review7.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Duplicate set for seamless scroll (1-7) -->
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/1.jpg" alt="David Z." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review1.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review1.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review1.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/2.jpg" alt="Li" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review2.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review2.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review2.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/3.jpg" alt="Emily W." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review3.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review3.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review3.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/4.jpg" alt="Chen" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review4.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review4.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review4.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/5.jpg" alt="Sarah L." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review5.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review5.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review5.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/6.jpg" alt="Zhao" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review6.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review6.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review6.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/7.jpg" alt="Alice S." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review7.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review7.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review7.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Reviews 8-14 (scroll right) -->
+          <div class="relative overflow-hidden">
+            <div class="testimonial-track-2 flex gap-6">
+              <!-- First set (8-14) -->
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/8.jpg" alt="Kevin Z." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review8.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review8.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review8.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/9.jpg" alt="Wu" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review9.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review9.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review9.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/10.jpg" alt="Zhang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review10.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review10.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review10.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/11.jpg" alt="Wang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review11.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review11.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review11.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/12.jpg" alt="Liu" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review12.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review12.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review12.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/13.jpg" alt="Yang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review13.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review13.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review13.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/14.jpg" alt="Huang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review14.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review14.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review14.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Duplicate set for seamless scroll (8-14) -->
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/8.jpg" alt="Kevin Z." class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review8.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review8.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review8.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/9.jpg" alt="Wu" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review9.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review9.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review9.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/10.jpg" alt="Zhang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review10.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review10.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review10.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/11.jpg" alt="Wang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review11.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review11.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review11.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/12.jpg" alt="Liu" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review12.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review12.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review12.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/13.jpg" alt="Yang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review13.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review13.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review13.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
+                <div class="flex items-start gap-4">
+                  <img src="/people/14.jpg" alt="Huang" class="h-12 w-12 rounded-full object-cover" />
+                  <div class="flex-1">
+                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review14.text') }}</p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review14.name') }}</p>
+                      <p class="text-sm text-gray-500">{{ t('home.reviews.review14.role') }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -495,6 +855,40 @@ onMounted(async () => {
   .terminal-window {
     width: 100%;
     max-width: 400px;
+  }
+}
+
+/* Testimonial scroll animation - Row 1 (scroll left) */
+.testimonial-track-1 {
+  display: flex;
+  animation: scroll-left 30s linear infinite;
+}
+.testimonial-track-1:hover {
+  animation-play-state: paused;
+}
+@keyframes scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Testimonial scroll animation - Row 2 (scroll right) */
+.testimonial-track-2 {
+  display: flex;
+  animation: scroll-right 30s linear infinite;
+}
+.testimonial-track-2:hover {
+  animation-play-state: paused;
+}
+@keyframes scroll-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
   }
 }
 </style>
