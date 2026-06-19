@@ -276,13 +276,32 @@
 
     <!-- Footer -->
     <footer class="relative z-10 border-t border-gray-100 px-6 py-8">
-      <div class="mx-auto flex max-w-7xl flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 sm:flex-row sm:text-left">
-        <p>&copy; {{ currentYear }} Three Router. {{ t('home.footer.allRightsReserved') }}</p>
-        <div class="flex items-center gap-6">
-          <a :href="currentLang === 'zh' ? 'readme-cn.html' : 'readme-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.advantage') }}</a>
-        </div>
+      <div class="mx-auto max-w-7xl">
+        <div class="flex flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 sm:flex-row sm:text-left">
+          <p>&copy; {{ currentYear }} Three Router. {{ t('home.footer.allRightsReserved') }}</p>
           <div class="flex items-center gap-6">
-          <a :href="currentLang === 'zh' ? 'help-cn.html' : 'help-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.documentation') }}</a>
+            <a :href="currentLang === 'zh' ? 'readme-cn.html' : 'readme-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.advantage') }}</a>
+          </div>
+          <div class="flex items-center gap-6">
+            <a :href="currentLang === 'zh' ? 'help-cn.html' : 'help-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.documentation') }}</a>
+          </div>
+          <!-- Custom Menu Items -->
+          <div v-if="customMenuItems.length > 0" class="flex items-center gap-6">
+            <a
+              v-for="item in customMenuItems"
+              :key="item.id"
+              :href="item.url"
+              class="transition-colors hover:text-gray-700"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {{ item.label }}
+            </a>
+          </div>
+          <!-- Contact Info -->
+          <div v-if="contactInfo" class="flex items-center gap-6">
+            <span class="text-gray-400">{{ contactInfo }}</span>
+          </div>
         </div>
       </div>
     </footer>
@@ -294,16 +313,28 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale } from '@/i18n'
+import { useAppStore } from '@/stores'
+import type { CustomMenuItem } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import LogoSvg from '@/assets/icons/logo.svg'
 
 const { t } = useI18n()
 
 const router = useRouter()
+const appStore = useAppStore()
 
 const isDark = ref(false)
 const currentYear = computed(() => new Date().getFullYear())
 const currentLang = ref<'zh' | 'en'>((localStorage.getItem('sub2api_locale') as 'zh' | 'en') || 'en')
+
+// Get public settings
+const contactInfo = computed(() => appStore.contactInfo)
+const customMenuItems = computed<CustomMenuItem[]>(() => {
+  const settings = appStore.cachedPublicSettings
+  if (!settings || !settings.custom_menu_items) return []
+  // Filter only user-visible menu items
+  return settings.custom_menu_items.filter(item => item.visibility === 'user')
+})
 
 function toggleTheme() {
   isDark.value = !isDark.value
@@ -325,8 +356,10 @@ function initTheme() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   initTheme()
+  // Fetch public settings to get contact info and custom menu items
+  await appStore.fetchPublicSettings()
 })
 </script>
 
