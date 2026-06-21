@@ -1,4 +1,4 @@
-export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+export const DEFAULT_PAYMENT_CURRENCY = 'USD'
 
 export function normalizePaymentCurrency(currency?: string | null): string {
   const normalized = String(currency || '').trim().toUpperCase()
