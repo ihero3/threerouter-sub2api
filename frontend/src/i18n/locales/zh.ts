@@ -193,7 +193,8 @@ export default {
     footer: {
       allRightsReserved: '保留所有权利。',
       documentation: '帮助文档',
-      advantage: '我们的优势'
+      advantage: '我们的优势',
+      contact: '联系我们'
     }
   },
 

@@ -30,6 +30,9 @@
             <div class="flex items-center gap-6">
               <a :href="currentLang === 'zh' ? 'help-cn.html' : 'help-en.html'" class="transition-colors hover:text-gray-700 dark:hover:text-gray-300">{{ t('home.footer.documentation') }}</a>
             </div>
+              <div class="flex items-center gap-6">
+            <a :href="currentLang === 'zh' ? 'help-cn.html#contact' : 'help-en.html#contact'" class="transition-colors hover:text-gray-700">{{ t('home.footer.contact') }}</a>
+          </div>
             <!-- Custom Menu Items -->
             <div v-if="customMenuItems.length > 0" class="flex items-center gap-6">
               <a

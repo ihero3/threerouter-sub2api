@@ -193,7 +193,8 @@ export default {
     footer: {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
-      advantage: 'Our Advantages'
+      advantage: 'Our Advantages',
+      contact: 'Contact Us'
     }
     },
   
