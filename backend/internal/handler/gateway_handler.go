@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -965,6 +966,54 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			return
 		}
 	}
+}
+
+// PublicModels 返回公开模型名称列表。
+// GET /models
+func (h *GatewayHandler) PublicModels(c *gin.Context) {
+	var modelIDs []string
+	if h != nil && h.gatewayService != nil {
+		modelIDs = h.gatewayService.GetAvailableModels(c.Request.Context(), nil, "")
+	}
+	if len(modelIDs) == 0 {
+		modelIDs = defaultPublicModelIDs()
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   modelIDs,
+	})
+}
+
+func defaultPublicModelIDs() []string {
+	set := make(map[string]struct{})
+	for _, model := range claude.DefaultModels {
+		if strings.TrimSpace(model.ID) != "" {
+			set[model.ID] = struct{}{}
+		}
+	}
+	for _, model := range openai.DefaultModels {
+		if strings.TrimSpace(model.ID) != "" {
+			set[model.ID] = struct{}{}
+		}
+	}
+	for _, model := range geminicli.DefaultModels {
+		if strings.TrimSpace(model.ID) != "" {
+			set[model.ID] = struct{}{}
+		}
+	}
+	for _, model := range antigravity.DefaultModels() {
+		if strings.TrimSpace(model.ID) != "" {
+			set[model.ID] = struct{}{}
+		}
+	}
+
+	ids := make([]string, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // Models handles listing available models

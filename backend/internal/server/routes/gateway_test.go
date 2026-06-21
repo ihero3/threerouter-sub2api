@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -40,6 +41,41 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 	)
 
 	return router
+}
+
+func TestGatewayRoutesRootModelsPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	found := false
+	for _, route := range router.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/models" {
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "GET /models should be registered as a root-level models alias")
+}
+
+func TestGatewayRoutesRootModelsPathIsPublicAndReturnsNames(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/models", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body struct {
+		Object string   `json:"object"`
+		Data   []string `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "list", body.Object)
+	require.NotEmpty(t, body.Data)
+	for _, model := range body.Data {
+		require.NotEmpty(t, model)
+	}
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

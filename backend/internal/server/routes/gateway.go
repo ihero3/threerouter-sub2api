@@ -130,6 +130,9 @@ func RegisterGatewayRoutes(
 		})
 	}
 
+	// 根路径公开模型列表：无需鉴权，仅返回模型名称。
+	r.GET("/models", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, h.Gateway.PublicModels)
+
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
 	gemini := r.Group("/v1beta")
 	gemini.Use(bodyLimit)
