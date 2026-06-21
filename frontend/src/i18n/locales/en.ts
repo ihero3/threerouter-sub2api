@@ -196,8 +196,8 @@ export default {
       advantage: 'Our Advantages',
       contact: 'Contact Us'
     }
-    },
-  
+  },
+
 
   // Key Usage Query Page
   keyUsage: {
