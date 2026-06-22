@@ -29,7 +29,8 @@ export const i18n = createI18n({
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false,
   // 禁用 ICU 消息格式，避免 '@' 符号被误解析
-  formatFallbackMessages: true,
+  formatFallbackMessages: false,
+  messageFormat: false,
   compiler: false
 })
 
