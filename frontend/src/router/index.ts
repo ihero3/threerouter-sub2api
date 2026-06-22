@@ -175,6 +175,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    path: '/models',
+    name: 'PublicModels',
+    beforeEnter() {
+      window.location.replace('https://api.threerouter.com/models')
+      return false
+    },
+    meta: {
+      requiresAuth: false,
+      title: 'Models'
+    }
+  },
 
   // ==================== User Routes ====================
   {
