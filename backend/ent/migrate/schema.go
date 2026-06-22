@@ -1290,6 +1290,100 @@ var (
 		Columns:    TLSFingerprintProfilesColumns,
 		PrimaryKey: []*schema.Column{TLSFingerprintProfilesColumns[0]},
 	}
+	// TicketsColumns holds the columns for the "tickets" table.
+	TicketsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "contact", Type: field.TypeString, Size: 255},
+		{Name: "title", Type: field.TypeString, Size: 200},
+		{Name: "category", Type: field.TypeString, Size: 32, Default: "other"},
+		{Name: "priority", Type: field.TypeString, Size: 20, Default: "normal"},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "open"},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64, Nullable: true},
+	}
+	// TicketsTable holds the schema information for the "tickets" table.
+	TicketsTable = &schema.Table{
+		Name:       "tickets",
+		Columns:    TicketsColumns,
+		PrimaryKey: []*schema.Column{TicketsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tickets_users_tickets",
+				Columns:    []*schema.Column{TicketsColumns[8]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ticket_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{TicketsColumns[8]},
+			},
+			{
+				Name:    "ticket_status",
+				Unique:  false,
+				Columns: []*schema.Column{TicketsColumns[5]},
+			},
+			{
+				Name:    "ticket_category",
+				Unique:  false,
+				Columns: []*schema.Column{TicketsColumns[3]},
+			},
+			{
+				Name:    "ticket_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TicketsColumns[6]},
+			},
+		},
+	}
+	// TicketMessagesColumns holds the columns for the "ticket_messages" table.
+	TicketMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "author_type", Type: field.TypeString, Size: 20, Default: "user"},
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "ticket_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64, Nullable: true},
+	}
+	// TicketMessagesTable holds the schema information for the "ticket_messages" table.
+	TicketMessagesTable = &schema.Table{
+		Name:       "ticket_messages",
+		Columns:    TicketMessagesColumns,
+		PrimaryKey: []*schema.Column{TicketMessagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "ticket_messages_tickets_messages",
+				Columns:    []*schema.Column{TicketMessagesColumns[4]},
+				RefColumns: []*schema.Column{TicketsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "ticket_messages_users_ticket_messages",
+				Columns:    []*schema.Column{TicketMessagesColumns[5]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ticketmessage_ticket_id",
+				Unique:  false,
+				Columns: []*schema.Column{TicketMessagesColumns[4]},
+			},
+			{
+				Name:    "ticketmessage_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{TicketMessagesColumns[5]},
+			},
+			{
+				Name:    "ticketmessage_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TicketMessagesColumns[3]},
+			},
+		},
+	}
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1802,6 +1896,8 @@ var (
 		SettingsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
+		TicketsTable,
+		TicketMessagesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -1915,6 +2011,15 @@ func init() {
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",
+	}
+	TicketsTable.ForeignKeys[0].RefTable = UsersTable
+	TicketsTable.Annotation = &entsql.Annotation{
+		Table: "tickets",
+	}
+	TicketMessagesTable.ForeignKeys[0].RefTable = TicketsTable
+	TicketMessagesTable.ForeignKeys[1].RefTable = UsersTable
+	TicketMessagesTable.Annotation = &entsql.Annotation{
+		Table: "ticket_messages",
 	}
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

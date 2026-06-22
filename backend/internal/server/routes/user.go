@@ -15,6 +15,12 @@ func RegisterUserRoutes(
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	// 游客工单提交
+	publicTickets := v1.Group("/public/tickets")
+	{
+		publicTickets.POST("", h.Ticket.Create)
+	}
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -91,6 +97,15 @@ func RegisterUserRoutes(
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)
 			usage.GET("/dashboard/models", h.Usage.DashboardModels)
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
+		}
+
+		// 工单系统
+		tickets := authenticated.Group("/tickets")
+		{
+			tickets.POST("", h.Ticket.Create)
+			tickets.GET("/my", h.Ticket.ListMine)
+			tickets.GET("/:id", h.Ticket.GetMine)
+			tickets.POST("/:id/messages", h.Ticket.AddMessageMine)
 		}
 
 		// 公告（用户可见）

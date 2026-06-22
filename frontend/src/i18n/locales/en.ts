@@ -602,7 +602,83 @@ export default {
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
+    tickets: 'My Tickets',
+    ticketManagement: 'Ticket Management',
     riskControl: 'Risk Control',
+  },
+  tickets: {
+    fields: {
+      id: 'ID',
+      contact: 'Contact',
+      title: 'Title',
+      category: 'Category',
+      priority: 'Priority',
+      status: 'Status',
+      content: 'Description',
+      updatedAt: 'Updated At'
+    },
+    categories: {
+      account: 'Account',
+      billing: 'Billing',
+      api: 'API Issue',
+      model: 'Model / Channel',
+      other: 'Other'
+    },
+    priorities: {
+      low: 'Low',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent'
+    },
+    statuses: {
+      open: 'Open',
+      pending: 'Waiting for User',
+      answered: 'Answered',
+      closed: 'Closed'
+    },
+    filters: {
+      allStatuses: 'All statuses',
+      allCategories: 'All categories'
+    },
+    author: {
+      user: 'User',
+      admin: 'Support'
+    },
+    placeholders: {
+      contact: 'Email,Tel , or another contact method',
+      title: 'Briefly describe your issue',
+      content: 'Describe the issue, API endpoint, error message, or relevant context in detail'
+    },
+    actions: {
+      new: 'Submit Ticket',
+      submit: 'Submit Ticket',
+      submitting: 'Submitting...',
+      reply: 'Send Reply',
+      backToList: 'Back to Tickets'
+    },
+    new: {
+      title: 'Submit Ticket',
+      description: 'Submit a ticket for account, billing, API, model, or channel issues.',
+      loggedHint: 'You are signed in. This ticket will be linked to your account.',
+      guestHint: 'You are not signed in. Please leave a valid contact method.'
+    },
+    my: {
+      title: 'My Tickets',
+      description: 'View your submitted tickets, status updates, and support replies.',
+      empty: 'No tickets yet.'
+    },
+    detail: {
+      title: 'Ticket Detail',
+      reply: 'Reply',
+      closedHint: 'This ticket is closed and cannot be replied to.'
+    },
+    messages: {
+      created: 'Ticket submitted',
+      createFailed: 'Failed to submit ticket',
+      loadFailed: 'Failed to load tickets',
+      replied: 'Reply sent',
+      replyFailed: 'Failed to send reply'
+    }
   },
 
   // Auth
@@ -1680,6 +1756,16 @@ export default {
         audio: 'Audio',
         multimodal: 'Multimodal'
       }
+    },
+    tickets: {
+      title: 'Ticket Management',
+      description: 'View, reply to, and resolve user support tickets.',
+      searchPlaceholder: 'Search title or contact',
+      empty: 'No tickets yet.',
+      selectHint: 'Select a ticket on the left to view details.',
+      replyPlaceholder: 'Enter support reply',
+      statusUpdated: 'Ticket status updated',
+      statusUpdateFailed: 'Failed to update ticket status'
     },
 
     backup: {

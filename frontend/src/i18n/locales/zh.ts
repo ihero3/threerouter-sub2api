@@ -601,7 +601,83 @@ export default {
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
+    tickets: '我的工单',
+    ticketManagement: '工单管理',
     riskControl: '风控中心',
+  },
+  tickets: {
+    fields: {
+      id: '编号',
+      contact: '联系方式',
+      title: '标题',
+      category: '分类',
+      priority: '优先级',
+      status: '状态',
+      content: '问题描述',
+      updatedAt: '更新时间'
+    },
+    categories: {
+      account: '账号问题',
+      billing: '余额/计费',
+      api: 'API 调用问题',
+      model: '模型/渠道问题',
+      other: '其他'
+    },
+    priorities: {
+      low: '低',
+      normal: '普通',
+      high: '高',
+      urgent: '紧急'
+    },
+    statuses: {
+      open: '待处理',
+      pending: '等待用户回复',
+      answered: '已回复',
+      closed: '已关闭'
+    },
+    filters: {
+      allStatuses: '全部状态',
+      allCategories: '全部分类'
+    },
+    author: {
+      user: '用户',
+      admin: '客服'
+    },
+    placeholders: {
+      contact: '邮箱、QQ 或其他联系方式',
+      title: '简要描述你的问题',
+      content: '请尽量详细描述问题、接口地址、报错信息或相关上下文'
+    },
+    actions: {
+      new: '提交工单',
+      submit: '提交工单',
+      submitting: '提交中...',
+      reply: '发送回复',
+      backToList: '返回工单列表'
+    },
+    new: {
+      title: '提交工单',
+      description: '遇到账号、计费、API 或模型问题时，可以在这里提交工单。',
+      loggedHint: '当前已登录，工单会自动关联到你的账号。',
+      guestHint: '你当前未登录，请务必留下有效联系方式。'
+    },
+    my: {
+      title: '我的工单',
+      description: '查看你提交的工单状态和客服回复。',
+      empty: '暂无工单。'
+    },
+    detail: {
+      title: '工单详情',
+      reply: '继续回复',
+      closedHint: '该工单已关闭，无法继续回复。'
+    },
+    messages: {
+      created: '工单已提交',
+      createFailed: '提交工单失败',
+      loadFailed: '加载工单失败',
+      replied: '回复已发送',
+      replyFailed: '发送回复失败'
+    }
   },
 
   // Auth
@@ -1700,6 +1776,16 @@ export default {
         audio: '语音',
         multimodal: '多模态'
       }
+    },
+    tickets: {
+      title: '工单管理',
+      description: '查看、回复和处理用户提交的支持工单。',
+      searchPlaceholder: '搜索标题或联系方式',
+      empty: '暂无工单。',
+      selectHint: '请选择左侧工单查看详情。',
+      replyPlaceholder: '输入客服回复内容',
+      statusUpdated: '工单状态已更新',
+      statusUpdateFailed: '更新工单状态失败'
     },
 
     backup: {

@@ -22,6 +22,49 @@ export interface FetchOptions {
   signal?: AbortSignal
 }
 
+export type TicketStatus = 'open' | 'pending' | 'answered' | 'closed'
+export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent'
+export type TicketCategory = 'account' | 'billing' | 'api' | 'model' | 'other'
+export type TicketAuthorType = 'user' | 'admin'
+
+export interface TicketMessage {
+  id: number
+  ticket_id: number
+  user_id?: number | null
+  author_type: TicketAuthorType
+  content: string
+  created_at: string
+}
+
+export interface Ticket {
+  id: number
+  user_id?: number | null
+  contact: string
+  title: string
+  category: TicketCategory
+  priority: TicketPriority
+  status: TicketStatus
+  created_at: string
+  updated_at: string
+  messages?: TicketMessage[]
+}
+
+export interface CreateTicketRequest {
+  contact: string
+  title: string
+  category: TicketCategory
+  priority: TicketPriority
+  content: string
+}
+
+export interface AddTicketMessageRequest {
+  content: string
+}
+
+export interface UpdateTicketStatusRequest {
+  status: TicketStatus
+}
+
 // ==================== Notification Types ====================
 
 /** Notification email entry with enable/disable and verification state.

@@ -101,8 +101,21 @@ func RegisterAdminRoutes(
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
+		// 工单管理
+		registerTicketRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerTicketRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	tickets := admin.Group("/tickets")
+	{
+		tickets.GET("", h.Admin.Ticket.List)
+		tickets.GET("/:id", h.Admin.Ticket.GetByID)
+		tickets.PUT("/:id/status", h.Admin.Ticket.UpdateStatus)
+		tickets.POST("/:id/messages", h.Admin.Ticket.AddMessage)
 	}
 }
 

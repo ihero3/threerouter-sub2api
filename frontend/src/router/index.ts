@@ -188,6 +188,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Models'
     }
   },
+  {
+    path: '/support/tickets/new',
+    name: 'TicketNew',
+    component: () => import('@/views/support/TicketNewView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Submit Ticket',
+      titleKey: 'tickets.new.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -276,6 +286,29 @@ const routes: RouteRecordRaw[] = [
       title: 'Profile',
       titleKey: 'profile.title',
       descriptionKey: 'profile.description'
+    }
+  },
+  {
+    path: '/support/tickets',
+    name: 'Tickets',
+    component: () => import('@/views/support/TicketsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Tickets',
+      titleKey: 'tickets.my.title',
+      descriptionKey: 'tickets.my.description'
+    }
+  },
+  {
+    path: '/support/tickets/:id',
+    name: 'TicketDetail',
+    component: () => import('@/views/support/TicketDetailView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Ticket Detail',
+      titleKey: 'tickets.detail.title'
     }
   },
   {
@@ -569,6 +602,18 @@ const routes: RouteRecordRaw[] = [
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
+    }
+  },
+  {
+    path: '/admin/tickets',
+    name: 'AdminTickets',
+    component: () => import('@/views/admin/TicketsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Ticket Management',
+      titleKey: 'admin.tickets.title',
+      descriptionKey: 'admin.tickets.description'
     }
   },
   {

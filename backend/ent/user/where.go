@@ -1639,6 +1639,52 @@ func HasPlatformQuotasWith(preds ...predicate.UserPlatformQuota) predicate.User 
 	})
 }
 
+// HasTickets applies the HasEdge predicate on the "tickets" edge.
+func HasTickets() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TicketsTable, TicketsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTicketsWith applies the HasEdge predicate on the "tickets" edge with a given conditions (other predicates).
+func HasTicketsWith(preds ...predicate.Ticket) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newTicketsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTicketMessages applies the HasEdge predicate on the "ticket_messages" edge.
+func HasTicketMessages() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TicketMessagesTable, TicketMessagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTicketMessagesWith applies the HasEdge predicate on the "ticket_messages" edge with a given conditions (other predicates).
+func HasTicketMessagesWith(preds ...predicate.TicketMessage) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newTicketMessagesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
