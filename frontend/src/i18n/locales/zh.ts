@@ -19,13 +19,49 @@ export default {
       realtimeBilling: '按量计费'
     },
     hero: {
+      slogan: '顶尖、超高性价比的中国大模型',
       title: 'Three Router',
       subtitle: '企业级 LLM API 服务',
       cta: '免费开始使用',
+      priceAdvantage: '我们的价格只有 36 分之一，为您降低成本 97%',
+      priceReasons: '美国本地部署 • 大厂直供',
       tags: {
         discount: '所有中文 AI 模型 7 折优惠',
         deployment: '美国本地部署',
         freeTokens: '新用户获赠 100 万免费 tokens'
+      },
+      // 价格对比表格
+      pricingSection: { 
+        tableHeader: {
+          title: '价格对比',
+          model: '模型',
+          capability: '能力定位',
+          price: '价格 ($/M输入)',
+          relative: '相对于最高价'
+        },
+        models: {
+          gpt55: { name: 'GPT-5.5', capability: 'OpenAI 最新旗舰' },
+          claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic 最新旗舰，SWE-bench Pro 69.2%' },
+          glm51: { name: 'GLM-5.1', capability: '智谱旗舰，SWE-bench第一梯队' },
+          kimiK26: { name: 'Kimi K2.6', capability: '开源SOTA，SWE-Bench Pro 58.6分' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: '性价比之王，284B MoE' },
+          deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: '旗舰推理，Codeforces #1' },
+          minimaxM3: { name: 'MiniMax-M3', capability: '1M上下文，前沿编码与原生多模态' },
+          qwen37Max: { name: 'Qwen3.7-Max', capability: '阿里智能体旗舰，1M上下文' },
+          seedance20: { name: 'Seedance-2.0', capability: '字节视频生成，电影级多模态输出' }
+        },
+        baseline: '基准',
+        discount: '降低 {percent}%',
+        directProcurement: '云厂商与AI平台直采',
+        directProcurementDesc: '依托领先云厂商和AI平台，提供合规、稳定、可认证追溯的AI计算分发服务。',
+        enterpriseBadge: '企业合规网关',
+        benefits: {
+          title: '企业级优势',
+          compliant: '符合行业合规要求',
+          stable: '99.99% 服务可用性',
+          traceable: '完整审计追踪与认证',
+          secure: '企业级安全保障'
+        }
       }
     },
     // 用户痛点区块
@@ -62,6 +98,67 @@ export default {
       multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
       balanceQuota: '用多少付多少',
       balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
+    },
+    easyrouterAdvantages: {
+      eyebrow: '核心优势',
+      title: '为什么选择我们',
+      subtitle: '企业级可靠性、标准化接入、极速路由、可控计费与超低成本，为开发者和团队打造的新一代 AI 网关。',
+      ultraFast: {
+        title: '极速响应',
+        desc: '全球多节点部署与智能路由，P99 延迟低于 200ms'
+      },
+      reliable: {
+        title: '稳定可靠',
+        desc: '智能调度多个上游账号，自动故障转移与负载均衡，提供 99.9% 可用性 SLA'
+      },
+      standardApi: {
+        title: '标准 API 接入',
+        desc: '一个 API 密钥调用所有已接入模型，完全兼容 OpenAI API 格式，一行代码切换'
+      },
+      cheap: {
+        title: '超级便宜',
+        desc: '价格只有旗舰供应商的 1/36，最高可为您降低 97% 的 AI 成本'
+      }
+    },
+    easyrouterFaq: {
+      eyebrow: 'FAQ',
+      title: '常见问题解答',
+      subtitle: '我们整理了关于服务、计费和集成的常见问题。如有更多问题，欢迎联系我们的商务团队。',
+      tabs: {
+        service: '关于服务',
+        billing: '价格与计费',
+        integration: '集成与使用'
+      },
+      service: {
+        q1: '你们是传统代理服务吗？',
+        a1: '不是。我们不是传统代理服务，而是企业级 AI API 网关。我们的上游服务来自 AWS、GCP、Azure 等官方顶级云厂商；对于开源模型，也直接来自模型厂商或全球认可的推理服务，确保链路合法、透明、可审计。',
+        q2: '你们的模型资源来自哪里？',
+        a2: '我们的资源来自官方云厂商、AI 平台、模型厂商以及全球认可的推理服务，帮助确保访问稳定、采购合规、交付链路可溯源。',
+        q3: '你们会存储用户请求数据吗？',
+        a3: '不会。网关以安全透传和路由为核心设计，不会将客户提示词或响应内容用于模型训练，并尽量减少运营安全所需之外的数据留存。',
+        q4: '支持哪些模型？',
+        a4: '我们覆盖主流前沿模型和高性价比模型，包括 DeepSeek、Qwen、Kimi、MiniMax、GLM 以及Seedance等部分视频生成模型。'
+      },
+      billing: {
+        q1: '这是包月订阅吗？',
+        a1: '不是。额度会按实际模型用量扣减，您只为真实消耗付费，不需要为未使用的固定月费买单。',
+        q2: '用量如何计费？',
+        a2: '文本模型按 token 用量计费；图片、视频、语音和其他多模态模型则根据对应供应商的计费单位扣费，例如图片张数、视频秒数或音频时长。',
+        q3: '价格是否透明？',
+        a3: '透明。价格会按模型和计费单位展示，您可以在使用前预估成本，并在账号后台查看实际消耗。',
+        q4: '团队可以共享额度吗？',
+        a4: '可以。团队和企业可通过共享额度池、权限控制和用量分析统一管理，让支出更可控、更可预测。'
+      },
+      integration: {
+        q1: '是否兼容 OpenAI API？',
+        a1: '兼容。网关完全兼容 OpenAI API 格式，大多数情况下只需要替换 base URL 和 API key 即可开始调用模型。',
+        q2: '迁移成本高吗？',
+        a2: '对于已有 OpenAI 兼容客户端的项目，通常只需修改一行配置。SDK、Agent 和工作流工具可以继续使用熟悉的请求格式。',
+        q3: '支持故障转移和智能路由吗？',
+        a3: '支持。我们通过多供应商路由、负载均衡和故障转移策略提升可用性，减少单一上游限制带来的中断。',
+        q4: '可以用于生产环境吗？',
+        a4: '可以。网关面向生产场景设计，提供标准化 API、高可用路由、用量可观测能力以及面向企业的合规实践。'
+      }
     },
     // 优势对比
     comparison: {
@@ -122,22 +219,22 @@ export default {
       review1: {
         text: 'Three Router 让我的编程效率提升了很多，API 响应速度很快，日常开发顺手了不少。',
         name: 'David Z.',
-        role: '全栈工程师 @ 大型互联网公司'
+        role: '全栈工程师   大型互联网公司'
       },
       review2: {
         text: '按量额度设计很实用，团队开发高峰期也不用担心资源不够用，客服响应也很及时。',
         name: 'Michael L.',
-        role: '技术负责人 @ 独角兽企业'
+        role: '技术负责人   独角兽企业'
       },
       review3: {
         text: '使用流程和计费都很清晰，客服响应也快，整体体验很省心。',
         name: 'Emily W.',
-        role: 'AI产品经理 @ 头部科技公司'
+        role: 'AI产品经理   头部科技公司'
       },
       review4: {
         text: '专业服务真的很棒，遇到问题都能快速解决，API 调用和响应速度都很有帮助。',
         name: 'James C.',
-        role: '前端架构师 @ 生活服务平台'
+        role: '前端架构师   生活服务平台'
       },
       review5: {
         text: '作为独立开发者，这个服务帮我节省了大量成本。整体体验稳定，日常开发基本没有中断过。',
@@ -147,47 +244,47 @@ export default {
       review6: {
         text: '团队协作功能很实用，可以共享额度和统一管理成员权限，省了很多沟通成本。',
         name: 'Robert Z.',
-        role: 'CTO @ 创业公司'
+        role: 'CTO   创业公司'
       },
       review7: {
         text: '平台设计很智能，高峰期也不会卡顿，客户端体验做得很细致。',
         name: 'Alice S.',
-        role: '算法工程师 @ 社交媒体平台'
+        role: '算法工程师   社交媒体平台'
       },
       review8: {
         text: '价格透明，没有隐藏费用。技术支持很专业，解决问题很快。强烈推荐！',
         name: 'Kevin Z.',
-        role: '后端工程师 @ 电商平台'
+        role: '后端工程师   电商平台'
       },
       review9: {
         text: '企业版的团队管理和数据保障能力很实用，服务支持也让我们很放心。',
         name: 'William W.',
-        role: '研发总监 @ 金融科技公司'
+        role: '研发总监   金融科技公司'
       },
       review10: {
         text: 'API 文档写得很详细，集成起来非常方便。客服态度也很好，有问必答。',
         name: 'Richard Z.',
-        role: '技术总监 @ 在线教育平台'
+        role: '技术总监   在线教育平台'
       },
       review11: {
         text: '用了很多中转服务，这个是最稳定的。响应速度快，成功率高，非常满意。',
         name: 'Thomas W.',
-        role: '产品负责人 @ 智能硬件公司'
+        role: '产品负责人   智能硬件公司'
       },
       review12: {
         text: '性价比很高，比直接买官方服务便宜很多。客服响应及时，技术支持专业。',
         name: 'Daniel L.',
-        role: '技术VP @ 医疗健康公司'
+        role: '技术VP   医疗健康公司'
       },
       review13: {
         text: '服务稳定可靠，已经用了大半年了。遇到问题客服都能及时解决，推荐给团队了。',
         name: 'Christopher Y.',
-        role: '技术经理 @ 游戏开发公司'
+        role: '技术经理   游戏开发公司'
       },
       review14: {
         text: '接口调用简单方便，文档也很完善。稳定性和速度都很不错，会继续使用的。',
         name: 'Joseph H.',
-        role: '全栈开发 @ 金融科技公司'
+        role: '全栈开发   金融科技公司'
       }
     },
     footer: {
@@ -4507,8 +4604,8 @@ export default {
       batchAdd: '快捷添加',
       batchInput: '代理列表',
       batchInputPlaceholder:
-        "每行输入一个代理，支持以下格式：\nsocks5://user:pass@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass@proxy.example.com:443",
-      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码@]主机:端口",
+        "每行输入一个代理，支持以下格式：\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass\@proxy.example.com:443",
+      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码\@]主机:端口",
       parsedCount: '有效 {count} 个',
       invalidCount: '无效 {count} 个',
       duplicateCount: '重复 {count} 个',
@@ -5793,8 +5890,8 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 @qq.com, @gmail.com, *.edu.cn）",
-        emailSuffixWhitelistPlaceholder: "@example.com, *.edu.cn",
+          "仅允许使用指定域名的邮箱注册账号（例如 \@qq.com, \@gmail.com, *.edu.cn）",
+        emailSuffixWhitelistPlaceholder: "\@example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
@@ -6355,14 +6452,14 @@ export default {
         port: 'SMTP 端口',
         portPlaceholder: '587',
         username: 'SMTP 用户名',
-        usernamePlaceholder: "your-email@gmail.com",
+        usernamePlaceholder: "your-email\@gmail.com",
         password: 'SMTP 密码',
         passwordPlaceholder: '********',
         passwordHint: '留空以保留现有密码',
         passwordConfiguredPlaceholder: '********',
         passwordConfiguredHint: '密码已配置，留空以保留当前值。',
         fromEmail: '发件人邮箱',
-        fromEmailPlaceholder: "noreply@example.com",
+        fromEmailPlaceholder: "noreply\@example.com",
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
@@ -6372,7 +6469,7 @@ export default {
         title: '发送测试邮件',
         description: '发送测试邮件以验证 SMTP 配置',
         recipientEmail: '收件人邮箱',
-        recipientEmailPlaceholder: "test@example.com",
+        recipientEmailPlaceholder: "test\@example.com",
         sendTestEmail: '发送测试邮件',
         sending: '发送中...',
         enterRecipientHint: '请输入收件人邮箱地址'

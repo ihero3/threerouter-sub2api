@@ -19,13 +19,49 @@ export default {
       realtimeBilling: 'Pay As You Go'
     },
     hero: {
+      slogan: 'Top-tier Chinese LLMs with Unbeatable Value',
       title: 'Three Router',
       subtitle: 'Enterprise-Grade LLM API Services',
       cta: 'Get Started Free',
+      priceAdvantage: 'Our prices are only 1/36, saving you 97% in costs',
+      priceReasons: 'US Local Deployment • Direct from Cloud Providers',
       tags: {
         discount: '30% OFF All Chinese AI Models',
         deployment: 'US Local Deployment',
         freeTokens: 'New Users Get 1M Free Tokens'
+      },
+      // Pricing comparison table
+      pricingSection: {
+        tableHeader: {
+          title: 'Price Comparison',
+          model: 'Model',
+          capability: 'Capability',
+          price: 'Price ($/M Input)',
+          relative: 'Relative to Highest'
+        },
+        models: {
+          gpt55: { name: 'GPT-5.5', capability: 'OpenAI latest flagship' },
+          claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic latest flagship, SWE-bench Pro 69.2%' },
+          glm51: { name: 'GLM-5.1', capability: 'Zhipu flagship, SWE-bench Top Tier' },
+          kimiK26: { name: 'Kimi K2.6', capability: 'Open-source SOTA, SWE-Bench Pro 58.6%' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: 'Best value king, 284B MoE' },
+          deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: 'Flagship reasoning, Codeforces #1' },
+          minimaxM3: { name: 'MiniMax-M3', capability: '1M context, frontier coding and native multimodality' },
+          qwen37Max: { name: 'Qwen3.7-Max', capability: 'Alibaba agent flagship, 1M context' },
+          seedance20: { name: 'Seedance-2.0', capability: 'ByteDance video generation, cinematic multimodal output' }
+        },
+        baseline: 'Baseline',
+        discount: 'Reduce {percent}%',
+        directProcurement: 'Direct Procurement from Cloud Providers & AI Platforms',
+        directProcurementDesc: 'Powered by leading cloud providers and AI platforms, delivering compliant, stable, and certified-traceable AI computing distribution services.',
+        enterpriseBadge: 'ENTERPRISE COMPLIANT GATEWAY',
+        benefits: {
+          title: 'Enterprise Benefits',
+          compliant: 'Compliant with industry regulations',
+          stable: '99.99% service availability',
+          traceable: 'Full audit trail & certification',
+          secure: 'Enterprise-grade security'
+        }
       }
     },
     // Pain points section
@@ -62,6 +98,67 @@ export default {
       multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
       balanceQuota: 'Pay What You Use',
       balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+    },
+    easyrouterAdvantages: {
+      eyebrow: 'Core Advantages',
+      title: 'Why Choose Us',
+      subtitle: 'Enterprise-grade reliability, standardized integration, ultra-fast routing, controllable billing, and extremely low costs — the next-generation AI gateway built for developers and teams.',
+      ultraFast: {
+        title: 'Ultra-Fast Response',
+        desc: 'Multi-node global deployment with smart routing, P99 latency under 200ms'
+      },
+      reliable: {
+        title: 'Reliable & Stable',
+        desc: 'Smart routing across multiple upstream accounts with automatic failover and load balancing, backed by 99.9% availability SLA'
+      },
+      standardApi: {
+        title: 'Standard API Access',
+        desc: 'One API key for all connected models, fully compatible with OpenAI API format, switch with one line of code'
+      },
+      cheap: {
+        title: 'Super Affordable',
+        desc: 'Our prices are only 1/36 of flagship providers, helping you reduce AI costs by up to 97%'
+      }
+    },
+    easyrouterFaq: {
+      eyebrow: 'FAQ',
+      title: 'Frequently Asked Questions',
+      subtitle: 'Common questions about service, billing, and integration. For more questions, feel free to contact our business team.',
+      tabs: {
+        service: 'About Service',
+        billing: 'Pricing & Billing',
+        integration: 'Integration & Usage'
+      },
+      service: {
+        q1: 'Are you a traditional proxy service?',
+        a1: 'No. We are not a traditional proxy service; we are an enterprise-grade AI API gateway. Our upstream providers are official top-tier cloud vendors such as AWS, GCP, and Azure. For open-source models, our sources are also directly from model providers or globally recognized inference services, ensuring the pipeline is legal, transparent, and auditable.',
+        q2: 'Where do your model resources come from?',
+        a2: 'Our resources come from official cloud providers, AI platforms, model vendors, and globally recognized inference services. This helps ensure stable access, compliant procurement, and traceable delivery.',
+        q3: 'Do you store user request data?',
+        a3: 'No. The gateway is designed for secure pass-through routing. We do not use customer prompts or responses for model training, and we minimize data retention for operational security.',
+        q4: 'Which models are supported?',
+        a4: 'We cover mainstream frontier and cost-effective models including DeepSeek, Qwen, Kimi, MiniMax, GLM, and Seedance  video generation models.'
+      },
+      billing: {
+        q1: 'Is this a monthly subscription?',
+        a1: 'No. Credits are deducted based on actual model usage. You pay for what you consume instead of paying a fixed monthly fee for unused capacity.',
+        q2: 'How is usage billed?',
+        a2: 'Text models are billed by token usage, while image, video, speech, and other multimodal models follow their provider-specific billing units such as image count, video seconds, or audio duration.',
+        q3: 'Are prices transparent?',
+        a3: 'Yes. Pricing is displayed by model and billing unit. You can estimate costs before use and monitor actual consumption in your account dashboard.',
+        q4: 'Can teams share credits?',
+        a4: 'Yes. Team and enterprise usage can be managed through shared quota pools, permission controls, and usage analytics so spending remains predictable.'
+      },
+      integration: {
+        q1: 'Is it compatible with the OpenAI API?',
+        a1: 'Yes. The gateway is fully compatible with the OpenAI API format. In most cases, you only need to replace the base URL and API key to start calling models.',
+        q2: 'How much migration work is required?',
+        a2: 'For existing OpenAI-compatible clients, migration is usually one line of configuration. SDKs, agents, and workflow tools can continue using familiar request formats.',
+        q3: 'Do you support failover and smart routing?',
+        a3: 'Yes. We use multi-provider routing, load balancing, and failover strategies to improve availability and reduce disruptions from single upstream limits.',
+        q4: 'Can it be used in production systems?',
+        a4: 'Yes. The gateway is designed for production usage with standardized APIs, high availability routing, usage observability, and enterprise-oriented compliance practices.'
+      }
     },
     // Comparison section
     comparison: {
@@ -122,22 +219,22 @@ export default {
       review1: {
         text: 'Three Router significantly improved my programming efficiency. The API response speed is fast, making daily development much smoother.',
         name: 'David Z.',
-        role: 'Full-stack Engineer @ Large Internet Company'
+        role: 'Full-stack Engineer   Large Internet Company'
       },
       review2: {
         text: 'The pay-as-you-go design is very practical. Even during peak development periods, we don\'t worry about resource shortages. Customer service response is also timely.',
         name: 'Michael L.',
-        role: 'Tech Lead @ Unicorn Enterprise'
+        role: 'Tech Lead   Unicorn Enterprise'
       },
       review3: {
         text: 'The usage process and billing are very clear. Customer service response is fast. The overall experience is worry-free.',
         name: 'Emily W.',
-        role: 'AI Product Manager @ Top Tech Company'
+        role: 'AI Product Manager   Top Tech Company'
       },
       review4: {
         text: 'Professional service is really great. Problems are solved quickly. API calls and response speed are very helpful.',
         name: 'James C.',
-        role: 'Frontend Architect @ Lifestyle Service Platform'
+        role: 'Frontend Architect   Lifestyle Service Platform'
       },
       review5: {
         text: 'As an independent developer, this service saved me a lot of costs. The overall experience is stable, and daily development rarely has interruptions.',
@@ -147,47 +244,47 @@ export default {
       review6: {
         text: 'Team collaboration features are very practical. We can share quotas and manage member permissions uniformly, saving a lot of communication costs.',
         name: 'Robert Z.',
-        role: 'CTO @ Startup Company'
+        role: 'CTO   Startup Company'
       },
       review7: {
         text: 'The platform is intelligently designed. Even during peak hours, there\'s no lag. The client experience is very polished.',
         name: 'Alice S.',
-        role: 'Algorithm Engineer @ Social Media Platform'
+        role: 'Algorithm Engineer   Social Media Platform'
       },
       review8: {
         text: 'Pricing is transparent with no hidden fees. Technical support is professional and solves problems quickly. Highly recommended!',
         name: 'Kevin Z.',
-        role: 'Backend Engineer @ E-commerce Platform'
+        role: 'Backend Engineer   E-commerce Platform'
       },
       review9: {
         text: 'The enterprise version\'s team management and data security capabilities are very practical. The service support gives us peace of mind.',
         name: 'William W.',
-        role: 'R&D Director @ FinTech Company'
+        role: 'R&D Director   FinTech Company'
       },
       review10: {
         text: 'API documentation is very detailed, making integration very convenient. Customer service attitude is also great, answering all questions.',
         name: 'Richard Z.',
-        role: 'Technical Director @ Online Education Platform'
+        role: 'Technical Director   Online Education Platform'
       },
       review11: {
         text: 'I\'ve used many relay services, and this one is the most stable. Fast response speed and high success rate. Very satisfied!',
         name: 'Thomas W.',
-        role: 'Product Lead @ Smart Hardware Company'
+        role: 'Product Lead   Smart Hardware Company'
       },
       review12: {
         text: 'Great cost-performance ratio, much cheaper than buying official services directly. Customer service responds quickly, technical support is professional.',
         name: 'Daniel L.',
-        role: 'Technical VP @ Healthcare Company'
+        role: 'Technical VP   Healthcare Company'
       },
       review13: {
         text: 'Service is stable and reliable, I\'ve been using it for over half a year. Customer service can solve problems promptly when issues arise. Recommended to my team.',
         name: 'Christopher Y.',
-        role: 'Technical Manager @ Game Development Company'
+        role: 'Technical Manager   Game Development Company'
       },
       review14: {
         text: 'API calls are simple and convenient, documentation is also very complete. Both stability and speed are excellent. Will continue to use it.',
         name: 'Joseph H.',
-        role: 'Full-stack Developer @ FinTech Company'
+        role: 'Full-stack Developer   FinTech Company'
       }
     },
     footer: {
@@ -4393,9 +4490,9 @@ export default {
       batchAdd: 'Quick Add',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
-        "Enter one proxy per line in the following formats:\nsocks5://user:pass@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass@proxy.example.com:443",
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass\@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass\@proxy.example.com:443",
       batchInputHint:
-        "Supports http, https, socks5 protocols. Format: protocol://[user:pass@]host:port",
+        "Supports http, https, socks5 protocols. Format: protocol://[user:pass\@]host:port",
       parsedCount: '{count} valid',
       invalidCount: '{count} invalid',
       duplicateCount: '{count} duplicate',
@@ -5634,8 +5731,8 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, @qq.com, @gmail.com, *.edu.cn)",
-        emailSuffixWhitelistPlaceholder: "@example.com, *.edu.cn",
+          "Only email addresses from the specified domains can register (for example, \@qq.com, \@gmail.com, *.edu.cn)",
+        emailSuffixWhitelistPlaceholder: "\@example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
@@ -6200,14 +6297,14 @@ export default {
         port: 'SMTP Port',
         portPlaceholder: '587',
         username: 'SMTP Username',
-        usernamePlaceholder: "your-email@gmail.com",
+        usernamePlaceholder: "your-email\@gmail.com",
         password: 'SMTP Password',
         passwordPlaceholder: '********',
         passwordHint: 'Leave empty to keep existing password',
         passwordConfiguredPlaceholder: '********',
         passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
         fromEmail: 'From Email',
-        fromEmailPlaceholder: "noreply@example.com",
+        fromEmailPlaceholder: "noreply\@example.com",
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
@@ -6217,7 +6314,7 @@ export default {
         title: 'Send Test Email',
         description: 'Send a test email to verify your SMTP configuration',
         recipientEmail: 'Recipient Email',
-        recipientEmailPlaceholder: "test@example.com",
+        recipientEmailPlaceholder: "test\@example.com",
         sendTestEmail: 'Send Test Email',
         sending: 'Sending...',
         enterRecipientHint: 'Please enter a recipient email address'
