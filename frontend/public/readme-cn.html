@@ -429,7 +429,7 @@
                         <div style="font-size: 20px; font-weight: 700;">🎯 指定模型模式</div>
                         <div style="font-size: 13px; color: #475569; margin: 8px 0;">固定调用预设模型</div>
                         <div class="badge-fixed">确定性优先</div>
-                        <div style="font-size: 12px; color: #64748b; margin-top: 12px;">所有请求统一使用指定模型（如GPT-5、GLM-5.1等），适合需要固定输出特征的场景</div>
+                        <div style="font-size: 12px; color: #64748b; margin-top: 12px;">所有请求统一使用指定模型（如GPT-5.5、Claude Opus 4.8等），适合需要固定输出特征的场景</div>
                     </div>
                 </div>
                 
@@ -441,7 +441,7 @@
                     <br>
                     <span style="color:#94a3b8"># 一键切换策略（无需修改任何代码）</span><br>
                     [ ] 固定模型: <select style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:2px 8px;">
-                        <option>GPT-5</option><option>Claude Opus 4.6</option><option selected>GLM-5.1</option>
+                        <option>GPT-5.5</option><option>Claude Opus 4.8</option><option selected>GLM-5.1</option>
                     </select><br>
                     [✅] <span style="color:#86efac;">智能路由（推荐）</span> - 自动优化成本，质量稳定<br>
                     <br>
@@ -464,7 +464,7 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "翻译商品描述"}]
 )
 
-<span style="color:#94a3b8"># 指定模型模式：固定使用您预设的模型（如GPT-5）</span>
+<span style="color:#94a3b8"># 指定模型模式：固定使用您预设的模型（如GPT-5.5）</span>
 <span style="color:#94a3b8"># 同一段代码，无需任何修改，策略在后台一键切换</span></code></pre>
         </div>
 
@@ -481,7 +481,7 @@ response = client.chat.completions.create(
                         <tr><td class="highlight">L2</td><td>14B-32B</td><td>内容生成、翻译、客服回复</td><td>Qwen3-32B</td><td class="price-save">$0.05</td></tr>
                         <tr><td class="highlight">L3</td><td>32B-70B</td><td>复杂推理、代码生成</td><td>GLM-5.1</td><td class="price-save">$0.15</td></tr>
                         <tr><td class="highlight">L4</td><td>70B-235B</td><td>高级分析、长文档理解</td><td>Kimi K2.6</td><td class="price-save">$0.30</td></tr>
-                        <tr><td class="highlight">L5</td><td>235B+</td><td>最复杂任务、深度推理</td><td>DeepSeek V4 / GPT-5</td><td>$1.10</td></tr>
+                        <tr><td class="highlight">L5</td><td>235B+</td><td>最复杂任务、深度推理</td><td>DeepSeek V4-Pro / GPT-5.5</td><td>$1.10</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -492,16 +492,17 @@ response = client.chat.completions.create(
 
         <section id="why">
             <h2>市场背景：模型性能趋同，价格分化加剧</h2>
-            <div class="section-sub">顶级开源模型性能已逼近闭源模型，但价格差距高达5-18倍。</div>
+            <div class="section-sub">顶级开源模型性能已逼近闭源模型，但价格差距高达36倍。</div>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>模型</th><th>Intelligence 排名</th><th>价格 ($/M输入)</th><th>相对于最高价</th></tr></thead>
+                    <thead><tr><th>模型</th><th>能力定位</th><th>价格 ($/M输入)</th><th>相对于最高价</th></tr></thead>
                     <tbody>
-                        <tr><td>GPT-5 (high)</td><td>#1</td><td>$5.00</td><td>基准</td></tr>
-                        <tr><td>Claude Opus 4.6</td><td>#3</td><td>$5.00</td><td>基准</td></tr>
-                        <tr><td>GLM-5.1</td><td>#4（开源第1）</td><td class="price-save">$1.00</td><td class="price-save">降低80%</td></tr>
-                        <tr><td>Kimi K2.6</td><td>代码能力追平GPT-5.4</td><td class="price-save">$1.20</td><td class="price-save">降低76%</td></tr>
-                        <tr><td>DeepSeek V4</td><td>即将发布</td><td class="price-save">~$0.30</td><td class="price-save">降低94%</td></tr>
+                        <tr><td>GPT-5.5</td><td>OpenAI 最新旗舰</td><td>$5.00</td><td>基准</td></tr>
+                        <tr><td>Claude Opus 4.8</td><td>Anthropic 最新旗舰，SWE-bench Pro 69.2%</td><td>$5.00</td><td>基准</td></tr>
+                        <tr><td>GLM-5.1</td><td>智谱旗舰，SWE-bench第一梯队</td><td class="price-save">$1.40</td><td class="price-save">降低72%</td></tr>
+                        <tr><td>Kimi K2.6</td><td>开源SOTA，SWE-Bench Pro 58.6分</td><td class="price-save">$0.95</td><td class="price-save">降低81%</td></tr>
+                        <tr><td>DeepSeek V4-Flash</td><td>性价比之王，284B MoE</td><td class="price-save">$0.14</td><td class="price-save">降低97%</td></tr>
+                        <tr><td>DeepSeek V4-Pro</td><td>旗舰推理，Codeforces #1</td><td class="price-save">$0.42</td><td class="price-save">降低92%</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -520,7 +521,7 @@ response = client.chat.completions.create(
         <section>
             <div class="kpi-row">
                 <div class="kpi-item"><div class="kpi-number">40-80%</div><div class="kpi-label">智能路由平均成本降幅</div></div>
-                <div class="kpi-item"><div class="kpi-number">5-18x</div><div class="kpi-label">模型间价格差距倍数</div></div>
+                <div class="kpi-item"><div class="kpi-number">36x</div><div class="kpi-label">模型间价格差距倍数</div></div>
                 <div class="kpi-item"><div class="kpi-number">30%+</div><div class="kpi-label">标准版较官方定价降幅</div></div>
                 <div class="kpi-item"><div class="kpi-number">16.9T</div><div class="kpi-label">行业周Token处理量（2026.3）</div></div>
             </div>
@@ -533,9 +534,9 @@ response = client.chat.completions.create(
                 <table>
                     <thead><tr><th>版本</th><th>适用模型</th><th>价格 (输入/百万tokens)</th><th>说明</th></tr></thead>
                     <tbody>
-                        <tr><td class="highlight">标准版</td><td>DeepSeek V4 / GLM-5.1 / Kimi K2.6</td><td class="price-save">$0.22 – 0.87</td><td>较官方定价降低30%以上，适用于无跨境合规需求的通用场景</td></tr>
-                        <tr><td class="highlight">合规版</td><td>DeepSeek V4 / GLM-5.1 / Kimi K2.6</td><td>$0.38 – 1.50</td><td>含审计日志、EU AI Act合规标签，较官方定价上浮约20%</td></tr>
-                        <tr><td class="highlight">旗舰模型</td><td>GPT-5 / Claude Opus 4.6</td><td>$5.00 – 5.80</td><td>支持智能路由与合规审计</td></tr>
+                        <tr><td class="highlight">标准版</td><td>DeepSeek V4-Flash/V4-Pro / GLM-5.1 / Kimi K2.6</td><td class="price-save">$0.10 – 1.00</td><td>较官方定价降低30%以上，适用于无跨境合规需求的通用场景</td></tr>
+                        <tr><td class="highlight">合规版</td><td>DeepSeek V4-Flash/V4-Pro / GLM-5.1 / Kimi K2.6</td><td>$0.17 – 1.70</td><td>含审计日志、EU AI Act合规标签，较官方定价上浮约20%</td></tr>
+                        <tr><td class="highlight">旗舰模型</td><td>GPT-5.5 / Claude Opus 4.8</td><td>$5.00 – 5.80</td><td>支持智能路由与合规审计</td></tr>
                     </tbody>
                 </table>
             </div>
