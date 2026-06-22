@@ -69,7 +69,7 @@ import type { CustomMenuItem } from '@/types'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
@@ -78,7 +78,7 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 const currentYear = computed(() => new Date().getFullYear())
 const siteName = computed(() => appStore.siteName)
 const contactInfo = computed(() => appStore.contactInfo)
-const currentLang = computed(() => (localStorage.getItem('sub2api_locale') as 'zh' | 'en') || 'en')
+const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 const customMenuItems = computed<CustomMenuItem[]>(() => {
   const settings = appStore.cachedPublicSettings
   if (!settings || !settings.custom_menu_items) return []

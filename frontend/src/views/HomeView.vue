@@ -64,7 +64,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
+    <main class="relative z-10 flex-1 px-6  pt-16">
       <div class="mx-auto flex max-w-7xl flex-col">
         <!-- Hero Section -->
         <div class="mb-16 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
@@ -941,14 +941,14 @@ import type { CustomMenuItem } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import LogoSvg from '@/assets/icons/logo.svg'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const router = useRouter()
 const appStore = useAppStore()
 
 const isDark = ref(false)
 const currentYear = computed(() => new Date().getFullYear())
-const currentLang = ref<'zh' | 'en'>((localStorage.getItem('sub2api_locale') as 'zh' | 'en') || 'en')
+const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 
 // Get public settings
 const contactInfo = computed(() => appStore.contactInfo)
@@ -967,7 +967,6 @@ function toggleTheme() {
 
 function toggleLanguage() {
   const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
-  currentLang.value = newLang
   setLocale(newLang)
 }
 

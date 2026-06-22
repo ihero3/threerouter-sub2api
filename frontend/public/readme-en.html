@@ -469,38 +469,39 @@ response = client.chat.completions.create(
 
         <section id="models">
             <h2>L1-L5 Smart Routing Tiers</h2>
-            <div class="section-sub">Automatically matches models based on task complexity, achieving optimal cost without compromising quality.</div>
+            <div class="section-sub">Automatically matches models based on task complexity, optimizing cost while preserving output quality.</div>
             <div class="table-wrapper">
                 <table>
                     <thead>
                         <tr><th>Tier</th><th>Model Size</th><th>Use Cases</th><th>Representative Models</th><th>Cost (Input per M tokens)</th></tr>
                     </thead>
                     <tbody>
-                        <tr><td class="highlight">L1</td><td>7B-14B</td><td>Text classification, summarization, keyword extraction</td><td>Qwen3-8B</td><td class="price-save">$0.01</td></tr>
+                        <tr><td class="highlight">L1</td><td>7B-14B</td><td>Text classification, summary extraction, keyword recognition</td><td>Qwen3-8B</td><td class="price-save">$0.01</td></tr>
                         <tr><td class="highlight">L2</td><td>14B-32B</td><td>Content generation, translation, customer service replies</td><td>Qwen3-32B</td><td class="price-save">$0.05</td></tr>
                         <tr><td class="highlight">L3</td><td>32B-70B</td><td>Complex reasoning, code generation</td><td>GLM-5.1</td><td class="price-save">$0.15</td></tr>
-                        <tr><td class="highlight">L4</td><td>70B-235B</td><td>Advanced analysis, long document understanding</td><td>Kimi K2.6</td><td class="price-save">$0.30</td></tr>
-                        <tr><td class="highlight">L5</td><td>235B+</td><td>Most complex tasks, deep reasoning</td><td>DeepSeek V4 / GPT-5</td><td>$1.10</td></tr>
+                        <tr><td class="highlight">L4</td><td>70B-235B</td><td>Advanced analysis, long-document understanding</td><td>Kimi K2.6</td><td class="price-save">$0.30</td></tr>
+                        <tr><td class="highlight">L5</td><td>235B+</td><td>Most complex tasks, deep reasoning</td><td>DeepSeek V4-Pro / GPT-5.5</td><td>$1.10</td></tr>
                     </tbody>
                 </table>
             </div>
             <div class="quote-box">
-                📊 <strong>Validation</strong>: A cross-border e-commerce platform processes 80 million monthly API calls, of which 72% are customer service translations and product summaries. ThreeRouter's smart routing automatically routes these requests to L1/L2 tiers, reducing monthly costs from $42,000 to $16,800 — a 80% reduction, with stable output quality.
+                📊 <strong>Validation</strong>: A cross-border e-commerce platform processes 80 million monthly API calls, of which 72% are customer service translation and product summary requests. ThreeRouter smart routing automatically assigns these requests to L1/L2 tiers, reducing monthly costs from $42,000 to $16,800 — an 80% reduction — while keeping output quality stable.
             </div>
         </section>
 
         <section id="why">
-            <h2>Market Context: Converging Performance, Diverging Prices</h2>
-            <div class="section-sub">Top open-source models now approach closed-source performance, yet price gaps reach 5-18x.</div>
+            <h2>Market Background: Model Performance Converges, Price Divergence Intensifies</h2>
+            <div class="section-sub">Top open-source models now approach closed-source model performance, while price gaps reach up to 36x.</div>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Model</th><th>Intelligence Rank</th><th>Price ($/M input)</th><th>vs Highest Price</th></tr></thead>
+                    <thead><tr><th>Model</th><th>Capability Positioning</th><th>Price ($/M input)</th><th>Relative to Highest Price</th></tr></thead>
                     <tbody>
-                        <tr><td>GPT-5 (high)</td><td>#1</td><td>$5.00</td><td>Baseline</td></tr>
-                        <tr><td>Claude Opus 4.6</td><td>#3</td><td>$5.00</td><td>Baseline</td></tr>
-                        <tr><td>GLM-5.1</td><td>#4 (#1 open source)</td><td class="price-save">$1.00</td><td class="price-save">80% lower</td></tr>
-                        <tr><td>Kimi K2.6</td><td>Code matches GPT-5.4</td><td class="price-save">$1.20</td><td class="price-save">76% lower</td></tr>
-                        <tr><td>DeepSeek V4</td><td>Launching soon</td><td class="price-save">~$0.30</td><td class="price-save">94% lower</td></tr>
+                        <tr><td>GPT-5.5</td><td>OpenAI latest flagship</td><td>$5.00</td><td>Baseline</td></tr>
+                        <tr><td>Claude Opus 4.8</td><td>Anthropic latest flagship, SWE-bench Pro 69.2%</td><td>$5.00</td><td>Baseline</td></tr>
+                        <tr><td>GLM-5.1</td><td>Zhipu flagship, SWE-bench first tier</td><td class="price-save">$1.40</td><td class="price-save">72% lower</td></tr>
+                        <tr><td>Kimi K2.6</td><td>Open-source SOTA, SWE-Bench Pro 58.6</td><td class="price-save">$0.95</td><td class="price-save">81% lower</td></tr>
+                        <tr><td>DeepSeek V4-Flash</td><td>Best value, 284B MoE</td><td class="price-save">$0.14</td><td class="price-save">97% lower</td></tr>
+                        <tr><td>DeepSeek V4-Pro</td><td>Flagship reasoning, Codeforces #1</td><td class="price-save">$0.42</td><td class="price-save">92% lower</td></tr>
                     </tbody>
                 </table>
             </div>
