@@ -138,7 +138,7 @@
                   <div class="code-line line-4">
                     <span class="code-indent"></span>
                     <span class="code-key">"model":</span>
-                    <span class="code-string">"stabledream-5.0",</span>
+                    <span class="code-string">"deepseek-v4-pro",</span>
                   </div>
                   <div class="code-line line-5">
                     <span class="code-indent"></span>

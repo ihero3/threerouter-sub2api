@@ -178,6 +178,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/models',
     name: 'PublicModels',
+    component: { render: () => null },
     beforeEnter() {
       window.location.replace('https://api.threerouter.com/models')
       return false
