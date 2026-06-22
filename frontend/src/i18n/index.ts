@@ -28,10 +28,9 @@ export const i18n = createI18n({
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false,
-  // 禁用 ICU 消息格式，避免 '@' 符号被误解析
-  formatFallbackMessages: false,
-  messageFormat: false,
-  compiler: false
+  // 禁用 ICU 消息编译器，使用基础插值模式（{变量}）
+  // 避免 '@' 符号被误解析为 linked message 语法
+  messageCompiler: false
 })
 
 const loadedLocales = new Set<LocaleCode>()
