@@ -1485,6 +1485,13 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 	}
+
+	// AtlasCloud uses a non-standard async /api/v1/model/generateImage endpoint.
+	// Route to its dedicated test path so we don't hit 404 on /v1/images/generations.
+	if isAtlasCloudImagesAccount(account, modelID) {
+		return s.testAtlasCloudImageConnection(c, ctx, account, modelID, prompt, normalizedBaseURL, authToken)
+	}
+
 	apiURL := buildOpenAIImagesURL(normalizedBaseURL, openAIImagesGenerationsEndpoint)
 
 	// Set SSE headers
@@ -1565,6 +1572,84 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 }
 
 // testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
+// testAtlasCloudImageConnection tests an AtlasCloud image generation account.
+func (s *AccountTestService) testAtlasCloudImageConnection(
+	c *gin.Context,
+	ctx context.Context,
+	account *Account,
+	modelID, prompt string,
+	baseURL, authToken string,
+) error {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	atlasReq := map[string]any{
+		"model":  modelID,
+		"prompt": prompt,
+	}
+	reqBody, _ := json.Marshal(atlasReq)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read response: %s", err.Error()))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	var result struct {
+		Code int `json:"code"`
+		Data struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			URLs   struct {
+				Get string `json:"get"`
+			} `json:"urls"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
+	}
+	if result.Code != 0 && result.Code != 200 {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("AtlasCloud returned code %d", result.Code))
+	}
+	if result.Data.ID == "" {
+		return s.sendErrorAndEnd(c, "AtlasCloud did not return a prediction ID")
+	}
+
+	s.sendEvent(c, TestEvent{
+		Type:    "content",
+		Text:    fmt.Sprintf("AtlasCloud image generation endpoint is reachable. Prediction ID: %s, status: %s", result.Data.ID, result.Data.Status),
+	})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	authToken := account.GetOpenAIAccessToken()
 	if authToken == "" {
