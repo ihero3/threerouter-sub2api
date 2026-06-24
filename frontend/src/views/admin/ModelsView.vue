@@ -90,7 +90,6 @@ const models = ref<Model[]>([
   { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', vendor: 'alibaba', category: 'text', icon: '' },
   { id: '5', name: 'glm-5.2', provider: 'GLM-5.1 is Zhipu AI’s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.', vendor: 'zhipu', category: 'text', icon: '' },
   { id: '6', name: 'seedance-2.0', provider: 'Seedance 2.0 is ByteDance\'s advanced multimodal model with strong capabilities in text generation and image understanding.', vendor: 'bytedance', category: 'multimodal', icon: '' },
-  { id: '7', name: 'gpt-5.6', provider: 'GPT-5.6 is OpenAI\'s latest flagship model with enhanced reasoning capabilities and support for multi-turn conversations.', vendor: 'openai', category: 'text', icon: '' },
   { id: '8', name: 'gpt-image-2', provider: 'GPT-Image-2 (ChatGPT Images 2.0), launched by OpenAI in April 2026, is a flagship image model with reasoning, accurate Chinese rendering, high-res output and batch generation。', vendor: 'openai', category: 'image', icon: '' },
   { id: '9', name: '', provider: '', vendor: 'hint', category: 'hint', icon: '' },
 ])
