@@ -85,15 +85,6 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	chatBody = normalizeOpenAIChatMessagesContentToString(chatBody)
 
-	logger.L().Info("openai messages: forwarding via raw chat completions (CC fallback)",
-		zap.Int64("account_id", account.ID),
-		zap.String("account_name", account.Name),
-		zap.String("original_model", originalModel),
-		zap.String("billing_model", billingModel),
-		zap.String("upstream_model", upstreamModel),
-		zap.Bool("stream", clientStream),
-	)
-
 	apiKey := account.GetOpenAIApiKey()
 	if apiKey == "" {
 		return nil, fmt.Errorf("account %d missing api_key", account.ID)
@@ -106,6 +97,19 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("invalid base_url: %w", err)
 	}
+
+	logger.L().Info("openai messages: forwarding via raw chat completions (CC fallback)",
+		zap.Int64("account_id", account.ID),
+		zap.String("account_name", account.Name),
+		zap.String("original_model", originalModel),
+		zap.String("billing_model", billingModel),
+		zap.String("upstream_model", upstreamModel),
+		zap.Bool("stream", clientStream),
+		zap.String("upstream_url", buildOpenAIChatCompletionsURL(validatedURL)),
+		zap.String("upstream_body_preview", truncateString(string(chatBody), 800)),
+	)
+
+	_ = apiKey
 	targetURL := buildOpenAIChatCompletionsURL(validatedURL)
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
