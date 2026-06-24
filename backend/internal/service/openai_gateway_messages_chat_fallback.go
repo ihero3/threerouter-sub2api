@@ -65,7 +65,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 
 	chatReq.Model = upstreamModel
-	chatReq.Stream = true
+	chatReq.Stream = clientStream
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -85,8 +85,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	chatBody = normalizeOpenAIChatMessagesContentToString(chatBody)
 
-	logger.L().Debug("openai messages: forwarding via raw chat completions (CC fallback)",
+	logger.L().Info("openai messages: forwarding via raw chat completions (CC fallback)",
 		zap.Int64("account_id", account.ID),
+		zap.String("account_name", account.Name),
 		zap.String("original_model", originalModel),
 		zap.String("billing_model", billingModel),
 		zap.String("upstream_model", upstreamModel),
@@ -212,6 +213,12 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 
 	var ccResp apicompat.ChatCompletionsResponse
 	if err := json.Unmarshal(respBody, &ccResp); err != nil {
+		logger.L().Warn("openai messages CC fallback: failed to parse upstream response as ChatCompletions",
+			zap.String("request_id", requestID),
+			zap.String("upstream_model", upstreamModel),
+			zap.String("upstream_body_preview", truncateString(string(respBody), 1000)),
+			zap.Error(err),
+		)
 		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")
 		return nil, fmt.Errorf("parse chat completions response: %w", err)
 	}
