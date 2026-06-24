@@ -169,18 +169,22 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		return nil, err
 	}
 
-	// Parse ID token to get user info
 	var userInfo *openai.UserInfo
 	if tokenResp.IDToken != "" {
-		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
-		if parseErr != nil {
-			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+		claims, verifyErr := openai.VerifyAndParseIDToken(ctx, tokenResp.IDToken)
+		if verifyErr != nil {
+			slog.Warn("openai_oauth_id_token_jwks_verify_failed", "error", verifyErr)
+			claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
+			if parseErr != nil {
+				slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+			} else {
+				userInfo = claims.GetUserInfo()
+			}
 		} else {
 			userInfo = claims.GetUserInfo()
 		}
 	}
 
-	// Delete session after successful exchange
 	s.sessionStore.Delete(input.SessionID)
 
 	tokenInfo := &OpenAITokenInfo{
@@ -217,12 +221,17 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		return nil, err
 	}
 
-	// Parse ID token to get user info
 	var userInfo *openai.UserInfo
 	if tokenResp.IDToken != "" {
-		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
-		if parseErr != nil {
-			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+		claims, verifyErr := openai.VerifyAndParseIDToken(ctx, tokenResp.IDToken)
+		if verifyErr != nil {
+			slog.Warn("openai_oauth_id_token_jwks_verify_failed", "error", verifyErr)
+			claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
+			if parseErr != nil {
+				slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+			} else {
+				userInfo = claims.GetUserInfo()
+			}
 		} else {
 			userInfo = claims.GetUserInfo()
 		}

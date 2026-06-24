@@ -583,6 +583,12 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
 		return nil, err
 	}
+	// AtlasCloud uses a non-standard /api/v1/model/generateImage endpoint that
+	// returns an async prediction task. Delegate to the dedicated adapter so
+	// the standard OpenAI image forwarding path below remains untouched.
+	if isAtlasCloudImagesAccount(account, upstreamModel) {
+		return s.forwardAtlasCloudImages(ctx, c, account, body, parsed, requestModel, upstreamModel)
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
 		"[OpenAI] Images request routing request_model=%s upstream_model=%s endpoint=%s account_type=%s",
