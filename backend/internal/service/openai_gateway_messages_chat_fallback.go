@@ -85,6 +85,8 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	chatBody = normalizeOpenAIChatMessagesContentToString(chatBody)
 
+	chatBody = stripUnsupportedChatCompletionsFields(chatBody)
+
 	apiKey := account.GetOpenAIApiKey()
 	if apiKey == "" {
 		return nil, fmt.Errorf("account %d missing api_key", account.ID)
@@ -407,4 +409,18 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnected,
 	}, nil
+}
+
+func stripUnsupportedChatCompletionsFields(body []byte) []byte {
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	delete(m, "reasoning_effort")
+	delete(m, "stream_options")
+	stripped, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return stripped
 }
