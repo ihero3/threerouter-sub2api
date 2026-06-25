@@ -3,8 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -327,7 +329,9 @@ func (s *OpenAIGatewayService) pollAtlasCloudImageTask(
 }
 
 // buildAtlasCloudOpenAIResponse converts the AtlasCloud task result into an an
-// OpenAI-compatible images/generations response.
+// OpenAI-compatible images/generations response. It downloads each generated
+// image from the AtlasCloud CDN and encodes it as base64 so that clients can
+// use the image without worrying about OSS referer/browser 403 issues.
 func buildAtlasCloudOpenAIResponse(requestedModel string, task *atlasCloudImageTask) openAIImagesGenerationsResponse {
 	resp := openAIImagesGenerationsResponse{
 		Created: time.Now().Unix(),
@@ -335,20 +339,62 @@ func buildAtlasCloudOpenAIResponse(requestedModel string, task *atlasCloudImageT
 	}
 
 	for _, out := range collectAtlasCloudImageOutputs(task) {
-		item := openAIImagesGenerationData{}
-		if out.URL != "" {
-			item.URL = out.URL
-		} else if out.ImageURL != "" {
-			item.URL = out.ImageURL
-		} else if out.B64JSON != "" {
-			item.B64JSON = out.B64JSON
+		imageURL := out.URL
+		if imageURL == "" {
+			imageURL = out.ImageURL
 		}
-		if item.URL != "" || item.B64JSON != "" {
-			resp.Data = append(resp.Data, item)
+		if imageURL == "" {
+			continue
 		}
+
+		b64, err := downloadAtlasCloudImageAsBase64(imageURL)
+		if err != nil {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] AtlasCloud image download failed: %v", err)
+			// Fall back to returning the raw URL. This still works for some clients
+			// and is better than losing the result.
+			resp.Data = append(resp.Data, openAIImagesGenerationData{URL: imageURL})
+			continue
+		}
+
+		resp.Data = append(resp.Data, openAIImagesGenerationData{B64JSON: b64})
 	}
 
 	return resp
+}
+
+const atlasCloudMaxImageDownloadBytes = 20 << 20 // 20MB
+
+// downloadAtlasCloudImageAsBase64 downloads an image from the AtlasCloud CDN
+// and returns it as a base64 encoded string.
+func downloadAtlasCloudImageAsBase64(imageURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, imageURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("download image returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, atlasCloudMaxImageDownloadBytes))
+	if err != nil {
+		return "", err
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty image response")
+	}
+
+	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 func collectAtlasCloudImageOutputs(task *atlasCloudImageTask) []atlasCloudImageOutput {
