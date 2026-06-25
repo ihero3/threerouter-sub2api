@@ -459,8 +459,8 @@ func isOpenAIImageGenerationModel(model string) bool {
 	if strings.HasPrefix(model, "gpt-image-") {
 		return true
 	}
-	if idx := strings.LastIndex(model, "/"); idx >= 0 {
-		return strings.HasPrefix(model[idx+1:], "image")
+	if strings.Contains(model, "image") {
+		return true
 	}
 	return false
 }

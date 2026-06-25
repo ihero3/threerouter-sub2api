@@ -58,7 +58,8 @@ const (
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
 func isOpenAIImageModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(m, "gpt-image-") || strings.Contains(m, "gpt-image") || strings.Contains(m, "dall-e") || strings.Contains(m, "image")
 }
 
 // AccountTestService handles account testing operations
