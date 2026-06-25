@@ -51,13 +51,13 @@ type atlasCloudGenerateResponse struct {
 
 // atlasCloudImageTask is the nested task object returned by AtlasCloud.
 type atlasCloudImageTask struct {
-	ID      string                `json:"id"`
-	Model   string                `json:"model"`
-	Status  string                `json:"status"`
-	Error   string                `json:"error"`
-	URLs    atlasCloudTaskURLs    `json:"urls"`
-	Outputs []atlasCloudImageOutput `json:"outputs"`
-	Output  *atlasCloudImageOutput  `json:"output"`
+	ID      string               `json:"id"`
+	Model   string               `json:"model"`
+	Status  string               `json:"status"`
+	Error   string               `json:"error"`
+	URLs    atlasCloudTaskURLs   `json:"urls"`
+	Outputs json.RawMessage      `json:"outputs"`
+	Output  *atlasCloudImageOutput `json:"output"`
 }
 
 type atlasCloudTaskURLs struct {
@@ -356,9 +356,37 @@ func collectAtlasCloudImageOutputs(task *atlasCloudImageTask) []atlasCloudImageO
 		return nil
 	}
 	var out []atlasCloudImageOutput
-	out = append(out, task.Outputs...)
+	out = append(out, parseAtlasCloudImageOutputs(task.Outputs)...)
 	if task.Output != nil {
 		out = append(out, *task.Output)
 	}
 	return out
+}
+
+// parseAtlasCloudImageOutputs handles multiple possible shapes of the AtlasCloud
+// `outputs` field: an array of objects, an array of URL strings, or omitted.
+func parseAtlasCloudImageOutputs(raw json.RawMessage) []atlasCloudImageOutput {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	// Try object array first.
+	var objOutputs []atlasCloudImageOutput
+	if err := json.Unmarshal(raw, &objOutputs); err == nil {
+		return objOutputs
+	}
+
+	// Fall back to string array (URL list).
+	var strOutputs []string
+	if err := json.Unmarshal(raw, &strOutputs); err == nil {
+		out := make([]atlasCloudImageOutput, 0, len(strOutputs))
+		for _, url := range strOutputs {
+			if url = strings.TrimSpace(url); url != "" {
+				out = append(out, atlasCloudImageOutput{URL: url})
+			}
+		}
+		return out
+	}
+
+	return nil
 }
