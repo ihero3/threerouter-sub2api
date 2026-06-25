@@ -31,7 +31,7 @@ import (
 const (
 	atlasCloudGenerateImagePath = "/api/v1/model/generateImage"
 	atlasCloudPollInterval      = 1 * time.Second
-	atlasCloudPollTimeout       = 90 * time.Second
+	atlasCloudPollTimeout       = 180 * time.Second
 )
 
 // atlasCloudGenerateRequest is the payload sent to AtlasCloud.
@@ -224,13 +224,16 @@ func (s *OpenAIGatewayService) forwardAtlasCloudImages(
 
 	c.Data(http.StatusOK, "application/json", respBytes)
 
-	return &OpenAIForwardResult{
+	forwardResult := &OpenAIForwardResult{
 		RequestID:     resp.Header.Get("x-request-id"),
 		Model:         requestModel,
 		UpstreamModel: upstreamModel,
 		ImageCount:    len(openAIResp.Data),
+		ImageSize:     strings.TrimSpace(parsed.Size),
 		Duration:      time.Since(startTime),
-	}, nil
+	}
+	ApplyOpenAIImageBillingResolution(forwardResult)
+	return forwardResult, nil
 }
 
 // pollAtlasCloudImageTask polls the AtlasCloud prediction endpoint until the
@@ -296,6 +299,12 @@ func (s *OpenAIGatewayService) pollAtlasCloudImageTask(
 		}
 
 		status := strings.ToLower(strings.TrimSpace(pollResp.Data.Status))
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[OpenAI] AtlasCloud image poll prediction_id=%s status=%s",
+			pollResp.Data.ID,
+			pollResp.Data.Status,
+		)
 		switch status {
 		case "success", "completed":
 			return &pollResp.Data, nil
