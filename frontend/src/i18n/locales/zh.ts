@@ -41,9 +41,9 @@ export default {
         models: {
           gpt55: { name: 'GPT-5.5', capability: 'OpenAI 最新旗舰' },
           claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic 最新旗舰，SWE-bench Pro 69.2%' },
-          glm51: { name: 'GLM-5.1', capability: '智谱旗舰，SWE-bench第一梯队' },
+          glm51: { name: 'GLM-5.2', capability: '智谱旗舰，SWE-bench第一梯队' },
           kimiK26: { name: 'Kimi K2.6', capability: '开源SOTA，SWE-Bench Pro 58.6分' },
-          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: '性价比之选，284B MoE' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: '性价比之选，MoE 架构' },
           deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: '旗舰推理，Codeforces #1' },
           minimaxM3: { name: 'MiniMax-M3', capability: '1M上下文，前沿编码与原生多模态' },
           qwen37Max: { name: 'Qwen3.7-Max', capability: '阿里智能体旗舰，1M上下文' },

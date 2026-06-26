@@ -41,9 +41,9 @@ export default {
         models: {
           gpt55: { name: 'GPT-5.5', capability: 'OpenAI latest flagship' },
           claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic latest flagship, SWE-bench Pro 69.2%' },
-          glm51: { name: 'GLM-5.1', capability: 'Zhipu flagship, SWE-bench Top Tier' },
+          glm51: { name: 'GLM-5.2', capability: 'Zhipu flagship, SWE-bench Top Tier' },
           kimiK26: { name: 'Kimi K2.6', capability: 'Open-source SOTA, SWE-Bench Pro 58.6%' },
-          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: 'Best value, 284B MoE' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: 'Best value, MoE architecture' },
           deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: 'Flagship reasoning, Codeforces #1' },
           minimaxM3: { name: 'MiniMax-M3', capability: '1M context, frontier coding, native multimodality' },
           qwen37Max: { name: 'Qwen3.7-Max', capability: 'Alibaba agent flagship, 1M context' },
