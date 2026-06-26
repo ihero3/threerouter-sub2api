@@ -218,7 +218,7 @@ func (s *OpenAIGatewayService) forwardAtlasCloudImages(
 		return nil, err
 	}
 
-	openAIResp := buildAtlasCloudOpenAIResponse(requestModel, result)
+	openAIResp := buildAtlasCloudOpenAIResponse(requestModel, result, parsed.ResponseFormat)
 	respBytes, err := json.Marshal(openAIResp)
 	if err != nil {
 		return nil, fmt.Errorf("encode openai image generation response: %w", err)
@@ -329,14 +329,17 @@ func (s *OpenAIGatewayService) pollAtlasCloudImageTask(
 }
 
 // buildAtlasCloudOpenAIResponse converts the AtlasCloud task result into an an
-// OpenAI-compatible images/generations response. It downloads each generated
-// image from the AtlasCloud CDN and encodes it as base64 so that clients can
-// use the image without worrying about OSS referer/browser 403 issues.
-func buildAtlasCloudOpenAIResponse(requestedModel string, task *atlasCloudImageTask) openAIImagesGenerationsResponse {
+// OpenAI-compatible images/generations response.
+// By default it returns the original image URL. When responseFormat is
+// "b64_json", it downloads the image and returns a base64 encoded payload
+// instead, for clients that cannot access the AtlasCloud OSS URL directly.
+func buildAtlasCloudOpenAIResponse(requestedModel string, task *atlasCloudImageTask, responseFormat string) openAIImagesGenerationsResponse {
 	resp := openAIImagesGenerationsResponse{
 		Created: time.Now().Unix(),
 		Data:    []openAIImagesGenerationData{},
 	}
+
+	wantBase64 := strings.EqualFold(strings.TrimSpace(responseFormat), "b64_json")
 
 	for _, out := range collectAtlasCloudImageOutputs(task) {
 		imageURL := out.URL
@@ -344,6 +347,11 @@ func buildAtlasCloudOpenAIResponse(requestedModel string, task *atlasCloudImageT
 			imageURL = out.ImageURL
 		}
 		if imageURL == "" {
+			continue
+		}
+
+		if !wantBase64 {
+			resp.Data = append(resp.Data, openAIImagesGenerationData{URL: imageURL})
 			continue
 		}
 

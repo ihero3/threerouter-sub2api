@@ -904,6 +904,7 @@
                 <li><a href="#npm-install"><span class="icon">📦</span>npm安装教程</a></li>
                 <li><a href="#npm-install-windows" class="sub-item"><span class="icon">🪟</span>Windows系统</a></li>
                 <li><a href="#npm-install-macos" class="sub-item"><span class="icon">🍎</span>Macos/Linux系统</a></li>
+                <li><a href="#gpt-image-2"><span class="icon">🖼️</span>GPT-Image-2 图片生成</a></li>
             </ul>
         </div>
 
@@ -1922,6 +1923,62 @@ node -v # Should print "v24.15.0".
 
 # Verify npm version:
 npm -v # Should print "11.12.1".</code></pre>
+
+            <h3 id="gpt-image-2" style="margin-top: 2rem;">GPT-Image-2 图片生成</h3>
+            <p>ThreeRouter 支持通过 OpenAI 提供的 OpenAI GPT-Image-2 图片生成能力。您可以使用标准的 OpenAI <code>/v1/images/generations</code> 接口调用。</p>
+            <p><strong>支持的模型：</strong></p>
+            <ul>
+                <li><code>gpt-image-2</code> - 文生图</li>
+            </ul>
+
+            <h4>账号配置</h4>
+            <p>和别的大模型相同使用方式：</p>
+            <ul>
+                <li><strong>Base URL：</strong> <code>https://api.threerouter.com/v1/images/generations</code></li>
+                <li><strong>API Key：</strong> 您的 ThreeRouter  API key密钥</li>
+                <li><strong>模型白名单：</strong> <code>gpt-image-2</code></li>
+            </ul>
+
+            <h4>文生图示例</h4>
+            <pre><code>
+curl -X POST "https://api.threerouter.com/v1/images/generations" \
+  -H "Authorization: Bearer &lt;your-api-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a cute cat astronaut on a pastel background"
+  }'</code></pre>
+
+            <h4>返回格式</h4>
+            <p>默认返回图片 URL。由于 ThreeRouter 返回的是 OSS 链接，部分浏览器可能因 Referer 限制无法直接访问，建议在服务端下载使用。</p>
+            <pre><code>
+{
+  "created": 1234567890,
+  "data": [
+    {
+      "url": "https://atlas-img.oss-us-west-1.aliyuncs.com/images/xxx.png"
+    }
+  ]
+}</code></pre>
+
+            <h4>返回 Base64</h4>
+            <p>如果前端无法直接访问 OSS 链接，可以设置 <code>response_format</code> 为 <code>b64_json</code>，返回图片的 base64 编码：</p>
+            <pre><code>
+curl -X POST "https://api.threerouter.com/v1/images/generations" \
+  -H "Authorization: Bearer &lt;your-api-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a cute cat astronaut on a pastel background",
+    "response_format": "b64_json"
+  }'</code></pre>
+
+            <h4>注意事项</h4>
+            <ul>
+                <li>图片生成是异步任务，通常需要 30-90 秒，请耐心等待。</li>
+                <li>当前仅支持通过 <code>/v1/images/generations</code> 接口调用。</li>
+                <li>如果生图接口不接受返回值 <code>url</code>，可尝试使用 <code>response_format</code> 字段并设置为 <code>b64_json</code>，返回图片的 base64 编码。</li>
+            </ul>
         </section>
 
         <!-- Contact -->

@@ -874,6 +874,7 @@
                 <li><a href="#npm-install"><span class="icon">📦</span>npm Installation</a></li>
                 <li><a href="#npm-install-windows" class="sub-item"><span class="icon">🪟</span>Windows</a></li>
                 <li><a href="#npm-install-macos" class="sub-item"><span class="icon">🍎</span>Macos/Linux</a></li>
+                <li><a href="#gpt-image-2"><span class="icon">🖼️</span>GPT-Image-2 Image Generation</a></li>
             </ul>
         </div>
 
@@ -1874,6 +1875,64 @@ node -v # Should print "v24.15.0".
 
 # Verify npm version:
 npm -v # Should print "11.12.1".</code></pre>
+
+            <h3 id="gpt-image-2" style="margin-top: 2rem;">GPT-Image-2 Image Generation</h3>
+            <p>ThreeRouter supports OpenAI GPT-Image-2 through the OpenAI provider. You can call it using the standard OpenAI <code>/v1/images/generations</code> endpoint.</p>
+            <p><strong>Supported models:</strong></p>
+            <ul>
+                <li><code>gpt-image-2</code> - text-to-image generation</li>
+            </ul>
+
+            <h4>Account Configuration</h4>
+            <p>In the admin dashboard, add an OpenAI API Key account with these settings:</p>
+            <ul>
+                <li><strong>Base URL:</strong> <code>https://api.threerouter.com/v1</code></li>
+                <li><strong>API Key:</strong> your threerouter API key</li>
+                <li><strong>Model Whitelist:</strong> <code>gpt-image-2</code></li>
+            </ul>
+
+            <h4>Text-to-Image Example</h4>
+            <pre><code>
+curl -X POST "https://api.threerouter.com/v1/images/generations" \
+  -H "Authorization: Bearer &lt;your-api-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a cute cat astronaut on a pastel background"
+  }'</code></pre>
+
+            <h4>Response Format</h4>
+            <p>By default the response contains a URL. Some browsers may block direct access to the OpenAI OSS URL due to referer restrictions, so the URL is best used server-side.</p>
+            <pre><code>
+{
+  "created": 1234567890,
+  "data": [
+    {
+      "url": "https://atlas-img.oss-us-west-1.aliyuncs.com/images/xxx.png"
+    }
+  ]
+}</code></pre>
+
+            <h4>Returning Base64</h4>
+            <p>To receive the image as a base64 string instead, set <code>response_format</code> to <code>b64_json</code>. This is useful for front-end clients that cannot access the OSS URL directly.</p>
+            <pre><code>
+curl -X POST "https://api.threerouter.com/v1/images/generations" \
+  -H "Authorization: Bearer &lt;your-api-key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a cute cat astronaut on a pastel background",
+    "response_format": "b64_json"
+  }'</code></pre>
+
+         
+
+            <h4>Notes</h4>
+            <ul>
+                <li>Image generation is asynchronous and may take 30-90 seconds.</li>
+                <li>Only the <code>/v1/images/generations</code> endpoint is supported for image generation.</li>
+                <li>If the edit endpoint does not accept <code>url</code>, try <code>response_format=b64_json</code> with a base64 string instead.</li>
+            </ul>
         </section>
 
         <section class="section" id="contact">
