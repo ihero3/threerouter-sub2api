@@ -49,7 +49,7 @@
                         </svg>
                       </button>
                     </div>
-                    <p class="mt-1 text-sm text-gray-500">{{ model.provider }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ getProviderDescription(model.provider) }}</p>
                   </div>
                 </div>
                 <div class="mt-4 flex items-center gap-2 text-xs text-gray-400">
@@ -70,7 +70,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const copiedModel = ref<string | null>(null)
 
@@ -83,16 +83,53 @@ interface Model {
   icon: string
 }
 
+const providerDescriptions: Record<string, { en: string; zh: string }> = {
+  'deepseek-v4-pro': {
+    en: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.',
+    zh: 'DeepSeek V4 是基于 MoE 架构的前沿旗舰模型，在编码、推理和长上下文任务中表现出色，具备强大的工具调用能力。'
+  },
+  'minimax-m3': {
+    en: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.',
+    zh: 'MiniMax-M3 是前沿开源权重模型，拥有 100 万上下文、原生多模态和顶级编码/智能体能力，基于 MSA 稀疏注意力架构。'
+  },
+  'kimi-k2.7': {
+    en: 'Kimi-K2.6 is Moonshot\'s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.',
+    zh: 'Kimi-K2.6 是月之暗面的开源 MoE 旗舰模型，拥有 256K 上下文，擅长长期编码和智能体集群（300 个子智能体）处理复杂多步骤任务。'
+  },
+  'qwen3.7-max': {
+    en: 'Qwen3.7-Max is Alibaba\'s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.',
+    zh: 'Qwen3.7-Max 是阿里的智能体旗舰模型，拥有 100 万上下文、顶级编码能力和 35 小时自主执行能力，擅长复杂工作流和多框架泛化。'
+  },
+  'glm-5.2': {
+    en: 'GLM-5.1 is Zhipu AI\'s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.',
+    zh: 'GLM-5.1 是智谱 AI 的开源 MoE 旗舰模型，拥有 200K 上下文，擅长 8 小时自主智能体编码，在 SWE-Bench Pro 复杂软件工程任务中排名第一。'
+  },
+  'seedance-2.0': {
+    en: 'Contact support via ticket after recharge. Premium video models require dedicated service.',
+    zh: '充值后通过工单联系使用，好的视频模型就要专人服务。'
+  },
+  'gpt-image-2': {
+    en: 'GPT-Image-2 (ChatGPT Images 2.0), launched by OpenAI in April 2026, is a flagship image model with reasoning, accurate Chinese rendering, high-res output and batch generation.',
+    zh: 'GPT-Image-2（ChatGPT 图像 2.0）是 OpenAI 于 2026 年 4 月发布的旗舰图像模型，具备推理能力、精准的中文渲染、高分辨率输出和批量生成功能。'
+  }
+}
+
 const models = ref<Model[]>([
-  { id: '1', name: 'deepseek-v4-pro', provider: 'DeepSeek V4 is a cutting-edge MoE-based flagship model, excelling in coding, reasoning, and long-context tasks with robust tool-use capabilities for complex workflows.', vendor: 'deepseek', category: 'text', icon: '' },
-  { id: '2', name: 'minimax-m3', provider: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.', vendor: 'minimax', category: 'text', icon: '' },
-  { id: '3', name: 'kimi-k2.7', provider: 'Kimi-K2.6 is Moonshot’s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.', vendor: 'moonshot', category: 'text', icon: '' },
-  { id: '4', name: 'qwen3.7-max', provider: 'Qwen3.7-Max is Alibaba’s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.', vendor: 'alibaba', category: 'text', icon: '' },
-  { id: '5', name: 'glm-5.2', provider: 'GLM-5.1 is Zhipu AI’s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.', vendor: 'zhipu', category: 'text', icon: '' },
-  { id: '6', name: 'seedance-2.0', provider: 'Seedance 2.0 is ByteDance\'s advanced multimodal model with strong capabilities in text generation and image understanding.', vendor: 'bytedance', category: 'multimodal', icon: '' },
-  { id: '8', name: 'gpt-image-2', provider: 'GPT-Image-2 (ChatGPT Images 2.0), launched by OpenAI in April 2026, is a flagship image model with reasoning, accurate Chinese rendering, high-res output and batch generation。', vendor: 'openai', category: 'image', icon: '' },
+  { id: '1', name: 'deepseek-v4-pro', provider: 'deepseek-v4-pro', vendor: 'deepseek', category: 'text', icon: '' },
+  { id: '2', name: 'minimax-m3', provider: 'minimax-m3', vendor: 'minimax', category: 'text', icon: '' },
+  { id: '3', name: 'kimi-k2.7', provider: 'kimi-k2.7', vendor: 'moonshot', category: 'text', icon: '' },
+  { id: '4', name: 'qwen3.7-max', provider: 'qwen3.7-max', vendor: 'alibaba', category: 'text', icon: '' },
+  { id: '5', name: 'glm-5.2', provider: 'glm-5.2', vendor: 'zhipu', category: 'text', icon: '' },
+  { id: '6', name: 'seedance-2.0', provider: 'seedance-2.0', vendor: 'bytedance', category: 'multimodal', icon: '' },
+  { id: '8', name: 'gpt-image-2', provider: 'gpt-image-2', vendor: 'openai', category: 'image', icon: '' },
   { id: '9', name: '', provider: '', vendor: 'hint', category: 'hint', icon: '' },
 ])
+
+const getProviderDescription = (providerKey: string) => {
+  const desc = providerDescriptions[providerKey]
+  if (!desc) return ''
+  return locale.value === 'zh' ? desc.zh : desc.en
+}
 
 const providerStyles: Record<string, { gradient: string; icon: string }> = {
   bytedance: {

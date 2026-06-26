@@ -1,59 +1,58 @@
 export default {
   // Home Page
   home: {
-    viewOnGithub: '在 GitHub 上查看',
-    viewDocs: '查看文档',
+    viewOnGithub: 'GitHub',
+    viewDocs: '文档',
     docs: '文档',
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
-    getStarted: '立即开始',
+    getStarted: '领取 $10 ≈ 100M 免费 Tokens',
     goToDashboard: '进入控制台',
-    // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    heroDescription: '用一套 API 接入 DeepSeek、Qwen、Kimi、GLM 等中国大模型，价格仅为 GPT-5.5 的 1/33',
     tags: {
-      subscriptionToApi: '订阅转 API',
-      stickySession: '会话保持',
+      subscriptionToApi: '兼容 OpenAI',
+      stickySession: '美国节点部署',
       realtimeBilling: '按量计费'
     },
     hero: {
-      slogan: '顶尖、超高性价比的中国大模型',
+      slogan: 'DeepSeek、Qwen、Kimi、GLM — 价格仅为 GPT-5.5 的 1/33',
       title: 'Three Router',
-      subtitle: '企业级 LLM API 服务',
-      cta: '免费开始使用',
-      priceAdvantage: '我们的价格只有 36 分之一，为您降低成本 97%',
-      priceReasons: '美国本地部署 • 大厂直供',
+      subtitle: '美国本地部署，兼容你正在使用的 API。',
+      cta: '领取 $10 ≈ 100M 免费 Tokens →',
+      codeHint: '只需改一行 URL，其他代码不变。',
+      priceAdvantage: '只需 1/33 的价格。从不按原价付费。',
+      priceReasons: '美东 & 美西节点 · 云厂商直供',
       tags: {
-        discount: '所有中文 AI 模型 7 折优惠',
+        discount: 'DeepSeek V4-Pro 仅 $0.42/M',
         deployment: '美国本地部署',
-        freeTokens: '新用户获赠 100 万免费 tokens'
+        freeTokens: '新用户获赠 $10 ≈ 100M 免费 Tokens'
       },
-      // 价格对比表格
-      pricingSection: { 
+      pricingSection: {
         tableHeader: {
           title: '价格对比',
           model: '模型',
-          capability: '能力定位',
-          price: '价格 ($/M输入)',
-          relative: '相对于最高价'
+          capability: 'threerouter ($/M 输入)',
+          price: 'OpenAI ($/M 输入)',
+          relative: '节省比例'
         },
         models: {
           gpt55: { name: 'GPT-5.5', capability: 'OpenAI 最新旗舰' },
           claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic 最新旗舰，SWE-bench Pro 69.2%' },
           glm51: { name: 'GLM-5.1', capability: '智谱旗舰，SWE-bench第一梯队' },
           kimiK26: { name: 'Kimi K2.6', capability: '开源SOTA，SWE-Bench Pro 58.6分' },
-          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: '性价比之王，284B MoE' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: '性价比之选，284B MoE' },
           deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: '旗舰推理，Codeforces #1' },
           minimaxM3: { name: 'MiniMax-M3', capability: '1M上下文，前沿编码与原生多模态' },
           qwen37Max: { name: 'Qwen3.7-Max', capability: '阿里智能体旗舰，1M上下文' },
           seedance20: { name: 'Seedance-2.0', capability: '字节视频生成，电影级多模态输出' }
         },
-        baseline: '基准',
-        discount: '降低 {percent}%',
+        baseline: '基准价',
+        discount: '节省 {percent}%',
         directProcurement: '云厂商与AI平台直采',
-        directProcurementDesc: '依托领先云厂商和AI平台，提供合规、稳定、可认证追溯的AI计算分发服务。',
+        directProcurementDesc: '直接从 AWS、GCP、Azure、阿里云等官方云厂商采购。非转售，非灰色通道。提供安全团队可审计的完整溯源链路。',
         enterpriseBadge: '企业合规网关',
         benefits: {
           title: '企业级优势',
@@ -64,56 +63,54 @@ export default {
         }
       }
     },
-    // 用户痛点区块
     painPoints: {
       title: '你是否也遇到这些问题？',
       items: {
         expensive: {
-          title: '订阅费用高',
-          desc: '每个 AI 服务都要单独订阅，每月支出越来越多'
+          title: 'GPT 贵 36 倍',
+          desc: 'GPT-5.5 要 $5/M，DeepSeek V4-Pro 只要 $0.42/M。同样的智能，1/12 的价格。'
         },
         complex: {
-          title: '多账号难管理',
-          desc: '不同平台的账号、密钥分散各处，管理起来很麻烦'
+          title: 'API Key 管理混乱',
+          desc: '要在不同平台分别管理 DeepSeek、Qwen、Kimi、GLM 的账号和密钥'
         },
         unstable: {
-          title: '服务不稳定',
-          desc: '单一账号容易触发限制，影响正常使用'
+          title: '从中国直连延迟高',
+          desc: '大多数中国大模型 API 走北京路由。我们走美东和美西节点，延迟低于 200ms。'
         },
         noControl: {
-          title: '用量无法控制',
-          desc: '不知道钱花在哪了，也无法限制团队成员的使用'
+          title: '用量无法追踪',
+          desc: '不知道每个模型、每个团队、每个 API Key 花了多少 tokens'
         }
       }
     },
-    // 解决方案区块
     solutions: {
-      title: '我们帮你解决',
-      subtitle: '简单三步，开始省心使用 AI'
+      title: '一个 API，接入所有中国大模型。',
+      subtitle: '三步，大幅降低你的 LLM 开销'
     },
     features: {
-      unifiedGateway: '一键接入',
-      unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
-      multiAccount: '稳定可靠',
-      multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
+      unifiedGateway: '一个 API 密钥',
+      unifiedGatewayDesc: '通过一个 API 密钥调用 DeepSeek、Qwen、Kimi、GLM、MiniMax、Seedance。完全兼容 OpenAI 格式。',
+      multiAccount: '美国本地路由',
+      multiAccountDesc: '请求走美东和美西节点，P99 延迟低于 200ms——即使模型在上海。',
       balanceQuota: '用多少付多少',
-      balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
+      balanceQuotaDesc: '按实际用量计费，支持配额上限。每个模型、每个团队的 token 消耗一目了然。'
     },
     easyrouterAdvantages: {
-      eyebrow: '核心优势',
-      title: '为什么选择我们',
-      subtitle: '企业级可靠性、标准化接入、极速路由、可控计费与超低成本，为开发者和团队打造的新一代 AI 网关。',
+      eyebrow: '为什么选 threerouter',
+      title: '为什么选 threerouter，而不是其他 10 个网关？',
+      subtitle: '美国本地基础设施。云厂商直采。OpenAI 即插即用。',
       ultraFast: {
-        title: '极速响应',
-        desc: '全球多节点部署与智能路由，P99 延迟低于 200ms'
+        title: '1. 美国本地节点，而非北京节点',
+        desc: '大多数中国大模型 API 走中国路由。我们不。你的请求走美东/美西节点，P99 延迟低于 200ms——即使模型是 DeepSeek V4 在上海。'
       },
       reliable: {
-        title: '稳定可靠',
-        desc: '智能调度多个上游账号，自动故障转移与负载均衡，提供 99.9% 可用性 SLA'
+        title: '2. 合规性可展示给法务',
+        desc: '直接从 AWS、GCP、Azure、阿里云采购。非转售，非灰色通道。提供安全团队可审计的完整溯源链路。'
       },
       standardApi: {
-        title: '标准 API 接入',
-        desc: '一个 API 密钥调用所有已接入模型，完全兼容 OpenAI API 格式，一行代码切换'
+        title: '3. 兼容 OpenAI，无需重写代码',
+        desc: '即插即用。现有代码、现有工具、现有工作流不变。改一个 URL，其他一切照旧。'
       },
       cheap: {
         title: '超级便宜',
@@ -123,50 +120,49 @@ export default {
     easyrouterFaq: {
       eyebrow: 'FAQ',
       title: '常见问题解答',
-      subtitle: '我们整理了关于服务、计费和集成的常见问题。如有更多问题，欢迎联系我们的商务团队。',
+      subtitle: '关于服务、计费和集成，你想知道的都在这里。',
       tabs: {
         service: '关于服务',
         billing: '价格与计费',
         integration: '集成与使用'
       },
       service: {
-        q1: '你们是传统代理服务吗？',
-        a1: '不是。我们不是传统代理服务，而是企业级 AI API 网关。我们的上游服务来自 AWS、GCP、Azure 等官方顶级云厂商；对于开源模型，也直接来自模型厂商或全球认可的推理服务，确保链路合法、透明、可审计。',
+        q1: '你们是代理还是转售商？',
+        a1: '都不是。我们是企业级 AI API 网关。上游服务来自 AWS、GCP、Azure 等官方顶级云厂商；对于开源模型，直接来自模型厂商或全球认可的推理服务。链路合法、透明、可审计。',
         q2: '你们的模型资源来自哪里？',
-        a2: '我们的资源来自官方云厂商、AI 平台、模型厂商以及全球认可的推理服务，帮助确保访问稳定、采购合规、交付链路可溯源。',
+        a2: '资源来自官方云厂商、AI 平台、模型厂商以及全球认可的推理服务，确保访问稳定、采购合规、交付链路可溯源。',
         q3: '你们会存储用户请求数据吗？',
         a3: '不会。网关以安全透传和路由为核心设计，不会将客户提示词或响应内容用于模型训练，并尽量减少运营安全所需之外的数据留存。',
         q4: '支持哪些模型？',
-        a4: '我们覆盖主流前沿模型和高性价比模型，包括 DeepSeek、Qwen、Kimi、MiniMax、GLM 以及Seedance等部分视频生成模型。'
+        a4: '覆盖 DeepSeek、Qwen、Kimi、MiniMax、GLM 以及 Seedance 视频生成模型。更多模型持续接入中。'
       },
       billing: {
         q1: '这是包月订阅吗？',
-        a1: '不是。额度会按实际模型用量扣减，您只为真实消耗付费，不需要为未使用的固定月费买单。',
+        a1: '不是。额度按实际模型用量扣减，你只为真实消耗付费，无需为未使用的固定月费买单。',
         q2: '用量如何计费？',
-        a2: '文本模型按 token 用量计费；图片、视频、语音和其他多模态模型则根据对应供应商的计费单位扣费，例如图片张数、视频秒数或音频时长。',
+        a2: '文本模型按 token 用量计费；图片、视频、语音等模型按对应供应商的计费单位扣费（图片张数、视频秒数、音频时长）。',
         q3: '价格是否透明？',
-        a3: '透明。价格会按模型和计费单位展示，您可以在使用前预估成本，并在账号后台查看实际消耗。',
+        a3: '透明。价格按模型和计费单位展示，使用前可预估成本，使用后可在后台查看实际消耗。',
         q4: '团队可以共享额度吗？',
-        a4: '可以。团队和企业可通过共享额度池、权限控制和用量分析统一管理，让支出更可控、更可预测。'
+        a4: '可以。团队和企业可通过共享额度池、权限控制和用量分析统一管理。'
       },
       integration: {
         q1: '是否兼容 OpenAI API？',
-        a1: '兼容。网关完全兼容 OpenAI API 格式，大多数情况下只需要替换 base URL 和 API key 即可开始调用模型。',
+        a1: '兼容。完全兼容 OpenAI API 格式，替换 base URL 和 API key 即可开始调用。',
         q2: '迁移成本高吗？',
-        a2: '对于已有 OpenAI 兼容客户端的项目，通常只需修改一行配置。SDK、Agent 和工作流工具可以继续使用熟悉的请求格式。',
+        a2: '只需一行代码。SDK、Agent 和工作流工具继续使用熟悉的请求格式——只需指向 threerouter.com/v1。',
         q3: '支持故障转移和智能路由吗？',
-        a3: '支持。我们通过多供应商路由、负载均衡和故障转移策略提升可用性，减少单一上游限制带来的中断。',
+        a3: '支持。通过多供应商路由、负载均衡和故障转移策略提升可用性。',
         q4: '可以用于生产环境吗？',
-        a4: '可以。网关面向生产场景设计，提供标准化 API、高可用路由、用量可观测能力以及面向企业的合规实践。'
+        a4: '可以。网关面向生产场景设计，提供标准化 API、高可用路由、用量可观测能力以及企业合规实践。'
       }
     },
-    // 优势对比
     comparison: {
       title: '为什么选择我们？',
       headers: {
         feature: '对比项',
-        official: '官方订阅',
-        us: '本平台'
+        official: '直接 API 订阅',
+        us: 'threerouter'
       },
       items: {
         pricing: {
@@ -207,84 +203,53 @@ export default {
       antigravity: 'Antigravity',
       more: '更多'
     },
-    // CTA 区块
     cta: {
-      title: '准备好开始了吗？',
-      description: '注册即可获得免费试用额度，体验一站式 AI 服务',
-      button: '免费注册'
+      title: '别再为同样的智能多付 36 倍。',
+      description: '领取 $10 ≈ 100M 免费 tokens，无需信用卡。',
+      button: '领取 $10 ≈ 100M 免费 Tokens — 无需信用卡 →'
     },
     reviews: {
-      title: '用户评价',
-      subtitle: '来自全球开发者的真实反馈，Three Router 已成为提升编程效率的必备工具',
+      title: '为开发者打造，而非企业',
+      subtitle: '生产环境真实数据',
       review1: {
-        text: 'Three Router 让我的编程效率提升了很多，API 响应速度很快，日常开发顺手了不少。',
-        name: 'David Z.',
-        role: '全栈工程师   大型互联网公司'
+        text: '过去 24 小时 API 调用',
+        name: '120 万+',
+        role: '请求已处理'
       },
       review2: {
-        text: '按量额度设计很实用，团队开发高峰期也不用担心资源不够用，客服响应也很及时。',
-        name: 'Michael L.',
-        role: '技术负责人   独角兽企业'
+        text: '美东节点 P99 延迟',
+        name: '187ms',
+        role: '平均响应时间'
       },
       review3: {
-        text: '使用流程和计费都很清晰，客服响应也快，整体体验很省心。',
-        name: 'Emily W.',
-        role: 'AI产品经理   头部科技公司'
+        text: '过去 90 天可用性',
+        name: '99.99%',
+        role: '服务可用率'
       },
       review4: {
-        text: '专业服务真的很棒，遇到问题都能快速解决，API 调用和响应速度都很有帮助。',
-        name: 'James C.',
-        role: '前端架构师   生活服务平台'
+        text: '客户数据留存',
+        name: '零',
+        role: '隐私优先设计'
       },
       review5: {
-        text: '作为独立开发者，这个服务帮我节省了大量成本。整体体验稳定，日常开发基本没有中断过。',
-        name: 'Sarah L.',
-        role: '独立开发者 / iOS专家'
+        text: 'GitHub 社区',
+        name: '1.2K ★',
+        role: '开源 Stars'
       },
       review6: {
-        text: '团队协作功能很实用，可以共享额度和统一管理成员权限，省了很多沟通成本。',
-        name: 'Robert Z.',
-        role: 'CTO   创业公司'
+        text: 'Product Hunt',
+        name: '#4 当日产品',
+        role: '排名'
       },
       review7: {
-        text: '平台设计很智能，高峰期也不会卡顿，客户端体验做得很细致。',
-        name: 'Alice S.',
-        role: '算法工程师   社交媒体平台'
+        text: 'G2 用户评分',
+        name: '4.8 ★',
+        role: '已验证评价'
       },
       review8: {
-        text: '价格透明，没有隐藏费用。技术支持很专业，解决问题很快。强烈推荐！',
-        name: 'Kevin Z.',
-        role: '后端工程师   电商平台'
-      },
-      review9: {
-        text: '企业版的团队管理和数据保障能力很实用，服务支持也让我们很放心。',
-        name: 'William W.',
-        role: '研发总监   金融科技公司'
-      },
-      review10: {
-        text: 'API 文档写得很详细，集成起来非常方便。客服态度也很好，有问必答。',
-        name: 'Richard Z.',
-        role: '技术总监   在线教育平台'
-      },
-      review11: {
-        text: '用了很多中转服务，这个是最稳定的。响应速度快，成功率高，非常满意。',
-        name: 'Thomas W.',
-        role: '产品负责人   智能硬件公司'
-      },
-      review12: {
-        text: '性价比很高，比直接买官方服务便宜很多。客服响应及时，技术支持专业。',
-        name: 'Daniel L.',
-        role: '技术VP   医疗健康公司'
-      },
-      review13: {
-        text: '服务稳定可靠，已经用了大半年了。遇到问题客服都能及时解决，推荐给团队了。',
-        name: 'Christopher Y.',
-        role: '技术经理   游戏开发公司'
-      },
-      review14: {
-        text: '接口调用简单方便，文档也很完善。稳定性和速度都很不错，会继续使用的。',
-        name: 'Joseph H.',
-        role: '全栈开发   金融科技公司'
+        text: '可用模型',
+        name: '15+',
+        role: '持续增长中'
       }
     },
     footer: {

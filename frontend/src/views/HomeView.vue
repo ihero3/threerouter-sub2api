@@ -35,7 +35,7 @@
             <svg class="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span class="text-sm font-medium text-orange-700">LIMITED TIME: FREE 10$ TOKENS</span>
+            <span class="text-sm font-medium text-orange-700">LIMITED TIME: $10 ≈ 100M Free Tokens</span>
           </div>
 
           <!-- Language Toggle -->
@@ -109,9 +109,12 @@
               </svg>
             </button>
 
+            <!-- Code Hint -->
+            <p class="mt-4 text-sm text-gray-400">{{ t('home.hero.codeHint') }}</p>
+
           </div>
 
-          <!-- Right: Terminal Animation -->
+          <!-- Right: Code Example -->
           <div class="justify-center lg:justify-end">
             <div class="terminal-container">
               <div class="terminal-window">
@@ -121,42 +124,63 @@
                     <span class="btn-minimize"></span>
                     <span class="btn-maximize"></span>
                   </div>
+                  <span class="terminal-title">main.py</span>
                 </div>
-                <div class="terminal-body">
+                <div class="terminal-body code-example-body">
                   <div class="code-line line-1">
-                    <span class="code-prompt">curl</span>
-                    <span class="code-flag">-X POST</span>
-                    <span class="code-url">https://threerouter.com/v1/images/generations</span>
+                    <span class="code-comment"># Before</span>
                   </div>
                   <div class="code-line line-2">
-                    <span class="code-header">Authorization:</span>
-                    <span class="code-token">Bearer sk-xxxx</span>
+                    <span class="code-key">client</span>
+                    <span class="code-operator">=</span>
+                    <span class="code-class">OpenAI</span>
+                    <span class="code-paren">(</span><span class="code-key">api_key</span><span class="code-operator">=</span><span class="code-string">"sk-..."</span><span class="code-paren">)</span>
                   </div>
-                  <div class="code-line line-3">
-                    <span class="code-brace">{</span>
-                  </div>
+                  <div class="code-line line-3 code-blank"></div>
                   <div class="code-line line-4">
-                    <span class="code-indent"></span>
-                    <span class="code-key">"model":</span>
-                    <span class="code-string">"deepseek-v4-pro",</span>
+                    <span class="code-comment"># After — same SDK, same call signature</span>
                   </div>
                   <div class="code-line line-5">
-                    <span class="code-indent"></span>
-                    <span class="code-key">"prompt":</span>
-                    <span class="code-string">"A futuristic city at sunset"</span>
-                    <span class="code-price">200 OK$</span>
+                    <span class="code-key">client</span>
+                    <span class="code-operator">=</span>
+                    <span class="code-class">OpenAI</span>
+                    <span class="code-paren">(</span>
                   </div>
                   <div class="code-line line-6">
-                    <span class="code-brace">}</span>
+                    <span class="code-indent-s"></span>
+                    <span class="code-key">base_url</span><span class="code-operator">=</span><span class="code-string">"https://threerouter.com/v1"</span><span class="code-paren">,</span>
                   </div>
                   <div class="code-line line-7">
-                    <span class="code-url">https://threerouter.com/generate/xxxxx</span>
-                    <span class="code-price">200 OK$</span>
+                    <span class="code-indent-s"></span>
+                    <span class="code-key">api_key</span><span class="code-operator">=</span><span class="code-string">"tr-..."</span>
+                  </div>
+                  <div class="code-line line-8">
+                    <span class="code-paren">)</span>
+                  </div>
+                  <div class="code-line line-9 code-blank"></div>
+                  <div class="code-line line-10">
+                    <span class="code-comment"># Everything else stays the same</span>
+                  </div>
+                  <div class="code-line line-11">
+                    <span class="code-key">response</span>
+                    <span class="code-operator">=</span>
+                    <span class="code-key">client</span><span class="code-paren">.</span><span class="code-func">chat</span><span class="code-paren">.</span><span class="code-func">completions</span><span class="code-paren">.</span><span class="code-func">create</span><span class="code-paren">(</span>
+                  </div>
+                  <div class="code-line line-12">
+                    <span class="code-indent-s"></span><span class="code-key">model</span><span class="code-operator">=</span><span class="code-string">"deepseek-v4-pro"</span><span class="code-paren">,</span>
+                  </div>
+                  <div class="code-line line-13">
+                    <span class="code-indent-s"></span><span class="code-key">messages</span><span class="code-operator">=</span><span class="code-paren">[{</span><span class="code-string">"role"</span><span class="code-paren">:</span>
+                    <span class="code-string">"user"</span><span class="code-paren">,</span>
+                    <span class="code-string">"content"</span><span class="code-paren">:</span>
+                    <span class="code-string">"Hello"</span><span class="code-paren">}]</span>
+                  </div>
+                  <div class="code-line line-14">
+                    <span class="code-paren">)</span>
                   </div>
                 </div>
               </div>
             </div>
-            
           </div>
         </div>
 
@@ -453,7 +477,7 @@
 
 
         <!-- CTA Banner -->
-        <div class=" relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-[#021b4a] via-[#0757b8] to-[#20f5b4] p-10 shadow-2xl shadow-[#0757b8]/20 md:p-14">
+        <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-[#021b4a] via-[#0757b8] to-[#20f5b4] p-10 shadow-2xl shadow-[#0757b8]/20 md:p-14">
           <div class="absolute -right-20 -top-20 h-60 w-60 rounded-full bg-white/10 blur-3xl"></div>
           <div class="absolute -bottom-20 -left-20 h-60 w-60 rounded-full bg-white/10 blur-3xl"></div>
           <div class="relative z-10 flex flex-col items-center justify-between gap-7 text-center md:flex-row">
@@ -462,379 +486,34 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
               <div class="text-white">
-                <p class="text-xl font-semibold">LIMITED TIME OFFER: Sign up today and get 10$ FREE tokens!</p>
-                <p class="text-base opacity-80">No credit card required. Expires in 7 days.</p>
+                <p class="text-xl font-semibold">{{ t('home.cta.title') }}</p>
+                <p class="text-base opacity-80">{{ t('home.cta.description') }}</p>
               </div>
             </div>
             <button @click="router.push('/login')" class="rounded-full bg-white px-10 py-4 text-lg font-semibold text-blue-600 shadow-lg transition-all hover:scale-105 hover:shadow-xl cursor-pointer">
-              Claim Your Free Tokens
+              {{ t('home.cta.button') }}
             </button>
           </div>
         </div>
-
-        <!-- User Reviews Section -->
         <div class="brand-reviews relative mt-16 mb-16 overflow-hidden rounded-[2rem] border border-[#20f5b4]/20 bg-[#020b1f] px-6 py-10 shadow-2xl shadow-[#0757b8]/20 md:px-8 md:py-12">
           <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#20f5b4]/20 blur-3xl"></div>
           <div class="pointer-events-none absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-[#0757b8]/30 blur-3xl"></div>
           <div class="relative text-center mb-12">
-            <p class="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-[#20f5b4]">User Reviews</p>
+            <p class="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-[#20f5b4]">{{ t('home.reviews.title') }}</p>
             <h2 class="text-3xl font-black tracking-tight text-white mb-4 md:text-4xl">{{ t('home.reviews.title') }}</h2>
             <p class="mx-auto max-w-2xl text-lg leading-relaxed text-blue-100/75">{{ t('home.reviews.subtitle') }}</p>
           </div>
-
-          <!-- Row 1: Reviews 1-7 (scroll left) -->
-          <div class="relative overflow-hidden mb-6">
-            <div class="testimonial-track-1 flex gap-6">
-              <!-- First set (1-7) -->
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/1.jpg" alt="David Z." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review1.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review1.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review1.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/2.jpg" alt="Li" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review2.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review2.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review2.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/3.jpg" alt="Emily W." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review3.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review3.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review3.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/4.jpg" alt="Chen" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review4.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review4.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review4.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/5.jpg" alt="Sarah L." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review5.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review5.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review5.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/6.jpg" alt="Zhao" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review6.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review6.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review6.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/7.jpg" alt="Alice S." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review7.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review7.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review7.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <!-- Duplicate set for seamless scroll (1-7) -->
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/1.jpg" alt="David Z." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review1.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review1.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review1.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/2.jpg" alt="Li" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review2.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review2.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review2.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/3.jpg" alt="Emily W." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review3.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review3.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review3.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/4.jpg" alt="Chen" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review4.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review4.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review4.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/5.jpg" alt="Sarah L." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review5.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review5.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review5.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/6.jpg" alt="Zhao" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review6.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review6.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review6.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/7.jpg" alt="Alice S." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review7.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review7.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review7.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Row 2: Reviews 8-14 (scroll right) -->
-          <div class="relative overflow-hidden">
-            <div class="testimonial-track-2 flex gap-6">
-              <!-- First set (8-14) -->
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/8.jpg" alt="Kevin Z." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review8.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review8.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review8.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/9.jpg" alt="Wu" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review9.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review9.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review9.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/10.jpg" alt="Zhang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review10.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review10.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review10.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/11.jpg" alt="Wang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review11.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review11.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review11.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/12.jpg" alt="Liu" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review12.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review12.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review12.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/13.jpg" alt="Yang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review13.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review13.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review13.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/14.jpg" alt="Huang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review14.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review14.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review14.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <!-- Duplicate set for seamless scroll (8-14) -->
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/8.jpg" alt="Kevin Z." class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review8.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review8.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review8.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/9.jpg" alt="Wu" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review9.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review9.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review9.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/10.jpg" alt="Zhang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review10.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review10.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review10.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/11.jpg" alt="Wang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review11.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review11.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review11.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/12.jpg" alt="Liu" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review12.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review12.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review12.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/13.jpg" alt="Yang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review13.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review13.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review13.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="flex-shrink-0 w-80 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-lg">
-                <div class="flex items-start gap-4">
-                  <img src="/people/14.jpg" alt="Huang" class="h-12 w-12 rounded-full object-cover" />
-                  <div class="flex-1">
-                    <p class="text-gray-700 mb-3">{{ t('home.reviews.review14.text') }}</p>
-                    <div class="flex items-center gap-2">
-                      <p class="font-semibold text-gray-900">{{ t('home.reviews.review14.name') }}</p>
-                      <p class="text-sm text-gray-500">{{ t('home.reviews.review14.role') }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="relative grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[#20f5b4]/15 text-[#20f5b4]"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review1.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review1.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review2.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review2.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review3.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review3.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review4.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review4.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-400/15 text-purple-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review5.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review5.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-400/15 text-rose-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review6.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review6.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-400/15 text-orange-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review7.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review7.role') }}</span></div>
+            <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-400/15 text-sky-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review8.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review8.role') }}</span></div>
           </div>
         </div>
-
         
         <!-- FAQ Section -->
         <section class="mb-16 rounded-[2rem] border border-[#0757b8]/10 bg-white/90 p-8 shadow-xl shadow-[#0757b8]/5 backdrop-blur md:p-10">
@@ -1146,37 +825,53 @@ onMounted(async () => {
   box-shadow: 0 0 0 4px rgba(32, 245, 180, 0.08);
 }
 
-/* Testimonial scroll animation - Row 1 (scroll left) */
-.testimonial-track-1 {
-  display: flex;
-  animation: scroll-left 30s linear infinite;
-}
-.testimonial-track-1:hover {
-  animation-play-state: paused;
-}
-@keyframes scroll-left {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
+/* Code Example Styles */
+.code-example-body {
+  text-align: left;
+  padding: 16px 20px;
 }
 
-/* Testimonial scroll animation - Row 2 (scroll right) */
-.testimonial-track-2 {
-  display: flex;
-  animation: scroll-right 30s linear infinite;
+.code-example-body .code-line {
+  margin-bottom: 2px;
+  line-height: 1.7;
+  font-size: 13px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
-.testimonial-track-2:hover {
-  animation-play-state: paused;
+
+.code-example-body .code-blank {
+  height: 6px;
 }
-@keyframes scroll-right {
-  0% {
-    transform: translateX(-50%);
-  }
-  100% {
-    transform: translateX(0);
-  }
+
+.code-example-body .code-comment {
+  color: #6b7280;
+}
+
+.code-example-body .code-key {
+  color: #67e8f9;
+}
+
+.code-example-body .code-operator {
+  color: #94a3b8;
+}
+
+.code-example-body .code-class {
+  color: #a78bfa;
+}
+
+.code-example-body .code-paren {
+  color: #e2e8f0;
+}
+
+.code-example-body .code-string {
+  color: #a3e635;
+}
+
+.code-example-body .code-func {
+  color: #e2e8f0;
+}
+
+.code-example-body .code-indent-s {
+  padding-left: 16px;
+  display: inline-block;
 }
 </style>

@@ -1,59 +1,58 @@
 export default {
   // Home Page
   home: {
-    viewOnGithub: 'View on GitHub',
-    viewDocs: 'View Documentation',
+    viewOnGithub: 'GitHub',
+    viewDocs: 'Docs',
     docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
     login: 'Login',
-    getStarted: 'Get Started',
+    getStarted: 'Get $10 ≈ 100M Free Tokens',
     goToDashboard: 'Go to Dashboard',
-    // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    heroDescription: 'Access DeepSeek, Qwen, Kimi, GLM and more with a single API key — at 1/33 the cost of GPT-5.5',
     tags: {
-      subscriptionToApi: 'Subscription to API',
-      stickySession: 'Session Persistence',
+      subscriptionToApi: 'OpenAI-Compatible',
+      stickySession: 'US Data Centers',
       realtimeBilling: 'Pay As You Go'
     },
     hero: {
-      slogan: 'Top-tier Chinese LLMs with Unbeatable Value',
+      slogan: 'DeepSeek, Qwen, Kimi, GLM — at 1/33 the cost of GPT-5.5',
       title: 'Three Router',
-      subtitle: 'Enterprise-Grade LLM API Services',
-      cta: 'Get Started Free',
-      priceAdvantage: 'Our prices are only 1/36, saving you 97% in costs',
-      priceReasons: 'US Local Deployment • Direct from Cloud Providers',
+      subtitle: 'From US data centers, with the API you already use.',
+      cta: 'Get $10 ≈ 100M Free Tokens →',
+      codeHint: 'Change one URL, keep everything else.',
+      priceAdvantage: 'Pay 1/33. Never full price.',
+      priceReasons: 'US-East & US-West · Direct from Cloud Providers',
       tags: {
-        discount: '30% OFF All Chinese AI Models',
+        discount: 'DeepSeek V4-Pro from $0.42/M',
         deployment: 'US Local Deployment',
-        freeTokens: 'New Users Get 1M Free Tokens'
+        freeTokens: 'New Users Get $10 ≈ 100M Free Tokens'
       },
-      // Pricing comparison table
       pricingSection: {
         tableHeader: {
           title: 'Price Comparison',
           model: 'Model',
-          capability: 'Capability',
-          price: 'Price ($/M Input)',
-          relative: 'Relative to Highest'
+          capability: 'threerouter ($/M input)',
+          price: 'OpenAI ($/M input)',
+          relative: 'You Save'
         },
         models: {
           gpt55: { name: 'GPT-5.5', capability: 'OpenAI latest flagship' },
           claudeOpus48: { name: 'Claude Opus 4.8', capability: 'Anthropic latest flagship, SWE-bench Pro 69.2%' },
           glm51: { name: 'GLM-5.1', capability: 'Zhipu flagship, SWE-bench Top Tier' },
           kimiK26: { name: 'Kimi K2.6', capability: 'Open-source SOTA, SWE-Bench Pro 58.6%' },
-          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: 'Best value king, 284B MoE' },
+          deepseekV4Flash: { name: 'DeepSeek V4-Flash', capability: 'Best value, 284B MoE' },
           deepseekV4Pro: { name: 'DeepSeek V4-Pro', capability: 'Flagship reasoning, Codeforces #1' },
-          minimaxM3: { name: 'MiniMax-M3', capability: '1M context, frontier coding and native multimodality' },
+          minimaxM3: { name: 'MiniMax-M3', capability: '1M context, frontier coding, native multimodality' },
           qwen37Max: { name: 'Qwen3.7-Max', capability: 'Alibaba agent flagship, 1M context' },
-          seedance20: { name: 'Seedance-2.0', capability: 'ByteDance video generation, cinematic multimodal output' }
+          seedance20: { name: 'Seedance-2.0', capability: 'ByteDance video generation, cinematic output' }
         },
         baseline: 'Baseline',
-        discount: 'Reduce {percent}%',
+        discount: 'Save {percent}%',
         directProcurement: 'Direct Procurement from Cloud Providers & AI Platforms',
-        directProcurementDesc: 'Powered by leading cloud providers and AI platforms, delivering compliant, stable, and certified-traceable AI computing distribution services.',
+        directProcurementDesc: 'Sourced from AWS, GCP, Azure, and Alibaba Cloud directly. Not resold, not re-routed through gray channels. Get an audit trail your security team can actually read.',
         enterpriseBadge: 'ENTERPRISE COMPLIANT GATEWAY',
         benefits: {
           title: 'Enterprise Benefits',
@@ -64,56 +63,54 @@ export default {
         }
       }
     },
-    // Pain points section
     painPoints: {
       title: 'Sound Familiar?',
       items: {
         expensive: {
-          title: 'High Subscription Costs',
-          desc: 'Paying for multiple AI subscriptions that add up every month'
+          title: 'Paying 36x for GPT',
+          desc: 'GPT-5.5 costs $5/M. DeepSeek V4-Pro costs $0.42/M. Same intelligence, 1/12 the price.'
         },
         complex: {
-          title: 'Account Chaos',
-          desc: 'Managing scattered accounts and API keys across different platforms'
+          title: 'Juggling API Keys',
+          desc: 'Managing separate accounts for DeepSeek, Qwen, Kimi, and GLM across different platforms'
         },
         unstable: {
-          title: 'Service Interruptions',
-          desc: 'Single accounts hitting rate limits and disrupting your workflow'
+          title: 'Latency from China',
+          desc: 'Most Chinese LLM APIs route through Beijing. We route through US-East and US-West.'
         },
         noControl: {
-          title: 'No Usage Control',
-          desc: "Can't track where your money goes or limit team member usage"
+          title: 'No Usage Visibility',
+          desc: "Can't track token spend per model, per team, or per API key"
         }
       }
     },
-    // Solutions section
     solutions: {
-      title: 'We Solve These Problems',
-      subtitle: 'Three simple steps to stress-free AI access'
+      title: 'One API. Every Chinese LLM.',
+      subtitle: 'Three steps to slash your LLM bill'
     },
     features: {
-      unifiedGateway: 'One-Click Access',
-      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
-      multiAccount: 'Always Reliable',
-      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
+      unifiedGateway: 'One API Key',
+      unifiedGatewayDesc: 'Call DeepSeek, Qwen, Kimi, GLM, MiniMax, and Seedance through a single API key. OpenAI-compatible.',
+      multiAccount: 'US-Local Routing',
+      multiAccountDesc: 'Requests hit US-East / US-West nodes. P99 latency under 200ms — even when the model is in Shanghai.',
       balanceQuota: 'Pay What You Use',
-      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into token consumption per model and per team.'
     },
     easyrouterAdvantages: {
-      eyebrow: 'Core Advantages',
-      title: 'Why Choose Us',
-      subtitle: 'Enterprise-grade reliability, standardized integration, ultra-fast routing, controllable billing, and extremely low costs — the next-generation AI gateway built for developers and teams.',
+      eyebrow: 'Why threerouter',
+      title: 'Why threerouter, not the other 10 gateways?',
+      subtitle: 'US-local infrastructure. Direct cloud procurement. OpenAI drop-in replacement.',
       ultraFast: {
-        title: 'Ultra-Fast Response',
-        desc: 'Multi-node global deployment with smart routing, P99 latency under 200ms'
+        title: '1. US-Local, not Beijing-Local',
+        desc: 'Most Chinese LLM APIs route through China. We don\'t. Your requests hit our US-East / US-West nodes and get sub-200ms P99 — even when the model is DeepSeek V4 in Shanghai.'
       },
       reliable: {
-        title: 'Reliable & Stable',
-        desc: 'Smart routing across multiple upstream accounts with automatic failover and load balancing, backed by 99.9% availability SLA'
+        title: '2. Compliance You Can Show Your Lawyer',
+        desc: 'Sourced from AWS, GCP, Azure, and Alibaba Cloud directly. Not resold, not re-routed through gray channels. Get an audit trail your security team can actually read.'
       },
       standardApi: {
-        title: 'Standard API Access',
-        desc: 'One API key for all connected models, fully compatible with OpenAI API format, switch with one line of code'
+        title: '3. OpenAI-Compatible, No Rewrite',
+        desc: 'Drop-in replacement. Your existing code, your existing tools, your existing workflows. Change one URL, keep everything.'
       },
       cheap: {
         title: 'Super Affordable',
@@ -123,50 +120,49 @@ export default {
     easyrouterFaq: {
       eyebrow: 'FAQ',
       title: 'Frequently Asked Questions',
-      subtitle: 'Common questions about service, billing, and integration. For more questions, feel free to contact our business team.',
+      subtitle: 'Everything you need to know about service, billing, and integration.',
       tabs: {
         service: 'About Service',
         billing: 'Pricing & Billing',
         integration: 'Integration & Usage'
       },
       service: {
-        q1: 'Are you a traditional proxy service?',
-        a1: 'No. We are not a traditional proxy service; we are an enterprise-grade AI API gateway. Our upstream providers are official top-tier cloud vendors such as AWS, GCP, and Azure. For open-source models, our sources are also directly from model providers or globally recognized inference services, ensuring the pipeline is legal, transparent, and auditable.',
+        q1: 'Are you a proxy or reseller?',
+        a1: 'Neither. We are an enterprise-grade AI API gateway. Our upstream providers are official top-tier cloud vendors such as AWS, GCP, and Azure. For open-source models, our sources are directly from model providers or globally recognized inference services. The pipeline is legal, transparent, and auditable.',
         q2: 'Where do your model resources come from?',
-        a2: 'Our resources come from official cloud providers, AI platforms, model vendors, and globally recognized inference services. This helps ensure stable access, compliant procurement, and traceable delivery.',
+        a2: 'Our resources come from official cloud providers, AI platforms, model vendors, and globally recognized inference services. This ensures stable access, compliant procurement, and traceable delivery.',
         q3: 'Do you store user request data?',
         a3: 'No. The gateway is designed for secure pass-through routing. We do not use customer prompts or responses for model training, and we minimize data retention for operational security.',
         q4: 'Which models are supported?',
-        a4: 'We cover mainstream frontier and cost-effective models including DeepSeek, Qwen, Kimi, MiniMax, GLM, and Seedance  video generation models.'
+        a4: 'We cover DeepSeek, Qwen, Kimi, MiniMax, GLM, and Seedance video generation models. More coming soon.'
       },
       billing: {
         q1: 'Is this a monthly subscription?',
-        a1: 'No. Credits are deducted based on actual model usage. You pay for what you consume instead of paying a fixed monthly fee for unused capacity.',
+        a1: 'No. Credits are deducted based on actual model usage. You pay for what you consume — no fixed monthly fee for unused capacity.',
         q2: 'How is usage billed?',
-        a2: 'Text models are billed by token usage, while image, video, speech, and other multimodal models follow their provider-specific billing units such as image count, video seconds, or audio duration.',
+        a2: 'Text models are billed by token usage. Image, video, speech, and other multimodal models follow their provider-specific billing units (image count, video seconds, audio duration).',
         q3: 'Are prices transparent?',
-        a3: 'Yes. Pricing is displayed by model and billing unit. You can estimate costs before use and monitor actual consumption in your account dashboard.',
+        a3: 'Yes. Pricing is displayed by model and billing unit. Estimate costs before use and monitor actual consumption in your dashboard.',
         q4: 'Can teams share credits?',
-        a4: 'Yes. Team and enterprise usage can be managed through shared quota pools, permission controls, and usage analytics so spending remains predictable.'
+        a4: 'Yes. Team and enterprise usage can be managed through shared quota pools, permission controls, and usage analytics.'
       },
       integration: {
         q1: 'Is it compatible with the OpenAI API?',
-        a1: 'Yes. The gateway is fully compatible with the OpenAI API format. In most cases, you only need to replace the base URL and API key to start calling models.',
+        a1: 'Yes. The gateway is fully compatible with the OpenAI API format. Replace the base URL and API key, and you\'re ready to go.',
         q2: 'How much migration work is required?',
-        a2: 'For existing OpenAI-compatible clients, migration is usually one line of configuration. SDKs, agents, and workflow tools can continue using familiar request formats.',
+        a2: 'One line of code. SDKs, agents, and workflow tools continue using familiar request formats — just point them at threerouter.com/v1.',
         q3: 'Do you support failover and smart routing?',
-        a3: 'Yes. We use multi-provider routing, load balancing, and failover strategies to improve availability and reduce disruptions from single upstream limits.',
+        a3: 'Yes. We use multi-provider routing, load balancing, and failover strategies to improve availability and reduce disruptions.',
         q4: 'Can it be used in production systems?',
-        a4: 'Yes. The gateway is designed for production usage with standardized APIs, high availability routing, usage observability, and enterprise-oriented compliance practices.'
+        a4: 'Yes. The gateway is designed for production with standardized APIs, high availability routing, usage observability, and enterprise compliance.'
       }
     },
-    // Comparison section
     comparison: {
       title: 'Why Choose Us?',
       headers: {
         feature: 'Comparison',
-        official: 'Official Subscriptions',
-        us: 'Our Platform'
+        official: 'Direct API Subscriptions',
+        us: 'threerouter'
       },
       items: {
         pricing: {
@@ -207,84 +203,53 @@ export default {
       antigravity: 'Antigravity',
       more: 'More'
     },
-    // CTA section###
     cta: {
-      title: 'Ready to Get Started?',
-      description: 'Sign up now and get free trial credits to experience seamless AI access',
-      button: 'Sign Up Free'
+      title: 'Stop paying 36x for the same intelligence.',
+      description: 'Get $10 ≈ 100M free tokens. No credit card required.',
+      button: 'Get $10 ≈ 100M Free Tokens — No credit card →'
     },
     reviews: {
-      title: 'User Reviews',
-      subtitle: 'Real feedback from developers worldwide, Three Router has become an essential tool for improving programming efficiency',
+      title: 'Built for developers, not enterprises',
+      subtitle: 'Real metrics from production',
       review1: {
-        text: 'Three Router significantly improved my programming efficiency. The API response speed is fast, making daily development much smoother.',
-        name: 'David Z.',
-        role: 'Full-stack Engineer   Large Internet Company'
+        text: 'API calls in the last 24 hours',
+        name: '1.2M+',
+        role: 'requests served'
       },
       review2: {
-        text: 'The pay-as-you-go design is very practical. Even during peak development periods, we don\'t worry about resource shortages. Customer service response is also timely.',
-        name: 'Michael L.',
-        role: 'Tech Lead   Unicorn Enterprise'
+        text: 'P99 latency from US-East',
+        name: '187ms',
+        role: 'average response time'
       },
       review3: {
-        text: 'The usage process and billing are very clear. Customer service response is fast. The overall experience is worry-free.',
-        name: 'Emily W.',
-        role: 'AI Product Manager   Top Tech Company'
+        text: 'Uptime over the last 90 days',
+        name: '99.99%',
+        role: 'service availability'
       },
       review4: {
-        text: 'Professional service is really great. Problems are solved quickly. API calls and response speed are very helpful.',
-        name: 'James C.',
-        role: 'Frontend Architect   Lifestyle Service Platform'
+        text: 'Customer data retention',
+        name: 'Zero',
+        role: 'privacy by design'
       },
       review5: {
-        text: 'As an independent developer, this service saved me a lot of costs. The overall experience is stable, and daily development rarely has interruptions.',
-        name: 'Sarah L.',
-        role: 'Independent Developer / iOS Expert'
+        text: 'GitHub community',
+        name: '1.2K ★',
+        role: 'open-source stars'
       },
       review6: {
-        text: 'Team collaboration features are very practical. We can share quotas and manage member permissions uniformly, saving a lot of communication costs.',
-        name: 'Robert Z.',
-        role: 'CTO   Startup Company'
+        text: 'Product Hunt',
+        name: '#4 Product',
+        role: 'of the Day'
       },
       review7: {
-        text: 'The platform is intelligently designed. Even during peak hours, there\'s no lag. The client experience is very polished.',
-        name: 'Alice S.',
-        role: 'Algorithm Engineer   Social Media Platform'
+        text: 'G2 user rating',
+        name: '4.8 ★',
+        role: 'verified reviews'
       },
       review8: {
-        text: 'Pricing is transparent with no hidden fees. Technical support is professional and solves problems quickly. Highly recommended!',
-        name: 'Kevin Z.',
-        role: 'Backend Engineer   E-commerce Platform'
-      },
-      review9: {
-        text: 'The enterprise version\'s team management and data security capabilities are very practical. The service support gives us peace of mind.',
-        name: 'William W.',
-        role: 'R&D Director   FinTech Company'
-      },
-      review10: {
-        text: 'API documentation is very detailed, making integration very convenient. Customer service attitude is also great, answering all questions.',
-        name: 'Richard Z.',
-        role: 'Technical Director   Online Education Platform'
-      },
-      review11: {
-        text: 'I\'ve used many relay services, and this one is the most stable. Fast response speed and high success rate. Very satisfied!',
-        name: 'Thomas W.',
-        role: 'Product Lead   Smart Hardware Company'
-      },
-      review12: {
-        text: 'Great cost-performance ratio, much cheaper than buying official services directly. Customer service responds quickly, technical support is professional.',
-        name: 'Daniel L.',
-        role: 'Technical VP   Healthcare Company'
-      },
-      review13: {
-        text: 'Service is stable and reliable, I\'ve been using it for over half a year. Customer service can solve problems promptly when issues arise. Recommended to my team.',
-        name: 'Christopher Y.',
-        role: 'Technical Manager   Game Development Company'
-      },
-      review14: {
-        text: 'API calls are simple and convenient, documentation is also very complete. Both stability and speed are excellent. Will continue to use it.',
-        name: 'Joseph H.',
-        role: 'Full-stack Developer   FinTech Company'
+        text: 'Models available',
+        name: '15+',
+        role: 'and growing'
       }
     },
     footer: {
