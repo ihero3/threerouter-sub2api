@@ -67,8 +67,8 @@ export default {
       title: 'Sound Familiar?',
       items: {
         expensive: {
-          title: 'Paying 36x for GPT',
-          desc: 'GPT-5.5 costs $5/M. DeepSeek V4-Pro costs $0.42/M. Same intelligence, 1/12 the price.'
+          title: 'Paying 33x for GPT',
+          desc: 'GPT-5.5 costs $5/M. DeepSeek V4-Pro costs $0.42/M. Same intelligence, 1/33 the price.'
         },
         complex: {
           title: 'Juggling API Keys',
@@ -114,7 +114,7 @@ export default {
       },
       cheap: {
         title: 'Super Affordable',
-        desc: 'Our prices are only 1/36 of flagship providers, helping you reduce AI costs by up to 97%'
+        desc: 'Our prices are only 1/33 of flagship providers, helping you reduce AI costs by up to 97%'
       }
     },
     easyrouterFaq: {
@@ -204,7 +204,7 @@ export default {
       more: 'More'
     },
     cta: {
-      title: 'Stop paying 36x for the same intelligence.',
+      title: 'Stop paying 33x for the same intelligence.',
       description: 'Get $10 ≈ 100M free tokens. No credit card required.',
       button: 'Get $10 ≈ 100M Free Tokens — No credit card →'
     },

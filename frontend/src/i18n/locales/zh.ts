@@ -204,7 +204,7 @@ export default {
       more: '更多'
     },
     cta: {
-      title: '别再为同样的智能多付 36 倍。',
+      title: '别再为同样的智能多付 33 倍。',
       description: '领取 $10 ≈ 100M 免费 tokens，无需信用卡。',
       button: '领取 $10 ≈ 100M 免费 Tokens — 无需信用卡 →'
     },
