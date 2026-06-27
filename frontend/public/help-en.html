@@ -1908,10 +1908,13 @@ curl -X POST "https://api.threerouter.com/v1/images/generations" \
   "created": 1234567890,
   "data": [
     {
-      "url": "https://atlas-img.oss-us-west-1.aliyuncs.com/images/xxx.png"
+      "url": "https://img.oss-us-west-1.aliyuncs.com/images/xxx.png"
     }
   ]
-}</code></pre>
+}
+
+Test: curl -I -H "User-Agent: Mozilla/5.0" "https://img.oss-us-west-1.aliyuncs.com/images/zzz.png"
+</code></pre>
 
             <h4>Returning Base64</h4>
             <p>To receive the image as a base64 string instead, set <code>response_format</code> to <code>b64_json</code>. This is useful for front-end clients that cannot access the OSS URL directly.</p>

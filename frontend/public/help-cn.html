@@ -1956,10 +1956,12 @@ curl -X POST "https://api.threerouter.com/v1/images/generations" \
   "created": 1234567890,
   "data": [
     {
-      "url": "https://atlas-img.oss-us-west-1.aliyuncs.com/images/xxx.png"
+      "url": "https://img.oss-us-west-1.aliyuncs.com/images/xxx.png"
     }
   ]
-}</code></pre>
+}
+curl -I -H "User-Agent: Mozilla/5.0" "https://img.oss-us-west-1.aliyuncs.com/images/zzz.png"
+</code></pre>
 
             <h4>返回 Base64</h4>
             <p>如果前端无法直接访问 OSS 链接，可以设置 <code>response_format</code> 为 <code>b64_json</code>，返回图片的 base64 编码：</p>
