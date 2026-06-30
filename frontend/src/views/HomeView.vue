@@ -287,21 +287,58 @@
           <div class="mb-8 overflow-hidden rounded-3xl border border-[#20f5b4]/30 bg-white/95 shadow-2xl shadow-[#0757b8]/10 backdrop-blur dark:border-emerald-800/50 dark:bg-gray-900/80">
             <div class="relative px-8 py-8 sm:px-10">
               <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(32,245,180,0.2),transparent_36%),linear-gradient(135deg,rgba(239,252,255,0.96),rgba(255,255,255,0.98))] dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.2),transparent_34%),linear-gradient(135deg,rgba(6,78,59,0.28),rgba(17,24,39,0.96))]"></div>
-              <div class="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div class="relative grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
                 <div>
                   <p class="text-sm font-semibold uppercase tracking-[0.22em] text-[#0757b8] dark:text-emerald-400">
-                    Cost Advantage
+                    US Local Deployment + 97% Cost Cut
                   </p>
-                  <h3 class="mt-3 text-3xl font-bold leading-tight text-gray-950 dark:text-white">
+                  <h3 class="mt-3 text-3xl font-black leading-tight text-gray-950 dark:text-white md:text-4xl">
                     {{ t('home.hero.priceAdvantage') }}
                   </h3>
                   <p class="mt-3 text-base font-medium text-emerald-700 dark:text-emerald-300">
                     {{ t('home.hero.priceReasons') }}
                   </p>
+                  <div class="mt-6 grid grid-cols-2 gap-3">
+                    <div class="rounded-2xl border border-[#0757b8]/10 bg-white/75 p-4">
+                      <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{{ t('home.hero.costChart.usRoute') }}</p>
+                      <p class="mt-2 text-2xl font-black text-[#021b4a]">US-East / US-West</p>
+                    </div>
+                    <div class="rounded-2xl bg-[#021b4a] p-4 text-white shadow-lg shadow-[#0757b8]/20">
+                      <p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">{{ t('home.hero.costChart.maxSaving') }}</p>
+                      <p class="mt-2 text-4xl font-black leading-none text-[#20f5b4]">97%</p>
+                    </div>
+                  </div>
                 </div>
-                <div class="flex shrink-0 items-end gap-3 rounded-2xl bg-[#021b4a] px-7 py-5 text-white shadow-lg shadow-[#0757b8]/20 dark:bg-emerald-500/20">
-                  <span class="text-5xl font-black leading-none">97%</span>
-                  <span class="pb-1 text-sm font-semibold uppercase tracking-wider text-emerald-200">Saving</span>
+
+                <div class="rounded-[1.75rem] border border-slate-200/70 bg-slate-950 p-5 text-white shadow-2xl shadow-[#021b4a]/25">
+                  <div class="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <p class="text-xs font-black uppercase tracking-[0.22em] text-[#20f5b4]">{{ t('home.hero.costChart.eyebrow') }}</p>
+                      <h4 class="mt-2 text-xl font-black">{{ t('home.hero.costChart.title') }}</h4>
+                    </div>
+                    <span class="rounded-full bg-[#20f5b4]/15 px-3 py-1 text-xs font-bold text-[#20f5b4]">$/M input</span>
+                  </div>
+                  <div class="flex h-[340px] gap-3 md:h-[400px] md:gap-4">
+                    <div class="relative flex flex-1 items-end gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 md:gap-3 md:p-4">
+                      <div v-for="item in costComparisonBars" :key="item.name" class="flex h-full flex-1 flex-col items-center justify-end gap-2 text-center">
+                        <div class="mb-1 text-xs font-black leading-tight">
+                          <span class="block text-[#20f5b4]">${{ item.price }}</span>
+                          <span v-if="item.saving" class="mt-0.5 block text-[10px] uppercase tracking-wide text-emerald-200">-{{ item.saving }}%</span>
+                        </div>
+                        <div
+                          class="cost-bar w-full rounded-t-xl transition-all duration-700 hover:brightness-110"
+                          :class="item.isChina ? 'bg-gradient-to-t from-[#20f5b4] to-cyan-300 shadow-[0_0_18px_rgba(32,245,180,0.35)]' : 'bg-gradient-to-t from-slate-500 to-slate-300'"
+                          :style="{ height: item.height }"
+                        ></div>
+                        <div class="mt-1 w-full">
+                          <p class="truncate text-[10px] font-bold leading-tight text-slate-200 md:text-xs" :title="item.name">{{ item.name }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="mt-5 rounded-2xl border border-[#20f5b4]/20 bg-[#20f5b4]/10 p-4 text-sm font-semibold leading-relaxed text-emerald-100">
+                    {{ t('home.hero.costChart.note') }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -519,7 +556,60 @@
             <div class="flex flex-col items-center rounded-2xl border border-[#20f5b4]/20 bg-white/[0.06] p-6 backdrop-blur transition-all hover:-translate-y-1 hover:bg-white/[0.09]"><div class="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-400/15 text-sky-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg></div><span class="text-2xl font-bold text-white">{{ t('home.reviews.review8.name') }}</span><span class="text-xs text-slate-400">{{ t('home.reviews.review8.role') }}</span></div>
           </div>
         </div>
-        
+
+        <!-- Customer Testimonials -->
+        <div class="relative mb-16 overflow-hidden rounded-[2rem] border border-[#0757b8]/10 bg-white/95 p-8 shadow-xl shadow-[#0757b8]/5 backdrop-blur md:p-10 dark:border-slate-700 dark:bg-slate-900/90">
+          <div class="mb-10 text-center">
+            <p class="text-xs font-black uppercase tracking-[0.22em] text-[#0757b8] dark:text-emerald-400">{{ t('home.testimonials.eyebrow') }}</p>
+            <h2 class="mt-3 text-3xl font-black tracking-tight text-gray-950 dark:text-white md:text-4xl">{{ t('home.testimonials.title') }}</h2>
+            <p class="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-gray-500 dark:text-slate-400">{{ t('home.testimonials.subtitle') }}</p>
+          </div>
+          <div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div class="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-800/60">
+              <div class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#20f5b4]/10 blur-2xl group-hover:bg-[#20f5b4]/20"></div>
+              <div class="relative">
+                <div class="mb-4 flex items-center gap-3">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#20f5b4] to-[#0757b8] text-lg font-black text-white">A</div>
+                  <div>
+                    <p class="font-bold text-gray-950 dark:text-white">{{ t('home.testimonials.t1.name') }}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('home.testimonials.t1.role') }}</p>
+                  </div>
+                </div>
+                <div class="mb-3 flex text-amber-400">★★★★★</div>
+                <p class="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{{ t('home.testimonials.t1.quote') }}</p>
+              </div>
+            </div>
+            <div class="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-800/60">
+              <div class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#0757b8]/10 blur-2xl group-hover:bg-[#0757b8]/20"></div>
+              <div class="relative">
+                <div class="mb-4 flex items-center gap-3">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-lg font-black text-white">M</div>
+                  <div>
+                    <p class="font-bold text-gray-950 dark:text-white">{{ t('home.testimonials.t2.name') }}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('home.testimonials.t2.role') }}</p>
+                  </div>
+                </div>
+                <div class="mb-3 flex text-amber-400">★★★★★</div>
+                <p class="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{{ t('home.testimonials.t2.quote') }}</p>
+              </div>
+            </div>
+            <div class="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-800/60">
+              <div class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#20f5b4]/10 blur-2xl group-hover:bg-[#20f5b4]/20"></div>
+              <div class="relative">
+                <div class="mb-4 flex items-center gap-3">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-lg font-black text-white">S</div>
+                  <div>
+                    <p class="font-bold text-gray-950 dark:text-white">{{ t('home.testimonials.t3.name') }}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ t('home.testimonials.t3.role') }}</p>
+                  </div>
+                </div>
+                <div class="mb-3 flex text-amber-400">★★★★★</div>
+                <p class="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{{ t('home.testimonials.t3.quote') }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- FAQ Section -->
         <section class="mb-16 rounded-[2rem] border border-[#0757b8]/10 bg-white/90 p-8 shadow-xl shadow-[#0757b8]/5 backdrop-blur md:p-10">
           <div class="mb-8 text-center">
@@ -634,6 +724,14 @@ const isDark = ref(false)
 const currentYear = computed(() => new Date().getFullYear())
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 
+const costComparisonBars = [
+  { name: 'GPT-5.5', price: '5.00', height: '100%', isChina: false },
+  { name: 'Claude Opus 4.8', price: '5.00', height: '100%', isChina: false },
+  { name: 'DeepSeek V4-Pro', price: '0.42', height: '8.4%', saving: 92, isChina: true },
+  { name: 'DeepSeek V4-Flash', price: '0.14', height: '3%', saving: 97, isChina: true },
+  { name: 'MiniMax-M3', price: '0.60', height: '12%', saving: 88, isChina: true }
+]
+
 // Get public settings
 const contactInfo = computed(() => appStore.contactInfo)
 const customMenuItems = computed<CustomMenuItem[]>(() => {
@@ -670,6 +768,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.cost-bar {
+  animation: cost-bar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left center;
+}
+
+@keyframes cost-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .terminal-container {
   position: relative;
 }

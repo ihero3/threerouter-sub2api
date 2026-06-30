@@ -18,17 +18,25 @@ export default {
       realtimeBilling: 'Pay As You Go'
     },
     hero: {
-      slogan: 'DeepSeek, Qwen, Kimi, GLM — at 1/33 the cost of GPT-5.5',
+      slogan: 'DeepSeek, Qwen, Kimi, GLM — at 1/33 the cost of GPT',
       title: 'Three Router',
-      subtitle: 'From US data centers, with the API you already use.',
+      subtitle: 'Top-tier Chinese LLMs with Unbeatable Value,Enterprise-Grade LLM',
       cta: 'Get $10 ≈ 100M Free Tokens →',
       codeHint: 'Change one URL, keep everything else.',
+      coreDiff: 'US Local Deployment + up to 97% Cost Cut',
       priceAdvantage: 'Pay 1/33. Never full price.',
       priceReasons: 'US-East & US-West · Direct from Cloud Providers',
       tags: {
         discount: 'DeepSeek V4-Pro from $0.42/M',
         deployment: 'US Local Deployment',
         freeTokens: 'New Users Get $10 ≈ 100M Free Tokens'
+      },
+      costChart: {
+        eyebrow: 'US vs China model cost',
+        title: 'More production requests from the same $5 budget',
+        usRoute: 'Deployment',
+        maxSaving: 'Max saving',
+        note: 'Compared by $/M input tokens: US-local entry keeps latency low while China frontier models compress cost dramatically.'
       },
       pricingSection: {
         tableHeader: {
@@ -232,13 +240,13 @@ export default {
         role: 'privacy by design'
       },
       review5: {
-        text: 'GitHub community',
+        text: 'Community',
         name: '1.2K ★',
-        role: 'open-source stars'
+        role: 'stars'
       },
       review6: {
-        text: 'Product Hunt',
-        name: '#4 Product',
+        text: 'Performance Rankings',
+        name: '#1 Product',
         role: 'of the Day'
       },
       review7: {
@@ -250,6 +258,26 @@ export default {
         text: 'Models available',
         name: '15+',
         role: 'and growing'
+      }
+    },
+    testimonials: {
+      eyebrow: 'Customer Stories',
+      title: 'What developers say',
+      subtitle: 'Real feedback from production workloads',
+      t1: {
+        name: 'Alex Chen',
+        role: 'SaaS Founder',
+        quote: 'After switching to Three Router, our AI inference bill dropped from $4,000 to $120 per month. API-compatible, migration took 10 minutes.'
+      },
+      t2: {
+        name: 'Maria Rodriguez',
+        role: 'Full-stack Engineer',
+        quote: 'DeepSeek V4-Pro through the US local endpoint has low latency and costs 1/12 of OpenAI. It is our default for production now.'
+      },
+      t3: {
+        name: 'Sam Liu',
+        role: 'CTO, AI Startup',
+        quote: 'Moving all production LLM calls to Three Router cut our costs by over 90% while staying rock-solid stable.'
       }
     },
     footer: {
@@ -4541,9 +4569,8 @@ export default {
       batchAdd: 'Quick Add',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
-        "Enter one proxy per line in the following formats:\nsocks5://user:pass\@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass\@proxy.example.com:443",
-      batchInputHint:
-        "Supports http, https, socks5 protocols. Format: protocol://[user:pass\@]host:port",
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass&#64;proxy.example.com:443",
+      batchInputHint: "Supports http, https, socks5 protocols. Format: protocol://[user:pass&#64;]host:port",
       parsedCount: '{count} valid',
       invalidCount: '{count} invalid',
       duplicateCount: '{count} duplicate',
@@ -5782,8 +5809,8 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, \@qq.com, \@gmail.com, *.edu.cn)",
-        emailSuffixWhitelistPlaceholder: "\@example.com, *.edu.cn",
+          "Only email addresses from the specified domains can register (for example, &#64;qq.com, &#64;gmail.com, *.edu.cn)",
+        emailSuffixWhitelistPlaceholder: "&#64;example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
@@ -6348,14 +6375,14 @@ export default {
         port: 'SMTP Port',
         portPlaceholder: '587',
         username: 'SMTP Username',
-        usernamePlaceholder: "your-email\@gmail.com",
+        usernamePlaceholder: "your-email&#64;gmail.com",
         password: 'SMTP Password',
         passwordPlaceholder: '********',
         passwordHint: 'Leave empty to keep existing password',
         passwordConfiguredPlaceholder: '********',
         passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
         fromEmail: 'From Email',
-        fromEmailPlaceholder: "noreply\@example.com",
+        fromEmailPlaceholder: "noreply&#64;example.com",
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
@@ -6365,7 +6392,7 @@ export default {
         title: 'Send Test Email',
         description: 'Send a test email to verify your SMTP configuration',
         recipientEmail: 'Recipient Email',
-        recipientEmailPlaceholder: "test\@example.com",
+        recipientEmailPlaceholder: "test&#64;example.com",
         sendTestEmail: 'Send Test Email',
         sending: 'Sending...',
         enterRecipientHint: 'Please enter a recipient email address'

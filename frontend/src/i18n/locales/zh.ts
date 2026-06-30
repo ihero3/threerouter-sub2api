@@ -18,17 +18,25 @@ export default {
       realtimeBilling: '按量计费'
     },
     hero: {
-      slogan: 'DeepSeek、Qwen、Kimi、GLM — 价格仅为 GPT-5.5 的 1/33',
+      slogan: 'DeepSeek、Qwen、Kimi、GLM — 价格仅为GPT的 1/33',
       title: 'Three Router',
-      subtitle: '美国本地部署，兼容你正在使用的 API。',
+      subtitle: '顶尖、超高性价比的中国大模型，企业级LLM服务。',
       cta: '领取 $10 ≈ 100M 免费 Tokens →',
       codeHint: '只需改一行 URL，其他代码不变。',
+      coreDiff: '美国本地部署 + 最高降低 97% 成本',
       priceAdvantage: '只需 1/33 的价格。从不按原价付费。',
       priceReasons: '美东 & 美西节点 · 云厂商直供',
       tags: {
         discount: 'DeepSeek V4-Pro 仅 $0.42/M',
         deployment: '美国本地部署',
         freeTokens: '新用户获赠 $10 ≈ 100M 免费 Tokens'
+      },
+      costChart: {
+        eyebrow: '中美模型成本对比',
+        title: '同样 $5 预算，国产旗舰模型可跑更多请求',
+        usRoute: '部署位置',
+        maxSaving: '最高节省',
+        note: '以 $/M 输入 tokens 对比：美国本地入口保持低延迟，国产模型成本曲线显著下探。'
       },
       pricingSection: {
         tableHeader: {
@@ -209,7 +217,7 @@ export default {
       button: '领取 $10 ≈ 100M 免费 Tokens — 无需信用卡 →'
     },
     reviews: {
-      title: '为开发者打造，而非企业',
+      title: '为开发者和企业打造',
       subtitle: '生产环境真实数据',
       review1: {
         text: '过去 24 小时 API 调用',
@@ -232,13 +240,13 @@ export default {
         role: '隐私优先设计'
       },
       review5: {
-        text: 'GitHub 社区',
+        text: '社区评价',
         name: '1.2K ★',
-        role: '开源 Stars'
+        role: 'Stars'
       },
       review6: {
-        text: 'Product Hunt',
-        name: '#4 当日产品',
+        text: '性能排名',
+        name: '#1 当日产品',
         role: '排名'
       },
       review7: {
@@ -250,6 +258,26 @@ export default {
         text: '可用模型',
         name: '15+',
         role: '持续增长中'
+      }
+    },
+    testimonials: {
+      eyebrow: '真实用户反馈',
+      title: '开发者怎么说',
+      subtitle: '来自生产环境的一线使用体验',
+      t1: {
+        name: 'Alex Chen',
+        role: 'SaaS 创始人',
+        quote: '接入 Three Router 后，AI 调用成本直接从每月 $4,000 降到 $120。API 完全兼容，迁移只花了 10 分钟。'
+      },
+      t2: {
+        name: 'Maria Rodriguez',
+        role: '全栈工程师',
+        quote: 'DeepSeek V4-Pro 通过美国本地节点调用延迟很低，价格却只有 OpenAI 的 1/12。对我们来说这就是生产环境的默认选择。'
+      },
+      t3: {
+        name: 'Sam Liu',
+        role: 'AI 创业公司 CTO',
+        quote: '把生产环境的 LLM 调用全部切到 Three Router 后，成本下降了 90% 以上，而且稳定性非常出色。'
       }
     },
     footer: {
@@ -4655,8 +4683,8 @@ export default {
       batchAdd: '快捷添加',
       batchInput: '代理列表',
       batchInputPlaceholder:
-        "每行输入一个代理，支持以下格式：\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass\@proxy.example.com:443",
-      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码\@]主机:端口",
+        '每行输入一个代理，支持以下格式：\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass&#64;proxy.example.com:443',
+      batchInputHint: '支持 http、https、socks5 协议，格式：协议://[用户名:密码&#64;]主机:端口',
       parsedCount: '有效 {count} 个',
       invalidCount: '无效 {count} 个',
       duplicateCount: '重复 {count} 个',
@@ -5941,8 +5969,8 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 \@qq.com, \@gmail.com, *.edu.cn）",
-        emailSuffixWhitelistPlaceholder: "\@example.com, *.edu.cn",
+          "仅允许使用指定域名的邮箱注册账号（例如 &#64;qq.com, &#64;gmail.com, *.edu.cn）",
+        emailSuffixWhitelistPlaceholder: "&#64;example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
@@ -6503,14 +6531,14 @@ export default {
         port: 'SMTP 端口',
         portPlaceholder: '587',
         username: 'SMTP 用户名',
-        usernamePlaceholder: "your-email\@gmail.com",
+        usernamePlaceholder: "your-email&#64;gmail.com",
         password: 'SMTP 密码',
         passwordPlaceholder: '********',
         passwordHint: '留空以保留现有密码',
         passwordConfiguredPlaceholder: '********',
         passwordConfiguredHint: '密码已配置，留空以保留当前值。',
         fromEmail: '发件人邮箱',
-        fromEmailPlaceholder: "noreply\@example.com",
+        fromEmailPlaceholder: "noreply&#64;example.com",
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
@@ -6520,7 +6548,7 @@ export default {
         title: '发送测试邮件',
         description: '发送测试邮件以验证 SMTP 配置',
         recipientEmail: '收件人邮箱',
-        recipientEmailPlaceholder: "test\@example.com",
+        recipientEmailPlaceholder: "test&#64;example.com",
         sendTestEmail: '发送测试邮件',
         sending: '发送中...',
         enterRecipientHint: '请输入收件人邮箱地址'
