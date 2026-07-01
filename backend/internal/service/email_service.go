@@ -311,14 +311,15 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 
 // GenerateVerifyCode 生成6位数字验证码
 func (s *EmailService) GenerateVerifyCode() (string, error) {
-	const digits = "0123456789"
+	// Use alphanumeric chars excluding visually-confusing ones (I, O, 0, l)
+	const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 	code := make([]byte, 6)
 	for i := range code {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
 		if err != nil {
 			return "", err
 		}
-		code[i] = digits[num.Int64()]
+		code[i] = chars[num.Int64()]
 	}
 	return string(code), nil
 }

@@ -8,7 +8,7 @@ export default {
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
     login: 'Login',
-    getStarted: 'Get $10 ≈ 100M Free Tokens',
+    getStarted: 'Get $10 ≈ 530M Free Tokens',
     goToDashboard: 'Go to Dashboard',
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'Access DeepSeek, Qwen, Kimi, GLM and more with a single API key — at 1/33 the cost of GPT-5.5',
@@ -21,7 +21,7 @@ export default {
       slogan: 'DeepSeek, Qwen, Kimi, GLM — at 1/33 the cost of GPT',
       title: 'Three Router',
       subtitle: 'Top-tier Chinese LLMs with Unbeatable Value,Enterprise-Grade LLM',
-      cta: 'Get $10 ≈ 100M Free Tokens →',
+      cta: 'Get $10 ≈ 530M Free Tokens →',
       codeHint: 'Change one URL, keep everything else.',
       coreDiff: 'US Local Deployment + up to 97% Cost Cut',
       priceAdvantage: 'Pay 1/33. Never full price.',
@@ -29,7 +29,7 @@ export default {
       tags: {
         discount: 'DeepSeek V4-Pro from $0.42/M',
         deployment: 'US Local Deployment',
-        freeTokens: 'New Users Get $10 ≈ 100M Free Tokens'
+        freeTokens: 'New Users Get $10 ≈ 530M Free Tokens'
       },
       costChart: {
         eyebrow: 'US vs China model cost',
@@ -213,8 +213,8 @@ export default {
     },
     cta: {
       title: 'Stop paying 33x for the same intelligence.',
-      description: 'Get $10 ≈ 100M free tokens. No credit card required.',
-      button: 'Get $10 ≈ 100M Free Tokens — No credit card →'
+      description: 'Get $10 ≈ 530M free tokens. No credit card required.',
+      button: 'Get $10 ≈ 530M Free Tokens — No credit card →'
     },
     reviews: {
       title: 'Built for developers, not enterprises',
