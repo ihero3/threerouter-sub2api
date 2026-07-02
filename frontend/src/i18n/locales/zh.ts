@@ -109,15 +109,15 @@ export default {
       title: '为什么选 threerouter，而不是其他 10 个网关？',
       subtitle: '美国本地基础设施。云厂商直采。OpenAI 即插即用。',
       ultraFast: {
-        title: '1. 美国本地节点，而非北京节点',
+        title: '美国本地节点，而非北京节点',
         desc: '大多数中国大模型 API 走中国路由。我们不。你的请求走美东/美西节点，P99 延迟低于 200ms——即使模型是 DeepSeek V4 在上海。'
       },
       reliable: {
-        title: '2. 合规性可展示给法务',
+        title: '合规性可展示给法务',
         desc: '直接从 AWS、GCP、Azure、阿里云采购。非转售，非灰色通道。提供安全团队可审计的完整溯源链路。'
       },
       standardApi: {
-        title: '3. 兼容 OpenAI，无需重写代码',
+        title: '兼容 OpenAI，无需重写代码',
         desc: '即插即用。现有代码、现有工具、现有工作流不变。改一个 URL，其他一切照旧。'
       },
       cheap: {
