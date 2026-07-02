@@ -217,7 +217,7 @@ export default {
       button: 'Get $10 ≈ 530M Free Tokens — No credit card →'
     },
     reviews: {
-      title: 'Built for developers, not enterprises',
+      title: 'Built for developers and enterprises',
       subtitle: 'Real metrics from production',
       review1: {
         text: 'API calls in the last 24 hours',

@@ -627,7 +627,6 @@
             align-items: center;
             justify-content: space-between;
             padding: 1.25rem 1.5rem;
-            cursor: pointer;
             background: var(--secondary);
             transition: background 0.3s;
         }
@@ -646,18 +645,8 @@
             color: var(--text-muted);
         }
 
-        .accordion-item.active .accordion-icon {
-            transform: rotate(180deg);
-        }
-
         .accordion-body {
-            max-height: 0;
-            overflow: hidden;
             transition: max-height 0.3s ease;
-        }
-
-        .accordion-item.active .accordion-body {
-            max-height: 2000px;
         }
 
         .accordion-content {
@@ -1626,7 +1615,7 @@ claude --resume</code></pre>
 
             <div class="accordion">
                 <div class="accordion-item">
-                    <div id="faq-what-is" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-what-is" class="accordion-header">
                         <h4>ThreeRouter 是什么？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1651,7 +1640,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-supported-models" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-supported-models" class="accordion-header">
                         <h4>ThreeRouter 都支持哪些模型？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1678,7 +1667,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-group-model" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-group-model" class="accordion-header">
                         <h4>什么是"分组"和"模型"？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1711,7 +1700,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-recharge" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-recharge" class="accordion-header">
                         <h4>如何充值？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1727,7 +1716,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-benefits" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-benefits" class="accordion-header">
                         <h4>有哪些福利？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1743,7 +1732,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-vpn" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-vpn" class="accordion-header">
                         <h4>使用 CC Switch 需要 VPN 吗？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -1754,7 +1743,7 @@ claude --resume</code></pre>
                     </div>
                 </div>
                 <div class="accordion-item">
-                    <div id="faq-slow" class="accordion-header" onclick="toggleAccordion(this)">
+                    <div id="faq-slow" class="accordion-header">
                         <h4>页面请求失败？使用中速度太慢了？</h4>
                         <span class="accordion-icon">▼</span>
                     </div>
@@ -2027,23 +2016,6 @@ curl -X POST "https://api.threerouter.com/v1/images/generations" \
 
     <script>
         // Accordion
-        function toggleAccordion(header) {
-            const item = header.parentElement;
-            const isActive = item.classList.contains('active');
-            
-            // Close all accordion items in the same accordion
-            const accordion = item.closest('.accordion');
-            if (accordion) {
-                accordion.querySelectorAll('.accordion-item').forEach(i => {
-                    i.classList.remove('active');
-                });
-            }
-            
-            // Toggle current item
-            if (!isActive) {
-                item.classList.add('active');
-            }
-        }
 
         // Copy code
         function copyCode(btn) {
