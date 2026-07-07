@@ -475,7 +475,7 @@ function validateForm(): boolean {
     return false
   }
 
-  if (!/^\d{6}$/.test(verifyCode.value.trim())) {
+  if (!/^[0-9A-Za-z]{6}$/.test(verifyCode.value.trim())) {
     errors.value.code = t('auth.invalidCode')
     return false
   }
