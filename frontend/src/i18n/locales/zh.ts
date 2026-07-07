@@ -8,7 +8,7 @@ export default {
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
-    getStarted: '领取 $10 ≈ 530M 免费 Tokens',
+    getStarted: '领取 $10 ≈ 330M 免费 Tokens',
     goToDashboard: '进入控制台',
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '用一套 API 接入 DeepSeek、Qwen、Kimi、GLM 等开源大模型，价格仅为 GPT-5.5 的 1/33',
@@ -21,7 +21,7 @@ export default {
       slogan: 'DeepSeek、Qwen、Kimi、GLM — 价格仅为GPT的 1/33',
       title: 'Three Router',
       subtitle: '顶尖、超高性价比的开源大模型，企业级LLM服务。',
-      cta: '领取 $10 ≈ 530M 免费 Tokens →',
+      cta: '领取 $10 ≈ 330M 免费 Tokens →',
       codeHint: '只需改一行 URL，其他代码不变。',
       coreDiff: '美国本地部署 + 最高降低 97% 成本',
       priceAdvantage: '只需 1/33 的价格。从不按原价付费。',
@@ -29,7 +29,7 @@ export default {
       tags: {
         discount: 'DeepSeek V4-Pro 仅 $0.42/M',
         deployment: '美国本地部署',
-        freeTokens: '新用户获赠 $10 ≈ 530M 免费 Tokens'
+        freeTokens: '新用户获赠 $10 ≈ 330M 免费 Tokens'
       },
       costChart: {
         eyebrow: '开源与闭源模型成本对比',
@@ -213,8 +213,8 @@ export default {
     },
     cta: {
       title: '别再为同样的智能多付 33 倍。',
-      description: '领取 $10 ≈ 530M 免费 tokens，无需信用卡。',
-      button: '领取 $10 ≈ 530M 免费 Tokens — 无需信用卡 →'
+      description: '领取 $10 ≈ 330M 免费 tokens，无需信用卡。',
+      button: '领取 $10 ≈ 330M 免费 Tokens — 无需信用卡 →'
     },
     reviews: {
       title: '为开发者和企业打造',
