@@ -11,7 +11,7 @@ export default {
     getStarted: '领取 $10 ≈ 530M 免费 Tokens',
     goToDashboard: '进入控制台',
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '用一套 API 接入 DeepSeek、Qwen、Kimi、GLM 等中国大模型，价格仅为 GPT-5.5 的 1/33',
+    heroDescription: '用一套 API 接入 DeepSeek、Qwen、Kimi、GLM 等开源大模型，价格仅为 GPT-5.5 的 1/33',
     tags: {
       subscriptionToApi: '兼容 OpenAI',
       stickySession: '美国节点部署',
@@ -20,7 +20,7 @@ export default {
     hero: {
       slogan: 'DeepSeek、Qwen、Kimi、GLM — 价格仅为GPT的 1/33',
       title: 'Three Router',
-      subtitle: '顶尖、超高性价比的中国大模型，企业级LLM服务。',
+      subtitle: '顶尖、超高性价比的开源大模型，企业级LLM服务。',
       cta: '领取 $10 ≈ 530M 免费 Tokens →',
       codeHint: '只需改一行 URL，其他代码不变。',
       coreDiff: '美国本地部署 + 最高降低 97% 成本',
@@ -32,11 +32,11 @@ export default {
         freeTokens: '新用户获赠 $10 ≈ 530M 免费 Tokens'
       },
       costChart: {
-        eyebrow: '中美模型成本对比',
-        title: '同样 $5 预算，国产旗舰模型可跑更多请求',
+        eyebrow: '开源与闭源模型成本对比',
+        title: '同样 $5 预算，开源旗舰模型可跑更多请求',
         usRoute: '部署位置',
         maxSaving: '最高节省',
-        note: '以 $/M 输入 tokens 对比：美国本地入口保持低延迟，国产模型成本曲线显著下探。'
+        note: '以 $/M 输入 tokens 对比：美国本地入口保持低延迟，开源模型成本曲线显著下探。'
       },
       pricingSection: {
         tableHeader: {
@@ -83,8 +83,8 @@ export default {
           desc: '要在不同平台分别管理 DeepSeek、Qwen、Kimi、GLM 的账号和密钥'
         },
         unstable: {
-          title: '从中国直连延迟高',
-          desc: '大多数中国大模型 API 走北京路由。我们走美东和美西节点，延迟低于 200ms。'
+          title: '远距离直连延迟高',
+          desc: '大多数开源大模型 API 走远距离路由。我们走美东和美西节点，延迟低于 200ms。'
         },
         noControl: {
           title: '用量无法追踪',
@@ -93,7 +93,7 @@ export default {
       }
     },
     solutions: {
-      title: '一个 API，接入所有中国大模型。',
+      title: '一个 API，接入所有开源大模型。',
       subtitle: '三步，大幅降低你的 LLM 开销'
     },
     features: {
@@ -109,8 +109,8 @@ export default {
       title: '为什么选 threerouter，而不是其他 10 个网关？',
       subtitle: '美国本地基础设施。云厂商直采。OpenAI 即插即用。',
       ultraFast: {
-        title: '美国本地节点，而非北京节点',
-        desc: '大多数中国大模型 API 走中国路由。我们不。你的请求走美东/美西节点，P99 延迟低于 200ms——即使模型是 DeepSeek V4 在上海。'
+        title: '美国本地节点，而非远距离节点',
+        desc: '大多数开源大模型 API 走远距离路由。我们不。你的请求走美东/美西节点，P99 延迟低于 200ms——即使模型部署在远距离节点。'
       },
       reliable: {
         title: '合规性可展示给法务',

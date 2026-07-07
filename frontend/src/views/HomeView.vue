@@ -327,7 +327,7 @@
                         </div>
                         <div
                           class="cost-bar w-full rounded-t-xl transition-all duration-700 hover:brightness-110"
-                          :class="item.isChina ? 'bg-gradient-to-t from-[#20f5b4] to-cyan-300 shadow-[0_0_18px_rgba(32,245,180,0.35)]' : 'bg-gradient-to-t from-slate-500 to-slate-300'"
+                          :class="item.isOpenSource ? 'bg-gradient-to-t from-[#20f5b4] to-cyan-300 shadow-[0_0_18px_rgba(32,245,180,0.35)]' : 'bg-gradient-to-t from-slate-500 to-slate-300'"
                           :style="{ height: item.height }"
                         ></div>
                         <div class="mt-1 w-full">
@@ -725,11 +725,11 @@ const currentYear = computed(() => new Date().getFullYear())
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 
 const costComparisonBars = [
-  { name: 'GPT-5.5', price: '5.00', height: '100%', isChina: false },
-  { name: 'Claude Opus 4.8', price: '5.00', height: '100%', isChina: false },
-  { name: 'DeepSeek V4-Pro', price: '0.42', height: '8.4%', saving: 92, isChina: true },
-  { name: 'DeepSeek V4-Flash', price: '0.14', height: '3%', saving: 97, isChina: true },
-  { name: 'MiniMax-M3', price: '0.60', height: '12%', saving: 88, isChina: true }
+  { name: 'GPT-5.5', price: '5.00', height: '100%', isOpenSource: false },
+  { name: 'Claude Opus 4.8', price: '5.00', height: '100%', isOpenSource: false },
+  { name: 'DeepSeek V4-Pro', price: '0.42', height: '8.4%', saving: 92, isOpenSource: true },
+  { name: 'DeepSeek V4-Flash', price: '0.14', height: '3%', saving: 97, isOpenSource: true },
+  { name: 'MiniMax-M3', price: '0.60', height: '12%', saving: 88, isOpenSource: true }
 ]
 
 // Get public settings

@@ -20,7 +20,7 @@ export default {
     hero: {
       slogan: 'DeepSeek, Qwen, Kimi, GLM — at 1/33 the cost of GPT',
       title: 'Three Router',
-      subtitle: 'Top-tier Chinese LLMs with Unbeatable Value,Enterprise-Grade LLM',
+      subtitle: 'Top-tier Open Source LLMs with Unbeatable Value,Enterprise-Grade LLM',
       cta: 'Get $10 ≈ 530M Free Tokens →',
       codeHint: 'Change one URL, keep everything else.',
       coreDiff: 'US Local Deployment + up to 97% Cost Cut',
@@ -32,11 +32,11 @@ export default {
         freeTokens: 'New Users Get $10 ≈ 530M Free Tokens'
       },
       costChart: {
-        eyebrow: 'US vs China model cost',
+        eyebrow: 'US vs Open Source model cost',
         title: 'More production requests from the same $5 budget',
         usRoute: 'Deployment',
         maxSaving: 'Max saving',
-        note: 'Compared by $/M input tokens: US-local entry keeps latency low while China frontier models compress cost dramatically.'
+        note: 'Compared by $/M input tokens: US-local entry keeps latency low while Open Source frontier models compress cost dramatically.'
       },
       pricingSection: {
         tableHeader: {
@@ -83,8 +83,8 @@ export default {
           desc: 'Managing separate accounts for DeepSeek, Qwen, Kimi, and GLM across different platforms'
         },
         unstable: {
-          title: 'Latency from China',
-          desc: 'Most Chinese LLM APIs route through Beijing. We route through US-East and US-West.'
+          title: 'Latency from Open Source Regions',
+          desc: 'Most Open Source LLM APIs route through their origin regions. We route through US-East and US-West.'
         },
         noControl: {
           title: 'No Usage Visibility',
@@ -93,7 +93,7 @@ export default {
       }
     },
     solutions: {
-      title: 'One API. Every Chinese LLM.',
+      title: 'One API. Every Open Source LLM.',
       subtitle: 'Three steps to slash your LLM bill'
     },
     features: {
@@ -110,7 +110,7 @@ export default {
       subtitle: 'US-local infrastructure. Direct cloud procurement. OpenAI drop-in replacement.',
       ultraFast: {
         title: '1. US-Local, not Beijing-Local',
-        desc: 'Most Chinese LLM APIs route through China. We don\'t. Your requests hit our US-East / US-West nodes and get sub-200ms P99 — even when the model is DeepSeek V4 in Shanghai.'
+        desc: 'Most Open Source LLM APIs route through their origin regions. We don\'t. Your requests hit our US-East / US-West nodes and get sub-200ms P99 — even when the model is DeepSeek V4 in its origin region.'
       },
       reliable: {
         title: '2. Compliance You Can Show Your Lawyer',
