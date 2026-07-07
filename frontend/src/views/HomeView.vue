@@ -700,6 +700,9 @@
             <span class="text-gray-400">{{ contactInfo }}</span>
           </div>
         </div>
+        <div class="mt-4 text-center">
+          <p class="text-xs text-gray-400">{{ t('home.footer.legalNotice') }}</p>
+        </div>
       </div>
     </footer>
   </div>

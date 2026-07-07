@@ -284,7 +284,8 @@ export default {
       allRightsReserved: 'All rights reserved.',
       documentation: 'Documentation',
       advantage: 'Our Advantages',
-      contact: 'Contact Us'
+      contact: 'Contact Us',
+      legalNotice: 'For legal notices, please contact us via email first'
     }
   },
 

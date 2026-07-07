@@ -284,7 +284,8 @@ export default {
       allRightsReserved: '保留所有权利。',
       documentation: '帮助文档',
       advantage: '我们的优势',
-      contact: '联系我们'
+      contact: '联系我们',
+      legalNotice: '法律通知请先通过邮箱联系我们'
     }
   },
 
