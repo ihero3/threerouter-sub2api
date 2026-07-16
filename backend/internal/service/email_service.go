@@ -396,7 +396,8 @@ func (s *EmailService) VerifyCode(ctx context.Context, email, code string) error
 	}
 
 	// 验证码不匹配 (constant-time comparison to prevent timing attacks)
-	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
+	// Normalize both to uppercase so user input is case-insensitive
+	if subtle.ConstantTimeCompare([]byte(strings.ToUpper(data.Code)), []byte(strings.ToUpper(code))) != 1 {
 		data.Attempts++
 		remaining := time.Until(data.ExpiresAt)
 		if remaining <= 0 {

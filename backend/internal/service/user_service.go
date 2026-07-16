@@ -1238,7 +1238,7 @@ func verifyNotifyCode(ctx context.Context, cache EmailCache, email, code string)
 	if data.Attempts >= maxVerifyCodeAttempts {
 		return ErrVerifyCodeMaxAttempts
 	}
-	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(strings.ToUpper(data.Code)), []byte(strings.ToUpper(code))) != 1 {
 		data.Attempts++
 		remaining := time.Until(data.ExpiresAt)
 		if remaining <= 0 {

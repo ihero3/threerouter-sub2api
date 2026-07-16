@@ -373,8 +373,10 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 // 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成 Turnstile 校验，
 // 此处跳过二次校验，避免一次性 token 在注册提交时重复使用导致误报失败。
 func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
-	// Always verify Turnstile on register, regardless of email verification code.
-	// This prevents bots from bypassing CAPTCHA by automating email verification.
+	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Turnstile check on register")
+		return nil
+	}
 	return s.VerifyTurnstile(ctx, token, remoteIP)
 }
 
