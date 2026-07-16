@@ -537,6 +537,92 @@
             </button>
           </div>
         </div>
+        <!-- Compliance & AI Governance Promo -->
+        <div class="relative mt-16 mb-16 overflow-hidden rounded-[2rem] border border-[#0757b8]/10 bg-white/95 p-8 shadow-xl shadow-[#0757b8]/5 backdrop-blur md:p-10">
+          <div class="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#0757b8]/10 blur-3xl"></div>
+          <div class="pointer-events-none absolute -left-16 -bottom-16 h-64 w-64 rounded-full bg-[#20f5b4]/10 blur-3xl"></div>
+
+          <!-- Header -->
+          <div class="relative mb-8 flex flex-col items-center gap-3 text-center md:flex-row md:items-center md:justify-between md:text-left">
+            <div class="flex flex-col items-center gap-4 md:flex-row md:items-center md:gap-5">
+              <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0757b8] to-[#20f5b4] text-white shadow-lg shadow-blue-500/20">
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <div>
+                <div class="mb-1 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1">
+                  <span class="h-2 w-2 rounded-full bg-[#0757b8]"></span>
+                  <span class="text-xs font-semibold text-[#0757b8]">{{ t('home.compliancePromo.badge') }}</span>
+                </div>
+                <p class="text-xs font-bold uppercase tracking-[0.22em] text-[#0757b8]">{{ t('home.compliancePromo.eyebrow') }}</p>
+                <h2 class="mt-2 text-2xl font-black tracking-tight text-gray-950 md:text-3xl">{{ t('home.compliancePromo.title') }}</h2>
+                <p class="mt-2 max-w-xl text-base leading-relaxed text-gray-500">{{ t('home.compliancePromo.description') }}</p>
+              </div>
+            </div>
+            <button @click="router.push('/compliance')" class="rounded-full bg-gradient-to-r from-[#0757b8] to-[#20f5b4] px-8 py-4 text-base font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-105 hover:shadow-xl cursor-pointer">
+              {{ t('home.compliancePromo.button') }}
+            </button>
+          </div>
+
+          <!-- Feature Cards -->
+          <div class="relative grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="group rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.euai.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.euai.desc') }}</p>
+            </div>
+            <div class="group rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.gdpr.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.gdpr.desc') }}</p>
+            </div>
+            <div class="group rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.zdr.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.zdr.desc') }}</p>
+            </div>
+            <div class="group rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.creds.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.creds.desc') }}</p>
+            </div>
+            <div class="group rounded-2xl border border-cyan-100 bg-gradient-to-br from-cyan-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.templates.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.templates.desc') }}</p>
+            </div>
+            <div class="group rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50/60 to-white p-5 transition-all hover:shadow-lg">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+              </div>
+              <h3 class="text-sm font-bold text-gray-950">{{ t('home.compliancePromo.features.risk.title') }}</h3>
+              <p class="mt-1 text-xs leading-relaxed text-gray-500">{{ t('home.compliancePromo.features.risk.desc') }}</p>
+            </div>
+          </div>
+
+          <!-- Certificate Badges -->
+          <div class="relative mt-8 flex flex-wrap items-center justify-center gap-2 border-t border-gray-100 pt-6 md:justify-start">
+            <span class="text-xs font-medium text-gray-500">{{ t('home.compliancePromo.certsLabel') }}</span>
+            <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">GDPR</span>
+            <span class="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">EU AI Act</span>
+            <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">ZDR</span>
+            <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">DPA</span>
+            <span class="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">HIPAA</span>
+          </div>
+        </div>
+
         <div class="brand-reviews relative mt-16 mb-16 overflow-hidden rounded-[2rem] border border-[#20f5b4]/20 bg-[#020b1f] px-6 py-10 shadow-2xl shadow-[#0757b8]/20 md:px-8 md:py-12">
           <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#20f5b4]/20 blur-3xl"></div>
           <div class="pointer-events-none absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-[#0757b8]/30 blur-3xl"></div>

@@ -50,6 +50,7 @@ type GatewayHandler struct {
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
+	complianceService         *service.ComplianceService
 	concurrencyHelper         *ConcurrencyHelper
 	userMsgQueueHelper        *UserMsgQueueHelper
 	maxAccountSwitches        int
@@ -74,6 +75,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	complianceService *service.ComplianceService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -88,7 +90,6 @@ func NewGatewayHandler(
 		}
 	}
 
-	// 初始化用户消息串行队列 helper
 	var umqHelper *UserMsgQueueHelper
 	if userMsgQueueService != nil && cfg != nil {
 		umqHelper = NewUserMsgQueueHelper(userMsgQueueService, SSEPingFormatClaude, pingInterval)
@@ -105,6 +106,7 @@ func NewGatewayHandler(
 		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		contentModerationService:  contentModerationService,
+		complianceService:         complianceService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
 		maxAccountSwitches:        maxAccountSwitches,
@@ -112,6 +114,50 @@ func NewGatewayHandler(
 		cfg:                       cfg,
 		settingService:            settingService,
 	}
+}
+
+var requiredConsentTypes = []string{"terms_of_service", "gdpr_data_processing"}
+
+func (h *GatewayHandler) checkRequiredConsents(c *gin.Context, userID int64) bool {
+	if userID <= 0 || h.complianceService == nil {
+		return true
+	}
+
+	missingConsents := make([]string, 0, len(requiredConsentTypes))
+	consentNames := map[string]string{
+		"terms_of_service":     "Terms of Service",
+		"gdpr_data_processing": "GDPR Data Processing Agreement",
+	}
+
+	for _, ct := range requiredConsentTypes {
+		consent, err := h.complianceService.GetUserConsent(c.Request.Context(), userID, ct)
+		if err != nil {
+			reqLog := c.MustGet("req_log").(*zap.Logger)
+			reqLog.Warn("compliance.consent.check.error", zap.Int64("user_id", userID), zap.String("consent_type", ct), zap.Error(err))
+			continue
+		}
+		if consent == nil || !consent.Granted {
+			reqLog := c.MustGet("req_log").(*zap.Logger)
+			reqLog.Info("compliance.consent.missing", zap.Int64("user_id", userID), zap.String("consent_type", ct))
+			missingConsents = append(missingConsents, ct)
+		}
+	}
+
+	if len(missingConsents) > 0 {
+		names := make([]string, 0, len(missingConsents))
+		for _, ct := range missingConsents {
+			if name, ok := consentNames[ct]; ok {
+				names = append(names, name)
+			} else {
+				names = append(names, ct)
+			}
+		}
+		message := fmt.Sprintf("You must provide consent for the following before using this service: %s. Please visit /governance/consent to complete the consent process.", strings.Join(names, ", "))
+		h.errorResponse(c, http.StatusForbidden, "consent_required", message)
+		return false
+	}
+
+	return true
 }
 
 // Messages handles Claude API compatible messages endpoint
@@ -137,6 +183,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
+
+	c.Set("req_log", reqLog)
+
+	if !h.checkRequiredConsents(c, subject.UserID) {
+		return
+	}
+
+	c.Header("X-AI-Act-Transparency", "You are interacting with an AI system. This interaction is recorded for compliance purposes.")
 
 	// 读取请求体
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)

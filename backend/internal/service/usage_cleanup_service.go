@@ -20,6 +20,7 @@ import (
 
 const (
 	usageCleanupWorkerName = "usage_cleanup_worker"
+	expiredRetentionCleanupWorkerName = "expired_retention_cleanup_worker"
 )
 
 // UsageCleanupService 负责创建与执行使用记录清理任务
@@ -96,6 +97,7 @@ func (s *UsageCleanupService) Start() {
 	interval := s.workerInterval()
 	s.startOnce.Do(func() {
 		s.timingWheel.ScheduleRecurring(usageCleanupWorkerName, interval, s.runOnce)
+		s.timingWheel.ScheduleRecurring(expiredRetentionCleanupWorkerName, 1*time.Hour, s.runExpiredRetentionCleanup)
 		logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] started (interval=%s max_range_days=%d batch_size=%d task_timeout=%s)", interval, s.maxRangeDays(), s.batchSize(), s.taskTimeout())
 	})
 }
@@ -184,6 +186,47 @@ func (s *UsageCleanupService) runOnce() {
 
 	logger.LegacyPrintf("service.usage_cleanup", "[UsageCleanup] task claimed: task=%d status=%s created_by=%d deleted_rows=%d %s", task.ID, task.Status, task.CreatedBy, task.DeletedRows, describeUsageCleanupFilters(task.Filters))
 	svc.executeTask(ctx, task)
+}
+
+func (s *UsageCleanupService) runExpiredRetentionCleanup() {
+	svc := s
+	if svc == nil || svc.repo == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	batchSize := svc.batchSize()
+	deletedTotal := int64(0)
+	start := time.Now()
+
+	slog.Info("[UsageCleanup] expired_retention_cleanup_start", "batch_size", batchSize)
+
+	for {
+		if ctx.Err() != nil {
+			slog.Warn("[UsageCleanup] expired_retention_cleanup_interrupted", "error", ctx.Err())
+			break
+		}
+
+		deleted, err := svc.repo.DeleteExpiredRetentionLogs(ctx, batchSize)
+		if err != nil {
+			slog.Warn("[UsageCleanup] expired_retention_cleanup_batch_failed", "error", err)
+			break
+		}
+
+		deletedTotal += deleted
+
+		if deleted > 0 {
+			slog.Info("[UsageCleanup] expired_retention_cleanup_batch_done", "deleted", deleted, "deleted_total", deletedTotal)
+		}
+
+		if deleted == 0 || deleted < int64(batchSize) {
+			break
+		}
+	}
+
+	slog.Info("[UsageCleanup] expired_retention_cleanup_complete", "deleted_total", deletedTotal, "duration", time.Since(start))
 }
 
 func (s *UsageCleanupService) executeTask(ctx context.Context, task *UsageCleanupTask) {

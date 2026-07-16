@@ -176,6 +176,42 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/compliance',
+    name: 'Compliance',
+    component: () => import('@/views/ComplianceView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'AI Governance & Compliance'
+    }
+  },
+  {
+    path: '/whitepaper',
+    name: 'Whitepaper',
+    component: () => import('@/views/whitepaper/WhitepaperView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Compliance Whitepaper'
+    }
+  },
+  {
+    path: '/compliance/eu-ai-act-report',
+    name: 'EuAiActReport',
+    component: () => import('@/views/compliance/EuAiActReportView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'EU AI Act Assessment Report'
+    }
+  },
+  {
+    path: '/compliance/gdpr-ropa-report',
+    name: 'GdprRopaReport',
+    component: () => import('@/views/compliance/GdprRopaReportView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'GDPR ROPA Report'
+    }
+  },
+  {
     path: '/models',
     name: 'PublicModels',
     component: { render: () => null },
@@ -286,6 +322,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Profile',
       titleKey: 'profile.title',
       descriptionKey: 'profile.description'
+    }
+  },
+  {
+    path: '/governance',
+    name: 'Governance',
+    component: () => import('@/views/user/GovernanceView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'AI Governance',
+      titleKey: 'governance.title',
+      descriptionKey: 'governance.description'
     }
   },
   {
@@ -627,6 +675,18 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.riskControl.title',
       descriptionKey: 'admin.riskControl.description',
       requiresRiskControl: true
+    }
+  },
+  {
+    path: '/admin/governance',
+    name: 'AdminGovernance',
+    component: () => import('@/views/admin/GovernanceView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'AI Governance',
+      titleKey: 'admin.governance.title',
+      descriptionKey: 'admin.governance.description'
     }
   },
   {

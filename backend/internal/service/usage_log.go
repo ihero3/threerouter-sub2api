@@ -175,6 +175,23 @@ type UsageLog struct {
 	ImageSizeBreakdown map[string]int
 	MediaType          *string
 
+	// ---- AI 治理与合规模块字段（见 migrations/158_compliance_fields.sql）----
+	// 均为可选字段，默认空/零值，不影响历史高吞吐写入。
+	ModelTags                *string    // 模型属性标签（逗号分隔）
+	RiskTags                 *string    // 合规风险标签（逗号分隔）
+	EUAIActRole              *string    // EU AI Act 角色定位
+	EUAIActRiskTier          *string    // EU AI Act 风险等级
+	ComplianceCheckpointHash *string    // 合规检查点哈希
+	ModerationAction         *string    // 内容审核动作（ALLOW/REVIEW/BLOCK）
+	UserJurisdiction         *string    // 用户司法管辖区（GeoIP）
+	AggregateOnly            bool       // ZDR：是否仅保留聚合（默认 true）
+	RetentionExpiresAt       *time.Time // 明细保留到期时间
+	ModelProvider            *string    // 模型提供者
+	ModelVersion             *string    // 模型版本
+	PromptHash               *string    // 请求内容 SHA-256
+	ResponseHash             *string    // 响应内容 SHA-256
+	PolicyDecision           *string    // 策略决策结果
+
 	CreatedAt time.Time
 
 	User         *User

@@ -45,6 +45,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
+	c.Set("req_log", reqLog)
+
+	if !h.checkRequiredConsents(c, subject.UserID) {
+		return
+	}
+
+	c.Header("X-AI-Act-Transparency", "You are interacting with an AI system. This interaction is recorded for compliance purposes.")
+
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}

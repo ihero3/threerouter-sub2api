@@ -36,12 +36,43 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
 	}
+	joined := strings.Join(parts, "\n")
+	// Some clients concatenate the full conversation history into the last user message
+	// wrapped in <user_input> tags. For moderation purposes, only the latest turn should be
+	// evaluated, so keep only the last <user_input> segment.
+	joined = extractLastUserInputSegment(joined)
 	out := ContentModerationInput{
-		Text:   normalizeContentModerationText(strings.Join(parts, "\n")),
+		Text:   normalizeContentModerationText(joined),
 		Images: normalizeModerationImages(images),
 	}
 	out.Normalize()
 	return out
+}
+
+// extractLastUserInputSegment handles clients that wrap the entire conversation history
+// in <user_input>...</user_input> tags inside the final user message. When present, only
+// the last segment is returned so moderation evaluates the current turn, not prior turns.
+func extractLastUserInputSegment(text string) string {
+	trimmed := strings.TrimSpace(text)
+	const openTag = "<user_input>"
+	const closeTag = "</user_input>"
+	if !strings.Contains(trimmed, openTag) {
+		return text
+	}
+	lastOpen := strings.LastIndex(trimmed, openTag)
+	if lastOpen == -1 {
+		return text
+	}
+	contentStart := lastOpen + len(openTag)
+	if contentStart > len(trimmed) {
+		return text
+	}
+	remainder := trimmed[contentStart:]
+	lastClose := strings.Index(remainder, closeTag)
+	if lastClose == -1 {
+		return remainder
+	}
+	return remainder[:lastClose]
 }
 
 func collectLastRoleMessage(messages gjson.Result, role string, parts *[]string, images *[]string) {

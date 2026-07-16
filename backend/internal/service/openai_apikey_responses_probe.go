@@ -214,7 +214,7 @@ func isResponsesEndpointSupportedByStatus(status int) bool {
 //     输出项才算真正可用;否则(如火山方舟 coding/v3 × kimi-k2.6 仅回 reasoning)
 //     判为 false,使网关改走 /v1/chat/completions 直转路径。
 func decideResponsesProbeSupport(status int, body []byte) bool {
-	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
+	if isResponsesEndpointNotFound(status, body) {
 		return false
 	}
 	if status < 200 || status >= 300 {

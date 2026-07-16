@@ -56,6 +56,20 @@
                   <span class="rounded-full bg-gray-100 px-2 py-1">{{ getCategoryLabel(model.category) }}</span>
                   <span class="rounded-full bg-green-100 px-2 py-1 text-green-600">{{ t('admin.models.status.available') }}</span>
                 </div>
+                <div v-if="modelPricing[model.name]" class="mt-3 flex flex-wrap gap-3 text-xs">
+                  <div class="flex items-center gap-1">
+                    <span class="text-gray-500">输入:</span>
+                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].input_price) }}</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <span class="text-gray-500">输出:</span>
+                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].output_price) }}</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <span class="text-gray-500">缓存:</span>
+                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].cache_write_price) }}</span>
+                  </div>
+                </div>
               </template>
             </div>
           </div>
@@ -66,9 +80,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { getModelDefaultPricing } from '@/api/admin/channels'
+import { perTokenToMTok } from '@/components/admin/channel/types'
 
 const { t, locale } = useI18n()
 
@@ -81,6 +97,44 @@ interface Model {
   vendor: string
   category: string
   icon: string
+}
+
+interface ModelPricing {
+  input_price?: number | null
+  output_price?: number | null
+  cache_write_price?: number | null
+  cache_read_price?: number | null
+}
+
+const modelPricing = ref<Record<string, ModelPricing>>({})
+
+const fetchModelPricing = async (modelName: string) => {
+  try {
+    const result = await getModelDefaultPricing(modelName)
+    if (result.found) {
+      modelPricing.value[modelName] = {
+        input_price: perTokenToMTok(result.input_price),
+        output_price: perTokenToMTok(result.output_price),
+        cache_write_price: perTokenToMTok(result.cache_write_price),
+        cache_read_price: perTokenToMTok(result.cache_read_price),
+      }
+    }
+  } catch (error) {
+    console.error(`Failed to fetch pricing for ${modelName}:`, error)
+  }
+}
+
+onMounted(() => {
+  models.value.forEach(model => {
+    if (model.name && model.category !== 'hint') {
+      fetchModelPricing(model.name)
+    }
+  })
+})
+
+const formatPrice = (price: number | null | undefined): string => {
+  if (price === null || price === undefined) return '-'
+  return `¥${price.toFixed(2)}/MTokens`
 }
 
 const providerDescriptions: Record<string, { en: string; zh: string }> = {

@@ -104,6 +104,9 @@ func RegisterAdminRoutes(
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
+		// AI 治理与合规
+		registerGovernanceRoutes(admin, h)
+
 		// 工单管理
 		registerTicketRoutes(admin, h)
 
@@ -127,6 +130,62 @@ func registerAdminComplianceRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	{
 		compliance.GET("", h.Admin.Compliance.GetStatus)
 		compliance.POST("/accept", h.Admin.Compliance.Accept)
+	}
+}
+
+// registerGovernanceRoutes 注册 AI 治理与合规管理端路由（/admin/governance/*）。
+// 前缀避开 /admin/compliance*（见 docs/合规方案.md 0.2 节）。
+func registerGovernanceRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	gov := admin.Group("/governance")
+	{
+		gov.GET("/status", h.Admin.Governance.GetStatus)
+		gov.GET("/audit-logs", h.Admin.Governance.ListAuditLogs)
+		gov.GET("/risk-tags", h.Admin.Governance.RiskTags)
+
+		euAIAct := gov.Group("/eu-ai-act")
+		{
+			euAIAct.GET("/assessment", h.Admin.Governance.EUAIActAssessment)
+			euAIAct.POST("/assessment", h.Admin.Governance.ExportEUAIActAssessment)
+		}
+
+		gdpr := gov.Group("/gdpr")
+		{
+			gdpr.GET("/data-processing-record", h.Admin.Governance.DataProcessingRecord)
+			gdpr.GET("/erasure-requests", h.Admin.Governance.ListErasureRequests)
+			gdpr.POST("/erasure-requests/:id/process", h.Admin.Governance.ProcessErasureRequest)
+		}
+
+		// 行业合规模板（P2，见 docs/合规方案.md 4.4.2/4.4.3）
+		templates := gov.Group("/templates")
+		{
+			templates.GET("", h.Admin.Governance.GetComplianceTemplates)
+			templates.POST("/apply", h.Admin.Governance.ApplyComplianceTemplate)
+			templates.POST("/custom", h.Admin.Governance.CreateCustomTemplate)
+		}
+
+		// 内容审核自定义规则（P2，见 docs/合规方案.md 0.3/4.1.3）
+		rules := gov.Group("/moderation-rules")
+		{
+			rules.GET("", h.Admin.ModerationRule.ListRules)
+			rules.POST("", h.Admin.ModerationRule.CreateRule)
+			rules.POST("/strategy", h.Admin.ModerationRule.SetStrategy)
+			rules.PUT("/:ruleId", h.Admin.ModerationRule.UpdateRule)
+			rules.DELETE("/:ruleId", h.Admin.ModerationRule.DeleteRule)
+		}
+
+		// DPA 生成（GDPR Art 28，见 docs/合规方案.md 4.2.4）
+		gov.POST("/gdpr/dpa/generate", h.Admin.Governance.GenerateDPA)
+
+		// 合规凭证（证据包）管理（见 docs/合规方案.md）
+		gov.GET("/credentials", h.Admin.Governance.ListCredentials)
+		gov.GET("/credentials/:id", h.Admin.Governance.GetCredential)
+		gov.POST("/credentials", h.Admin.Governance.CreateCredential)
+		gov.POST("/credentials/:id/revoke", h.Admin.Governance.RevokeCredential)
+		gov.POST("/credentials/:id/activate", h.Admin.Governance.ActivateCredential)
+		gov.DELETE("/credentials/:id", h.Admin.Governance.DeleteCredential)
+
+		// 跨法域合规映射（P3，见 docs/合规方案.md 4.4.1）
+		gov.GET("/jurisdiction/mapping", h.Admin.Governance.GetJurisdictionMapping)
 	}
 }
 

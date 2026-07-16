@@ -635,6 +635,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
+	ProvideModerationRuleService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
@@ -644,7 +645,94 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+
+	// AI 治理与合规模块（见 docs/合规方案.md）
+	NewGeoIPService,
+	ProvideComplianceService,
+	ProvidePolicyTemplateService,
+	ProvideComplianceMappingService,
+	NewComplianceCredentialService,
+	NewComplianceUserDataExporter,
+	NewUserComplianceProfileService,
+	ProvideUserComplianceProfileHook,
 )
+
+// ProvideComplianceService 创建 AI 治理与合规服务。
+func ProvideComplianceService(
+	cfg *config.Config,
+	auditRepo ComplianceAuditLogRepository,
+	erasureRepo DataErasureRequestRepository,
+	consentRepo UserConsentRepository,
+	geoIPService *GeoIPService,
+	dataExporter ComplianceUserDataExporter,
+) *ComplianceService {
+	return NewComplianceService(cfg, auditRepo, erasureRepo, consentRepo, geoIPService, dataExporter)
+}
+
+// ProvideModerationRuleService 创建内容审核自定义规则服务：
+// 启动时从仓储加载启用规则重建引擎，并将引擎注入 ContentModerationService，
+// 使入口审核流程（pre_block）在关键词/第三方之外评估自定义 KEYWORD/REGEX/PATTERN 规则。
+// 加载失败仅记录警告，不阻断启动。
+func ProvideModerationRuleService(
+	repo ModerationRuleRepository,
+	contentModeration *ContentModerationService,
+) *ModerationRuleService {
+	svc := NewModerationRuleService(repo)
+	if err := svc.ReloadEngine(context.Background()); err != nil {
+		logger.LegacyPrintf("service.moderation_rule", "Warning: reload moderation rule engine failed: %v", err)
+	}
+	if contentModeration != nil {
+		contentModeration.SetRuleEngine(svc.Engine())
+	}
+	return svc
+}
+
+// ProvideComplianceMappingService 创建跨法域合规映射服务。
+func ProvideComplianceMappingService(
+	repo UserJurisdictionMappingRepository,
+	ruleService *ModerationRuleService,
+	complianceProfileService *UserComplianceProfileService,
+) *ComplianceMappingService {
+	return NewComplianceMappingService(repo, ruleService, complianceProfileService)
+}
+
+// ProvidePolicyTemplateService 创建行业合规模板服务，并在启动时确保内置模板已落库。
+//
+// 说明：EnsureBuiltinTemplates 幂等（仅当模板表为空时写入内置模板），
+// 失败不阻断启动，仅记录警告日志。
+func ProvidePolicyTemplateService(
+	repo CompliancePolicyTemplateRepository,
+	auditRepo ComplianceAuditLogRepository,
+) *PolicyTemplateService {
+	svc := NewPolicyTemplateService(repo, auditRepo)
+	if err := svc.EnsureBuiltinTemplates(context.Background()); err != nil {
+		logger.LegacyPrintf("service.compliance", "Warning: ensure builtin policy templates failed: %v", err)
+	}
+	return svc
+}
+
+// ProvideUserComplianceProfileHook 将用户级合规档案服务挂到 GatewayService 与
+// ContentModerationService：前者按用户 ZDR 设置写入 usage_logs 的 aggregate_only
+// 与 retention_expires_at；后者按用户启用的规则 ID 过滤自定义规则评估。
+// 返回一个不透明标记值，仅用于纳入 wire 依赖图。
+// 详见 docs/合规升级方案.md 5.2 / 5.5。
+type UserComplianceProfileHook struct{}
+
+func ProvideUserComplianceProfileHook(
+	svc *UserComplianceProfileService,
+	gateway *GatewayService,
+	contentModeration *ContentModerationService,
+) UserComplianceProfileHook {
+	if svc != nil {
+		if gateway != nil {
+			gateway.SetUserComplianceProfileService(svc)
+		}
+		if contentModeration != nil {
+			contentModeration.SetUserComplianceProfileService(svc)
+		}
+	}
+	return UserComplianceProfileHook{}
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

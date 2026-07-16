@@ -544,6 +544,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	var authToken string
 	var apiURL string
 	var isOAuth bool
+	var normalizedBaseURL string
 
 	if credentialAccount.IsOAuth() {
 		isOAuth = true
@@ -566,7 +567,8 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if baseURL == "" {
 			baseURL = "https://api.openai.com"
 		}
-		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		var err error
+		normalizedBaseURL, err = s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
@@ -638,11 +640,31 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
+		// APIKey 账号测试 /v1/responses 失败且上游端点不存在时，回退到 /v1/chat/completions
+		if credentialAccount.Type == AccountTypeAPIKey && normalizedBaseURL != "" && isResponsesEndpointNotFound(resp.StatusCode, body) {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "Responses 端点不可用，回退到 /v1/chat/completions 测试"})
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
+		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+// isResponsesEndpointNotFound 判断上游返回的错误是否表示 /v1/responses 端点不存在。
+// 第三方 OpenAI 兼容上游（Kimi、DeepSeek、GLM 等）通常只支持 /v1/chat/completions，
+// 对 /v1/responses 可能返回 404/405；部分网关或 WAF 会包装成 403 并在响应体中携带
+// "not found"。此时账号测试应回退到 /v1/chat/completions。
+func isResponsesEndpointNotFound(status int, body []byte) bool {
+	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
+		return true
+	}
+	if status == http.StatusForbidden {
+		msg := strings.ToLower(string(body))
+		return strings.Contains(msg, "not found") || strings.Contains(msg, "not_found")
+	}
+	return false
 }
 
 // testGrokAccountConnection tests a Grok OAuth account through xAI's Responses API.

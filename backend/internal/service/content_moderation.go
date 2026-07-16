@@ -38,8 +38,14 @@ const (
 	ContentModerationActionKeywordBlock = "keyword_block"
 	ContentModerationActionError        = "error"
 	ContentModerationActionCyberPolicy  = "cyber_policy" // cyber_policy 硬阻断的风控日志 action（封号计数排除按此值过滤）
+	ContentModerationActionRuleBlock    = "rule_block"   // 自定义规则命中触发的阻断动作
 
 	contentModerationKeywordCategory = "keyword"
+	contentModerationRuleCategory    = "custom_rule"
+
+	// contentModerationOutputEndpointSuffix 追加到输出侧事后审核日志的 endpoint，
+	// 用于区分请求侧（入口拦截）与响应侧（流式事后审核）记录。
+	contentModerationOutputEndpointSuffix = ":output"
 
 	ContentModerationKeywordModeKeywordOnly   = "keyword_only"
 	ContentModerationKeywordModeKeywordAndAPI = "keyword_and_api"
@@ -513,6 +519,30 @@ type ContentModerationService struct {
 	lastCleanupDeletedNonHit atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
+	// ruleEngine 为可选注入的自定义审核规则引擎（KEYWORD/REGEX/PATTERN）。
+	// 见 docs/合规方案.md 0.3；nil 时跳过自定义规则评估，保持既有行为。
+	ruleEngine *ModerationRuleEngine
+	// userComplianceProfileService 用于按用户级 enabled_rule_ids 过滤规则。
+	// 允许为 nil，此时等同于启用所有规则（向后兼容）。
+	// 详见 docs/合规升级方案.md 5.5。
+	userComplianceProfileService *UserComplianceProfileService
+}
+
+// SetUserComplianceProfileService 注入用户级合规档案服务（用于规则按账户过滤）。
+// service 为 nil 时关闭过滤，恢复为"全部规则启用"行为。
+func (s *ContentModerationService) SetUserComplianceProfileService(svc *UserComplianceProfileService) {
+	if s == nil {
+		return
+	}
+	s.userComplianceProfileService = svc
+}
+
+// SetRuleEngine 注入自定义审核规则引擎（幂等，可为 nil 关闭）。
+func (s *ContentModerationService) SetRuleEngine(engine *ModerationRuleEngine) {
+	if s == nil {
+		return
+	}
+	s.ruleEngine = engine
 }
 
 type contentModerationTask struct {
@@ -898,11 +928,12 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
 				log.MatchedKeyword = keyword
 				s.enqueueRecord(input, cfg, log, hashText, false, true)
+				blockMessage := fmt.Sprintf("%s（匹配内容：%s）", cfg.BlockMessage, keyword)
 				return &ContentModerationDecision{
 					Allowed:         false,
 					Blocked:         true,
 					Flagged:         true,
-					Message:         cfg.BlockMessage,
+					Message:         blockMessage,
 					StatusCode:      cfg.BlockStatus,
 					HighestCategory: contentModerationKeywordCategory,
 					HighestScore:    1.0,
@@ -910,6 +941,9 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 					Action:          ContentModerationActionKeywordBlock,
 				}, nil
 			}
+		}
+		if decision := s.evaluateCustomRules(ctx, input, cfg, content, hashText); decision != nil {
+			return decision, nil
 		}
 		if cfg.KeywordBlockingMode == ContentModerationKeywordModeKeywordOnly {
 			s.recordPreBlockSyncMetric(0, ContentModerationActionAllow)
@@ -994,6 +1028,70 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 	}
 
 	return s.checkSync(ctx, input, cfg, content, hashText, nil, true), nil
+}
+
+// CheckOutput 对模型输出（含流式聚合结果）执行事后审核。
+//
+// 依据合规方案 0.4：流式输出无法实时拦截（逐 token 流出、中途拦截会截断响应），
+// 因此输出侧统一走异步事后审核——只对聚合输出打标、计入违规次数并触发违规副作用（通知/自动封禁），
+// 绝不阻断请求（本方法无返回值，调用方无需也不应据此中断响应）。
+// 复用现有异步 worker 队列与 checkSync(allowBlock=false) 流水线，避免另建一套审核体系。
+//
+// 关键词/自定义规则命中在输出侧同样只记录、不阻断；OpenAI moderation 打分沿用请求侧阈值。
+func (s *ContentModerationService) CheckOutput(ctx context.Context, input ContentModerationCheckInput, output string) {
+	if s == nil || s.settingRepo == nil || s.repo == nil {
+		return
+	}
+	text := strings.TrimSpace(output)
+	if text == "" {
+		return
+	}
+	if !s.isRiskControlEnabled(ctx) {
+		return
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		slog.Warn("content_moderation.output_skip_config_load_failed",
+			"user_id", input.UserID,
+			"endpoint", input.Endpoint,
+			"error", err)
+		return
+	}
+	if !cfg.Enabled || cfg.Mode == ContentModerationModeOff {
+		return
+	}
+	if !cfg.includesGroup(input.GroupID) || !cfg.includesModel(input.Model) {
+		return
+	}
+	if len(cfg.apiKeys()) == 0 {
+		slog.Warn("content_moderation.output_skip_no_audit_api_keys",
+			"user_id", input.UserID,
+			"endpoint", input.Endpoint)
+		return
+	}
+	content := ContentModerationInput{Text: text}
+	content.Normalize()
+	if content.IsEmpty() {
+		return
+	}
+	hashText := content.Hash()
+	if !cfg.shouldSample(hashText) {
+		return
+	}
+	// 标记为输出侧记录，便于审计区分请求/响应。
+	outputInput := input
+	if !strings.HasSuffix(outputInput.Endpoint, contentModerationOutputEndpointSuffix) {
+		outputInput.Endpoint += contentModerationOutputEndpointSuffix
+	}
+	slog.Info("content_moderation.enqueue_output",
+		"user_id", outputInput.UserID,
+		"api_key_id", outputInput.APIKeyID,
+		"group_id", contentModerationLogGroupID(outputInput.GroupID),
+		"endpoint", outputInput.Endpoint,
+		"protocol", outputInput.Protocol,
+		"text_runes", len([]rune(content.Text)),
+		"queue_len", len(s.asyncQueue))
+	s.enqueueAsync(outputInput, cfg, content, hashText)
 }
 
 func (s *ContentModerationService) checkSync(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string, queueDelay *int, allowBlock bool) *ContentModerationDecision {
@@ -1089,6 +1187,97 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 	}
 }
 
+// evaluateCustomRules 用注入的规则引擎评估文本，返回非 nil 决策表示命中并需阻断。
+//
+// 说明：BLOCK 动作返回阻断决策并记录 flagged 日志（计入违规/自动封禁）；
+// REVIEW 动作仅记录 flagged 日志用于人工复核，但放行（返回 nil）；
+// ALLOW / 未命中返回 nil。仅在 pre_block 模式下由 Check 调用。
+// 详见 docs/合规升级方案.md 5.5：按用户级 enabled_rule_ids 过滤。
+func (s *ContentModerationService) evaluateCustomRules(ctx context.Context, input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string) *ContentModerationDecision {
+	if s == nil || s.ruleEngine == nil {
+		return nil
+	}
+	var result ModerationRuleDecision
+	if s.userComplianceProfileService != nil && input.UserID > 0 {
+		enabled, err := s.userComplianceProfileService.GetEnabledRuleIDs(ctx, input.UserID)
+		if err != nil {
+			slog.Warn("content_moderation.rule_filter_failed",
+				"user_id", input.UserID, "error", err.Error())
+			// 失败时回退到全量规则评估，保证安全侧默认。
+			result = s.ruleEngine.Evaluate(content.Text)
+		} else {
+			slog.Info("content_moderation.rule_filter_enabled",
+				"user_id", input.UserID,
+				"enabled_rule_ids", strings.Join(enabled, ","),
+				"enabled_count", len(enabled))
+			result = s.ruleEngine.EvaluateForUser(content.Text, enabled, input.UserID)
+		}
+	} else {
+		slog.Info("content_moderation.rule_filter_fallback",
+			"user_id", input.UserID,
+			"has_service", s.userComplianceProfileService != nil)
+		result = s.ruleEngine.Evaluate(content.Text)
+	}
+	if !result.Matched || len(result.Matches) == 0 {
+		return nil
+	}
+	primary := result.Matches[0]
+	category := primary.RiskCategory
+	if strings.TrimSpace(category) == "" {
+		category = contentModerationRuleCategory
+	}
+	scores := map[string]float64{category: 1.0}
+
+	if result.Action != ModerationRuleActionBlock {
+		// REVIEW：记录待复核日志（flagged），但放行。
+		log := s.buildLog(input, cfg, ContentModerationActionAllow, true, category, 1.0, scores, content.ExcerptText(), nil, nil, "")
+		log.MatchedKeyword = primary.RuleID
+		s.enqueueRecord(input, cfg, log, hashText, false, false)
+		return nil
+	}
+
+	s.recordPreBlockSyncMetric(0, ContentModerationActionRuleBlock)
+
+	matchedTexts := make([]string, 0, len(result.Matches))
+	for _, m := range result.Matches {
+		if m.MatchedText != "" {
+			matchedTexts = append(matchedTexts, m.MatchedText)
+		}
+	}
+
+	slog.Info("content_moderation.rule_block",
+		"user_id", input.UserID,
+		"api_key_id", input.APIKeyID,
+		"group_id", contentModerationLogGroupID(input.GroupID),
+		"endpoint", input.Endpoint,
+		"protocol", input.Protocol,
+		"rule_id", primary.RuleID,
+		"rule_type", primary.RuleType,
+		"risk_category", category,
+		"match_count", len(result.Matches),
+		"matched_texts", strings.Join(matchedTexts, ","))
+
+	blockMessage := cfg.BlockMessage
+	if len(matchedTexts) > 0 {
+		blockMessage = fmt.Sprintf("%s（匹配内容：%s）", cfg.BlockMessage, strings.Join(matchedTexts, "、"))
+	}
+
+	log := s.buildLog(input, cfg, ContentModerationActionRuleBlock, true, category, 1.0, scores, content.ExcerptText(), nil, nil, "")
+	log.MatchedKeyword = primary.RuleID
+	s.enqueueRecord(input, cfg, log, hashText, false, true)
+	return &ContentModerationDecision{
+		Allowed:         false,
+		Blocked:         true,
+		Flagged:         true,
+		Message:         blockMessage,
+		StatusCode:      cfg.BlockStatus,
+		HighestCategory: category,
+		HighestScore:    1.0,
+		CategoryScores:  scores,
+		Action:          ContentModerationActionRuleBlock,
+	}
+}
+
 func (s *ContentModerationService) recordPreBlockSyncMetric(latencyMS int, action string) {
 	if s == nil {
 		return
@@ -1099,7 +1288,7 @@ func (s *ContentModerationService) recordPreBlockSyncMetric(latencyMS int, actio
 	}
 	s.preBlockLatencyTotalMS.Add(int64(latencyMS))
 	switch action {
-	case ContentModerationActionBlock, ContentModerationActionHashBlock, ContentModerationActionKeywordBlock:
+	case ContentModerationActionBlock, ContentModerationActionHashBlock, ContentModerationActionKeywordBlock, ContentModerationActionRuleBlock:
 		s.preBlockBlocked.Add(1)
 	case ContentModerationActionError:
 		s.preBlockErrors.Add(1)

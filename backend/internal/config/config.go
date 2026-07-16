@@ -93,6 +93,33 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Compliance              ComplianceConfig              `mapstructure:"compliance"`
+}
+
+// ComplianceConfig 配置 AI 治理与合规模块。
+type ComplianceConfig struct {
+	// GeoIP 配置（用户司法管辖区识别）
+	GeoIP GeoIPConfig `mapstructure:"geoip"`
+	// ZDR 默认模式：aggregate_only（默认）/ audit
+	DefaultZDRMode string `mapstructure:"default_zdr_mode"`
+	// 明细日志默认保留天数（opt-in 生效时）
+	DetailRetentionDays int `mapstructure:"detail_retention_days"`
+	// 组织信息（用于合规文档生成）
+	OrganizationName string `mapstructure:"organization_name"`
+	LegalEntity      string `mapstructure:"legal_entity"`
+	DPOContact       string `mapstructure:"dpo_contact"`
+	// 数据部署区域（如 US），用于跨境传输判定
+	DeploymentRegion string `mapstructure:"deployment_region"`
+}
+
+// GeoIPConfig 配置 MaxMind GeoLite2 数据库。
+type GeoIPConfig struct {
+	// Enabled 是否启用 GeoIP 查询
+	Enabled bool `mapstructure:"enabled"`
+	// DatabasePath GeoLite2-Country.mmdb 文件路径
+	DatabasePath string `mapstructure:"database_path"`
+	// FallbackEnabled 数据库不可用时是否降级（留空 jurisdiction，不阻断请求）
+	FallbackEnabled bool `mapstructure:"fallback_enabled"`
 }
 
 type LogConfig struct {

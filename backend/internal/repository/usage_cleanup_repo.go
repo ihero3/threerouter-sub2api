@@ -320,6 +320,37 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 	return deleted, nil
 }
 
+func (r *usageCleanupRepository) DeleteExpiredRetentionLogs(ctx context.Context, limit int) (int64, error) {
+	query := `
+		WITH target AS (
+			SELECT id
+			FROM usage_logs
+			WHERE retention_expires_at IS NOT NULL
+				AND retention_expires_at < NOW()
+			ORDER BY retention_expires_at ASC, id ASC
+			LIMIT $1
+		)
+		DELETE FROM usage_logs
+		WHERE id IN (SELECT id FROM target)
+		RETURNING id
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, limit)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deleted int64
+	for rows.Next() {
+		deleted++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
 func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any) {
 	conditions := make([]string, 0, 8)
 	args := make([]any, 0, 8)

@@ -97,6 +97,16 @@ var ProviderSet = wire.NewSet(
 	NewUserPlatformQuotaRepository,     // T14: user × platform quota
 	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
 
+	// AI 治理与合规模块仓储（见 docs/合规方案.md）
+	NewComplianceAuditLogRepository,
+	NewDataErasureRequestRepository,
+	NewUserConsentRepository,
+	NewCompliancePolicyTemplateRepository,
+	NewModerationRuleRepository,
+	NewComplianceCredentialRepository,
+	NewUserComplianceProfileRepository,
+	NewUserJurisdictionMappingRepository,
+
 	// Cache implementations
 	NewGatewayCache,
 	NewBillingCache,

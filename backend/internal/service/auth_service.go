@@ -903,6 +903,27 @@ func (s *AuthService) postAuthUserBootstrap(ctx context.Context, user *User, sig
 	if touchLogin {
 		s.touchUserLogin(ctx, user.ID)
 	}
+
+	s.initDefaultConsents(ctx, user.ID)
+}
+
+var defaultConsentTypes = []string{"terms_of_service", "gdpr_data_processing", "detailed_logging", "cross_border_transfer", "marketing", "model_training"}
+
+func (s *AuthService) initDefaultConsents(ctx context.Context, userID int64) {
+	if s == nil || s.entClient == nil || userID <= 0 {
+		return
+	}
+	now := time.Now()
+	for _, consentType := range defaultConsentTypes {
+		_, err := s.entClient.ExecContext(ctx, `
+INSERT INTO user_consents (user_id, consent_type, granted, granted_at, source, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (user_id, consent_type) DO NOTHING`,
+			userID, consentType, true, now, "signup_default", now, now)
+		if err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to init default consent %s for user %d: %v", consentType, userID, err)
+		}
+	}
 }
 
 func (s *AuthService) updateUserSignupSource(ctx context.Context, userID int64, signupSource string) {

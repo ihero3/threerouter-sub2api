@@ -25,13 +25,13 @@
           <div class="flex flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 dark:text-gray-400 sm:flex-row sm:text-left">
             <p>&copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}</p>
             <div class="flex items-center gap-6">
-              <a :href="currentLang === 'zh' ? 'readme-cn.html' : 'readme-en.html'" class="transition-colors hover:text-gray-700 dark:hover:text-gray-300">{{ t('home.footer.advantage') }}</a>
+              <a :href="currentLang === 'zh' ? '/readme-cn.html' : '/readme-en.html'" class="transition-colors hover:text-gray-700 dark:hover:text-gray-300">{{ t('home.footer.advantage') }}</a>
             </div>
             <div class="flex items-center gap-6">
-              <a :href="currentLang === 'zh' ? 'help-cn.html' : 'help-en.html'" class="transition-colors hover:text-gray-700 dark:hover:text-gray-300">{{ t('home.footer.documentation') }}</a>
+              <a :href="currentLang === 'zh' ? '/help-cn.html' : '/help-en.html'" class="transition-colors hover:text-gray-700 dark:hover:text-gray-300">{{ t('home.footer.documentation') }}</a>
             </div>
               <div class="flex items-center gap-6">
-            <a :href="currentLang === 'zh' ? 'help-cn.html#contact' : 'help-en.html#contact'" class="transition-colors hover:text-gray-700">{{ t('home.footer.contact') }}</a>
+            <a :href="currentLang === 'zh' ? '/help-cn.html#contact' : '/help-en.html#contact'" class="transition-colors hover:text-gray-700">{{ t('home.footer.contact') }}</a>
           </div>
             <!-- Custom Menu Items -->
             <div v-if="customMenuItems.length > 0" class="flex items-center gap-6">

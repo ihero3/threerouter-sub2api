@@ -3259,6 +3259,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+			// APIKey 账号上游不支持 /v1/responses 端点时，回退到 /v1/chat/completions 直转。
+			if account.Type == AccountTypeAPIKey && isResponsesEndpointNotFound(resp.StatusCode, respBody) {
+				logger.L().Info("openai responses: endpoint not found, falling back to raw chat completions",
+					zap.Int64("account_id", account.ID),
+					zap.Int("upstream_status", resp.StatusCode),
+					zap.String("upstream_message", upstreamMsg),
+				)
+				s.markResponsesUnsupported(ctx, account)
+				return s.forwardResponsesViaRawChatCompletions(ctx, c, account, originalBody)
+			}
 			upstreamCode := extractUpstreamErrorCode(respBody)
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				decoded, decodeErr := ensureReqBody()
@@ -6818,6 +6828,28 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	}
 
 	return updates
+}
+
+// markResponsesUnsupported 异步将账号标记为上游不支持 /v1/responses，
+// 使后续请求直接走 /v1/chat/completions，避免重复探测失败。
+func (s *OpenAIGatewayService) markResponsesUnsupported(_ context.Context, account *Account) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	if openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportNo {
+		return
+	}
+	accountID := account.ID
+	go func() {
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: false,
+		})
+		logger.L().Info("openai gateway: marked account as responses-unsupported",
+			zap.Int64("account_id", accountID),
+		)
+	}()
 }
 
 // updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field

@@ -651,6 +651,41 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	complianceProfileService *UserComplianceProfileService
+	complianceService        *ComplianceService
+}
+
+// SetUserComplianceProfileService 在 wire 之外手动注入依赖（允许为 nil 关闭）。
+func (s *GatewayService) SetUserComplianceProfileService(svc *UserComplianceProfileService) {
+	if s == nil {
+		return
+	}
+	s.complianceProfileService = svc
+}
+
+var requiredConsentTypes = []string{"terms_of_service", "gdpr_data_processing"}
+
+func (s *GatewayService) checkRequiredConsents(ctx context.Context, userID int64) (missingConsents []string, err error) {
+	if userID <= 0 || s.complianceService == nil {
+		return nil, nil
+	}
+
+	for _, ct := range requiredConsentTypes {
+		consent, err := s.complianceService.GetUserConsent(ctx, userID, ct)
+		if err != nil {
+			slog.Warn("gateway.consent.get.error", "user_id", userID, "consent_type", ct, "error", err)
+			continue
+		}
+		if consent == nil || !consent.Granted {
+			missingConsents = append(missingConsents, ct)
+		}
+	}
+
+	if len(missingConsents) > 0 {
+		slog.Info("gateway.consent.missing", "user_id", userID, "missing", missingConsents)
+	}
+
+	return missingConsents, nil
 }
 
 // NewGatewayService creates a new GatewayService
@@ -682,6 +717,7 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	complianceService *ComplianceService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -718,6 +754,7 @@ func NewGatewayService(
 		resolver:              resolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		complianceService:     complianceService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -4863,6 +4900,40 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			filterSet = map[string]struct{}{}
 		}
 		c.Set(betaPolicyFilterSetKey, filterSet)
+	}
+
+	if c != nil {
+		if value, ok := c.Get("user"); ok {
+			if subject, ok := value.(struct{ UserID int64 }); ok && subject.UserID > 0 && s.complianceProfileService != nil {
+				frameworks, _ := resolveComplianceSettings(ctx, s.complianceProfileService, subject.UserID)
+				slog.Info("gateway.compliance.settings", "user_id", subject.UserID, "frameworks", frameworks)
+
+				for _, fw := range frameworks {
+					switch strings.ToLower(fw) {
+					case "hipaa":
+						slog.Info("gateway.compliance.hipaa", "user_id", subject.UserID, "action", "patient_data_protection_applied")
+						slog.Info("hipaa.audit.access",
+							"user_id", subject.UserID,
+							"account_id", account.ID,
+							"account_name", account.Name,
+							"model", parsed.Model,
+							"request_type", func() string {
+								if parsed.Stream {
+									return "streaming"
+								}
+								return "non-streaming"
+							}(),
+							"compliance_action", "access_control_enforced",
+							"timestamp", time.Now().UTC().Format(time.RFC3339),
+						)
+					case "gdpr":
+						slog.Info("gateway.compliance.gdpr", "user_id", subject.UserID, "action", "data_protection_applied")
+					case "eu_ai_act":
+						slog.Info("gateway.compliance.eu_ai_act", "user_id", subject.UserID, "action", "transparency_requirements_applied")
+					}
+				}
+			}
+		}
 	}
 
 	body := parsed.Body.Bytes()
@@ -9750,6 +9821,30 @@ func (s *GatewayService) buildRecordUsageLog(
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
 	}
+
+	// 按用户级 ZDR 设置生效 aggregate_only 与 retention_expires_at。
+	// 详见 docs/合规升级方案.md 5.2 / 5.4 节。
+	if usageLog.UserID > 0 {
+		aggOnly, retentionDays, expiresAt, zdrErr := resolveEffectiveZDR(ctx, s.complianceProfileService, usageLog.UserID)
+		if zdrErr == nil {
+			usageLog.AggregateOnly = aggOnly
+			usageLog.RetentionExpiresAt = expiresAt
+			slog.Info("gateway.zdr.decision",
+				"user_id", usageLog.UserID,
+				"aggregate_only", aggOnly,
+				"retention_days", retentionDays,
+				"retention_expires_at", func() string {
+					if expiresAt != nil {
+						return expiresAt.Format(time.RFC3339)
+					}
+					return "nil"
+				}(),
+			)
+		} else {
+			slog.Warn("gateway.usage_log.zdr_resolve_failed",
+				"user_id", usageLog.UserID, "error", zdrErr.Error())
+		}
+	}
 	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
 	}
@@ -9785,6 +9880,34 @@ func optionalSubscriptionID(subscription *UserSubscription) *int64 {
 		return &subscription.ID
 	}
 	return nil
+}
+
+// resolveEffectiveZDR 在写入 usage_logs 前解析用户级 ZDR 策略。
+// service 为 nil 时使用默认策略：aggregate_only=true，retention=7d。
+// 失败时返回 (true, 7, nil, err) 不阻塞主链路（仅记录警告）。
+func resolveEffectiveZDR(ctx context.Context, svc *UserComplianceProfileService, userID int64) (aggregateOnly bool, retentionDays int, retentionExpiresAt *time.Time, err error) {
+	if svc == nil {
+		// 默认安全策略：仅保留聚合，不写明细。
+		return true, 7, nil, nil
+	}
+	return svc.GetEffectiveZDRSettings(ctx, userID)
+}
+
+// resolveComplianceSettings 解析用户级合规设置。
+// 返回合规框架列表和必要的同意类型。
+func resolveComplianceSettings(ctx context.Context, svc *UserComplianceProfileService, userID int64) ([]string, error) {
+	if svc == nil || userID <= 0 {
+		return []string{"gdpr"}, nil
+	}
+	profile, err := svc.GetOrCreateDefault(ctx, userID)
+	if err != nil {
+		slog.Warn("gateway.compliance.resolve_failed", "user_id", userID, "error", err.Error())
+		return []string{"gdpr"}, nil
+	}
+	if len(profile.ComplianceFrameworks) == 0 {
+		return []string{"gdpr"}, nil
+	}
+	return profile.ComplianceFrameworks, nil
 }
 
 // ResolveChannelMapping 委托渠道服务解析模型映射

@@ -37,6 +37,30 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
+// postModerateOutput 对模型输出（含流式聚合结果）触发异步事后审核（合规方案 0.4）。
+// 该调用永不阻断响应，仅记录/计入违规；因此可在响应结束后安全调用。
+func (h *GatewayHandler) postModerateOutput(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {
+	if h == nil || h.contentModerationService == nil {
+		return
+	}
+	postModerateOutput(c, h.contentModerationService, apiKey, subject, protocol, model, requestBody, output)
+}
+
+func (h *OpenAIGatewayHandler) postModerateOutput(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {
+	if h == nil || h.contentModerationService == nil {
+		return
+	}
+	postModerateOutput(c, h.contentModerationService, apiKey, subject, protocol, model, requestBody, output)
+}
+
+func postModerateOutput(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {
+	if svc == nil || c == nil || c.Request == nil || strings.TrimSpace(output) == "" {
+		return
+	}
+	input := buildContentModerationInput(c, apiKey, subject, protocol, model, requestBody)
+	svc.CheckOutput(c.Request.Context(), input, output)
+}
+
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil

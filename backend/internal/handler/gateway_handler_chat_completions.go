@@ -44,6 +44,14 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
+	c.Set("req_log", reqLog)
+
+	if !h.checkRequiredConsents(c, subject.UserID) {
+		return
+	}
+
+	c.Header("X-AI-Act-Transparency", "You are interacting with an AI system. This interaction is recorded for compliance purposes.")
+
 	// Read request body
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
@@ -98,6 +106,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && decision.Blocked {
 		h.chatCompletionsErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
+	}
+
+	// 输出侧事后审核（合规方案 0.4）：安装响应捕获 writer，在响应结束后对聚合输出做异步审核，永不阻断。
+	var outputCapture *outputCaptureWriter
+	if h.contentModerationService != nil {
+		outputCapture = &outputCaptureWriter{ResponseWriter: c.Writer}
+		c.Writer = outputCapture
 	}
 
 	// Error passthrough binding
@@ -309,6 +324,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				)
 			}
 		})
+
+		// 输出侧事后审核（合规方案 0.4）：响应已发送完毕，对聚合输出做异步审核（永不阻断）。
+		h.postModerateCapturedOutput(c, outputCapture, apiKey, subject, reqModel, body)
 		return
 	}
 }

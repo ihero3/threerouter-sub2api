@@ -101,6 +101,9 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	// 确保用户级合规档案钩子被纳入 Wire 依赖图，从而把档案服务注入
+	// GatewayService 与 ContentModerationService。
+	_ service.UserComplianceProfileHook,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

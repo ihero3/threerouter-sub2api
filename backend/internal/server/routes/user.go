@@ -138,5 +138,35 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// AI 治理与合规（用户端：GDPR 数据主体权利 + Account 级合规配置）
+		governance := authenticated.Group("/governance")
+		{
+			governance.POST("/data-erasure/request", h.Governance.RequestDataErasure)
+		governance.GET("/data-erasure/requests", h.Governance.ListDataErasureRequests)
+		governance.POST("/data-export", h.Governance.ExportData)
+			governance.GET("/consent", h.Governance.GetConsent)
+			governance.POST("/consent", h.Governance.SetConsent)
+			governance.GET("/profile", h.Governance.GetComplianceProfile)
+			governance.PUT("/profile", h.Governance.UpdateComplianceProfile)
+			governance.GET("/templates", h.Governance.ListComplianceTemplates)
+			governance.POST("/templates/apply", h.Governance.ApplyComplianceTemplate)
+			governance.GET("/moderation-rules", h.Governance.ListModerationRules)
+			governance.GET("/moderation-rules/user", h.Governance.ListUserModerationRules)
+			governance.POST("/moderation-rules/user", h.Governance.CreateUserModerationRule)
+			governance.PUT("/moderation-rules/user/:ruleId", h.Governance.UpdateUserModerationRule)
+			governance.DELETE("/moderation-rules/user/:ruleId", h.Governance.DeleteUserModerationRule)
+			governance.GET("/status", h.Governance.GetComplianceStatus)
+			governance.GET("/jurisdiction/mapping", h.Governance.GetJurisdictionMapping)
+			governance.GET("/jurisdiction/mapping/user", h.Governance.GetUserJurisdictionMapping)
+			governance.POST("/jurisdiction/mapping/save", h.Governance.SaveJurisdictionMapping)
+			governance.POST("/gdpr/dpa/generate", h.Governance.GenerateDPA)
+			governance.GET("/credentials", h.Governance.ListCredentials)
+			governance.GET("/audit-logs", h.Governance.ListAuditLogs)
+			governance.GET("/risk-tags", h.Governance.RiskTags)
+			governance.GET("/eu-ai-act/assessment", h.Governance.EUAIActAssessment)
+			governance.POST("/eu-ai-act/assessment", h.Governance.ExportEUAIActAssessment)
+			governance.GET("/gdpr/data-processing-record", h.Governance.DataProcessingRecord)
+		}
 	}
 }
