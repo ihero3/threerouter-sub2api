@@ -663,6 +663,11 @@ export default {
       content: 'Description',
       updatedAt: 'Updated At'
     },
+      pricing: {
+        input: 'Input',
+        output: 'Output',
+        approx: 'Approx'
+      },
     categories: {
       account: 'Account',
       billing: 'Billing',
@@ -1802,6 +1807,11 @@ export default {
       hint: 'Access More Models via API Key',
       status: {
         available: 'Available'
+      },
+      pricing: {
+        input: 'Input',
+        output: 'Output',
+        approx: 'Approx'
       },
       categories: {
         text: 'Text',

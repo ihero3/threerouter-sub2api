@@ -417,7 +417,6 @@ func stripUnsupportedChatCompletionsFields(body []byte) []byte {
 		return body
 	}
 	delete(m, "reasoning_effort")
-	delete(m, "stream_options")
 	stripped, err := json.Marshal(m)
 	if err != nil {
 		return body
