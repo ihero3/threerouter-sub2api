@@ -107,7 +107,7 @@ export default {
     },
     easyrouterAdvantages: {
       eyebrow: '为什么选 threerouter',
-      title: '为什么选 threerouter，而不是其他 10 个网关？',
+      title: '为什么选 threerouter，而不是其他网关？',
       subtitle: '美国本地基础设施。云厂商直采。OpenAI 即插即用。',
       ultraFast: {
         title: '美国本地节点，而非远距离节点',

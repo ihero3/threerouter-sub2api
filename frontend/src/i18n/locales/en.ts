@@ -106,7 +106,7 @@ export default {
     },
     easyrouterAdvantages: {
       eyebrow: 'Why threerouter',
-      title: 'Why threerouter, not the other 10 gateways?',
+      title: 'Why threerouter, not the other gateways?',
       subtitle: 'US-local infrastructure. Direct cloud procurement. OpenAI drop-in replacement.',
       ultraFast: {
         title: '1. US-Local, not Beijing-Local',
