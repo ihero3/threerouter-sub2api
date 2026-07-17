@@ -663,6 +663,11 @@ export default {
       content: '问题描述',
       updatedAt: '更新时间'
     },
+      pricing: {
+        input: '输入',
+        output: '输出',
+        approx: '大约'
+      },
     categories: {
       account: '账号问题',
       billing: '余额/计费',
@@ -1823,6 +1828,11 @@ export default {
       hint: '更多模型通过 API Key 获取',
       status: {
         available: '可用'
+      },
+      pricing: {
+        input: '输入',
+        output: '输出',
+        approx: '大约'
       },
       categories: {
         text: '文本',

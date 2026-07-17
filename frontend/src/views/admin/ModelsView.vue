@@ -58,15 +58,15 @@
                 </div>
                 <div v-if="modelPricing[model.name]" class="mt-3 flex flex-wrap gap-3 text-xs">
                   <div class="flex items-center gap-1">
-                    <span class="text-gray-500">输入:</span>
+                    <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
                     <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].input_price) }}</span>
                   </div>
                   <div class="flex items-center gap-1">
-                    <span class="text-gray-500">输出:</span>
+                    <span class="text-gray-500">{{ t('admin.models.pricing.output') }}:</span>
                     <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].output_price) }}</span>
                   </div>
                   <div class="flex items-center gap-1">
-                    <span class="text-gray-500">缓存:</span>
+                    <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
                     <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].cache_write_price) }}</span>
                   </div>
                 </div>
@@ -134,7 +134,7 @@ onMounted(() => {
 
 const formatPrice = (price: number | null | undefined): string => {
   if (price === null || price === undefined) return '-'
-  return `¥${price.toFixed(2)}/MTokens`
+  return `$${price.toFixed(2)}/MTokens`
 }
 
 const providerDescriptions: Record<string, { en: string; zh: string }> = {
@@ -151,8 +151,8 @@ const providerDescriptions: Record<string, { en: string; zh: string }> = {
     zh: 'Kimi-K2.6 是月之暗面的开源 MoE 旗舰模型，拥有 256K 上下文，擅长长期编码和智能体集群（300 个子智能体）处理复杂多步骤任务。'
   },
   'qwen3.7-max': {
-    en: 'Qwen3.7-Max is Alibaba\'s agent‑centric flagship with 1M context, top-tier coding, and 35-hour autonomous execution, excelling in complex workflows and multi-framework generalization.',
-    zh: 'Qwen3.7-Max 是阿里的智能体旗舰模型，拥有 100 万上下文、顶级编码能力和 35 小时自主执行能力，擅长复杂工作流和多框架泛化。'
+    en: 'Qwen3.7-Max is Alibaba\'s agent‑centric flagship with 1M context, top-tier coding, excelling in complex workflows and multi-framework generalization.',
+    zh: 'Qwen3.7-Max 是阿里的智能体旗舰模型，拥有 100 万上下文、顶级编码能力和擅长复杂工作流和多框架泛化。'
   },
   'glm-5.2': {
     en: 'GLM-5.1 is Zhipu AI\'s open MoE flagship with 200K context, excelling in 8‑hour autonomous agentic coding and topping SWE‑Bench Pro for complex software engineering tasks.',
