@@ -67,7 +67,7 @@
                   </div>
                   <div class="flex items-center gap-1">
                     <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
-                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].cache_write_price) }}</span>
+                    <span class="font-medium text-gray-700">1$={{ modelUsdTokenRates[model.name] || '-' }}Tokens</span>
                   </div>
                 </div>
               </template>
@@ -135,6 +135,16 @@ onMounted(() => {
 const formatPrice = (price: number | null | undefined): string => {
   if (price === null || price === undefined) return '-'
   return `$${price.toFixed(2)}/MTokens`
+}
+
+const modelUsdTokenRates: Record<string, string> = {
+  'deepseek-v4-pro': '29.49M',
+  'kimi-k2.7': '6.18M',
+  'minimax-m3': '3.40M',
+  'qwen3.7-max': '3.06M',
+  'glm-5.2': '3.35M',
+  'seedance-2.0': '-',
+  'gpt-image-2': '-',
 }
 
 const providerDescriptions: Record<string, { en: string; zh: string }> = {

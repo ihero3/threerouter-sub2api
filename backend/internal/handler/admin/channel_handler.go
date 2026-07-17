@@ -477,6 +477,7 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 
 // GetModelDefaultPricing 获取模型的默认定价（用于前端自动填充）
 // GET /api/v1/admin/channels/model-pricing?model=claude-sonnet-4
+// 优先从渠道配置的定价中获取，如果没有则使用 fallback 价格
 func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	model := strings.TrimSpace(c.Query("model"))
 	if model == "" {
@@ -485,20 +486,47 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 		return
 	}
 
-	pricing, err := h.billingService.GetModelPricing(model)
+	lowerModel := strings.ToLower(model)
+
+	// 1. 直接从数据库查询所有渠道的模型定价
+	channels, _, err := h.channelService.List(c.Request.Context(), pagination.PaginationParams{Page: 1, PageSize: 100}, "", "")
 	if err != nil {
-		// 模型不在定价列表中
+		response.ErrorFrom(c, infraerrors.InternalServer("CHANNEL_LIST_ERROR", "failed to list channels"))
+		return
+	}
+
+	for _, channel := range channels {
+		for _, pricing := range channel.ModelPricing {
+			for _, m := range pricing.Models {
+				if strings.ToLower(m) == lowerModel {
+					response.Success(c, gin.H{
+						"found":              true,
+						"input_price":        pricing.InputPrice,
+						"output_price":       pricing.OutputPrice,
+						"cache_write_price":  pricing.CacheWritePrice,
+						"cache_read_price":   pricing.CacheReadPrice,
+						"image_output_price": pricing.ImageOutputPrice,
+					})
+					return
+				}
+			}
+		}
+	}
+
+	// 2. 使用 fallback 价格
+	fallback, err := h.billingService.GetModelPricing(model)
+	if err != nil {
 		response.Success(c, gin.H{"found": false})
 		return
 	}
 
 	response.Success(c, gin.H{
 		"found":              true,
-		"input_price":        pricing.InputPricePerToken,
-		"output_price":       pricing.OutputPricePerToken,
-		"cache_write_price":  pricing.CacheCreationPricePerToken,
-		"cache_read_price":   pricing.CacheReadPricePerToken,
-		"image_output_price": pricing.ImageOutputPricePerToken,
+		"input_price":        fallback.InputPricePerToken,
+		"output_price":       fallback.OutputPricePerToken,
+		"cache_write_price":  fallback.CacheCreationPricePerToken,
+		"cache_read_price":   fallback.CacheReadPricePerToken,
+		"image_output_price": fallback.ImageOutputPricePerToken,
 	})
 }
 

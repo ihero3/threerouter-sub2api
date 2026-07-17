@@ -482,6 +482,34 @@ func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int
 	return &cp
 }
 
+// GetModelPricingFromAllChannels 从所有渠道中查找指定模型的定价（冷路径）。
+// 用于管理后台展示模型价格时，优先展示渠道配置的价格。
+// 返回找到的第一个匹配的渠道定价，未找到返回 nil。
+func (s *ChannelService) GetModelPricingFromAllChannels(model string) *ChannelModelPricing {
+	modelLower := strings.ToLower(model)
+	cached, ok := s.cache.Load().(*channelCache)
+	if !ok || cached == nil {
+		return nil
+	}
+
+	for _, ch := range cached.byID {
+		if !ch.IsActive() {
+			continue
+		}
+		for i := range ch.ModelPricing {
+			pricing := &ch.ModelPricing[i]
+			for _, m := range pricing.Models {
+				if strings.ToLower(m) == modelLower {
+					cp := pricing.Clone()
+					return &cp
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // ResolveChannelMapping 解析渠道级模型映射（热路径 O(1)）
 // 返回映射结果，包含映射后的模型名、渠道 ID、计费模型来源。
 func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
