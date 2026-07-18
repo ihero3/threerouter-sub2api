@@ -146,9 +146,9 @@
                 class="flex items-start gap-3 rounded-md bg-gray-50 px-3 py-2 dark:bg-dark-900"
               >
                 <code class="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                  {{ item.tag }}
+                  {{ getRiskTagLabel(item.tag) }}
                 </code>
-                <span class="text-sm text-gray-600 dark:text-gray-300">{{ item.description }}</span>
+                <span class="text-sm text-gray-600 dark:text-gray-300">{{ getRiskTagDescription(item.tag) }}</span>
               </li>
             </ul>
           </div>
@@ -163,9 +163,9 @@
                 class="flex items-start gap-3 rounded-md bg-gray-50 px-3 py-2 dark:bg-dark-900"
               >
                 <code class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                  {{ item.tag }}
+                  {{ getRiskTagLabel(item.tag) }}
                 </code>
-                <span class="text-sm text-gray-600 dark:text-gray-300">{{ item.description }}</span>
+                <span class="text-sm text-gray-600 dark:text-gray-300">{{ getRiskTagDescription(item.tag) }}</span>
               </li>
             </ul>
           </div>
@@ -921,6 +921,14 @@ import {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+const getRiskTagLabel = (tagName: string) => {
+  return t(`compliance.risk.tags.${tagName}.label`)
+}
+
+const getRiskTagDescription = (tagName: string) => {
+  return t(`compliance.risk.tags.${tagName}.description`)
+}
 
 type TabKey = 'audit' | 'risk' | 'euaiact' | 'ropa' | 'erasure' | 'templates' | 'rules' | 'jurisdiction' | 'dpa' | 'credentials'
 const activeTab = ref<TabKey>('audit')

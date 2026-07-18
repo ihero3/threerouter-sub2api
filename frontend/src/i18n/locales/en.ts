@@ -8424,6 +8424,60 @@ export default {
       description: 'View the risk tag catalog supported by the system, understand model risk and data risk classifications.',
       modelTags: 'Model Tags',
       riskTags: 'Risk Tags',
+      tags: {
+        MODEL_FRONTIER: {
+          label: 'Frontier Model',
+          description: 'Using frontier AI models',
+        },
+        MODEL_OPEN_SOURCE: {
+          label: 'Open Source Model',
+          description: 'Using open source models',
+        },
+        MODEL_EXTERNAL_PROVIDER: {
+          label: 'External Provider',
+          description: 'Using models from external providers',
+        },
+        MODEL_DATA_RETENTION_UNKNOWN: {
+          label: 'Unknown Data Retention',
+          description: 'Model provider data retention policy is unknown',
+        },
+        PII_DETECTED: {
+          label: 'PII Detected',
+          description: 'Personal identifiable information detected',
+        },
+        HIGH_RISK_USE_CASE: {
+          label: 'High Risk Use Case',
+          description: 'High risk application scenario',
+        },
+        CROSS_BORDER_TRANSFER: {
+          label: 'Cross-Border Transfer',
+          description: 'Cross-border data transfer',
+        },
+        SANCTIONED_REGION: {
+          label: 'Sanctioned Region',
+          description: 'Access from sanctioned region',
+        },
+        CONTENT_POLICY_VIOLATION: {
+          label: 'Content Policy Violation',
+          description: 'Content policy violation detected',
+        },
+        OUTPUT_CONTROL_LIMITED: {
+          label: 'Output Control Limited',
+          description: 'Output control is limited',
+        },
+        NO_TRAINING_GUARANTEE: {
+          label: 'No Training Guarantee',
+          description: 'No training data guarantee',
+        },
+        RATE_LIMIT_EXCEEDED: {
+          label: 'Rate Limit Exceeded',
+          description: 'Rate limit exceeded',
+        },
+        ANOMALOUS_BEHAVIOR: {
+          label: 'Anomalous Behavior',
+          description: 'Anomalous behavior detected',
+        },
+      },
     },
     euAiAct: {
       title: 'EU AI Act Assessment',

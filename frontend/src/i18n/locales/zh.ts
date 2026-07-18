@@ -8633,6 +8633,60 @@ export default {
       description: '查看系统支持的风险标签目录，了解模型风险和数据风险分类。',
       modelTags: '模型标签',
       riskTags: '风险标签',
+      tags: {
+        MODEL_FRONTIER: {
+          label: '前沿模型',
+          description: '使用前沿模型',
+        },
+        MODEL_OPEN_SOURCE: {
+          label: '开源模型',
+          description: '使用开源模型',
+        },
+        MODEL_EXTERNAL_PROVIDER: {
+          label: '外部提供者',
+          description: '使用外部提供者模型',
+        },
+        MODEL_DATA_RETENTION_UNKNOWN: {
+          label: '数据保留策略未知',
+          description: '模型提供者数据保留策略未知',
+        },
+        PII_DETECTED: {
+          label: '检测到个人身份信息',
+          description: '检测到个人身份信息',
+        },
+        HIGH_RISK_USE_CASE: {
+          label: '高风险应用场景',
+          description: '高风险应用场景',
+        },
+        CROSS_BORDER_TRANSFER: {
+          label: '跨境数据传输',
+          description: '跨境数据传输',
+        },
+        SANCTIONED_REGION: {
+          label: '制裁区域访问',
+          description: '制裁区域访问',
+        },
+        CONTENT_POLICY_VIOLATION: {
+          label: '内容政策违规',
+          description: '内容政策违规',
+        },
+        OUTPUT_CONTROL_LIMITED: {
+          label: '输出控制受限',
+          description: '输出控制受限',
+        },
+        NO_TRAINING_GUARANTEE: {
+          label: '无训练数据保障',
+          description: '无训练数据保障',
+        },
+        RATE_LIMIT_EXCEEDED: {
+          label: '超限调用',
+          description: '超限调用',
+        },
+        ANOMALOUS_BEHAVIOR: {
+          label: '异常行为',
+          description: '异常行为',
+        },
+      },
     },
     euAiAct: {
       title: 'EU AI Act 评估',

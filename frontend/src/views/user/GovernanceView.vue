@@ -1060,10 +1060,10 @@
                         <span
                           class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
                         >
-                          {{ tag.tag }}
+                          {{ getRiskTagLabel(tag.tag) }}
                         </span>
                       </div>
-                      <p class="text-xs text-gray-500 mt-1">{{ tag.description }}</p>
+                      <p class="text-xs text-gray-500 mt-1">{{ getRiskTagDescription(tag.tag) }}</p>
                     </div>
                   </div>
                 </div>
@@ -1082,10 +1082,10 @@
                         <span
                           class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                         >
-                          {{ tag.tag }}
+                          {{ getRiskTagLabel(tag.tag) }}
                         </span>
                       </div>
-                      <p class="text-xs text-gray-500 mt-1">{{ tag.description }}</p>
+                      <p class="text-xs text-gray-500 mt-1">{{ getRiskTagDescription(tag.tag) }}</p>
                     </div>
                   </div>
                 </div>
@@ -1211,6 +1211,14 @@ import {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+const getRiskTagLabel = (tagName: string) => {
+  return t(`compliance.risk.tags.${tagName}.label`)
+}
+
+const getRiskTagDescription = (tagName: string) => {
+  return t(`compliance.risk.tags.${tagName}.description`)
+}
 
 // Tab 切换
 const activeTab = ref('compliance')
