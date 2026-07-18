@@ -56,19 +56,29 @@
                   <span class="rounded-full bg-gray-100 px-2 py-1">{{ getCategoryLabel(model.category) }}</span>
                   <span class="rounded-full bg-green-100 px-2 py-1 text-green-600">{{ t('admin.models.status.available') }}</span>
                 </div>
-                <div v-if="modelPricing[model.name]" class="mt-3 flex flex-wrap gap-3 text-xs">
-                  <div class="flex items-center gap-1">
-                    <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
-                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].input_price) }}</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <span class="text-gray-500">{{ t('admin.models.pricing.output') }}:</span>
-                    <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name].output_price) }}</span>
-                  </div>
-                  <div class="flex items-center gap-1">
+                <div v-if="model.category !== 'hint'" class="mt-3 flex flex-wrap gap-3 text-xs">
+                  <template v-if="model.category === 'image'">
                     <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
-                    <span class="font-medium text-gray-700">1$={{ modelUsdTokenRates[model.name] || '-' }}Tokens</span>
-                  </div>
+                    <span class="font-medium text-gray-700">0.3$ per image</span>
+                  </template>
+                  <template v-else-if="model.category === 'multimodal'">
+                    <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
+                    <span class="font-medium text-gray-700">0.9$ per second</span>
+                  </template>
+                  <template v-else>
+                    <div class="flex items-center gap-1">
+                      <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
+                      <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name]?.input_price ?? fallbackPriceFromRate(modelUsdTokenRates[model.name])) }}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <span class="text-gray-500">{{ t('admin.models.pricing.output') }}:</span>
+                      <span class="font-medium text-gray-700">{{ formatPrice(modelPricing[model.name]?.output_price ?? fallbackPriceFromRate(modelUsdTokenRates[model.name])) }}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
+                      <span class="font-medium text-gray-700">1$≈{{ modelUsdTokenRates[model.name] || '-' }}Tokens</span>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>
@@ -137,9 +147,18 @@ const formatPrice = (price: number | null | undefined): string => {
   return `$${price.toFixed(2)}/MTokens`
 }
 
+const fallbackPriceFromRate = (rate: string | undefined): number | undefined => {
+  if (!rate || rate === '-') return undefined
+  const match = rate.match(/^([\d.]+)M$/)
+  if (!match) return undefined
+  const tokensPerDollar = parseFloat(match[1])
+  if (tokensPerDollar <= 0) return undefined
+  return 1 / tokensPerDollar
+}
+
 const modelUsdTokenRates: Record<string, string> = {
   'deepseek-v4-pro': '29.49M',
-  'kimi-k2.7': '6.18M',
+  'kimi-k3': '6.18M',
   'minimax-m3': '3.40M',
   'qwen3.7-max': '3.06M',
   'glm-5.2': '3.35M',
@@ -156,9 +175,9 @@ const providerDescriptions: Record<string, { en: string; zh: string }> = {
     en: 'MiniMax‑M3 is a frontier open‑weight model with 1M context, native multimodality, and top coding/agent abilities, built on the MSA sparse attention architecture.',
     zh: 'MiniMax-M3 是前沿开源权重模型，拥有 100 万上下文、原生多模态和顶级编码/智能体能力，基于 MSA 稀疏注意力架构。'
   },
-  'kimi-k2.7': {
-    en: 'Kimi-K2.6 is Moonshot\'s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.',
-    zh: 'Kimi-K2.6 是月之暗面的开源 MoE 旗舰模型，拥有 256K 上下文，擅长长期编码和智能体集群（300 个子智能体）处理复杂多步骤任务。'
+  'kimi-k3': {
+    en: 'Kimi-K3 is Moonshot\'s open MoE flagship with 256K context, excelling in long-horizon coding and agent swarm (300 sub-agents) for complex, multi-step tasks.',
+    zh: 'Kimi-K3 是月之暗面的开源 MoE 旗舰模型，拥有 256K 上下文，擅长长期编码和智能体集群（300 个子智能体）处理复杂多步骤任务。'
   },
   'qwen3.7-max': {
     en: 'Qwen3.7-Max is Alibaba\'s agent‑centric flagship with 1M context, top-tier coding, excelling in complex workflows and multi-framework generalization.',
@@ -181,7 +200,7 @@ const providerDescriptions: Record<string, { en: string; zh: string }> = {
 const models = ref<Model[]>([
   { id: '1', name: 'deepseek-v4-pro', provider: 'deepseek-v4-pro', vendor: 'deepseek', category: 'text', icon: '' },
   { id: '2', name: 'minimax-m3', provider: 'minimax-m3', vendor: 'minimax', category: 'text', icon: '' },
-  { id: '3', name: 'kimi-k2.7', provider: 'kimi-k2.7', vendor: 'moonshot', category: 'text', icon: '' },
+  { id: '3', name: 'kimi-k3', provider: 'kimi-k3', vendor: 'moonshot', category: 'text', icon: '' },
   { id: '4', name: 'qwen3.7-max', provider: 'qwen3.7-max', vendor: 'alibaba', category: 'text', icon: '' },
   { id: '5', name: 'glm-5.2', provider: 'glm-5.2', vendor: 'zhipu', category: 'text', icon: '' },
   { id: '6', name: 'seedance-2.0', provider: 'seedance-2.0', vendor: 'bytedance', category: 'multimodal', icon: '' },
