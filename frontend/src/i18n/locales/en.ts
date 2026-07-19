@@ -109,15 +109,15 @@ export default {
       title: 'Why threerouter, not the other gateways?',
       subtitle: 'US-local infrastructure. Direct cloud procurement. OpenAI drop-in replacement.',
       ultraFast: {
-        title: '1. US-Local, not Beijing-Local',
+        title: 'US-Local, not Beijing-Local',
         desc: 'Most Open Source LLM APIs route through their origin regions. We don\'t. Your requests hit our US-East / US-West nodes and get sub-200ms P99 — even when the model is DeepSeek V4 in its origin region.'
       },
       reliable: {
-        title: '2. Compliance You Can Show Your Lawyer',
+        title: 'Compliance You Can Show Your Lawyer',
         desc: 'Sourced from AWS, GCP, Azure, and Alibaba Cloud directly. Not resold, not re-routed through gray channels. Get an audit trail your security team can actually read.'
       },
       standardApi: {
-        title: '3. OpenAI-Compatible, No Rewrite',
+        title: 'OpenAI-Compatible, No Rewrite',
         desc: 'Drop-in replacement. Your existing code, your existing tools, your existing workflows. Change one URL, keep everything.'
       },
       cheap: {

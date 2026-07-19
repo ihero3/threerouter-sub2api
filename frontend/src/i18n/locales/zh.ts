@@ -123,7 +123,7 @@ export default {
       },
       cheap: {
         title: '超级便宜',
-        desc: '价格只有旗舰供应商的 1/36，最高可为您降低 97% 的 AI 成本'
+        desc: '价格只有旗舰供应商的 1/33，最高可为您降低 97% 的 AI 成本'
       }
     },
     easyrouterFaq: {
