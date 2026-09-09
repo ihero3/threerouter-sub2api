@@ -103,6 +103,15 @@ func NewMediaTaskService(
 	}
 }
 
+// billingDeps 提取视频结算管线依赖（见 video_task_billing.go）。
+func (s *MediaTaskService) billingDeps() *videoTaskBillingDeps {
+	return &videoTaskBillingDeps{
+		billingService:       s.billingService,
+		apiKeyService:        s.apiKeyService,
+		openAIGatewayService: s.openAIGatewayService,
+	}
+}
+
 // CreateTask 处理用户媒体生成请求。
 // 流程：解析统一请求 → 选上游账号（同类型自动轮转）→ 调 adapter → 写 media_tasks。
 func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *int64, userID int64, apiKeyID int64, publicModel string, requestBody map[string]any) (*MediaTaskRecord, error) {
@@ -199,8 +208,28 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				record.MediaURL = stored
 			}
 		}
-		if createResult.Status != "failed" {
-			if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+		if createResult.Status == "failed" && kind == MediaKindVideo {
+			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
+			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+				LocalID:       record.LocalID,
+				UserID:        record.UserID,
+				APIKeyID:      record.APIKeyID,
+				AccountID:     record.AccountID,
+				Account:       account,
+				Model:         record.PublicModel,
+				UpstreamModel: record.UpstreamModel,
+				Resolution:    record.Resolution,
+				DurationSec:   record.DurationSec,
+			})
+		} else if createResult.Status != "failed" {
+			if kind == MediaKindVideo {
+				if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+					record.ReservedCost = &cost
+					if s.apiKeyService != nil {
+						_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
+					}
+				}
+			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
 				record.ReservedCost = &cost
 				if s.apiKeyService != nil {
 					_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
@@ -250,6 +279,19 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 		if err := s.mediaTaskRepo.UpdateStatus(ctx, record.ID, "failed", "upstream task timed out"); err != nil {
 			return fmt.Errorf("media_task_service: timeout update status: %w", err)
 		}
+		if record.MediaKind == MediaKindVideo {
+			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+				LocalID:       record.LocalID,
+				UserID:        record.UserID,
+				APIKeyID:      record.APIKeyID,
+				AccountID:     record.AccountID,
+				Model:         record.PublicModel,
+				UpstreamModel: record.UpstreamModel,
+				Resolution:    record.Resolution,
+				DurationSec:   record.DurationSec,
+				ReservedCost:  record.ReservedCost,
+			})
+		}
 		return nil
 	}
 	return s.refreshTaskStatus(ctx, record)
@@ -272,38 +314,80 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 
 	switch result.Status {
 	case "succeeded":
-		cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec)
-		if costErr != nil {
+		actual := 0.0
+		if record.MediaKind == MediaKindVideo {
+			if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); estErr == nil {
+				actual = est
+			} else {
+				s.logger.Warn("media_task_service: estimate video cost failed",
+					zap.Int64("task_id", record.ID),
+					zap.Error(estErr),
+				)
+			}
+		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); costErr == nil {
+			actual = cost
+		} else {
 			s.logger.Warn("media_task_service: calculate cost failed",
 				zap.Int64("task_id", record.ID),
 				zap.Error(costErr),
 			)
-			cost = 0
 		}
 		mediaURL := result.URL
 		if storedURL, ok := s.maybeStoreMedia(ctx, record, mediaURL); ok {
 			mediaURL = storedURL
 		}
-		claimed, err := s.mediaTaskRepo.UpdateResult(ctx, record.ID, "succeeded", mediaURL, result.ThumbnailURL, result.DurationSec, cost)
+		claimed, err := s.mediaTaskRepo.UpdateResult(ctx, record.ID, "succeeded", mediaURL, result.ThumbnailURL, result.DurationSec, actual)
 		if err != nil {
 			return fmt.Errorf("media_task_service: update result: %w", err)
 		}
 		if claimed {
-			var reserved float64
-			if record.ReservedCost != nil {
-				reserved = *record.ReservedCost
+			if record.MediaKind == MediaKindVideo {
+				// claimed 守卫保证同一任务只结算一次：实际按秒计费（余额/订阅/Key配额）
+				// + usage_logs 幂等落库 + 退还预扣，见 video_task_billing.go。
+				settleVideoTaskSuccess(ctx, s.billingDeps(), &videoTaskBillingInput{
+					LocalID:       record.LocalID,
+					UserID:        record.UserID,
+					APIKeyID:      record.APIKeyID,
+					AccountID:     record.AccountID,
+					Account:       account,
+					Model:         record.PublicModel,
+					UpstreamModel: record.UpstreamModel,
+					Resolution:    record.Resolution,
+					DurationSec:   result.DurationSec,
+					ReservedCost:  record.ReservedCost,
+				})
+			} else {
+				var reserved float64
+				if record.ReservedCost != nil {
+					reserved = *record.ReservedCost
+				}
+				settleMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved, actual)
 			}
-			settleMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved, cost)
 		}
 	case "failed", "cancelled":
 		if err := s.mediaTaskRepo.UpdateStatus(ctx, record.ID, result.Status, result.ErrorMessage); err != nil {
 			return fmt.Errorf("media_task_service: update status: %w", err)
 		}
-		var reserved float64
-		if record.ReservedCost != nil {
-			reserved = *record.ReservedCost
+		if record.MediaKind == MediaKindVideo {
+			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+				LocalID:       record.LocalID,
+				UserID:        record.UserID,
+				APIKeyID:      record.APIKeyID,
+				AccountID:     record.AccountID,
+				Account:       account,
+				Model:         record.PublicModel,
+				UpstreamModel: record.UpstreamModel,
+				Resolution:    record.Resolution,
+				DurationSec:   result.DurationSec,
+				ReservedCost:  record.ReservedCost,
+			})
+		} else {
+			var reserved float64
+			if record.ReservedCost != nil {
+				reserved = *record.ReservedCost
+			}
+			releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
 		}
-		releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
 	default:
 		// still processing
 	}
@@ -472,6 +556,20 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 	if err := s.mediaTaskRepo.UpdateStatus(ctx, id, "cancelled", "cancelled by admin"); err != nil {
 		return fmt.Errorf("media_task_service: cancel task: %w", err)
 	}
+	if record.MediaKind == MediaKindVideo {
+		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+			LocalID:       record.LocalID,
+			UserID:        record.UserID,
+			APIKeyID:      record.APIKeyID,
+			AccountID:     record.AccountID,
+			Model:         record.PublicModel,
+			UpstreamModel: record.UpstreamModel,
+			Resolution:    record.Resolution,
+			DurationSec:   record.DurationSec,
+			ReservedCost:  record.ReservedCost,
+		})
+		return nil
+	}
 	var reserved float64
 	if record.ReservedCost != nil {
 		reserved = *record.ReservedCost
@@ -500,11 +598,10 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 		)
 	}
 	multiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
-	groupConfig := videoPriceConfigFromAPIKey(apiKey)
 
 	switch kind {
 	case MediaKindVideo:
-		cost := s.billingService.CalculateVideoCost(model, resolution, 1, durationSec, groupConfig, multiplier)
+		cost, _ := videoTaskCostBreakdown(ctx, s.billingDeps(), apiKey, model, resolution, durationSec)
 		return cost.ActualCost, nil
 	case MediaKindImage:
 		size := resolution

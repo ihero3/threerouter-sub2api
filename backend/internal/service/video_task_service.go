@@ -97,6 +97,15 @@ func NewVideoTaskService(
 	}
 }
 
+// billingDeps 提取视频结算管线依赖（见 video_task_billing.go）。
+func (s *VideoTaskService) billingDeps() *videoTaskBillingDeps {
+	return &videoTaskBillingDeps{
+		billingService:       s.billingService,
+		apiKeyService:        s.apiKeyService,
+		openAIGatewayService: s.openAIGatewayService,
+	}
+}
+
 // CreateTask 处理用户视频生成请求。
 // 流程：解析统一请求 → 选上游账号 → model_mapping 翻译 → 调 adapter → 写表。
 // 当上游创建返回可重试错误（401/403/429/5xx 等）时，会排除该账号继续选下一个，
@@ -189,12 +198,23 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 		if createResult.InlineVideoURL != "" {
 			record.VideoURL = createResult.InlineVideoURL
 		}
-		if createResult.Status != "failed" {
-			if cost, costErr := s.calculateVideoCost(ctx, apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
-				record.ReservedCost = &cost
-				if s.apiKeyService != nil {
-					_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
-				}
+		if createResult.Status == "failed" {
+			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
+			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+				LocalID:       record.LocalID,
+				UserID:        record.UserID,
+				APIKeyID:      record.APIKeyID,
+				AccountID:     record.AccountID,
+				Account:       account,
+				Model:         record.PublicModel,
+				UpstreamModel: record.UpstreamModel,
+				Resolution:    record.Resolution,
+				DurationSec:   record.DurationSec,
+			})
+		} else if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+			record.ReservedCost = &cost
+			if s.apiKeyService != nil {
+				_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
 			}
 		}
 
@@ -311,6 +331,17 @@ func (s *VideoTaskService) PollTask(ctx context.Context, record *VideoTaskRecord
 		if err := s.videoTaskRepo.UpdateStatus(ctx, record.ID, "failed", "upstream task timed out"); err != nil {
 			return fmt.Errorf("video_task_service: timeout update status: %w", err)
 		}
+		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+			LocalID:       record.LocalID,
+			UserID:        record.UserID,
+			APIKeyID:      record.APIKeyID,
+			AccountID:     record.AccountID,
+			Model:         record.PublicModel,
+			UpstreamModel: record.UpstreamModel,
+			Resolution:    record.Resolution,
+			DurationSec:   record.DurationSec,
+			ReservedCost:  record.ReservedCost,
+		})
 		return nil
 	}
 	return s.refreshTaskStatus(ctx, record)
@@ -335,34 +366,51 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 
 	switch result.Status {
 	case "succeeded":
-		cost, costErr := s.calculateVideoCost(ctx, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec)
-		if costErr != nil {
-			s.logger.Warn("video_task_service: calculate cost failed",
+		actual := 0.0
+		if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); estErr == nil {
+			actual = est
+		} else {
+			s.logger.Warn("video_task_service: estimate cost failed",
 				zap.Int64("task_id", record.ID),
-				zap.Error(costErr),
+				zap.Error(estErr),
 			)
-			cost = 0
 		}
-		claimed, err := s.videoTaskRepo.UpdateResult(ctx, record.ID, "succeeded", result.VideoURL, result.ThumbnailURL, result.DurationSec, cost)
+		claimed, err := s.videoTaskRepo.UpdateResult(ctx, record.ID, "succeeded", result.VideoURL, result.ThumbnailURL, result.DurationSec, actual)
 		if err != nil {
 			return fmt.Errorf("video_task_service: update result: %w", err)
 		}
 		if claimed {
-			var reserved float64
-			if record.ReservedCost != nil {
-				reserved = *record.ReservedCost
-			}
-			settleMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved, cost)
+			// claimed 守卫保证同一任务只结算一次：实际按秒计费（余额/订阅/Key配额）
+			// + usage_logs 幂等落库 + 退还预扣，见 video_task_billing.go。
+			settleVideoTaskSuccess(ctx, s.billingDeps(), &videoTaskBillingInput{
+				LocalID:       record.LocalID,
+				UserID:        record.UserID,
+				APIKeyID:      record.APIKeyID,
+				AccountID:     record.AccountID,
+				Account:       account,
+				Model:         record.PublicModel,
+				UpstreamModel: record.UpstreamModel,
+				Resolution:    record.Resolution,
+				DurationSec:   result.DurationSec,
+				ReservedCost:  record.ReservedCost,
+			})
 		}
 	case "failed", "cancelled":
 		if err := s.videoTaskRepo.UpdateStatus(ctx, record.ID, result.Status, result.ErrorMessage); err != nil {
 			return fmt.Errorf("video_task_service: update status: %w", err)
 		}
-		var reserved float64
-		if record.ReservedCost != nil {
-			reserved = *record.ReservedCost
-		}
-		releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
+		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+			LocalID:       record.LocalID,
+			UserID:        record.UserID,
+			APIKeyID:      record.APIKeyID,
+			AccountID:     record.AccountID,
+			Account:       account,
+			Model:         record.PublicModel,
+			UpstreamModel: record.UpstreamModel,
+			Resolution:    record.Resolution,
+			DurationSec:   result.DurationSec,
+			ReservedCost:  record.ReservedCost,
+		})
 	default:
 		// still processing, no update needed
 	}
@@ -427,11 +475,17 @@ func (s *VideoTaskService) CancelTask(ctx context.Context, id int64) error {
 	if err := s.videoTaskRepo.UpdateStatus(ctx, id, "cancelled", "cancelled by admin"); err != nil {
 		return fmt.Errorf("video_task_service: cancel task: %w", err)
 	}
-	var reserved float64
-	if record.ReservedCost != nil {
-		reserved = *record.ReservedCost
-	}
-	releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
+	settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+		LocalID:       record.LocalID,
+		UserID:        record.UserID,
+		APIKeyID:      record.APIKeyID,
+		AccountID:     record.AccountID,
+		Model:         record.PublicModel,
+		UpstreamModel: record.UpstreamModel,
+		Resolution:    record.Resolution,
+		DurationSec:   record.DurationSec,
+		ReservedCost:  record.ReservedCost,
+	})
 	return nil
 }
 
@@ -546,30 +600,4 @@ func generateVideoLocalID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return "vid_" + hex.EncodeToString(b)
-}
-
-// calculateVideoCost resolves the group-level video price and applies the
-// user/group video rate multiplier for a completed video task.
-func (s *VideoTaskService) calculateVideoCost(ctx context.Context, apiKeyID int64, model, resolution string, durationSec int) (float64, error) {
-	if s == nil || s.billingService == nil || s.apiKeyService == nil {
-		return 0, fmt.Errorf("video_task_service: billing dependencies are not wired")
-	}
-	apiKey, err := s.apiKeyService.GetByID(ctx, apiKeyID)
-	if err != nil || apiKey == nil {
-		return 0, fmt.Errorf("video_task_service: load api key %d: %w", apiKeyID, err)
-	}
-	if apiKey.GroupID == nil || apiKey.Group == nil {
-		return 0, fmt.Errorf("video_task_service: api key %d has no group", apiKeyID)
-	}
-
-	baseMultiplier := apiKey.Group.RateMultiplier
-	if s.openAIGatewayService != nil {
-		baseMultiplier = s.openAIGatewayService.ResolveUserGroupRateMultiplier(
-			ctx, apiKey.UserID, *apiKey.GroupID, apiKey.Group.RateMultiplier,
-		)
-	}
-	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
-	groupConfig := videoPriceConfigFromAPIKey(apiKey)
-	cost := s.billingService.CalculateVideoCost(model, resolution, 1, durationSec, groupConfig, videoMultiplier)
-	return cost.ActualCost, nil
 }

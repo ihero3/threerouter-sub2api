@@ -48,3 +48,20 @@ export function imageUnitPrice(row: Pick<ImageBillingRow, 'image_count' | 'total
   const price = total / row.image_count
   return Number.isFinite(price) ? price : 0
 }
+
+interface VideoBillingRow {
+  video_count: number
+  billing_mode?: string | null
+  total_cost: number
+}
+
+export function isVideoUsage(row: Pick<VideoBillingRow, 'video_count' | 'billing_mode'> | null | undefined): boolean {
+  return (row?.video_count ?? 0) > 0 || row?.billing_mode === BILLING_MODE_VIDEO
+}
+
+export function videoUnitPrice(row: Pick<VideoBillingRow, 'video_count' | 'total_cost'> | null): number {
+  if (!row || row.video_count <= 0) return 0
+  const total = row.total_cost ?? 0
+  const price = total / row.video_count
+  return Number.isFinite(price) ? price : 0
+}
