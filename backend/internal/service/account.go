@@ -1499,7 +1499,16 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 
 // IsAnthropicProtocol 报告账号是否以原生 Anthropic 协议接入上游
 // （/v1/messages 直通，适配 Claude Code 等客户端）。
+// Anthropic 官方 Console API Key 账号（PlatformAnthropic + AccountTypeAPIKey）
+// 天然以原生 /v1/messages 直通；其余平台继续按 credentials["api_protocol"] 判定
+// （仅国产供应商 kimi/zhipu/deepseek 支持 anthropic 协议）。
 func (a *Account) IsAnthropicProtocol() bool {
+	if a == nil {
+		return false
+	}
+	if a.Platform == PlatformAnthropic && a.Type == AccountTypeAPIKey {
+		return true
+	}
 	return a.GetAPIProtocol() == APIProtocolAnthropic
 }
 
@@ -1528,6 +1537,11 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultZhipuAnthropicBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekAnthropicBaseURL
+	case PlatformAnthropic:
+		// Anthropic 官方 Console API Key 账号上游即 Anthropic /v1/messages。
+		// 凭证 base_url 优先（上方 Type==AccountTypeAPIKey 分支已处理）；
+		// 缺失时回退官方默认端点。
+		return "https://api.anthropic.com"
 	default:
 		return ""
 	}
@@ -1709,6 +1723,12 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}
+		return a.GetCredential("api_key")
+	}
+	// Anthropic 官方 Console API Key 账号同样是 APIKey 类型，需返回凭证
+	// api_key（Anthropic 原生 /v1/messages 以 x-api-key 鉴权）。IsOpenAIApiKey
+	// 仅覆盖 openai 平台，故此处单独命中 anthropic 平台。
+	if a.Platform == PlatformAnthropic && a.Type == AccountTypeAPIKey {
 		return a.GetCredential("api_key")
 	}
 	return a.GetOpenAIApiKey()
