@@ -70,20 +70,20 @@ func TestSameAccountRetryAllowedUsesDeadlineInsteadOfPoolCount(t *testing.T) {
 		RetryableOnSameAccount:   true,
 		SameAccountRetryDeadline: time.Now().Add(time.Minute),
 	}
-	require.True(t, sameAccountRetryAllowed(err, 100, 0))
-	require.True(t, sameAccountRetryAllowed(err, 100, maxSameAccountRetries))
+	require.True(t, sameAccountRetryAllowed(err, 100, 0, false))
+	require.True(t, sameAccountRetryAllowed(err, 100, maxSameAccountRetries, false))
 	err.SameAccountRetryDeadline = time.Now().Add(-time.Second)
-	require.False(t, sameAccountRetryAllowed(err, 0, 100))
+	require.False(t, sameAccountRetryAllowed(err, 0, 100, false))
 }
 
 func TestSameAccountRetryAllowedRequiresOptInAndDefaultsToCountLimit(t *testing.T) {
 	err := &service.UpstreamFailoverError{SameAccountRetryDeadline: time.Now().Add(time.Minute)}
-	require.False(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries))
+	require.False(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries, false))
 
 	err.RetryableOnSameAccount = true
 	err.SameAccountRetryDeadline = time.Time{}
-	require.True(t, sameAccountRetryAllowed(err, maxSameAccountRetries-1, maxSameAccountRetries))
-	require.False(t, sameAccountRetryAllowed(err, maxSameAccountRetries, maxSameAccountRetries))
+	require.True(t, sameAccountRetryAllowed(err, maxSameAccountRetries-1, maxSameAccountRetries, false))
+	require.False(t, sameAccountRetryAllowed(err, maxSameAccountRetries, maxSameAccountRetries, false))
 }
 
 func TestSameAccountRetryAllowedHonorsErrorMaxBeforeDeadline(t *testing.T) {
@@ -92,9 +92,29 @@ func TestSameAccountRetryAllowedHonorsErrorMaxBeforeDeadline(t *testing.T) {
 		SameAccountRetryDeadline: time.Now().Add(time.Minute),
 		SameAccountRetryMax:      1,
 	}
-	require.True(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries))
-	require.False(t, sameAccountRetryAllowed(err, 1, maxSameAccountRetries))
-	require.False(t, sameAccountRetryAllowed(err, 0, 0), "an explicit zero retry budget remains disabled")
+	require.True(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries, false))
+	require.False(t, sameAccountRetryAllowed(err, 1, maxSameAccountRetries, false))
+	require.False(t, sameAccountRetryAllowed(err, 0, 0, false), "an explicit zero retry budget remains disabled")
+}
+
+// TestSameAccountRetryAllowedDisabledBySwitch 验证全局开关「Disable Same-Account
+// Retry on Error」开启后，即便错误本身允许同账号重试，sameAccountRetryAllowed 也
+// 一律返回 false，从而强制 failover 到下一个上游账号。
+func TestSameAccountRetryAllowedDisabledBySwitch(t *testing.T) {
+	err := &service.UpstreamFailoverError{
+		RetryableOnSameAccount:   true,
+		SameAccountRetryDeadline: time.Now().Add(time.Minute),
+		SameAccountRetryMax:      3,
+	}
+	// 开关关闭：原本允许重试的场景都应返回 true。
+	require.True(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries, false))
+	require.True(t, sameAccountRetryAllowed(err, 2, 3, false))
+	// 开关开启：无论错误是否可重试，一律禁止同账号重试。
+	require.False(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries, true))
+	require.False(t, sameAccountRetryAllowed(err, 2, 3, true))
+	// 即使错误本身不可重试（未 Opt-In），开关开启时仍为 false（行为一致）。
+	nonRetryable := &service.UpstreamFailoverError{}
+	require.False(t, sameAccountRetryAllowed(nonRetryable, 0, maxSameAccountRetries, true))
 }
 
 func TestSameAccountRetryDeadlineAllows(t *testing.T) {

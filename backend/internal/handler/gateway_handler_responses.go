@@ -168,6 +168,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	fs.disableSameAccountRetry = h.gatewayService.IsDisableSameAccountRetryEnabled(requestCtx)
 
 	for {
 		if requestCtx.Err() != nil {

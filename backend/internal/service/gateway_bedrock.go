@@ -206,7 +206,8 @@ func (s *GatewayService) executeBedrockUpstream(
 			})
 		}
 
-		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+		// 全局开关「Disable Same-Account Retry on Error」开启时禁止同账号退避重试。
+		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) && !s.IsDisableSameAccountRetryEnabled(ctx) {
 			if attempt < maxRetryAttempts {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {

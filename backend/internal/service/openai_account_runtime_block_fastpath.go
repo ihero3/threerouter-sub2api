@@ -97,6 +97,12 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// 开启 "Disable Failed Account on Failover" 时，对 failover 名单内错误（含 429/401/403/5xx）的出错账号
+	// 统一在此处永久禁用（status=error）并移出调度池。置于分支逻辑之前，保证所有命中 failover 名单的状态码
+	// 行为一致：不会因下方的错误子类（如 429 图片限流、429 Codex 限流、访问态错误等）早退而漏掉禁用。
+	if s != nil && account != nil {
+		maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, statusCode, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(responseBody))
+	}
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)

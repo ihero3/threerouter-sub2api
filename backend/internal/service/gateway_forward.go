@@ -46,11 +46,21 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 402, 403, 404, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
 	}
+}
+
+// IsDisableSameAccountRetryEnabled 检查全局设置：出错后是否禁止同账号重试。
+// 开启后池模式账号出错也不再同账号退避重试，直接 failover 切换到下一个上游账号。
+// 默认关闭（保留原有重试逻辑）。
+func (s *GatewayService) IsDisableSameAccountRetryEnabled(ctx context.Context) bool {
+	if s.settingService == nil {
+		return false
+	}
+	return s.settingService.IsDisableSameAccountRetryEnabled(ctx)
 }
 
 func retryBackoffDelay(attempt int) time.Duration {
@@ -604,7 +614,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
-		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+		// 全局开关「Disable Same-Account Retry on Error」开启时，禁止同账号退避重试，
+		// 直接返回错误交由上层 failover 切换到下一个账号。
+		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) && !s.IsDisableSameAccountRetryEnabled(ctx) {
 			if attempt < maxRetryAttempts {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
