@@ -119,6 +119,12 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	if err != nil {
 		return nil, fmt.Errorf("media_task_service: parse request: %w", err)
 	}
+	// 视频模型 resolution 档位校验：在选号与调上游之前拦截，直接 400。
+	if kind == MediaKindVideo {
+		if vErr := validateVideoResolution(publicModel, req.Resolution); vErr != nil {
+			return nil, fmt.Errorf("media_task_service: validate resolution: %w", vErr)
+		}
+	}
 
 	ctx := c.Request.Context()
 	excluded := make(map[int64]struct{})
@@ -740,7 +746,70 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 			req.Extra[k] = v
 		}
 	}
+	// 图生视频契约：存在参考图（image/image_urls/media 素材中的图片项）时按图生视频
+	// 路由并忽略 ratio —— 各上游对 i2v 的 ratio 支持不一致，插件侧约定不下发。
+	// Extra 里也一并删除，MiniMax 官方协议的 ratio 取自 Extra。
+	if len(req.ImageRefURLs) > 0 || mediaHasImageReference(req.Media) {
+		req.Ratio = ""
+		delete(req.Extra, "ratio")
+	}
 	return req, nil
+}
+
+// MediaInvalidRequestError 表示请求参数不满足媒体生成契约（如 resolution 档位
+// 非法）。handler 应将其映射为 400 invalid_request_error，而非上游故障。
+type MediaInvalidRequestError struct {
+	Reason string
+}
+
+func (e *MediaInvalidRequestError) Error() string { return e.Reason }
+
+// videoModelResolutionAllowlist 按模型前缀列出 resolution 白名单。
+// MiniMax-H3 系列（含 UCloud ModelVerse 转售）仅支持 480P / 768P / 2K 三档；
+// 未列出的模型不校验，档位透传上游。
+var videoModelResolutionAllowlist = []struct {
+	prefix  string
+	allowed []string
+}{
+	{prefix: "minimax-h3", allowed: []string{"480p", "768p", "2k"}},
+}
+
+// validateVideoResolution 按模型校验视频 resolution 档位。大小写不敏感，兼容
+// 480/480p/sd、768/768p、2k/1440p 等常见写法（复用计费侧归一化）。resolution
+// 为空表示使用上游默认档位，不校验。
+func validateVideoResolution(model, resolution string) error {
+	trimmed := strings.TrimSpace(resolution)
+	if trimmed == "" {
+		return nil
+	}
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, rule := range videoModelResolutionAllowlist {
+		if !strings.HasPrefix(m, rule.prefix) {
+			continue
+		}
+		normalized, _ := LookupVideoBillingResolutionAny(trimmed)
+		for _, allowed := range rule.allowed {
+			if normalized == allowed {
+				return nil
+			}
+		}
+		return &MediaInvalidRequestError{
+			Reason: fmt.Sprintf("resolution %q is not supported by model %s: allowed values are 480P, 768P, 2K", trimmed, model),
+		}
+	}
+	return nil
+}
+
+// mediaHasImageReference 判断官方 media 素材列表里是否包含图片类素材
+//（首帧 / 尾帧 / 参考图），用于识别图生视频请求。
+func mediaHasImageReference(media []VideoMediaInput) bool {
+	for _, m := range media {
+		switch m.Type {
+		case "first_frame", "last_frame", "reference_image":
+			return true
+		}
+	}
+	return false
 }
 
 // generateMediaLocalID 生成唯一本地任务 ID，按媒体类型区分前缀。

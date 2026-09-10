@@ -11,6 +11,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -306,6 +307,12 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 	record, replayed, err := h.mediaCreateIdempotent(c, kind, apiKey, subject, publicModel, body)
 	if err != nil {
 		reqLog.Error("media_gateway.create_task_failed", zap.Error(err))
+		// 参数契约类错误（如 resolution 档位非法）应返回 400 而非上游故障。
+		var invalidReq *service.MediaInvalidRequestError
+		if errors.As(err, &invalidReq) {
+			mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidReq.Reason)
+			return
+		}
 		if strings.Contains(err.Error(), "no available account") {
 			mediaErrorResponse(c, http.StatusServiceUnavailable, "capacity_error", "No available media generation channels")
 			return
