@@ -47,6 +47,33 @@ func LookupVideoBillingResolution(resolution string) (string, bool) {
 	}
 }
 
+// LookupVideoBillingResolutionAny 归一化计费档位并保留厂商专有档位。
+// MiniMax H3 用 768P / 2K，这些档位在其他厂商不存在。管理员可以在
+// video_model_prices 里直接按 "768p" / "2k" 配置单价；这里原样保留，
+// 而不是把它们静默折算成 480p。
+func LookupVideoBillingResolutionAny(resolution string) (string, bool) {
+	if normalized, ok := LookupVideoBillingResolution(resolution); ok {
+		return normalized, true
+	}
+	normalized := strings.ToLower(strings.TrimSpace(resolution))
+	switch normalized {
+	case "768", "768p":
+		return "768p", true
+	case "2k", "1440p", "2kp":
+		return "2k", true
+	default:
+		return normalized, false
+	}
+}
+
+// NormalizeVideoBillingResolutionAnyOrDefault 与上者相同，但未知档位兜底到 480p。
+func NormalizeVideoBillingResolutionAnyOrDefault(resolution string) string {
+	if normalized, ok := LookupVideoBillingResolutionAny(resolution); ok {
+		return normalized
+	}
+	return VideoBillingResolution480P
+}
+
 // NormalizeVideoBillingResolutionOrDefault 用于运行时计费：上游回传的分辨率
 // 缺失或无法识别时按最低档兜底，保证请求仍可计费。
 func NormalizeVideoBillingResolutionOrDefault(resolution string) string {

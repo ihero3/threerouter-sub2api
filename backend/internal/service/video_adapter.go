@@ -58,6 +58,32 @@ type VideoMediaInput struct {
 	URL  string `json:"url"`
 }
 
+// videoRefURLFromAny 从请求体的媒体字段里提取 URL。
+// 兼容三种常见写法：裸字符串、{"url": "..."} 对象，以及
+// {"image_url": {"url": "..."}} 这类厂商嵌套结构。
+func videoRefURLFromAny(raw any) string {
+	switch v := raw.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case map[string]any:
+		for _, key := range []string{"url", "image_url", "video_url", "audio_url"} {
+			inner, ok := v[key]
+			if !ok {
+				continue
+			}
+			if s, ok := inner.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+			if m, ok := inner.(map[string]any); ok {
+				if s, ok := m["url"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // IsKnownVideoVendorModel reports whether the model should be handled by one
 // of the Seedance / MiniMax / Wan vendor adapters rather than the Grok media
 // forwarder or the generic OpenAI fallback.

@@ -668,8 +668,19 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 			req.DurationSec = d
 		}
 	}
+	// 图片参考。除 OpenAI 风格的 image_url / image_urls 外，还要接受
+	// 各家文档常用的 image 字段：字符串、字符串数组，以及 {"url": "..."} 对象。
+	if items, ok := body["image"].([]any); ok {
+		for _, raw := range items {
+			if u := videoRefURLFromAny(raw); u != "" {
+				req.ImageRefURLs = append(req.ImageRefURLs, u)
+			}
+		}
+	} else if u := videoRefURLFromAny(body["image"]); u != "" {
+		req.ImageRefURLs = append(req.ImageRefURLs, u)
+	}
 	if v, ok := body["image_url"].(string); ok && v != "" {
-		req.ImageRefURLs = []string{v}
+		req.ImageRefURLs = append(req.ImageRefURLs, v)
 	}
 	if urls, ok := body["image_urls"].([]any); ok {
 		for _, u := range urls {

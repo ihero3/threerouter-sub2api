@@ -490,7 +490,7 @@ func mergeVideoExtra(body map[string]any, extra map[string]any) {
 	reserved := map[string]struct{}{
 		"model": {}, "content": {}, "input": {}, "parameters": {},
 		"prompt": {}, "negative_prompt": {},
-		"image_url": {}, "image_urls": {}, "video_url": {}, "video_urls": {},
+		"image": {}, "image_url": {}, "image_urls": {}, "video_url": {}, "video_urls": {},
 		"audio_url": {}, "audio_urls": {}, "media": {},
 		"resolution": {}, "ratio": {}, "duration": {}, "duration_sec": {}, "seed": {},
 		"video_create_path": {}, "video_query_path": {},
