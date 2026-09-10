@@ -535,15 +535,73 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 		// API Key 未配置错误码：不标记账号状态
 		logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 	}
+	// 开启 "Disable Failed Account on Failover" 时，对 failover 名单内错误（含 429）的出错账号永久禁用。
+	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, statusCode, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body))
+}
+
+// maybeDisableAccountOnFailover permanently disables the failing upstream account
+// (status=error, removed from the scheduling pool) when the
+// "Disable Failed Account on Failover" setting is enabled and the upstream
+// returned a status on the shouldFailoverUpstreamError list (e.g. 401/403/429/5xx).
+//
+// It is a strict no-op unless the admin enables the setting, preserving the
+// default failover-only behavior. Disabling is idempotent: an already-error
+// account is left untouched. The in-memory account object used for the current
+// request is not mutated; the persisted record is updated via the repository so
+// the scheduler excludes the account on its next reconcile. An admin must
+// test-recover the account to bring it back online.
+func maybeDisableAccountOnFailover(
+	ctx context.Context,
+	settingService *SettingService,
+	accountRepo AccountRepository,
+	account *Account,
+	statusCode int,
+	shouldFailover func(int) bool,
+	upstreamMsg string,
+) {
+	if settingService == nil || accountRepo == nil || account == nil || shouldFailover == nil {
+		return
+	}
+	if !shouldFailover(statusCode) {
+		return
+	}
+	if !settingService.IsDisableFailedAccountOnFailoverEnabled(ctx) {
+		return
+	}
+
+	msg := fmt.Sprintf("Auto-disabled on upstream failover: HTTP %d", statusCode)
+	if trimmed := strings.TrimSpace(upstreamMsg); trimmed != "" {
+		msg = fmt.Sprintf("%s (%s)", msg, truncateString(trimmed, 200))
+	}
+
+	acct, err := accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to load account %d: %v", account.ID, err)
+		return
+	}
+	if acct.Status == StatusError {
+		return
+	}
+	acct.Status = StatusError
+	acct.ErrorMessage = msg
+	if err := accountRepo.Update(ctx, acct); err != nil {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to disable account %d: %v", account.ID, err)
+		return
+	}
+	logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d disabled after upstream HTTP %d", account.ID, statusCode)
 }
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
 	body, _ := s.readUpstreamErrorBody(resp)
 	if len(requestedModel) > 0 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
-		return
+	} else {
+		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	}
-	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	// 当开启 "Disable Failed Account on Failover" 且上游返回 failover 名单内错误（含 429）时，
+	// 将出错账号永久禁用（status=error），避免其他用户重复命中同一故障账号；同一请求内的
+	// 透明换号仍由 failover 机制保障，用户无感。
+	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, resp.StatusCode, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body))
 }
 
 // handleRetryExhaustedError 处理重试耗尽后的错误

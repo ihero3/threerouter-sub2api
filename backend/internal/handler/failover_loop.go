@@ -76,7 +76,12 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	return delay
 }
 
-func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCount, retryLimit int) bool {
+func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCount, retryLimit int, disableSameAccountRetry bool) bool {
+	// 全局开关「Disable Same-Account Retry on Error」开启时，一律禁止同账号退避重试：
+	// 可重试的上游错误直接 failover 到下一个上游账号，不再原地重试本账号。
+	if disableSameAccountRetry {
+		return false
+	}
 	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
 		return false
 	}
@@ -130,6 +135,12 @@ type FailoverState struct {
 	LastFailoverErr       *service.UpstreamFailoverError
 	ForceCacheBilling     bool
 	hasBoundSession       bool
+
+	// disableSameAccountRetry 当全局设置「Disable Same-Account Retry on Error」
+	// 开启时由生产调用方置为 true：同账号退避重试被禁止，可重试的上游错误将直接
+	// failover 到下一个上游账号。默认 false（保留原有同账号重试逻辑）。测试调用
+	// NewFailoverState 时不设置该字段，保持默认关闭，零值安全。
+	disableSameAccountRetry bool
 
 	// profitVetoedAccountIDs 记录被分组利润门终检否决的账号，是 FailedAccountIDs
 	// 的子集。之所以单独维护：HandleSelectionExhausted 的 503 退避分支会清空
@@ -210,7 +221,7 @@ func (s *FailoverState) HandleFailoverError(
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
-	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
+	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit, s.disableSameAccountRetry)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}

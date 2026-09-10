@@ -178,8 +178,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	fs.disableSameAccountRetry = h.gatewayService.IsDisableSameAccountRetryEnabled(c.Request.Context())
 	if groupPlatform == service.PlatformGemini {
 		fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
+		fs.disableSameAccountRetry = h.gatewayService.IsDisableSameAccountRetryEnabled(c.Request.Context())
 	}
 
 	for {
