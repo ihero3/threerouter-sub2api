@@ -255,6 +255,9 @@ export default {
       initFailed: '人机验证初始化失败，请重试',
       wrongOrder: '点击顺序不正确，请重试',
     },
+    clickCaptchaTokenInvalid: '人机验证已过期或已使用，请重新完成人机验证',
+    clickCaptchaInvalid: '人机验证校验失败，请重新完成人机验证',
+    clickCaptchaDisabled: '人机验证服务暂不可用，请联系管理员',
     emailDomainRegistrationLimit:
       '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',

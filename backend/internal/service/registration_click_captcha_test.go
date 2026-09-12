@@ -49,6 +49,12 @@ func (m *clickCaptchaMemoryStore) TakeToken(ctx context.Context, token string) (
 	delete(m.tokens, token)
 	return p, nil
 }
+func (m *clickCaptchaMemoryStore) PeekToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error) {
+	if m.tokens == nil {
+		return nil, nil
+	}
+	return m.tokens[token], nil
+}
 
 func TestRegistrationClickCaptcha_Lifecycle(t *testing.T) {
 	store := &clickCaptchaMemoryStore{}
@@ -76,10 +82,21 @@ func TestRegistrationClickCaptcha_Lifecycle(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// 重复消费失败
-	err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
+	ref, err := svc.ConsumeToken(ctx, token, ipHash, uaHash)
 	require.NoError(t, err)
-	err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
+	require.NotNil(t, ref)
+	_, err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
 	require.ErrorIs(t, err, ErrRegistrationClickCaptchaTokenInvalid)
+
+	// 归还后可再次消费（模拟注册失败重试）
+	require.NoError(t, svc.RestoreToken(ctx, token, ref))
+	ref, err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
+	require.NoError(t, err)
+	require.NotNil(t, ref)
+
+	// 过期载荷不应归还
+	expired := &ClickCaptchaTokenPayloadRef{IPHash: ipHash, UAHash: uaHash, ExpiresAt: time.Now().Add(-time.Second).Unix()}
+	require.ErrorIs(t, svc.RestoreToken(ctx, token, expired), ErrRegistrationClickCaptchaTokenInvalid)
 }
 
 func TestRegistrationClickCaptcha_IPUAMismatch(t *testing.T) {
@@ -93,6 +110,43 @@ func TestRegistrationClickCaptcha_IPUAMismatch(t *testing.T) {
 	require.ErrorIs(t, err, ErrRegistrationClickCaptchaInvalid)
 }
 
+func TestRegistrationClickCaptcha_ValidateToken(t *testing.T) {
+	store := &clickCaptchaMemoryStore{}
+	svc := NewRegistrationClickCaptchaService(store)
+	ctx := context.Background()
+	ipHash := "ip-a"
+	uaHash := "ua-a"
+
+	ch, err := svc.CreateChallenge(ctx, ipHash, uaHash)
+	require.NoError(t, err)
+	payload := store.challenges[ch.ChallengeID]
+	token, _, err := svc.VerifyChallenge(ctx, ch.ChallengeID, payload.AnswerCells, ipHash, uaHash)
+	require.NoError(t, err)
+
+	// 非破坏性校验：可重复校验且不影响 token 状态
+	require.NoError(t, svc.ValidateToken(ctx, token, ipHash, uaHash))
+	require.NoError(t, svc.ValidateToken(ctx, token, ipHash, uaHash))
+
+	// 校验后仍可正常一次性消费
+	ref, err := svc.ConsumeToken(ctx, token, ipHash, uaHash)
+	require.NoError(t, err)
+	require.NotNil(t, ref)
+
+	// 消费后校验失败
+	require.ErrorIs(t, svc.ValidateToken(ctx, token, ipHash, uaHash), ErrRegistrationClickCaptchaTokenInvalid)
+
+	// 指纹不匹配的 token 校验失败
+	require.NoError(t, store.SetToken(ctx, "tok-other", &ClickCaptchaTokenPayloadRef{
+		IPHash:    "ip-b",
+		UAHash:    "ua-b",
+		CreatedAt: time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Minute).Unix(),
+	}))
+	require.ErrorIs(t, svc.ValidateToken(ctx, "tok-other", ipHash, uaHash), ErrRegistrationClickCaptchaTokenInvalid)
+
+	// 空 token 校验失败
+	require.ErrorIs(t, svc.ValidateToken(ctx, "  ", ipHash, uaHash), ErrRegistrationClickCaptchaTokenInvalid)
+}
 func TestRegistrationClickCaptcha_ChallengeExpired(t *testing.T) {
 	store := &clickCaptchaMemoryStore{}
 	svc := NewRegistrationClickCaptchaService(store)

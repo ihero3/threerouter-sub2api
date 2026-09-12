@@ -6,23 +6,23 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
 
 // ErrRegistrationClickCaptchaDisabled 验证码功能未启用时的错误。
-var ErrRegistrationClickCaptchaDisabled = errors.New("registration click captcha is disabled")
+var ErrRegistrationClickCaptchaDisabled = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_DISABLED", "registration click captcha is disabled")
 
 // ErrRegistrationClickCaptchaInvalid 点击顺序错误或 challenge 无效。
-var ErrRegistrationClickCaptchaInvalid = errors.New("registration click captcha challenge invalid")
+var ErrRegistrationClickCaptchaInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_INVALID", "registration click captcha challenge invalid")
 
 // ErrRegistrationClickCaptchaTokenInvalid 一次性 token 无效、过期或已使用。
-var ErrRegistrationClickCaptchaTokenInvalid = errors.New("registration click captcha token invalid")
+var ErrRegistrationClickCaptchaTokenInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID", "registration click captcha token invalid or expired, please complete the verification again")
 
 // RegistrationClickCaptchaChallenge 一次点击验证题。
 type RegistrationClickCaptchaChallenge struct {
@@ -46,6 +46,7 @@ type clickCaptchaCacheStore interface {
 	DeleteChallenge(ctx context.Context, challengeID string) error
 	SetToken(ctx context.Context, token string, payload *ClickCaptchaTokenPayloadRef) error
 	TakeToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
+	PeekToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
 }
 
 // clickCaptchaPrompt 一个提示项（文本/emoji 均可）。
@@ -208,8 +209,45 @@ func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, c
 	return token, ttl, nil
 }
 
-// ConsumeToken 一次性校验并消费 token。
-func (s *RegistrationClickCaptchaService) ConsumeToken(ctx context.Context, token, ipHash, uaHash string) error {
+// ConsumeToken 一次性校验并消费 token，成功时返回载荷供业务失败后归还。
+func (s *RegistrationClickCaptchaService) ConsumeToken(ctx context.Context, token, ipHash, uaHash string) (*ClickCaptchaTokenPayloadRef, error) {
+	if s == nil || s.cache == nil {
+		return nil, ErrRegistrationClickCaptchaDisabled
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, ErrRegistrationClickCaptchaTokenInvalid
+	}
+	payload, err := s.cache.TakeToken(ctx, token)
+	if err != nil {
+		return nil, ErrRegistrationClickCaptchaTokenInvalid
+	}
+	if payload == nil || time.Now().Unix() > payload.ExpiresAt {
+		return nil, ErrRegistrationClickCaptchaTokenInvalid
+	}
+	if payload.IPHash != ipHash || payload.UAHash != uaHash {
+		return nil, ErrRegistrationClickCaptchaTokenInvalid
+	}
+	return payload, nil
+}
+
+// RestoreToken 将已消费但注册业务失败的 token 归还缓存，
+// 保证"验证码错误/邮箱冲突"等注册失败不烧掉人机验证结果，用户可携同一 token 重试。
+// 归还沿用原 ExpiresAt（缓存实现按剩余有效期写入）；已过期或载荷为空则不归还。
+func (s *RegistrationClickCaptchaService) RestoreToken(ctx context.Context, token string, payload *ClickCaptchaTokenPayloadRef) error {
+	if s == nil || s.cache == nil || payload == nil || strings.TrimSpace(token) == "" {
+		return ErrRegistrationClickCaptchaTokenInvalid
+	}
+	if time.Now().Unix() >= payload.ExpiresAt {
+		return ErrRegistrationClickCaptchaTokenInvalid
+	}
+	return s.cache.SetToken(ctx, token, payload)
+}
+
+// ValidateToken 非破坏性校验一次性 token（不消费），
+// 用于服务端强制"发送邮箱验证码前必须通过真人验证"：仅校验存在性、有效期与指纹，
+// 不改变 token 状态，后续注册时仍由 ConsumeToken 做一次性消费。
+func (s *RegistrationClickCaptchaService) ValidateToken(ctx context.Context, token, ipHash, uaHash string) error {
 	if s == nil || s.cache == nil {
 		return ErrRegistrationClickCaptchaDisabled
 	}
@@ -217,7 +255,7 @@ func (s *RegistrationClickCaptchaService) ConsumeToken(ctx context.Context, toke
 	if token == "" {
 		return ErrRegistrationClickCaptchaTokenInvalid
 	}
-	payload, err := s.cache.TakeToken(ctx, token)
+	payload, err := s.cache.PeekToken(ctx, token)
 	if err != nil {
 		return ErrRegistrationClickCaptchaTokenInvalid
 	}

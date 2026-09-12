@@ -292,6 +292,7 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 	require.NoError(t, err)
 	require.Zero(t, tamperedCount)
 	require.Equal(t, []oauthEmailAffiliateBindCall{{userID: user.ID, inviterID: 2002}}, affiliateRepo.bindCalls)
+	require.Equal(t, []oauthEmailAffiliateRewardCall{{inviterID: 2002, inviteeUserID: user.ID, amount: service.AffiliateRegisterRewardDefault}}, affiliateRepo.rewardCalls)
 	storedInvitation, err := client.RedeemCode.Query().Where(redeemcode.IDEQ(invitation.ID)).Only(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, storedInvitation.UsedBy)
@@ -363,10 +364,17 @@ type oauthEmailAffiliateBindCall struct {
 	inviterID int64
 }
 
+type oauthEmailAffiliateRewardCall struct {
+	inviterID     int64
+	inviteeUserID int64
+	amount        float64
+}
+
 type oauthEmailAffiliateRepoStub struct {
 	codeOwners    map[string]int64
 	ensureUserIDs []int64
 	bindCalls     []oauthEmailAffiliateBindCall
+	rewardCalls   []oauthEmailAffiliateRewardCall
 }
 
 func newOAuthEmailAffiliateRepoStub(codeOwners map[string]int64) *oauthEmailAffiliateRepoStub {
@@ -395,8 +403,9 @@ func (r *oauthEmailAffiliateRepoStub) AccrueQuota(context.Context, int64, int64,
 	panic("unexpected AccrueQuota call")
 }
 
-func (r *oauthEmailAffiliateRepoStub) AccrueRegistrationReward(context.Context, int64, int64, float64) (bool, error) {
-	panic("unexpected AccrueRegistrationReward call")
+func (r *oauthEmailAffiliateRepoStub) AccrueRegistrationReward(_ context.Context, inviterID, inviteeUserID int64, amount float64) (bool, error) {
+	r.rewardCalls = append(r.rewardCalls, oauthEmailAffiliateRewardCall{inviterID: inviterID, inviteeUserID: inviteeUserID, amount: amount})
+	return true, nil
 }
 
 func (r *oauthEmailAffiliateRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {

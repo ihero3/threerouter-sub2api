@@ -90,3 +90,18 @@ func (c *ClickCaptchaCache) TakeToken(ctx context.Context, token string) (*servi
 	}
 	return service.UnmarshalClickCaptchaTokenPayload(raw)
 }
+
+// PeekToken 读取 token 但不消费（发送验证码前的非破坏性校验）。
+func (c *ClickCaptchaCache) PeekToken(ctx context.Context, token string) (*service.ClickCaptchaTokenPayloadRef, error) {
+	if c == nil || c.rdb == nil {
+		return nil, fmt.Errorf("click captcha cache not configured")
+	}
+	raw, err := c.rdb.Get(ctx, clickCaptchaTokenKeyPrefix+token).Result()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return service.UnmarshalClickCaptchaTokenPayload(raw)
+}

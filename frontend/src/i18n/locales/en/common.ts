@@ -255,6 +255,9 @@ export default {
       initFailed: 'Failed to initialize the verification. Please try again',
       wrongOrder: 'Incorrect click order. Please try again',
     },
+    clickCaptchaTokenInvalid: 'Human verification expired or already used. Please complete the verification again',
+    clickCaptchaInvalid: 'Verification failed. Please complete the human verification again',
+    clickCaptchaDisabled: 'Human verification is currently unavailable. Please contact support',
     emailDomainRegistrationLimit:
       'This email domain cannot register another account. Please use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',

@@ -1080,8 +1080,18 @@ async function handleRegister(): Promise<void> {
 }
 
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
-  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
+  const code = extractApiErrorCode(error)
+  if (code === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return t('auth.emailDomainRegistrationLimit')
+  }
+  if (code === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID') {
+    return t('auth.clickCaptchaTokenInvalid')
+  }
+  if (code === 'REGISTRATION_CLICK_CAPTCHA_INVALID') {
+    return t('auth.clickCaptchaInvalid')
+  }
+  if (code === 'REGISTRATION_CLICK_CAPTCHA_DISABLED') {
+    return t('auth.clickCaptchaDisabled')
   }
   return buildAuthErrorMessage(error, { fallback })
 }

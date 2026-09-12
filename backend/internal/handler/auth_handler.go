@@ -208,14 +208,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 邮箱验证码校验通过后再消费一次性点击验证 token，
-	// 避免"验证码错误重试"时提前把 token 消耗掉。
+	// 消费一次性点击验证 token 作为注册前置人机门槛；
+	// 后续注册业务失败时归还 token（见下方），保证"验证码错误/邮箱冲突"等失败重试无需重新人机验证。
+	var clickCaptchaPayload *service.ClickCaptchaTokenPayloadRef
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
-		if err := h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
+		payload, err := h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
+		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
+		clickCaptchaPayload = payload
 	}
 
 	_, user, err := h.authService.RegisterWithVerification(
@@ -228,6 +231,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.AffCode,
 	)
 	if err != nil {
+		// best-effort 归还一次性 token：注册失败不烧掉人机验证结果。
+		if clickCaptchaPayload != nil {
+			_ = h.clickCaptcha.RestoreToken(c.Request.Context(), req.ClickCaptchaToken, clickCaptchaPayload)
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -248,6 +255,16 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// 邮箱验证开启且启用点击验证时，发送验证码前必须持有有效的真人验证 token（非消费式校验），
+	// 杜绝机器人绕过前端直接调用本接口刷邮件；token 仍由后续注册接口做一次性消费。
+	if h.enforceClickCaptchaForRegistration(c) {
+		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	}
 
 	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
