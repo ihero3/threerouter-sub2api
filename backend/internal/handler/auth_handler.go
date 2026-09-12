@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -231,6 +232,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.AffCode,
 	)
 	if err != nil {
+		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）
+		slog.Error("[Register] RegisterWithVerification failed", "error_type", fmt.Sprintf("%T", err), "error", err)
 		// best-effort 归还一次性 token：注册失败不烧掉人机验证结果。
 		if clickCaptchaPayload != nil {
 			_ = h.clickCaptcha.RestoreToken(c.Request.Context(), req.ClickCaptchaToken, clickCaptchaPayload)

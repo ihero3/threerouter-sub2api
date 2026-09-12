@@ -201,9 +201,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		if verifyCode == "" {
 			return "", nil, ErrEmailVerifyRequired
 		}
-		// 验证邮箱验证码
+		// 验证邮箱验证码（ErrInvalidVerifyCode 等 sentinel 已是 *ApplicationError，直接返回避免 fmt.Errorf 包装干扰 errors.As 识别）
 		if err := s.emailService.VerifyCode(ctx, email, verifyCode); err != nil {
-			return "", nil, fmt.Errorf("verify code: %w", err)
+			return "", nil, err
 		}
 	}
 
