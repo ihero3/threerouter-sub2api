@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -652,7 +653,13 @@ func parseSeedanceVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskR
 	result.Status = normalizeVideoTaskStatus(firstNonEmptyString(stringAtPath(data, "status", "data.status"), "processing"))
 	result.VideoURL = stringAtPath(data, "content.video_url", "data.video_url", "video_url")
 	result.ThumbnailURL = stringAtPath(data, "content.thumbnail_url", "data.thumbnail_url", "thumbnail_url")
-	result.DurationSec = intAtPath(data, "duration", "data.duration", "output.duration")
+	// 真实时长是计费的第一依据，路径尽可能覆盖：响应体可能把时长放在
+	// content / video / data 任一层，取不到才会退到"用户请求时长 / 默认时长"。
+	result.DurationSec = intAtPath(data,
+		"duration", "data.duration", "output.duration",
+		"content.duration", "video.duration", "data.video.duration",
+		"duration_seconds", "data.duration_seconds",
+	)
 	result.ErrorMessage = stringAtPath(data, "error.message", "message")
 	return result, nil
 }
@@ -736,7 +743,10 @@ func parseMiniMaxVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskRe
 	result.Status = normalizeVideoTaskStatus(firstNonEmptyString(stringAtPath(data, "task.status", "status"), "processing"))
 	result.VideoURL = stringAtPath(data, "task.content.url", "content.url", "video_url")
 	result.ThumbnailURL = stringAtPath(data, "task.content.thumbnail_url", "thumbnail_url")
-	result.DurationSec = intAtPath(data, "task.duration", "duration")
+	result.DurationSec = intAtPath(data,
+		"task.duration", "duration", "data.duration",
+		"task.video.duration", "task.duration_seconds",
+	)
 	result.ErrorMessage = stringAtPath(data, "task.error.message", "error.message", "message")
 	return result, nil
 }
@@ -757,7 +767,10 @@ func parseWanVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskResult
 	result.Status = normalizeVideoTaskStatus(firstNonEmptyString(stringAtPath(data, "output.task_status", "output.status", "task_status", "status"), "processing"))
 	result.VideoURL = stringAtPath(data, "output.video_url", "video_url")
 	result.ThumbnailURL = stringAtPath(data, "output.thumbnail_url", "thumbnail_url")
-	result.DurationSec = intAtPath(data, "usage.duration", "output.duration", "duration")
+	result.DurationSec = intAtPath(data,
+		"usage.duration", "output.duration", "duration",
+		"output.video.duration", "data.duration", "usage.video_duration",
+	)
 	result.ErrorMessage = stringAtPath(data, "message", "output.message", "error.message")
 	return result, nil
 }
@@ -774,13 +787,20 @@ func stringAtPath(data map[string]any, paths ...string) string {
 	return ""
 }
 
+// intAtPath 按路径顺序取第一个可解析成整数的值。
+// 除整数字符串外还接受 "10.0" 这类浮点字符串 —— 部分厂商的 duration 字段是浮点，
+// 解析失败会退化为 0，进而让计费丢掉"上游真实时长"这个最优先的计费依据。
 func intAtPath(data map[string]any, paths ...string) int {
 	for _, path := range paths {
-		if v := valueAtPath(data, path); v != "" {
-			var n int
-			if _, err := fmt.Sscan(v, &n); err == nil {
-				return n
-			}
+		v := strings.TrimSpace(valueAtPath(data, path))
+		if v == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return int(f)
 		}
 	}
 	return 0

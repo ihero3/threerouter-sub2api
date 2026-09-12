@@ -48,7 +48,10 @@ type videoTaskBillingInput struct {
 	UpstreamModel string
 	Resolution    string
 	DurationSec   int
-	ReservedCost  *float64
+	// RequestedDurationSec 用户在创建请求里指定的时长。上游不回传真实时长时用它兜底，
+	// 避免一律按默认 8 秒计价。
+	RequestedDurationSec int
+	ReservedCost         *float64
 }
 
 // VideoTaskBillingRequestID 返回视频任务的稳定幂等键：
@@ -79,19 +82,149 @@ func videoTaskLoadAPIKey(ctx context.Context, deps *videoTaskBillingDeps, apiKey
 	return apiKey, nil
 }
 
-// videoTaskCostBreakdown 计算视频任务费用（分组视频价 × 用户/分组视频倍率）。
-func videoTaskCostBreakdown(ctx context.Context, deps *videoTaskBillingDeps, apiKey *APIKey, model, resolution string, durationSec int) (*CostBreakdown, float64) {
+// videoTaskBillingDuration 确定计费时长：上游回传真实时长 > 用户请求时长 > 默认 8 秒。
+func videoTaskBillingDuration(actualSeconds, requestedSeconds int) int {
+	return NormalizeVideoBillingDurationSeconds(actualSeconds, requestedSeconds)
+}
+
+// resolveVideoTaskPricing 解析渠道/分组定价（与同步网关视频链路同一解析器）。
+// 解析器未装配或模型无显式定价时返回 nil，由调用方回退到分组媒体视频价。
+func resolveVideoTaskPricing(ctx context.Context, deps *videoTaskBillingDeps, apiKey *APIKey, model string) *ResolvedPricing {
+	gw := deps.openAIGatewayService
+	if gw == nil || gw.resolver == nil || apiKey == nil || apiKey.GroupID == nil || apiKey.Group == nil {
+		return nil
+	}
+	gid := *apiKey.GroupID
+	resolved := gw.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &gid, Group: apiKey.Group})
+	if resolved == nil {
+		return nil
+	}
+	if resolved.Source != PricingSourceGroup && resolved.Source != PricingSourceChannel {
+		return nil
+	}
+	return resolved
+}
+
+// resolveVideoTaskBillingTier 在渠道/分组定价卡上选出实际计价档位：
+// 优先请求档位，未配价时沿降档链向低档找第一个配了价的档位（与分组媒体价口径一致）。
+// 都没配价时返回请求档位，交由 DefaultPerRequestPrice 兜底。
+func resolveVideoTaskBillingTier(resolver *ModelPricingResolver, resolved *ResolvedPricing, requested string) string {
+	if resolver == nil || resolved == nil {
+		return requested
+	}
+	for _, tier := range VideoBillingResolutionFallbacks(requested) {
+		// GetRequestTierPrice 按 tier_label 精确匹配，返回 0 表示该档位未配价。
+		if resolver.GetRequestTierPrice(resolved, tier) > 0 {
+			if tier != requested {
+				logger.L().Warn("video billing: resolution tier fallback",
+					zap.String("requested_resolution", requested),
+					zap.String("billed_resolution", tier),
+					zap.String("pricing_source", resolved.Source),
+				)
+			}
+			return tier
+		}
+	}
+	return requested
+}
+
+// calculateVideoTaskUnifiedCost 用渠道/分组定价卡按「每秒单价 × 时长 × 分辨率档」计价。
+// units 为计费单位数：video 模式传时长（每秒价），per_request / image 模式传视频数（按次）。
+func calculateVideoTaskUnifiedCost(
+	ctx context.Context,
+	deps *videoTaskBillingDeps,
+	apiKey *APIKey,
+	model, resolution string,
+	units float64,
+	videoMultiplier float64,
+	resolved *ResolvedPricing,
+) *CostBreakdown {
+	gw := deps.openAIGatewayService
+	if gw == nil || gw.resolver == nil || apiKey.GroupID == nil || resolved == nil {
+		return nil
+	}
+	gid := *apiKey.GroupID
+	cost, err := deps.billingService.CalculateCostUnified(CostInput{
+		Ctx:            ctx,
+		Model:          model,
+		GroupID:        &gid,
+		Group:          apiKey.Group,
+		RequestCount:   1,
+		UsageUnits:     units,
+		SizeTier:       resolution,
+		RateMultiplier: videoMultiplier,
+		Resolver:       gw.resolver,
+		Resolved:       resolved,
+	})
+	if err != nil || cost == nil {
+		if err != nil {
+			logger.L().Warn("video billing: unified cost calculation failed",
+				zap.String("model", model),
+				zap.String("resolution", resolution),
+				zap.Error(err),
+			)
+		}
+		return nil
+	}
+	cost.BillingMode = string(BillingModeVideo)
+	return cost
+}
+
+// videoTaskCostBreakdown 计算视频任务费用。
+//
+// 价格来源顺序与同步网关视频链路（calculateOpenAIVideoCost）保持一致：
+//  1. 分组定价卡（groups.model_pricing，Mode=video）→ 按秒 × 分辨率档
+//  2. 分组媒体视频价（video_price_* / video_model_prices）→ CalculateVideoCost
+//  3. 渠道定价（Mode ∈ per_request / image / video）→ video 模式按秒，其余按次
+//  4. 兜底：CalculateVideoCost 走代码默认价
+//
+// 这样管理员既可以用分组媒体价，也可以在渠道上单独配视频价格。
+func videoTaskCostBreakdown(ctx context.Context, deps *videoTaskBillingDeps, apiKey *APIKey, model, resolution string, actualSec, requestedSec int) (*CostBreakdown, float64) {
 	baseMultiplier := apiKey.Group.RateMultiplier
 	if gw := deps.openAIGatewayService; gw != nil {
 		baseMultiplier = gw.ResolveUserGroupRateMultiplier(ctx, apiKey.UserID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 	groupConfig := videoPriceConfigFromAPIKey(apiKey)
+	durationSec := videoTaskBillingDuration(actualSec, requestedSec)
+	billingResolution := NormalizeVideoBillingResolutionAnyOrDefault(resolution)
+
+	// 1) 分组定价卡
+	if resolved := resolveVideoTaskPricing(ctx, deps, apiKey, model); resolved != nil &&
+		resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
+		tier := resolveVideoTaskBillingTier(deps.openAIGatewayService.resolver, resolved, billingResolution)
+		if cost := calculateVideoTaskUnifiedCost(ctx, deps, apiKey, model, tier, float64(durationSec), videoMultiplier, resolved); cost != nil {
+			return cost, videoMultiplier
+		}
+	}
+
+	// 2) 分组媒体视频价
+	if apiKeyHasConfiguredVideoPrice(apiKey, model, billingResolution) {
+		return deps.billingService.CalculateVideoCost(model, resolution, 1, durationSec, groupConfig, videoMultiplier), videoMultiplier
+	}
+
+	// 3) 渠道定价
+	if resolved := resolveVideoTaskPricing(ctx, deps, apiKey, model); resolved != nil &&
+		resolved.Source == PricingSourceChannel &&
+		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
+		// 渠道 per_request / image 保持"按次"口径（价格由管理员按次配置），不乘时长。
+		units := 1.0
+		if resolved.Mode == BillingModeVideo {
+			units = float64(durationSec)
+		}
+		tier := resolveVideoTaskBillingTier(deps.openAIGatewayService.resolver, resolved, billingResolution)
+		if cost := calculateVideoTaskUnifiedCost(ctx, deps, apiKey, model, tier, units, videoMultiplier, resolved); cost != nil {
+			return cost, videoMultiplier
+		}
+	}
+
+	// 4) 兜底
 	return deps.billingService.CalculateVideoCost(model, resolution, 1, durationSec, groupConfig, videoMultiplier), videoMultiplier
 }
 
 // estimateVideoTaskCost 预估实际费用：创建时预扣与结果落库算价共用，保证两处口径一致。
-func estimateVideoTaskCost(ctx context.Context, deps *videoTaskBillingDeps, apiKeyID int64, model, resolution string, durationSec int) (float64, error) {
+// actualSec 为上游回传的真实时长（创建时未知传 0），requestedSec 为用户请求时长。
+func estimateVideoTaskCost(ctx context.Context, deps *videoTaskBillingDeps, apiKeyID int64, model, resolution string, actualSec, requestedSec int) (float64, error) {
 	if deps == nil || deps.billingService == nil {
 		return 0, fmt.Errorf("video billing: billing dependencies are not wired")
 	}
@@ -99,7 +232,7 @@ func estimateVideoTaskCost(ctx context.Context, deps *videoTaskBillingDeps, apiK
 	if err != nil {
 		return 0, err
 	}
-	cost, _ := videoTaskCostBreakdown(ctx, deps, apiKey, model, resolution, durationSec)
+	cost, _ := videoTaskCostBreakdown(ctx, deps, apiKey, model, resolution, actualSec, requestedSec)
 	return cost.ActualCost, nil
 }
 
@@ -137,7 +270,7 @@ func settleVideoTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps, in 
 		return 0
 	}
 
-	cost, videoMultiplier := videoTaskCostBreakdown(ctx, deps, apiKey, in.Model, in.Resolution, in.DurationSec)
+	cost, videoMultiplier := videoTaskCostBreakdown(ctx, deps, apiKey, in.Model, in.Resolution, in.DurationSec, in.RequestedDurationSec)
 
 	// 订阅分组且存在有效订阅 → 走订阅计费，否则走余额
 	var subscription *UserSubscription
@@ -224,8 +357,8 @@ func writeVideoTaskZeroCostUsageLog(ctx context.Context, deps *videoTaskBillingD
 
 // buildVideoTaskUsageLog 构造视频任务的 usage_logs 行（字段对齐 Grok 视频模板）。
 func buildVideoTaskUsageLog(in *videoTaskBillingInput, apiKey *APIKey, subscription *UserSubscription, cost *CostBreakdown, videoMultiplier float64, billingType int8, now time.Time) *UsageLog {
-	resolution := NormalizeVideoBillingResolutionOrDefault(in.Resolution)
-	durationSec := NormalizeVideoBillingDurationSecondsOrDefault(in.DurationSec)
+	resolution := NormalizeVideoBillingResolutionAnyOrDefault(in.Resolution)
+	durationSec := videoTaskBillingDuration(in.DurationSec, in.RequestedDurationSec)
 	usageLog := &UsageLog{
 		UserID:               in.UserID,
 		APIKeyID:             in.APIKeyID,

@@ -68,6 +68,22 @@ func NormalizeImageBillingTierOrDefault(size string) string {
 	return ImageBillingSize2K
 }
 
+// imageBillingSizeOrder 图片计费档位由高到低的顺序。
+var imageBillingSizeOrder = []string{ImageBillingSize4K, ImageBillingSize2K, ImageBillingSize1K}
+
+// ImageBillingSizeFallbacks 返回图片尺寸的降档查找序列（含自身，由高到低）。
+// 分组只配了低档价格时逐级向低档回退（4K→2K→1K），避免直接掉到默认价造成静默错价。
+func ImageBillingSizeFallbacks(size string) []string {
+	tier := NormalizeImageBillingTierOrDefault(size)
+	for i, candidate := range imageBillingSizeOrder {
+		if candidate == tier {
+			out := make([]string, 0, len(imageBillingSizeOrder)-i)
+			return append(out, imageBillingSizeOrder[i:]...)
+		}
+	}
+	return []string{tier}
+}
+
 func ResolveImageBillingSize(inputSize string, outputSizes []string) ImageBillingSizeResolution {
 	inputSize = strings.TrimSpace(inputSize)
 	outputSizes = compactTrimmedStrings(outputSizes)

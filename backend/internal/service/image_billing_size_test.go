@@ -108,3 +108,40 @@ func TestResolveImageBillingSize(t *testing.T) {
 		})
 	}
 }
+
+func TestImageBillingSizeFallbacksDescends(t *testing.T) {
+	require.Equal(t, []string{ImageBillingSize4K, ImageBillingSize2K, ImageBillingSize1K}, ImageBillingSizeFallbacks("4K"))
+	require.Equal(t, []string{ImageBillingSize2K, ImageBillingSize1K}, ImageBillingSizeFallbacks("2K"))
+	require.Equal(t, []string{ImageBillingSize1K}, ImageBillingSizeFallbacks("1K"))
+	// WxH 输入先归一化（3840x2160 → 4K）再降档
+	require.Equal(t, []string{ImageBillingSize4K, ImageBillingSize2K, ImageBillingSize1K}, ImageBillingSizeFallbacks("3840x2160"))
+	// 未知尺寸归一到 2K 再降档
+	require.Equal(t, []string{ImageBillingSize2K, ImageBillingSize1K}, ImageBillingSizeFallbacks("not-a-size"))
+}
+
+// TestCalculateImageCost_FallsBackToConfiguredLowerTier 分组只配了低档价格时，
+// 请求高档位应沿降档链向已配档位回退（4K→2K→1K）并告警，而不是静默掉到默认价。
+func TestCalculateImageCost_FallsBackToConfiguredLowerTier(t *testing.T) {
+	svc := &BillingService{}
+	price1K := 0.10
+	price2K := 0.15
+
+	// 只配了 1K：请求 4K 逐级降到 1K（0.10），而不是掉到默认价 0.134*2=0.268
+	cost := svc.CalculateImageCost("gemini-3-pro-image", "4K", 1, &ImagePriceConfig{Price1K: &price1K}, 1.0)
+	require.InDelta(t, 0.10, cost.TotalCost, 1e-9)
+
+	// 配了 1K+2K：请求 4K 降到 2K
+	cfg := &ImagePriceConfig{Price1K: &price1K, Price2K: &price2K}
+	cost = svc.CalculateImageCost("gemini-3-pro-image", "4K", 1, cfg, 1.0)
+	require.InDelta(t, 0.15, cost.TotalCost, 1e-9)
+
+	// 精确命中档位不降档
+	cost = svc.CalculateImageCost("gemini-3-pro-image", "1K", 1, cfg, 1.0)
+	require.InDelta(t, 0.10, cost.TotalCost, 1e-9)
+	cost = svc.CalculateImageCost("gemini-3-pro-image", "2K", 1, cfg, 1.0)
+	require.InDelta(t, 0.15, cost.TotalCost, 1e-9)
+
+	// 分组一张价都没配时仍然走默认价，不受降档影响
+	cost = svc.CalculateImageCost("gemini-3-pro-image", "4K", 1, &ImagePriceConfig{}, 1.0)
+	require.InDelta(t, 0.268, cost.TotalCost, 0.0001)
+}

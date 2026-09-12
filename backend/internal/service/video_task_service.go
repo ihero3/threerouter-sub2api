@@ -8,8 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -211,7 +215,8 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 				Resolution:    record.Resolution,
 				DurationSec:   record.DurationSec,
 			})
-		} else if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+			// 创建时上游真实时长未知（0），用用户请求时长预估，避免一律按默认 8 秒预扣。
+		} else if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
 			record.ReservedCost = &cost
 			if s.apiKeyService != nil {
 				_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
@@ -332,15 +337,16 @@ func (s *VideoTaskService) PollTask(ctx context.Context, record *VideoTaskRecord
 			return fmt.Errorf("video_task_service: timeout update status: %w", err)
 		}
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-			LocalID:       record.LocalID,
-			UserID:        record.UserID,
-			APIKeyID:      record.APIKeyID,
-			AccountID:     record.AccountID,
-			Model:         record.PublicModel,
-			UpstreamModel: record.UpstreamModel,
-			Resolution:    record.Resolution,
-			DurationSec:   record.DurationSec,
-			ReservedCost:  record.ReservedCost,
+			LocalID:              record.LocalID,
+			UserID:               record.UserID,
+			APIKeyID:             record.APIKeyID,
+			AccountID:            record.AccountID,
+			Model:                record.PublicModel,
+			UpstreamModel:        record.UpstreamModel,
+			Resolution:           record.Resolution,
+			DurationSec:          record.DurationSec,
+			RequestedDurationSec: record.DurationSec,
+			ReservedCost:         record.ReservedCost,
 		})
 		return nil
 	}
@@ -367,7 +373,7 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 	switch result.Status {
 	case "succeeded":
 		actual := 0.0
-		if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); estErr == nil {
+		if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); estErr == nil {
 			actual = est
 		} else {
 			s.logger.Warn("video_task_service: estimate cost failed",
@@ -383,16 +389,17 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 			// claimed 守卫保证同一任务只结算一次：实际按秒计费（余额/订阅/Key配额）
 			// + usage_logs 幂等落库 + 退还预扣，见 video_task_billing.go。
 			settleVideoTaskSuccess(ctx, s.billingDeps(), &videoTaskBillingInput{
-				LocalID:       record.LocalID,
-				UserID:        record.UserID,
-				APIKeyID:      record.APIKeyID,
-				AccountID:     record.AccountID,
-				Account:       account,
-				Model:         record.PublicModel,
-				UpstreamModel: record.UpstreamModel,
-				Resolution:    record.Resolution,
-				DurationSec:   result.DurationSec,
-				ReservedCost:  record.ReservedCost,
+				LocalID:              record.LocalID,
+				UserID:               record.UserID,
+				APIKeyID:             record.APIKeyID,
+				AccountID:            record.AccountID,
+				Account:              account,
+				Model:                record.PublicModel,
+				UpstreamModel:        record.UpstreamModel,
+				Resolution:           record.Resolution,
+				DurationSec:          result.DurationSec,
+				RequestedDurationSec: record.DurationSec,
+				ReservedCost:         record.ReservedCost,
 			})
 		}
 	case "failed", "cancelled":
@@ -400,16 +407,17 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 			return fmt.Errorf("video_task_service: update status: %w", err)
 		}
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-			LocalID:       record.LocalID,
-			UserID:        record.UserID,
-			APIKeyID:      record.APIKeyID,
-			AccountID:     record.AccountID,
-			Account:       account,
-			Model:         record.PublicModel,
-			UpstreamModel: record.UpstreamModel,
-			Resolution:    record.Resolution,
-			DurationSec:   result.DurationSec,
-			ReservedCost:  record.ReservedCost,
+			LocalID:              record.LocalID,
+			UserID:               record.UserID,
+			APIKeyID:             record.APIKeyID,
+			AccountID:            record.AccountID,
+			Account:              account,
+			Model:                record.PublicModel,
+			UpstreamModel:        record.UpstreamModel,
+			Resolution:           record.Resolution,
+			DurationSec:          result.DurationSec,
+			RequestedDurationSec: record.DurationSec,
+			ReservedCost:         record.ReservedCost,
 		})
 	default:
 		// still processing, no update needed
@@ -489,6 +497,73 @@ func (s *VideoTaskService) CancelTask(ctx context.Context, id int64) error {
 	return nil
 }
 
+// videoDurationParamKeys 是客户端声明视频时长时常用的 API 参数名。
+// 时长一定来自 API 参数，**不从 prompt 解析**：prompt 里写"生成 10 秒视频"不代表
+// 实际产出，只有参数值才是客户端的真实意图。
+var videoDurationParamKeys = []string{"duration", "duration_sec", "duration_seconds", "seconds"}
+
+// videoDurationStringPattern 从 "10s" / "10 秒" / "10.0" 里取出前缀数字。
+var videoDurationStringPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)`)
+
+// parseVideoDurationSecondsParam 从请求 body 提取客户端声明的视频时长（秒）。
+// 返回 0 表示"未指定 / 自动"——此时计费以上游回传的真实时长为准，两者都没有才用默认时长。
+// 支持数字（float64 / float32 / int / int64 / json.Number）与字符串（"10"、"10s"、"10 秒"）。
+func parseVideoDurationSecondsParam(body map[string]any) int {
+	for _, key := range videoDurationParamKeys {
+		if seconds, ok := videoDurationSecondsFromAny(body[key]); ok {
+			return seconds
+		}
+	}
+	return 0
+}
+
+// videoDurationSecondsFromAny 把单个参数值转成秒；ok=false 表示无法识别或代表"自动"。
+func videoDurationSecondsFromAny(raw any) (int, bool) {
+	switch value := raw.(type) {
+	case float64:
+		return videoDurationSecondsFromNumber(value)
+	case float32:
+		return videoDurationSecondsFromNumber(float64(value))
+	case int:
+		return videoDurationSecondsFromNumber(float64(value))
+	case int64:
+		return videoDurationSecondsFromNumber(float64(value))
+	case json.Number:
+		if parsed, err := value.Float64(); err == nil {
+			return videoDurationSecondsFromNumber(parsed)
+		}
+	case string:
+		return videoDurationSecondsFromString(value)
+	}
+	return 0, false
+}
+
+// videoDurationSecondsFromNumber 非正数（0 / -1 / 负值）等价于"自动"：某些厂商用
+// -1 表示由模型自行决定时长，此时不能按 0 或负值计费，交给上游回传的真实时长。
+func videoDurationSecondsFromNumber(value float64) (int, bool) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return 0, false
+	}
+	return int(value), true
+}
+
+// videoDurationSecondsFromString "auto" / "自动" / "-1" 这类取不到前缀数字的值一律视为"自动"。
+func videoDurationSecondsFromString(raw string) (int, bool) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return 0, false
+	}
+	match := videoDurationStringPattern.FindString(text)
+	if match == "" {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(match, 64)
+	if err != nil {
+		return 0, false
+	}
+	return videoDurationSecondsFromNumber(parsed)
+}
+
 // parseVideoCreateRequest 从请求 body 解析统一参数。
 func parseVideoCreateRequest(model string, body map[string]any) (*VideoCreateRequest, error) {
 	req := &VideoCreateRequest{
@@ -507,22 +582,7 @@ func parseVideoCreateRequest(model string, body map[string]any) (*VideoCreateReq
 	if v, ok := body["ratio"].(string); ok {
 		req.Ratio = v
 	}
-	if v, ok := body["duration"]; ok {
-		switch d := v.(type) {
-		case float64:
-			req.DurationSec = int(d)
-		case int:
-			req.DurationSec = d
-		}
-	}
-	if v, ok := body["duration_sec"]; ok {
-		switch d := v.(type) {
-		case float64:
-			req.DurationSec = int(d)
-		case int:
-			req.DurationSec = d
-		}
-	}
+	req.DurationSec = parseVideoDurationSecondsParam(body)
 	// 图片参考。除 OpenAI 风格的 image_url / image_urls 外，还要接受
 	// 各家文档常用的 image 字段：字符串、字符串数组，以及 {"url": "..."} 对象。
 	if items, ok := body["image"].([]any); ok {

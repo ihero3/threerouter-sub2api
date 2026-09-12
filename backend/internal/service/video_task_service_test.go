@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -138,5 +139,53 @@ func TestVideoTaskRecord_CancelTask(t *testing.T) {
 	}
 	if got.ErrorMessage != "cancelled by admin" {
 		t.Fatalf("unexpected error message: %s", got.ErrorMessage)
+	}
+}
+
+// TestParseVideoDurationSecondsParam 视频时长必须来自 API 参数，不从 prompt 解析：
+// prompt 里写"生成 10 秒视频"不代表实际产出，只有参数值才是客户端真实意图。
+// 同时要覆盖各家客户端常用的参数名与写法，取不到时应视为"自动"（0），
+// 由上游回传的真实时长兜底，而不是静默按默认时长计费。
+func TestParseVideoDurationSecondsParam(t *testing.T) {
+	cases := []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"duration 浮点", map[string]any{"duration": float64(10)}, 10},
+		{"duration 整型", map[string]any{"duration": 30}, 30},
+		{"duration_sec", map[string]any{"duration_sec": float64(15)}, 15},
+		{"duration_seconds", map[string]any{"duration_seconds": float64(30)}, 30},
+		{"seconds", map[string]any{"seconds": float64(20)}, 20},
+		{"字符串 10s", map[string]any{"duration": "10s"}, 10},
+		{"字符串 10 秒", map[string]any{"duration": "10 秒"}, 10},
+		{"json.Number", map[string]any{"duration": json.Number("12")}, 12},
+		{"auto 视为未指定", map[string]any{"duration": "auto"}, 0},
+		{"-1 视为自动", map[string]any{"duration": -1}, 0},
+		{"完全缺失", map[string]any{"prompt": "生成一个 10 秒的视频"}, 0},
+		{"prompt 里的时长不作数", map[string]any{"prompt": "a 10s clip", "duration": float64(5)}, 5},
+	}
+	for _, tc := range cases {
+		if got := parseVideoDurationSecondsParam(tc.body); got != tc.want {
+			t.Errorf("%s: got %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestIntAtPathAcceptsFloatStrings 上游 duration 可能是 "10.0" 这类浮点字符串。
+// 解析失败会退化成 0，进而丢掉"上游真实时长"这个最优先的计费依据。
+func TestIntAtPathAcceptsFloatStrings(t *testing.T) {
+	data := map[string]any{
+		"duration": "10.0",
+		"nested":   map[string]any{"duration": float64(30)},
+	}
+	if got := intAtPath(data, "duration"); got != 10 {
+		t.Errorf("float string: got %d, want 10", got)
+	}
+	if got := intAtPath(data, "nested.duration"); got != 30 {
+		t.Errorf("nested: got %d, want 30", got)
+	}
+	if got := intAtPath(data, "missing"); got != 0 {
+		t.Errorf("missing: got %d, want 0", got)
 	}
 }

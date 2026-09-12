@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"math"
 	"strings"
 	"sync"
@@ -1784,6 +1785,24 @@ type VideoPriceConfig struct {
 	ModelPrices map[string]map[string]float64
 }
 
+// flatPrice 返回分组 flat 三档价中该档位的每秒价格。
+// 768p / 2k / 4k 等专有档位没有对应字段，返回 nil，由降档链继续向低档查找。
+func (c *VideoPriceConfig) flatPrice(tier string) *float64 {
+	if c == nil {
+		return nil
+	}
+	switch tier {
+	case VideoBillingResolution480P:
+		return c.Price480P
+	case VideoBillingResolution720P:
+		return c.Price720P
+	case VideoBillingResolution1080P:
+		return c.Price1080P
+	default:
+		return nil
+	}
+}
+
 const (
 	defaultImageGenerationPrice = 0.134
 
@@ -1963,7 +1982,10 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 	if videoCount <= 0 {
 		return &CostBreakdown{}
 	}
-	resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+	// 保留厂商专有档位（768p / 2k / 4k），并支持用户直接传的长宽尺寸
+	// （如 "1920x1080"）。此前这里用 NormalizeVideoBillingResolutionOrDefault
+	// 提前折叠成三档，导致 video_model_prices 里配的 768p / 2k 永远命中不到。
+	resolution = NormalizeVideoBillingResolutionAnyOrDefault(resolution)
 	durationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
 
 	perSecondPrice := s.getVideoUnitPrice(model, resolution, groupConfig)
@@ -1981,22 +2003,24 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 	}
 }
 
-// getImageUnitPrice 获取图片单价
+// getImageUnitPrice 获取图片单价。
+// 沿降档链逐级查找（4K→2K→1K）：分组没配请求档位时向已配的低档回退并告警，
+// 而不是直接掉到默认价造成静默错价。
 func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
-	// 优先使用分组配置的价格
 	if groupConfig != nil {
-		switch imageSize {
-		case "1K":
-			if groupConfig.Price1K != nil {
-				return *groupConfig.Price1K
+		for _, tier := range ImageBillingSizeFallbacks(imageSize) {
+			var price *float64
+			switch tier {
+			case ImageBillingSize1K:
+				price = groupConfig.Price1K
+			case ImageBillingSize2K:
+				price = groupConfig.Price2K
+			case ImageBillingSize4K:
+				price = groupConfig.Price4K
 			}
-		case "2K":
-			if groupConfig.Price2K != nil {
-				return *groupConfig.Price2K
-			}
-		case "4K":
-			if groupConfig.Price4K != nil {
-				return *groupConfig.Price4K
+			if price != nil {
+				s.warnImageSizeFallback(model, imageSize, tier)
+				return *price
 			}
 		}
 	}
@@ -2005,29 +2029,47 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 	return s.getDefaultImagePrice(model, imageSize)
 }
 
+// warnImageSizeFallback 当实际计价档位低于请求档位时告警，便于运营发现漏配的价格档。
+func (s *BillingService) warnImageSizeFallback(model, requestedTier, usedTier string) {
+	if requestedTier == usedTier {
+		return
+	}
+	slog.Warn("image_pricing_tier_fallback",
+		"model", model,
+		"requested_size", requestedTier,
+		"billed_size", usedTier)
+}
+
 func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
 	// Order: (a) per-model map (b) flat group video_price_* (c) model-aware code defaults.
+	// 每个来源内部都沿分辨率降档链逐级查找（4k→2k→1080p→768p→720p→480p）：
+	// 高档位没配价时向低档回退，而不是直接掉到默认价造成静默错价。
 	if groupConfig != nil {
-		if price := LookupVideoModelPrice(groupConfig.ModelPrices, model, resolution); price != nil {
-			return *price
-		}
-		switch NormalizeVideoBillingResolutionOrDefault(resolution) {
-		case VideoBillingResolution480P:
-			if groupConfig.Price480P != nil {
-				return *groupConfig.Price480P
+		for _, tier := range VideoBillingResolutionFallbacks(resolution) {
+			if price := LookupVideoModelPrice(groupConfig.ModelPrices, model, tier); price != nil {
+				s.warnVideoResolutionFallback(model, resolution, tier, "video_model_prices")
+				return *price
 			}
-		case VideoBillingResolution720P:
-			if groupConfig.Price720P != nil {
-				return *groupConfig.Price720P
-			}
-		case VideoBillingResolution1080P:
-			if groupConfig.Price1080P != nil {
-				return *groupConfig.Price1080P
+			if price := groupConfig.flatPrice(tier); price != nil {
+				s.warnVideoResolutionFallback(model, resolution, tier, "group_flat_price")
+				return *price
 			}
 		}
 	}
 
 	return s.getDefaultVideoPrice(model, resolution)
+}
+
+// warnVideoResolutionFallback 当实际计价档位低于请求档位时告警，便于运营发现漏配的价格档。
+func (s *BillingService) warnVideoResolutionFallback(model, requestedTier, usedTier, source string) {
+	if requestedTier == usedTier {
+		return
+	}
+	slog.Warn("video_pricing_tier_fallback",
+		"model", model,
+		"requested_resolution", requestedTier,
+		"billed_resolution", usedTier,
+		"price_source", source)
 }
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格

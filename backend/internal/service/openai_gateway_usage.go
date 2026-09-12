@@ -789,7 +789,10 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	if videoCount <= 0 {
 		videoCount = 1
 	}
-	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
+	// 保留厂商专有档位（768p / 2k / 4k）：此前这里提前折叠成三档，导致
+	// video_model_prices / 渠道定价里配的 768p / 2k / 4k 永远命中不到（P0-2 / P0-4）。
+	// 与异步链路 videoTaskCostBreakdown 保持同一口径。
+	resolution := NormalizeVideoBillingResolutionAnyOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if resolved != nil && resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {

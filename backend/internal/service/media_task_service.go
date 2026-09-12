@@ -217,25 +217,27 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		if createResult.Status == "failed" && kind == MediaKindVideo {
 			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-				LocalID:       record.LocalID,
-				UserID:        record.UserID,
-				APIKeyID:      record.APIKeyID,
-				AccountID:     record.AccountID,
-				Account:       account,
-				Model:         record.PublicModel,
-				UpstreamModel: record.UpstreamModel,
-				Resolution:    record.Resolution,
-				DurationSec:   record.DurationSec,
+				LocalID:              record.LocalID,
+				UserID:               record.UserID,
+				APIKeyID:             record.APIKeyID,
+				AccountID:            record.AccountID,
+				Account:              account,
+				Model:                record.PublicModel,
+				UpstreamModel:        record.UpstreamModel,
+				Resolution:           record.Resolution,
+				DurationSec:          record.DurationSec,
+				RequestedDurationSec: record.DurationSec,
 			})
 		} else if createResult.Status != "failed" {
 			if kind == MediaKindVideo {
-				if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+				// 创建时上游真实时长未知（0），用用户请求时长预估。
+				if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
 					record.ReservedCost = &cost
 					if s.apiKeyService != nil {
 						_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
 					}
 				}
-			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, req.Resolution, req.DurationSec); costErr == nil && cost > 0 {
+			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
 				record.ReservedCost = &cost
 				if s.apiKeyService != nil {
 					_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
@@ -287,15 +289,16 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 		}
 		if record.MediaKind == MediaKindVideo {
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-				LocalID:       record.LocalID,
-				UserID:        record.UserID,
-				APIKeyID:      record.APIKeyID,
-				AccountID:     record.AccountID,
-				Model:         record.PublicModel,
-				UpstreamModel: record.UpstreamModel,
-				Resolution:    record.Resolution,
-				DurationSec:   record.DurationSec,
-				ReservedCost:  record.ReservedCost,
+				LocalID:              record.LocalID,
+				UserID:               record.UserID,
+				APIKeyID:             record.APIKeyID,
+				AccountID:            record.AccountID,
+				Model:                record.PublicModel,
+				UpstreamModel:        record.UpstreamModel,
+				Resolution:           record.Resolution,
+				DurationSec:          record.DurationSec,
+				RequestedDurationSec: record.DurationSec,
+				ReservedCost:         record.ReservedCost,
 			})
 		}
 		return nil
@@ -322,7 +325,7 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 	case "succeeded":
 		actual := 0.0
 		if record.MediaKind == MediaKindVideo {
-			if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); estErr == nil {
+			if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); estErr == nil {
 				actual = est
 			} else {
 				s.logger.Warn("media_task_service: estimate video cost failed",
@@ -330,7 +333,7 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 					zap.Error(estErr),
 				)
 			}
-		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec); costErr == nil {
+		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); costErr == nil {
 			actual = cost
 		} else {
 			s.logger.Warn("media_task_service: calculate cost failed",
@@ -351,16 +354,17 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 				// claimed 守卫保证同一任务只结算一次：实际按秒计费（余额/订阅/Key配额）
 				// + usage_logs 幂等落库 + 退还预扣，见 video_task_billing.go。
 				settleVideoTaskSuccess(ctx, s.billingDeps(), &videoTaskBillingInput{
-					LocalID:       record.LocalID,
-					UserID:        record.UserID,
-					APIKeyID:      record.APIKeyID,
-					AccountID:     record.AccountID,
-					Account:       account,
-					Model:         record.PublicModel,
-					UpstreamModel: record.UpstreamModel,
-					Resolution:    record.Resolution,
-					DurationSec:   result.DurationSec,
-					ReservedCost:  record.ReservedCost,
+					LocalID:              record.LocalID,
+					UserID:               record.UserID,
+					APIKeyID:             record.APIKeyID,
+					AccountID:            record.AccountID,
+					Account:              account,
+					Model:                record.PublicModel,
+					UpstreamModel:        record.UpstreamModel,
+					Resolution:           record.Resolution,
+					DurationSec:          result.DurationSec,
+					RequestedDurationSec: record.DurationSec,
+					ReservedCost:         record.ReservedCost,
 				})
 			} else {
 				var reserved float64
@@ -376,16 +380,17 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 		}
 		if record.MediaKind == MediaKindVideo {
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-				LocalID:       record.LocalID,
-				UserID:        record.UserID,
-				APIKeyID:      record.APIKeyID,
-				AccountID:     record.AccountID,
-				Account:       account,
-				Model:         record.PublicModel,
-				UpstreamModel: record.UpstreamModel,
-				Resolution:    record.Resolution,
-				DurationSec:   result.DurationSec,
-				ReservedCost:  record.ReservedCost,
+				LocalID:              record.LocalID,
+				UserID:               record.UserID,
+				APIKeyID:             record.APIKeyID,
+				AccountID:            record.AccountID,
+				Account:              account,
+				Model:                record.PublicModel,
+				UpstreamModel:        record.UpstreamModel,
+				Resolution:           record.Resolution,
+				DurationSec:          result.DurationSec,
+				RequestedDurationSec: record.DurationSec,
+				ReservedCost:         record.ReservedCost,
 			})
 		} else {
 			var reserved float64
@@ -564,15 +569,16 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 	}
 	if record.MediaKind == MediaKindVideo {
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-			LocalID:       record.LocalID,
-			UserID:        record.UserID,
-			APIKeyID:      record.APIKeyID,
-			AccountID:     record.AccountID,
-			Model:         record.PublicModel,
-			UpstreamModel: record.UpstreamModel,
-			Resolution:    record.Resolution,
-			DurationSec:   record.DurationSec,
-			ReservedCost:  record.ReservedCost,
+			LocalID:              record.LocalID,
+			UserID:               record.UserID,
+			APIKeyID:             record.APIKeyID,
+			AccountID:            record.AccountID,
+			Model:                record.PublicModel,
+			UpstreamModel:        record.UpstreamModel,
+			Resolution:           record.Resolution,
+			DurationSec:          record.DurationSec,
+			RequestedDurationSec: record.DurationSec,
+			ReservedCost:         record.ReservedCost,
 		})
 		return nil
 	}
@@ -585,7 +591,7 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 }
 
 // calculateMediaCost 按媒体类型计算费用。视频/图片/音频分别走对应计费器。
-func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, durationSec int) (float64, error) {
+func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, actualSec, requestedSec int) (float64, error) {
 	if s == nil || s.billingService == nil || s.apiKeyService == nil {
 		return 0, fmt.Errorf("media_task_service: billing dependencies are not wired")
 	}
@@ -607,7 +613,7 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 
 	switch kind {
 	case MediaKindVideo:
-		cost, _ := videoTaskCostBreakdown(ctx, s.billingDeps(), apiKey, model, resolution, durationSec)
+		cost, _ := videoTaskCostBreakdown(ctx, s.billingDeps(), apiKey, model, resolution, actualSec, requestedSec)
 		return cost.ActualCost, nil
 	case MediaKindImage:
 		size := resolution
@@ -620,15 +626,17 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 		// 音频采用通行口径：优先按秒（media_audio），其次按分钟（realtime）。
 		// 价格独立于视频（分组音频价），不并行用视频秒价。
 		audioCfg := groupAudioPriceConfigFromAPIKey(apiKey)
+		// 音频同样优先用上游回传真实时长，缺失时回退用户请求时长。
+		audioSecs := NormalizeVideoBillingDurationSeconds(actualSec, requestedSec)
 		var cost *CostBreakdown
 		if audioCfg != nil && audioCfg.PerSec != nil {
-			secs := durationSec
+			secs := audioSecs
 			if secs <= 0 {
 				secs = 1
 			}
 			cost = s.billingService.CalculateAudioCost("media_audio", float64(secs), audioCfg, baseMultiplier)
 		} else {
-			mins := float64(durationSec) / 60.0
+			mins := float64(audioSecs) / 60.0
 			if mins <= 0 {
 				mins = 1.0 / 60.0
 			}
@@ -658,22 +666,7 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 	if v, ok := body["ratio"].(string); ok {
 		req.Ratio = v
 	}
-	if v, ok := body["duration"]; ok {
-		switch d := v.(type) {
-		case float64:
-			req.DurationSec = int(d)
-		case int:
-			req.DurationSec = d
-		}
-	}
-	if v, ok := body["duration_sec"]; ok {
-		switch d := v.(type) {
-		case float64:
-			req.DurationSec = int(d)
-		case int:
-			req.DurationSec = d
-		}
-	}
+	req.DurationSec = parseVideoDurationSecondsParam(body)
 	// 图片参考。除 OpenAI 风格的 image_url / image_urls 外，还要接受
 	// 各家文档常用的 image 字段：字符串、字符串数组，以及 {"url": "..."} 对象。
 	if items, ok := body["image"].([]any); ok {
