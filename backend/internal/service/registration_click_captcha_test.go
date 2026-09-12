@@ -78,7 +78,7 @@ func TestRegistrationClickCaptcha_Lifecycle(t *testing.T) {
 	require.NotNil(t, payload)
 	token, ttl, err := svc.VerifyChallenge(ctx, ch.ChallengeID, payload.AnswerCells, ipHash, uaHash)
 	require.NoError(t, err)
-	require.Equal(t, int64(300), ttl)
+	require.Equal(t, int64(900), ttl)
 	require.NotEmpty(t, token)
 
 	// 重复消费失败
@@ -87,16 +87,6 @@ func TestRegistrationClickCaptcha_Lifecycle(t *testing.T) {
 	require.NotNil(t, ref)
 	_, err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
 	require.ErrorIs(t, err, ErrRegistrationClickCaptchaTokenInvalid)
-
-	// 归还后可再次消费（模拟注册失败重试）
-	require.NoError(t, svc.RestoreToken(ctx, token, ref))
-	ref, err = svc.ConsumeToken(ctx, token, ipHash, uaHash)
-	require.NoError(t, err)
-	require.NotNil(t, ref)
-
-	// 过期载荷不应归还
-	expired := &ClickCaptchaTokenPayloadRef{IPHash: ipHash, UAHash: uaHash, ExpiresAt: time.Now().Add(-time.Second).Unix()}
-	require.ErrorIs(t, svc.RestoreToken(ctx, token, expired), ErrRegistrationClickCaptchaTokenInvalid)
 }
 
 func TestRegistrationClickCaptcha_IPUAMismatch(t *testing.T) {

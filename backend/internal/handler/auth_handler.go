@@ -209,17 +209,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 消费一次性点击验证 token 作为注册前置人机门槛；
-	// 后续注册业务失败时归还 token（见下方），保证"验证码错误/邮箱冲突"等失败重试无需重新人机验证。
-	var clickCaptchaPayload *service.ClickCaptchaTokenPayloadRef
+	// 注册前非破坏性校验点击验证 token（不消费，失败重试无需重新人机验证）；
+	// 注册成功后才一次性消费 token，防止成功后重放。
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
-		payload, err := h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
-		if err != nil {
+		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
-		clickCaptchaPayload = payload
 	}
 
 	_, user, err := h.authService.RegisterWithVerification(
@@ -234,12 +231,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）
 		slog.Error("[Register] RegisterWithVerification failed", "error_type", fmt.Sprintf("%T", err), "error", err)
-		// best-effort 归还一次性 token：注册失败不烧掉人机验证结果。
-		if clickCaptchaPayload != nil {
-			_ = h.clickCaptcha.RestoreToken(c.Request.Context(), req.ClickCaptchaToken, clickCaptchaPayload)
-		}
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// 注册成功后一次性消费 token，防止同一个人用同一 token 注册多个账号
+	if h.enforceClickCaptchaForRegistration(c) {
+		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+		_, _ = h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
 	}
 
 	h.respondWithTokenPair(c, user)

@@ -196,7 +196,7 @@ func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, c
 		return "", 0, err
 	}
 	now := time.Now()
-	ttl := int64(300) // 5 分钟
+	ttl := int64(900) // 15 分钟：给用户足够时间收邮件并输入验证码
 	tokenPayload := &ClickCaptchaTokenPayloadRef{
 		IPHash:    ipHash,
 		UAHash:    uaHash,
@@ -229,19 +229,6 @@ func (s *RegistrationClickCaptchaService) ConsumeToken(ctx context.Context, toke
 		return nil, ErrRegistrationClickCaptchaTokenInvalid
 	}
 	return payload, nil
-}
-
-// RestoreToken 将已消费但注册业务失败的 token 归还缓存，
-// 保证"验证码错误/邮箱冲突"等注册失败不烧掉人机验证结果，用户可携同一 token 重试。
-// 归还沿用原 ExpiresAt（缓存实现按剩余有效期写入）；已过期或载荷为空则不归还。
-func (s *RegistrationClickCaptchaService) RestoreToken(ctx context.Context, token string, payload *ClickCaptchaTokenPayloadRef) error {
-	if s == nil || s.cache == nil || payload == nil || strings.TrimSpace(token) == "" {
-		return ErrRegistrationClickCaptchaTokenInvalid
-	}
-	if time.Now().Unix() >= payload.ExpiresAt {
-		return ErrRegistrationClickCaptchaTokenInvalid
-	}
-	return s.cache.SetToken(ctx, token, payload)
 }
 
 // ValidateToken 非破坏性校验一次性 token（不消费），
