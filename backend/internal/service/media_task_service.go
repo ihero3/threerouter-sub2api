@@ -240,7 +240,16 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			}
 			record.MediaURLs = urls
 		}
-		if createResult.Status == "failed" && kind == MediaKindVideo {
+		if createResult.Status == "failed" && kind == MediaKindImage {
+			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
+			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
+			imgInput.Account = account
+			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
+		} else if createResult.Status == "failed" && kind == MediaKindAudio {
+			audioInput := mediaAudioBillingInputFromRecord(record)
+			audioInput.Account = account
+			settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
+		} else if createResult.Status == "failed" && kind == MediaKindVideo {
 			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
 				LocalID:              record.LocalID,
@@ -274,6 +283,21 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		saved, saveErr := s.mediaTaskRepo.Create(ctx, record)
 		if saveErr != nil {
 			return nil, fmt.Errorf("media_task_service: save task: %w", saveErr)
+		}
+
+		// 同步出图：创建即终态，立刻结算（写 usage_logs + 扣余额/订阅 + 预扣转实扣）。
+		// 异步出图（status=processing）留到 refreshTaskStatus 命中 succeeded 时结算，
+		// 两处由任务状态互斥，不会重复扣费。
+		if kind == MediaKindImage && createResult.Status == "succeeded" {
+			imgInput := mediaImageBillingInputFromRecord(saved, settledImageCount(req, createResult))
+			imgInput.Account = account
+			settleMediaImageTaskSuccess(ctx, s.billingDeps(), imgInput)
+		}
+		// 音频 adapter 目前均同步返回，创建成功即终态，同样立刻结算。
+		if kind == MediaKindAudio && createResult.Status == "succeeded" {
+			audioInput := mediaAudioBillingInputFromRecord(saved)
+			audioInput.Account = account
+			settleMediaAudioTaskSuccess(ctx, s.billingDeps(), audioInput)
 		}
 		return saved, nil
 	}
@@ -326,6 +350,12 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 				RequestedDurationSec: record.DurationSec,
 				ReservedCost:         record.ReservedCost,
 			})
+		} else if record.MediaKind == MediaKindImage {
+			// 异步出图超时：退预扣 + 0 费用日志，让超时调用在用量记录里可见。
+			imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
+			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
+		} else if record.MediaKind == MediaKindAudio {
+			settleMediaAudioTaskFailure(ctx, s.billingDeps(), mediaAudioBillingInputFromRecord(record))
 		}
 		return nil
 	}
@@ -392,7 +422,20 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 					RequestedDurationSec: record.DurationSec,
 					ReservedCost:         record.ReservedCost,
 				})
+			} else if record.MediaKind == MediaKindImage {
+				// 异步出图：claimed 守卫保证同一任务只结算一次。
+				imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
+				imgInput.Account = account
+				settleMediaImageTaskSuccess(ctx, s.billingDeps(), imgInput)
+			} else if record.MediaKind == MediaKindAudio {
+				// 异步音频（若将来出现）：claimed 守卫保证同一任务只结算一次。
+				audioInput := mediaAudioBillingInputFromRecord(record)
+				audioInput.Account = account
+				// 上游真实时长优先；为 0 时算价内部回退到请求时长（RequestedDurationSec）。
+				audioInput.DurationSec = result.DurationSec
+				settleMediaAudioTaskSuccess(ctx, s.billingDeps(), audioInput)
 			} else {
+				// 其他未接入结算的类型：仅按预扣差额找平。
 				var reserved float64
 				if record.ReservedCost != nil {
 					reserved = *record.ReservedCost
@@ -418,6 +461,14 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 				RequestedDurationSec: record.DurationSec,
 				ReservedCost:         record.ReservedCost,
 			})
+		} else if record.MediaKind == MediaKindImage {
+			imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
+			imgInput.Account = account
+			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
+		} else if record.MediaKind == MediaKindAudio {
+			audioInput := mediaAudioBillingInputFromRecord(record)
+			audioInput.Account = account
+			settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
 		} else {
 			var reserved float64
 			if record.ReservedCost != nil {
@@ -641,44 +692,22 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 		return 0, fmt.Errorf("media_task_service: api key %d has no group", apiKeyID)
 	}
 
-	baseMultiplier := apiKey.Group.RateMultiplier
-	if s.openAIGatewayService != nil {
-		baseMultiplier = s.openAIGatewayService.ResolveUserGroupRateMultiplier(
-			ctx, apiKey.UserID, *apiKey.GroupID, apiKey.Group.RateMultiplier,
-		)
-	}
-	multiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
-
 	switch kind {
 	case MediaKindVideo:
 		cost, _ := videoTaskCostBreakdown(ctx, s.billingDeps(), apiKey, model, resolution, actualSec, requestedSec)
 		return cost.ActualCost, nil
 	case MediaKindImage:
-		size := resolution
-		if size == "" {
-			size = ImageBillingSize2K
+		// 与图片结算（media_image_billing.go）共用同一算价实现：预扣与实际必须同口径。
+		cost, _ := calculateImageTaskCostBreakdown(ctx, s.billingService, s.openAIGatewayService, apiKey, model, resolution, imageCount)
+		if cost == nil {
+			return 0, fmt.Errorf("media_task_service: image cost calculation failed")
 		}
-		cost := s.billingService.CalculateImageCost(model, size, clampImageCount(imageCount), imagePriceConfigFromAPIKey(apiKey), multiplier)
 		return cost.ActualCost, nil
 	case MediaKindAudio:
-		// 音频采用通行口径：优先按秒（media_audio），其次按分钟（realtime）。
-		// 价格独立于视频（分组音频价），不并行用视频秒价。
-		audioCfg := groupAudioPriceConfigFromAPIKey(apiKey)
-		// 音频同样优先用上游回传真实时长，缺失时回退用户请求时长。
-		audioSecs := NormalizeVideoBillingDurationSeconds(actualSec, requestedSec)
-		var cost *CostBreakdown
-		if audioCfg != nil && audioCfg.PerSec != nil {
-			secs := audioSecs
-			if secs <= 0 {
-				secs = 1
-			}
-			cost = s.billingService.CalculateAudioCost("media_audio", float64(secs), audioCfg, baseMultiplier)
-		} else {
-			mins := float64(audioSecs) / 60.0
-			if mins <= 0 {
-				mins = 1.0 / 60.0
-			}
-			cost = s.billingService.CalculateAudioCost("realtime", mins, audioCfg, baseMultiplier)
+		// 与音频结算（media_audio_billing.go）共用同一算价实现：预扣与实际必须同口径。
+		cost, _ := calculateAudioTaskCostBreakdown(ctx, s.billingService, s.openAIGatewayService, apiKey, actualSec, requestedSec)
+		if cost == nil {
+			return 0, fmt.Errorf("media_task_service: audio cost calculation failed")
 		}
 		return cost.ActualCost, nil
 	default:
@@ -913,7 +942,7 @@ func generateMediaLocalID(kind MediaKind) string {
 // ResolveAudioSpeechBytes 同步处理 OpenAI 兼容 /v1/audio/speech。
 // 它选号 + 调 adapter，若上游返回原始音频字节则直接返回字节；
 // 若返回 URL 则返回 URL 让 handler 302。不写 media_tasks（同步端点）。
-func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.Context, groupID *int64, publicModel string, requestBody map[string]any) ([]byte, string, error) {
+func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.Context, groupID *int64, userID, apiKeyID int64, publicModel string, requestBody map[string]any) ([]byte, string, error) {
 	req, err := parseMediaCreateRequest(MediaKindAudio, publicModel, requestBody)
 	if err != nil {
 		return nil, "", fmt.Errorf("media_task_service: parse request: %w", err)
@@ -955,6 +984,27 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 			}
 			return nil, "", fmt.Errorf("media_task_service: upstream failed with status %d: %s", createResult.UpstreamStatusCode, createResult.ErrorMessage)
 		}
+		// 同步音频此前完全不计费（不写 media_tasks，也就没有预扣/结算）。
+		// 这里在返回前补一次结算：写 usage_logs + 扣余额/订阅，与异步音频任务同口径。
+		// 无 media_tasks 记录，用一次性 localID 作幂等键（本函数内只在成功后结算一次）。
+		hasAudioOutput := len(createResult.InlineBytes) > 0 || createResult.InlineURL != ""
+		if hasAudioOutput {
+			audioInput := &mediaAudioBillingInput{
+				LocalID:              generateMediaLocalID(MediaKindAudio),
+				UserID:               userID,
+				APIKeyID:             apiKeyID,
+				AccountID:            account.ID,
+				Account:              account,
+				Model:                publicModel,
+				UpstreamModel:        upstreamModel,
+				// MediaCreateResult 不回传时长，只能取请求时长；
+				// 缺失时由音频算价内部兜底（与异步音频任务同默认时长口径）。
+				DurationSec:          req.DurationSec,
+				RequestedDurationSec: req.DurationSec,
+			}
+			settleMediaAudioTaskSuccess(ctx, s.billingDeps(), audioInput)
+		}
+
 		// 同步字节直接返回；有 URL 返回 URL。
 		if len(createResult.InlineBytes) > 0 {
 			return createResult.InlineBytes, "audio/mpeg", nil

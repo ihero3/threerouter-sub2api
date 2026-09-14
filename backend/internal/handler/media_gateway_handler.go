@@ -91,7 +91,7 @@ func (h *MediaGatewayHandler) AudioSpeech(c *gin.Context) {
 	}
 
 	bytesOut, urlOut, err := h.mediaTaskService.ResolveAudioSpeechBytes(
-		c, c.Request.Context(), apiKey.GroupID, publicModel, body,
+		c, c.Request.Context(), apiKey.GroupID, apiKey.UserID, apiKey.ID, publicModel, body,
 	)
 	if err != nil {
 		h.logger.Warn("media_gateway.audio_speech_failed",
