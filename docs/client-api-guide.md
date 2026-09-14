@@ -156,6 +156,24 @@ const img = await client.images.generate({
 
 ## 5. 生视频
 
+### 超时设置（重要，别设 60 秒）
+
+视频**提交**这一步只是向上游登记任务、拿回 task_id，理论上很快，但厂商侧排队或
+大素材上传都可能让它到分钟级（MiniMax 单图上限 30MB、请求体上限 64MB）。
+
+客户端超时设得太短（典型是 60 秒）会**两败俱伤**：客户端拿到「请求超时」，服务端
+同时报 `502 context canceled` —— 因为连接一断，已经在飞的上游请求被连带掐断。
+极端情况下上游任务其实建好了，却因为记录没写下去成了孤儿任务。
+
+| 环节 | 建议超时 |
+|---|---|
+| 提交（`POST /v1/videos/generations`、`/v1/media/generations`） | **≥ 300 秒**，保险起见 600 秒 |
+| 每次轮询（`GET /v1/media/{id}`） | 30 秒即可 |
+| 整体等待成片 | 10 分钟以上（长视频模型本身就要几分钟） |
+
+> 服务端已做加固：上游请求不再绑定客户端连接的生命周期，客户端断开后仍会跑完
+> 并落库。但这只是兜底，客户端该给的超时还是要给足。
+
 ### 请求参数
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -179,6 +197,27 @@ const img = await client.images.generate({
 > {"model":"wan3.0-video","prompt":"猫从左跳到右",
 >  "media":[{"type":"first_frame","url":"https://.../a.png"},
 >           {"type":"last_frame","url":"https://.../b.png"}]}
+> ```
+
+> **MiniMax-H3 / MiniMax-H3-Max（全能参考视频）**：一个模型统一支持文生视频（T2V）、
+> 图生视频（首帧 / 首尾帧）和参考生视频（参考图 / 参考视频 / 参考音频，最多 12 个文件）。
+>
+> 注意它家对 `resolution` 和 `ratio` 的要求跟别家不一样：
+>
+> | 模型 | resolution | duration | ratio |
+> |---|---|---|---|
+> | `MiniMax-H3` | `768P` / `2K` | 4～15 秒（整数） | 文生视频**必填**且不能是 `adaptive` |
+> | `MiniMax-H3-Max` | `480P` / `768P` | 5～15 秒（整数） | 同上 |
+>
+> `ratio` 缺失时服务端会自动兜底（文生视频补 `16:9`、带素材补 `adaptive`），
+> 但**建议显式传**，避免上游按默认比例出片。传了非法档位会返回
+> 400 `invalid_request_error`（如给 H3 Max 传 `2K`）。
+>
+> ```json
+> // 文生视频
+> {"model":"MiniMax-H3","prompt":"镜头缓缓推向窗外街道","duration":5,"resolution":"768P","ratio":"16:9"}
+> // 图生视频（首帧），ratio 由图片决定
+> {"model":"MiniMax-H3","prompt":"画面中的人开始跳舞","image":"https://.../a.png","duration":5}
 > ```
 
 ### 异步流程（必读）
@@ -255,6 +294,7 @@ curl https://<站点>/v1/audio/speech \
 | 429 | `rate_limit_error` | 限流，按 `Retry-After` 退避重试 |
 | 402 / 配额类 | `billing_error` | 余额或平台配额不足，充值后重试 |
 | 503 | `capacity_error` | 暂无可用渠道（上游账号全部不可用），稍后重试 |
+| 502 | `api_error` | 消息含 `canceled before upstream responded`：**客户端提前断开**，把提交超时调到 300 秒以上。含 `timed out after` 则是上游确实没响应，可重试 |
 | 5xx | `api_error` / `upstream_error` | 上游故障，可重试；保留 `id` 便于排查 |
 
 ---
@@ -262,8 +302,10 @@ curl https://<站点>/v1/audio/speech \
 ## 9. 客户端适配检查清单
 
 - [ ] `base_url` 以 `/v1` 结尾（不是站点根域）
-- [ ] 客户端超时 **≥ 600 秒**（千问图像默认开 prompt_extend + 思考模式，官方建议 600s 起）
-- [ ] 视频必须实现轮询，不能假设同步返回
+- [ ] **生图**超时 ≥ 600 秒（千问图像默认开 prompt_extend + 思考模式，官方建议 600s 起）
+- [ ] **生视频提交**超时 ≥ 300 秒（保险 600 秒）—— 设成 60 秒会拿到「请求超时」，
+      服务端同时出现 `502 context canceled`
+- [ ] 视频必须实现轮询，不能假设同步返回；单次轮询 30 秒超时即可
 - [ ] 产物 URL 是临时签名，及时转存
 - [ ] 生图失败 403 时提示用户联系服务方开通生图权限
 - [ ] 对 429 / 5xx 做指数退避，并用 `Idempotency-Key` 头防重复扣费（媒体创建支持幂等）

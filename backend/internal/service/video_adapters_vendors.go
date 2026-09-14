@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,12 +33,20 @@ type vendorVideoAdapter struct {
 	parseQuery     func(respBody []byte, statusCode int) (*VideoTaskResult, error)
 }
 
+// vendorVideoCreateTimeout 上游视频 create 的 HTTP 超时。
+//
+// create 只是提交任务并拿回 task_id，理论上很快，但厂商侧排队、大素材上传
+// （MiniMax 单图上限 30MB、请求体上限 64MB）都可能让耗时到分钟级。此前 120 秒
+// 由 http.Client 自行掐断，掩盖了真实的上游耗时。这里放宽到 300 秒，与
+// media_task_service 的 mediaUpstreamCreateTimeout 对齐，改由统一 context 控制。
+const vendorVideoCreateTimeout = 300 * time.Second
+
 func newVendorVideoAdapter(name string) vendorVideoAdapter {
 	return vendorVideoAdapter{
 		name:   name,
 		plugin: "video",
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: vendorVideoCreateTimeout,
 		},
 	}
 }
@@ -122,7 +131,18 @@ func (a vendorVideoAdapter) Create(ctx context.Context, account *Account, req Vi
 
 	respBody, statusCode, err := a.do(ctx, account, http.MethodPost, url, a.buildCreate(req))
 	if err != nil {
-		return nil, fmt.Errorf("%s video create request: %w", a.name, err)
+		// 区分「上游真的没响应」与「我们/调用方提前掐断」。此前一律返回裸
+		// "context canceled"，排障时往往被误读成上游故障。
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return nil, fmt.Errorf("%s video create request timed out after %s: %w",
+				a.name, vendorVideoCreateTimeout, err)
+		case errors.Is(err, context.Canceled):
+			return nil, fmt.Errorf("%s video create request canceled before upstream responded: %w",
+				a.name, err)
+		default:
+			return nil, fmt.Errorf("%s video create request: %w", a.name, err)
+		}
 	}
 	return a.parseCreate(respBody, statusCode)
 }
@@ -399,11 +419,39 @@ func buildSeedanceVideoCreateBody(req VideoCreateRequest) []byte {
 	return data
 }
 
+// resolveMiniMaxVideoRatio 按 MiniMax 官方约束推导 ratio：
+//
+//   - 纯文生视频（t2va）：ratio 必填，且不能为 adaptive —— 缺字段会被上游拒绝，
+//     此前 adapter 只读 Extra 里的 ratio，统一解析出的 req.Ratio 被整体丢弃，
+//     导致客户端传的 ratio 静默失效。
+//   - 有素材输入（首/尾帧、参考图/视频/音频）：宽高比由输入素材决定，
+//     官方规定 ratio 恒为 adaptive。
+//
+// 客户端显式传值时优先尊重其意图，仅在缺失或明显非法时兜底。
+func resolveMiniMaxVideoRatio(req VideoCreateRequest) string {
+	hasMedia := len(req.Media) > 0 ||
+		len(req.ImageRefURLs) > 0 ||
+		len(req.VideoRefURLs) > 0 ||
+		len(req.AudioRefURLs) > 0
+	ratio := strings.ToLower(strings.TrimSpace(req.Ratio))
+	if !hasMedia {
+		if ratio == "" || ratio == "adaptive" {
+			return "16:9"
+		}
+		return req.Ratio
+	}
+	if ratio == "" {
+		return "adaptive"
+	}
+	return req.Ratio
+}
+
 func buildMiniMaxVideoCreateBody(req VideoCreateRequest) []byte {
 	content := minimaxVideoContent(req)
 	body := map[string]any{
 		"model":   req.UpstreamModel,
 		"content": content,
+		"ratio":   resolveMiniMaxVideoRatio(req),
 	}
 	if req.Resolution != "" {
 		body["resolution"] = req.Resolution

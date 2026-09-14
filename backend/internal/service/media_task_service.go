@@ -22,6 +22,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// mediaUpstreamCreateTimeout 上游 create 请求的独立超时。
+//
+// 为什么必须独立于客户端连接：create 用的是 gin 的 request context，客户端
+// （或其反向代理，常见 60 秒）一断开，gin 立刻取消该 context，已发出的上游
+// 请求被连带掐断，表现为 502 + "context canceled"。更糟的是上游可能已经建好
+// 任务，我们却记为失败——任务成为孤儿，预扣费用也无处结算。
+//
+// 因此上游 create 走脱离取消链的 context，只受本超时约束：客户端断开后仍要
+// 把这次创建跑完并落库，用户后续轮询即可拿到结果。
+const mediaUpstreamCreateTimeout = 300 * time.Second
+
+// mediaPersistTimeout 落库与结算的超时。
+//
+// 上游任务一旦建好，落库和结算就是"必须完成"的动作：若跟着客户端取消链一起
+// 失败，上游任务就成了无人认领的孤儿，预扣费用也永远无法结算（用户会白扣额度
+// 却查不到使用记录）。因此这些写操作同样脱离客户端取消链，只受本超时约束。
+const mediaPersistTimeout = 30 * time.Second
+
 // MediaTaskRepo 媒体任务仓储接口（service 层定义，repository 层实现）。
 type MediaTaskRepo interface {
 	Create(ctx context.Context, task *MediaTaskRecord) (*MediaTaskRecord, error)
@@ -131,6 +149,9 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	}
 
 	ctx := c.Request.Context()
+	// 上游 create 脱离客户端取消链（见 mediaUpstreamCreateTimeout 注释）。
+	// 只有"选号"这类前置查询仍用原 ctx —— 客户端都走了，没必要再挑账号。
+	upstreamBase := context.WithoutCancel(ctx)
 	excluded := make(map[int64]struct{})
 	var lastUpstreamErr error
 	const maxAttempts = 100
@@ -163,7 +184,9 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			return nil, fmt.Errorf("media_task_service: resolve adapter: %w", resolveErr)
 		}
 
-		createResult, createErr := adapter.Create(ctx, account, *req)
+		createCtx, cancelCreate := context.WithTimeout(upstreamBase, mediaUpstreamCreateTimeout)
+		createResult, createErr := adapter.Create(createCtx, account, *req)
+		cancelCreate()
 		if createErr != nil {
 			s.recordMediaTransportFailure(c, ctx, account, createErr)
 			s.logger.Warn("media_task_service: upstream create failed",
@@ -196,6 +219,12 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			}
 		}
 
+		// 上游任务已建好，从此刻起落库与结算必须跑完：脱离客户端取消链，
+		// 且必须在这里才起算超时 —— 若在函数入口创建，上游 create 耗时长时
+		// persistCtx 会先过期，反而把落库全部拖垮。
+		persistCtx, cancelPersist := context.WithTimeout(upstreamBase, mediaPersistTimeout)
+		defer cancelPersist()
+
 		localID := generateMediaLocalID(kind)
 		record := &MediaTaskRecord{
 			LocalID:        localID,
@@ -219,7 +248,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		}
 		if createResult.InlineURL != "" {
 			record.MediaURL = createResult.InlineURL
-			if stored, ok := s.maybeStoreMedia(ctx, record, createResult.InlineURL); ok {
+			if stored, ok := s.maybeStoreMedia(persistCtx, record, createResult.InlineURL); ok {
 				record.MediaURL = stored
 			}
 		}
@@ -232,7 +261,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 					urls = append(urls, record.MediaURL)
 					continue
 				}
-				if stored, ok := s.maybeStoreMedia(ctx, record, u); ok {
+				if stored, ok := s.maybeStoreMedia(persistCtx, record, u); ok {
 					urls = append(urls, stored)
 					continue
 				}
@@ -244,14 +273,14 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
 			imgInput.Account = account
-			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
+			settleMediaImageTaskFailure(persistCtx, s.billingDeps(), imgInput)
 		} else if createResult.Status == "failed" && kind == MediaKindAudio {
 			audioInput := mediaAudioBillingInputFromRecord(record)
 			audioInput.Account = account
-			settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
+			settleMediaAudioTaskFailure(persistCtx, s.billingDeps(), audioInput)
 		} else if createResult.Status == "failed" && kind == MediaKindVideo {
 			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
-			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+			settleVideoTaskFailure(persistCtx, s.billingDeps(), &videoTaskBillingInput{
 				LocalID:              record.LocalID,
 				UserID:               record.UserID,
 				APIKeyID:             record.APIKeyID,
@@ -266,21 +295,21 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		} else if createResult.Status != "failed" {
 			if kind == MediaKindVideo {
 				// 创建时上游真实时长未知（0），用用户请求时长预估。
-				if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
+				if cost, costErr := estimateVideoTaskCost(persistCtx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
 					record.ReservedCost = &cost
 					if s.apiKeyService != nil {
-						_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
+						_ = s.apiKeyService.UpdateQuotaUsed(persistCtx, apiKeyID, cost)
 					}
 				}
-			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
+			} else if cost, costErr := s.calculateMediaCost(persistCtx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
 				record.ReservedCost = &cost
 				if s.apiKeyService != nil {
-					_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
+					_ = s.apiKeyService.UpdateQuotaUsed(persistCtx, apiKeyID, cost)
 				}
 			}
 		}
 
-		saved, saveErr := s.mediaTaskRepo.Create(ctx, record)
+		saved, saveErr := s.mediaTaskRepo.Create(persistCtx, record)
 		if saveErr != nil {
 			return nil, fmt.Errorf("media_task_service: save task: %w", saveErr)
 		}
@@ -291,13 +320,13 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		if kind == MediaKindImage && createResult.Status == "succeeded" {
 			imgInput := mediaImageBillingInputFromRecord(saved, settledImageCount(req, createResult))
 			imgInput.Account = account
-			settleMediaImageTaskSuccess(ctx, s.billingDeps(), imgInput)
+			settleMediaImageTaskSuccess(persistCtx, s.billingDeps(), imgInput)
 		}
 		// 音频 adapter 目前均同步返回，创建成功即终态，同样立刻结算。
 		if kind == MediaKindAudio && createResult.Status == "succeeded" {
 			audioInput := mediaAudioBillingInputFromRecord(saved)
 			audioInput.Account = account
-			settleMediaAudioTaskSuccess(ctx, s.billingDeps(), audioInput)
+			settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 		}
 		return saved, nil
 	}
@@ -882,6 +911,9 @@ var videoModelResolutionAllowlist = []struct {
 	prefix  string
 	allowed []string
 }{
+	// H3 Max 与 fal.ai 联合出品，最高只到 768P；必须排在 minimax-h3 之前，
+	// 否则会被前缀规则放过 2K（上游会拒绝）。
+	{prefix: "minimax-h3-max", allowed: []string{"480p", "768p"}},
 	{prefix: "minimax-h3", allowed: []string{"480p", "768p", "2k"}},
 }
 
@@ -949,6 +981,8 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 	}
 	excluded := make(map[int64]struct{})
 	const maxAttempts = 100
+	// 与 CreateTask 同口径：上游 create 不跟随客户端断连（见该常量注释）。
+	upstreamBase := context.WithoutCancel(ctx)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		account, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
@@ -968,7 +1002,9 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 		if resolveErr != nil {
 			return nil, "", fmt.Errorf("media_task_service: resolve adapter: %w", resolveErr)
 		}
-		createResult, createErr := adapter.Create(ctx, account, *req)
+		createCtx, cancelCreate := context.WithTimeout(upstreamBase, mediaUpstreamCreateTimeout)
+		createResult, createErr := adapter.Create(createCtx, account, *req)
+		cancelCreate()
 		if createErr != nil {
 			s.recordMediaTransportFailure(c, ctx, account, createErr)
 			excluded[account.ID] = struct{}{}
@@ -989,6 +1025,10 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 		// 无 media_tasks 记录，用一次性 localID 作幂等键（本函数内只在成功后结算一次）。
 		hasAudioOutput := len(createResult.InlineBytes) > 0 || createResult.InlineURL != ""
 		if hasAudioOutput {
+			// 音频已生成，结算必须跑完（客户端断开就漏计费 = 白送）。
+			// 同样在此刻才起算超时，避免上游 create 耗时把结算窗口耗光。
+			persistCtx, cancelPersist := context.WithTimeout(upstreamBase, mediaPersistTimeout)
+			defer cancelPersist()
 			audioInput := &mediaAudioBillingInput{
 				LocalID:              generateMediaLocalID(MediaKindAudio),
 				UserID:               userID,
@@ -1002,7 +1042,7 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 				DurationSec:          req.DurationSec,
 				RequestedDurationSec: req.DurationSec,
 			}
-			settleMediaAudioTaskSuccess(ctx, s.billingDeps(), audioInput)
+			settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 		}
 
 		// 同步字节直接返回；有 URL 返回 URL。
