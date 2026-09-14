@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,7 +32,10 @@ func newMediaVendorImageAdapter(name string) mediaVendorImageAdapter {
 	return mediaVendorImageAdapter{
 		name: name,
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			// 图片生成远慢于文本：千问图像 3.0 默认开启 prompt_extend 与思考模式，
+			// 官方建议客户端超时从 600 秒起配。120 秒会在上游仍正常生成时提前断开，
+			// 表现为"任务失败"但上游其实在计费。
+			Timeout: 600 * time.Second,
 		},
 	}
 }
@@ -287,25 +291,68 @@ func NewWanImageAdapter() *WanImageAdapter {
 	return a
 }
 
+// --- DashScope 图片公共契约（wanx / qwen-image 同属阿里 DashScope 系）---
+
+const (
+	// dashScopeImageMaxCount 是单次生成允许的最大张数（千问图像 3.0 为 1-6）。
+	dashScopeImageMaxCount = 6
+	// dashScopeImageMaxRefs 是图生图允许的最大参考图数量（官方为 1-3 张）。
+	dashScopeImageMaxRefs = 3
+)
+
+// normalizeDashScopeImageSize 把 OpenAI 写法的 "1024x1024" 转成 DashScope 的 "1024*1024"。
+// 两种协议的分隔符不同：OpenAI 用字母 x，DashScope 用星号。原样下发 x 会被上游
+// 判为参数非法，官方迁移文档亦专门提示过这一点。
+func normalizeDashScopeImageSize(size string) string {
+	trimmed := strings.TrimSpace(size)
+	if trimmed == "" || !strings.ContainsAny(trimmed, "xX") {
+		return trimmed
+	}
+	replaced := strings.ReplaceAll(strings.ReplaceAll(trimmed, "x", "*"), "X", "*")
+	return replaced
+}
+
+// clampDashScopeImageCount 把生成张数收敛到 DashScope 允许的 [1,6]。
+func clampDashScopeImageCount(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > dashScopeImageMaxCount {
+		return dashScopeImageMaxCount
+	}
+	return n
+}
+
 func buildWanImageCreateBody(req MediaCreateRequest) []byte {
-	messages := []map[string]any{{
-		"role":    "user",
-		"content": []map[string]any{{"text": req.Prompt}},
-	}}
+	content := make([]map[string]any, 0, dashScopeImageMaxRefs+1)
+	// 图生图：DashScope 通过 content 里的 {"image": ...} 传参考图（官方 1-3 张）。
+	// 参考图必须排在文本之前，否则模型无法定位待编辑的主体。
+	refs := 0
+	for _, ref := range req.ImageRefURLs {
+		if trimmed := strings.TrimSpace(ref); trimmed != "" {
+			content = append(content, map[string]any{"image": trimmed})
+			refs++
+			if refs >= dashScopeImageMaxRefs {
+				break
+			}
+		}
+	}
+	content = append(content, map[string]any{"text": req.Prompt})
 	body := map[string]any{
 		"model": req.UpstreamModel,
-		"input": map[string]any{"messages": messages},
+		"input": map[string]any{"messages": []map[string]any{{"role": "user", "content": content}}},
 	}
-	params := map[string]any{"n": 1}
-	if req.Resolution != "" {
-		params["size"] = req.Resolution
+	params := map[string]any{"n": clampDashScopeImageCount(req.ImageCount)}
+	if size := normalizeDashScopeImageSize(req.Resolution); size != "" {
+		params["size"] = size
 	}
 	if req.Seed != nil {
 		params["seed"] = *req.Seed
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path", "input", "parameters":
+		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path",
+			"input", "parameters", "image", "image_url", "image_urls":
 			continue
 		}
 		params[k] = v
@@ -315,36 +362,77 @@ func buildWanImageCreateBody(req MediaCreateRequest) []byte {
 	return data
 }
 
+// dashScopeImageResponse 是 DashScope 图片生成的同步响应。
+// 失败时是 HTTP 200 + code/message（如 InvalidApiKey），只看状态码会误判为成功。
+type dashScopeImageResponse struct {
+	Output struct {
+		Choices []struct {
+			Message struct {
+				Content []struct {
+					Image string `json:"image"`
+				} `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	} `json:"output"`
+	Usage struct {
+		OutputWidth  int `json:"output_width"`
+		OutputHeight int `json:"output_height"`
+	} `json:"usage"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"request_id"`
+}
+
 func parseWanImageCreateResult(respBody []byte, statusCode int) (*MediaCreateResult, error) {
-	if statusCode >= 400 {
+	failed := func(message string) *MediaCreateResult {
 		return &MediaCreateResult{
-			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
-		}, nil
+			Status:             "failed",
+			Mode:               MediaCompletionFailed,
+			UpstreamStatusCode: statusCode,
+			UpstreamRaw:        respBody,
+			ErrorMessage:       message,
+		}
 	}
-	var data map[string]any
-	if err := json.Unmarshal(respBody, &data); err != nil {
-		return nil, fmt.Errorf("wan image unmarshal response: %w", err)
+	if statusCode >= 400 {
+		return failed(fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))), nil
 	}
-	url := ""
-	if choices, ok := data["output"].(map[string]any); ok {
-		if arr, ok := choices["choices"].([]any); ok && len(arr) > 0 {
-			if first, ok := arr[0].(map[string]any); ok {
-				if msg, ok := first["message"].(map[string]any); ok {
-					if content, ok := msg["content"].([]any); ok && len(content) > 0 {
-						if c, ok := content[0].(map[string]any); ok {
-							if img, ok := c["image"].(string); ok {
-								url = img
-							}
-						}
-					}
-				}
+	var resp dashScopeImageResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("dashscope image unmarshal response: %w", err)
+	}
+	if code := strings.TrimSpace(resp.Code); code != "" {
+		// 错误码必须进消息：运营排障时只有 message 无法定位失败类型。
+		message := "dashscope " + code
+		if msg := strings.TrimSpace(resp.Message); msg != "" {
+			message += ": " + msg
+		}
+		return failed(message), nil
+	}
+	urls := make([]string, 0, len(resp.Output.Choices))
+	for _, choice := range resp.Output.Choices {
+		for _, part := range choice.Message.Content {
+			if u := strings.TrimSpace(part.Image); u != "" {
+				urls = append(urls, u)
 			}
 		}
 	}
-	return &MediaCreateResult{
-		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-	}, nil
+	if len(urls) == 0 {
+		// 没有 URL 的"成功"无法交付给调用方，且会静默吞掉上游异常。
+		return failed("dashscope image response contained no image url"), nil
+	}
+	result := &MediaCreateResult{
+		Status:             "succeeded",
+		Mode:               MediaCompletionSync,
+		InlineURL:          urls[0],
+		InlineURLs:         urls,
+		UpstreamStatusCode: statusCode,
+		UpstreamRaw:        respBody,
+	}
+	// 真实输出尺寸用于计费：不传 size 时模型自行推荐分辨率，按请求值收会错档。
+	if resp.Usage.OutputWidth > 0 && resp.Usage.OutputHeight > 0 {
+		result.UpstreamSize = fmt.Sprintf("%dx%d", resp.Usage.OutputWidth, resp.Usage.OutputHeight)
+	}
+	return result, nil
 }
 
 // --- MiniMax 图片 ---
@@ -392,40 +480,104 @@ func buildMiniMaxImageCreateBody(req MediaCreateRequest) []byte {
 	if req.Seed != nil {
 		body["seed"] = *req.Seed
 	}
+	// n：MiniMax 取值 [1,9]。计费侧按同一张数收，避免上游出 9 张我们只收 1 张。
+	if req.ImageCount > 1 {
+		body["n"] = clampImageCount(req.ImageCount)
+	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path", "width", "height", "aspect_ratio":
+		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path", "width", "height", "aspect_ratio", "n", "subject_reference":
 			continue
 		}
 		body[k] = v
+	}
+	// 图生图：MiniMax 用 subject_reference 传参考图，且每次仅支持一张。
+	// 用户显式传了 subject_reference 时不覆盖，保留其自定义（如 type 不是 character）。
+	if _, exists := body["subject_reference"]; !exists {
+		for _, ref := range req.ImageRefURLs {
+			if trimmed := strings.TrimSpace(ref); trimmed != "" {
+				body["subject_reference"] = []map[string]any{{"type": "character", "image_file": trimmed}}
+				break
+			}
+		}
 	}
 	data, _ := json.Marshal(body)
 	return data
 }
 
+// clampImageCount 把图片张数收敛到 MiniMax 允许的 [1,9]。
+func clampImageCount(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 9 {
+		return 9
+	}
+	return n
+}
+
+// miniMaxImageResponse 是 MiniMax /v1/image_generation 的响应结构。
+// data 是对象而非数组：url 模式返回 image_urls，base64 模式返回 image_base64。
+// 另外 MiniMax 用 HTTP 200 + base_resp.status_code 表达业务失败（如内容安全拦截），
+// 只看 HTTP 状态码会把失败当成成功，最终得到一个没有 URL 的"成功"任务。
+type miniMaxImageResponse struct {
+	Data struct {
+		ImageURLs   []string `json:"image_urls"`
+		ImageBase64 []string `json:"image_base64"`
+	} `json:"data"`
+	BaseResp struct {
+		StatusCode int    `json:"status_code"`
+		StatusMsg  string `json:"status_msg"`
+	} `json:"base_resp"`
+}
+
 func parseMiniMaxImageCreateResult(respBody []byte, statusCode int) (*MediaCreateResult, error) {
-	if statusCode >= 400 {
+	failed := func(message string) *MediaCreateResult {
 		return &MediaCreateResult{
-			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
-		}, nil
-	}
-	var data map[string]any
-	if err := json.Unmarshal(respBody, &data); err != nil {
-		return nil, fmt.Errorf("minimax image unmarshal response: %w", err)
-	}
-	url := ""
-	if images, ok := data["data"].([]any); ok && len(images) > 0 {
-		if first, ok := images[0].(map[string]any); ok {
-			if u, ok := first["url"].(string); ok {
-				url = u
-			} else if img, ok := first["image_url"].(string); ok {
-				url = img
-			}
+			Status:             "failed",
+			Mode:               MediaCompletionFailed,
+			UpstreamStatusCode: statusCode,
+			UpstreamRaw:        respBody,
+			ErrorMessage:       message,
 		}
 	}
+	if statusCode >= 400 {
+		return failed(fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))), nil
+	}
+	var resp miniMaxImageResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("minimax image unmarshal response: %w", err)
+	}
+	if resp.BaseResp.StatusCode != 0 {
+		// 错误码保留在消息里：运营排障时只有 status_msg 无法定位到具体失败类型。
+		message := "minimax " + strconv.Itoa(resp.BaseResp.StatusCode)
+		if msg := strings.TrimSpace(resp.BaseResp.StatusMsg); msg != "" {
+			message += ": " + msg
+		}
+		return failed(message), nil
+	}
+	urls := make([]string, 0, len(resp.Data.ImageURLs))
+	for _, u := range resp.Data.ImageURLs {
+		if trimmed := strings.TrimSpace(u); trimmed != "" {
+			urls = append(urls, trimmed)
+		}
+	}
+	// base64 模式没有可访问 URL，转成 data URI，让下游统一按 URL 处理。
+	for _, b64 := range resp.Data.ImageBase64 {
+		if trimmed := strings.TrimSpace(b64); trimmed != "" {
+			urls = append(urls, "data:image/jpeg;base64,"+trimmed)
+		}
+	}
+	if len(urls) == 0 {
+		return failed("minimax image response contains no image url"), nil
+	}
 	return &MediaCreateResult{
-		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+		Status:             "succeeded",
+		Mode:               MediaCompletionSync,
+		InlineURL:          urls[0],
+		InlineURLs:         urls,
+		UpstreamStatusCode: statusCode,
+		UpstreamRaw:        respBody,
 	}, nil
 }
 

@@ -51,6 +51,7 @@ type MediaCreateRequest struct {
 	Resolution     string            // 分辨率档位
 	Ratio          string            // 宽高比
 	DurationSec    int               // 时长（秒）
+	ImageCount     int               // 单次生成的图片张数（图片按张计费，视频忽略）
 	Seed           *int64            // 随机种子
 	Extra          map[string]any    // 其他上游专有参数
 }
@@ -59,6 +60,10 @@ type MediaCreateRequest struct {
 type MediaCreateResult struct {
 	TaskID             string              // 上游异步任务 ID
 	InlineURL          string              // 同步返回的产物 URL
+	InlineURLs         []string            // 同步返回的多张产物 URL（n>1 时按张计费与返回）
+	// UpstreamSize 是上游回传的真实输出尺寸（形如 "1024x1024"）。
+	// 不传 size 时模型会自行推荐分辨率，按请求值计费会错档，故优先用真实尺寸。
+	UpstreamSize string
 	Status             string              // processing / succeeded / failed
 	Mode               MediaCompletionMode // 规范化完成模式
 	UpstreamStatusCode int                 // 上游 HTTP 状态码，用于 failover 判定
@@ -248,14 +253,25 @@ func IsKnownImageVendorModel(model string) bool {
 	}
 	return strings.Contains(m, "seedream") ||
 		strings.Contains(m, "doubao-seedream") ||
-		strings.Contains(m, "grok-imagine-image") ||
-		strings.Contains(m, "grok-imagine") ||
+		isGrokImagineImageModel(m) ||
 		strings.Contains(m, "gpt-image") ||
 		strings.Contains(m, "dall-e") ||
 		strings.Contains(m, "qwen-image") ||
 		strings.Contains(m, "image-01") ||
 		strings.Contains(m, "t2i") ||
 		strings.Contains(m, "-image")
+}
+
+// isGrokImagineImageModel 判定 grok-imagine 系列里的**图片**型号。
+//
+// 该前缀下 image / edit 出图、video 出视频。早先用 Contains("grok-imagine")
+// 一把抓，会把 grok-imagine-video 误判成图片并送进图片链路——统一入口按
+// model 自动分派后，这个误判会直接把视频请求路由错，故必须区分。
+func isGrokImagineImageModel(m string) bool {
+	if !strings.Contains(m, "grok-imagine") {
+		return false
+	}
+	return !strings.Contains(m, "video")
 }
 
 // IsKnownAudioVendorModel reports whether the model should be routed to the

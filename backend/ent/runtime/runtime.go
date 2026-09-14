@@ -1609,7 +1609,7 @@ func init() {
 	// mediatask.DurationSecValidator is a validator for the "duration_sec" field. It is called by the builders before save.
 	mediatask.DurationSecValidator = mediataskDescDurationSec.Validators[0].(func(int) error)
 	// mediataskDescCostUsd is the schema descriptor for cost_usd field.
-	mediataskDescCostUsd := mediataskFields[15].Descriptor()
+	mediataskDescCostUsd := mediataskFields[16].Descriptor()
 	// mediatask.DefaultCostUsd holds the default value on creation for the cost_usd field.
 	mediatask.DefaultCostUsd = mediataskDescCostUsd.Default.(float64)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()

@@ -97,15 +97,19 @@ func IsKnownVideoVendorModel(model string) bool {
 		strings.HasPrefix(m, "doubao-seedance"),
 		strings.Contains(m, "jimeng-video"):
 		return true
-	case strings.HasPrefix(m, "minimax-hailuo"),
+		// minimax-h 统一前缀覆盖 hailuo 与 h1/h3/h4 等短型号，
+		// 避免每出一个新系列就漏收录（minimax-image 走图片分支不受影响）。
+	case strings.HasPrefix(m, "minimax-h"),
 		strings.HasPrefix(m, "minimax-video"),
-		strings.HasPrefix(m, "minimax-h3"),
-		m == "minimax-h3-max",
 		(strings.HasPrefix(m, "video-") && strings.Contains(m, "hailuo")):
 		return true
 	case strings.HasPrefix(m, "wan") &&
 		(strings.Contains(m, "video") || strings.Contains(m, "wanx") ||
-			strings.Contains(m, "t2v") || strings.HasPrefix(m, "wan2") || strings.HasPrefix(m, "wan3")):
+			strings.Contains(m, "t2v") || strings.Contains(m, "i2v") ||
+			strings.HasPrefix(m, "wan2") || strings.HasPrefix(m, "wan3")):
+		return true
+	// Grok 视频模型原先没有被收录，导致按模型名自动分派时落到默认分支。
+	case strings.Contains(m, "grok-imagine-video"):
 		return true
 	default:
 		return false

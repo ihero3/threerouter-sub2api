@@ -959,6 +959,16 @@ func MediaURLContainsFold(v string) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldContainsFold(FieldMediaURL, v))
 }
 
+// MediaUrlsIsNil applies the IsNil predicate on the "media_urls" field.
+func MediaUrlsIsNil() predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldIsNull(FieldMediaUrls))
+}
+
+// MediaUrlsNotNil applies the NotNil predicate on the "media_urls" field.
+func MediaUrlsNotNil() predicate.MediaTask {
+	return predicate.MediaTask(sql.FieldNotNull(FieldMediaUrls))
+}
+
 // ThumbnailURLEQ applies the EQ predicate on the "thumbnail_url" field.
 func ThumbnailURLEQ(v string) predicate.MediaTask {
 	return predicate.MediaTask(sql.FieldEQ(FieldThumbnailURL, v))

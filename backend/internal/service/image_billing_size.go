@@ -25,6 +25,20 @@ type ImageBillingSizeResolution struct {
 	Breakdown   map[string]int
 }
 
+// imageAspectRatioPixels 是 aspect_ratio 写法对应的实际输出像素。
+// 以 MiniMax image-01 官方规格为准：不映射时 "1:1"（实为 1024x1024）会被
+// 当成无法识别、回落到默认 2K 档，等于按 2 倍价格收费。
+var imageAspectRatioPixels = map[string][2]int{
+	"1:1":  {1024, 1024},
+	"16:9": {1280, 720},
+	"4:3":  {1152, 864},
+	"3:2":  {1248, 832},
+	"2:3":  {832, 1248},
+	"3:4":  {864, 1152},
+	"9:16": {720, 1280},
+	"21:9": {1344, 576},
+}
+
 func ClassifyImageBillingTier(size string) (string, bool) {
 	trimmed := strings.TrimSpace(size)
 	normalized := strings.ToLower(trimmed)
@@ -41,6 +55,11 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		return ImageBillingSize2K, true
 	case "3840x2160", "2160x3840":
 		return ImageBillingSize4K, true
+	}
+
+	// 宽高比先折算成真实像素，再按长边分档。
+	if px, ok := imageAspectRatioPixels[normalized]; ok {
+		trimmed = strconv.Itoa(px[0]) + "x" + strconv.Itoa(px[1])
 	}
 
 	width, height, ok := parseImageBillingDimensions(trimmed)

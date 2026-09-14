@@ -46,6 +46,8 @@ type MediaTask struct {
 	DurationSec int `json:"duration_sec,omitempty"`
 	// 产物 URL（视频 / 图片 / 音频）
 	MediaURL string `json:"media_url,omitempty"`
+	// 多张产物 URL（图片 n>1 时全量落库，轮询接口据此返回 urls）
+	MediaUrls []string `json:"media_urls,omitempty"`
 	// ThumbnailURL holds the value of the "thumbnail_url" field.
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	// 原始请求快照，便于排障
@@ -66,7 +68,7 @@ func (*MediaTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mediatask.FieldRequestBody:
+		case mediatask.FieldMediaUrls, mediatask.FieldRequestBody:
 			values[i] = new([]byte)
 		case mediatask.FieldCostUsd, mediatask.FieldReservedCost:
 			values[i] = new(sql.NullFloat64)
@@ -180,6 +182,14 @@ func (_m *MediaTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field media_url", values[i])
 			} else if value.Valid {
 				_m.MediaURL = value.String
+			}
+		case mediatask.FieldMediaUrls:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field media_urls", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.MediaUrls); err != nil {
+					return fmt.Errorf("unmarshal field media_urls: %w", err)
+				}
 			}
 		case mediatask.FieldThumbnailURL:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -298,6 +308,9 @@ func (_m *MediaTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("media_url=")
 	builder.WriteString(_m.MediaURL)
+	builder.WriteString(", ")
+	builder.WriteString("media_urls=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MediaUrls))
 	builder.WriteString(", ")
 	builder.WriteString("thumbnail_url=")
 	builder.WriteString(_m.ThumbnailURL)

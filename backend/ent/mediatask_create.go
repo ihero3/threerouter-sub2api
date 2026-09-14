@@ -178,6 +178,12 @@ func (_c *MediaTaskCreate) SetNillableMediaURL(v *string) *MediaTaskCreate {
 	return _c
 }
 
+// SetMediaUrls sets the "media_urls" field.
+func (_c *MediaTaskCreate) SetMediaUrls(v []string) *MediaTaskCreate {
+	_c.mutation.SetMediaUrls(v)
+	return _c
+}
+
 // SetThumbnailURL sets the "thumbnail_url" field.
 func (_c *MediaTaskCreate) SetThumbnailURL(v string) *MediaTaskCreate {
 	_c.mutation.SetThumbnailURL(v)
@@ -481,6 +487,10 @@ func (_c *MediaTaskCreate) createSpec() (*MediaTask, *sqlgraph.CreateSpec) {
 		_spec.SetField(mediatask.FieldMediaURL, field.TypeString, value)
 		_node.MediaURL = value
 	}
+	if value, ok := _c.mutation.MediaUrls(); ok {
+		_spec.SetField(mediatask.FieldMediaUrls, field.TypeJSON, value)
+		_node.MediaUrls = value
+	}
 	if value, ok := _c.mutation.ThumbnailURL(); ok {
 		_spec.SetField(mediatask.FieldThumbnailURL, field.TypeString, value)
 		_node.ThumbnailURL = value
@@ -764,6 +774,24 @@ func (u *MediaTaskUpsert) UpdateMediaURL() *MediaTaskUpsert {
 // ClearMediaURL clears the value of the "media_url" field.
 func (u *MediaTaskUpsert) ClearMediaURL() *MediaTaskUpsert {
 	u.SetNull(mediatask.FieldMediaURL)
+	return u
+}
+
+// SetMediaUrls sets the "media_urls" field.
+func (u *MediaTaskUpsert) SetMediaUrls(v []string) *MediaTaskUpsert {
+	u.Set(mediatask.FieldMediaUrls, v)
+	return u
+}
+
+// UpdateMediaUrls sets the "media_urls" field to the value that was provided on create.
+func (u *MediaTaskUpsert) UpdateMediaUrls() *MediaTaskUpsert {
+	u.SetExcluded(mediatask.FieldMediaUrls)
+	return u
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (u *MediaTaskUpsert) ClearMediaUrls() *MediaTaskUpsert {
+	u.SetNull(mediatask.FieldMediaUrls)
 	return u
 }
 
@@ -1168,6 +1196,27 @@ func (u *MediaTaskUpsertOne) UpdateMediaURL() *MediaTaskUpsertOne {
 func (u *MediaTaskUpsertOne) ClearMediaURL() *MediaTaskUpsertOne {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.ClearMediaURL()
+	})
+}
+
+// SetMediaUrls sets the "media_urls" field.
+func (u *MediaTaskUpsertOne) SetMediaUrls(v []string) *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetMediaUrls(v)
+	})
+}
+
+// UpdateMediaUrls sets the "media_urls" field to the value that was provided on create.
+func (u *MediaTaskUpsertOne) UpdateMediaUrls() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateMediaUrls()
+	})
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (u *MediaTaskUpsertOne) ClearMediaUrls() *MediaTaskUpsertOne {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.ClearMediaUrls()
 	})
 }
 
@@ -1757,6 +1806,27 @@ func (u *MediaTaskUpsertBulk) UpdateMediaURL() *MediaTaskUpsertBulk {
 func (u *MediaTaskUpsertBulk) ClearMediaURL() *MediaTaskUpsertBulk {
 	return u.Update(func(s *MediaTaskUpsert) {
 		s.ClearMediaURL()
+	})
+}
+
+// SetMediaUrls sets the "media_urls" field.
+func (u *MediaTaskUpsertBulk) SetMediaUrls(v []string) *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.SetMediaUrls(v)
+	})
+}
+
+// UpdateMediaUrls sets the "media_urls" field to the value that was provided on create.
+func (u *MediaTaskUpsertBulk) UpdateMediaUrls() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.UpdateMediaUrls()
+	})
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (u *MediaTaskUpsertBulk) ClearMediaUrls() *MediaTaskUpsertBulk {
+	return u.Update(func(s *MediaTaskUpsert) {
+		s.ClearMediaUrls()
 	})
 }
 

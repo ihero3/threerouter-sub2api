@@ -273,6 +273,16 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 	}
 	kind := service.MediaKindFromModel(publicModel, body)
 
+	// 生图权限：与 /v1/images/* 保持同一口径。统一媒体链路是本平台的推荐入口，
+	// 若这里不校验，后台的「允许生成图片」开关形同虚设——客户端绕道
+	// /v1/media/generations 就能出图。只拦图片类任务，视频 / 音频不受影响，
+	// 避免把既有视频调用一并挡在门外。
+	if kind == service.MediaKindImage && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		mediaErrorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+
 	// 调用前额度/余额检查：余额或平台配额不足时直接拒绝，避免白白调用上游。
 	if h.billingCacheService != nil {
 		if err := h.billingCacheService.CheckBillingEligibility(
@@ -338,6 +348,9 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 	if record.MediaURL != "" {
 		response.URL = record.MediaURL
 	}
+	if len(record.MediaURLs) > 1 {
+		response.URLs = record.MediaURLs
+	}
 	if record.ErrorMessage != "" {
 		response.Error = record.ErrorMessage
 	}
@@ -378,6 +391,9 @@ func (h *MediaGatewayHandler) Get(c *gin.Context) {
 	}
 	if record.MediaURL != "" {
 		response.URL = record.MediaURL
+	}
+	if len(record.MediaURLs) > 0 {
+		response.URLs = record.MediaURLs
 	}
 	if record.ThumbnailURL != "" {
 		response.ThumbnailURL = record.ThumbnailURL
@@ -433,6 +449,9 @@ type mediaTaskResponse struct {
 	Status       string `json:"status"`
 	Model        string `json:"model"`
 	URL          string `json:"url,omitempty"`
+	// URLs 是 n>1 时的全部产物 URL（media_urls 列全量落库）。
+	// 图片为同步返回，创建响应里直接带全量；轮询路径同样返回全量。
+	URLs         []string `json:"urls,omitempty"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	Resolution   string `json:"resolution,omitempty"`
 	DurationSec  int    `json:"duration_sec,omitempty"`

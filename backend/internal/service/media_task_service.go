@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,6 +50,9 @@ type MediaTaskRecord struct {
 	Resolution     string
 	DurationSec    int
 	MediaURL       string
+	// MediaURLs 是 n>1 时的全部产物 URL，随 media_tasks.media_urls（JSONB）落库：
+	// 创建同步响应与轮询 GET /v1/media/:id 都能返回完整列表。
+	MediaURLs      []string
 	ThumbnailURL   string
 	RequestBody    map[string]any
 	ErrorMessage   string
@@ -208,11 +212,33 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			RequestBody:    requestBody,
 			ErrorMessage:   createResult.ErrorMessage,
 		}
+		// 上游真实输出尺寸优先于请求值：不传 size 时模型会自行推荐分辨率，
+		// 按请求值计费会错档（千问默认 1024x1024 属 1K，请求值缺失时会被按 2K 收）。
+		if upstreamSize := strings.TrimSpace(createResult.UpstreamSize); upstreamSize != "" {
+			record.Resolution = upstreamSize
+		}
 		if createResult.InlineURL != "" {
 			record.MediaURL = createResult.InlineURL
 			if stored, ok := s.maybeStoreMedia(ctx, record, createResult.InlineURL); ok {
 				record.MediaURL = stored
 			}
+		}
+		// 多张结果（n>1）落库到 media_urls：创建响应直接带全量，
+		// 轮询接口从库读取后同样返回完整 urls。
+		if len(createResult.InlineURLs) > 1 {
+			urls := make([]string, 0, len(createResult.InlineURLs))
+			for _, u := range createResult.InlineURLs {
+				if u == createResult.InlineURL {
+					urls = append(urls, record.MediaURL)
+					continue
+				}
+				if stored, ok := s.maybeStoreMedia(ctx, record, u); ok {
+					urls = append(urls, stored)
+					continue
+				}
+				urls = append(urls, u)
+			}
+			record.MediaURLs = urls
 		}
 		if createResult.Status == "failed" && kind == MediaKindVideo {
 			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
@@ -237,7 +263,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 						_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
 					}
 				}
-			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
+			} else if cost, costErr := s.calculateMediaCost(ctx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
 				record.ReservedCost = &cost
 				if s.apiKeyService != nil {
 					_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
@@ -333,7 +359,7 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 					zap.Error(estErr),
 				)
 			}
-		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); costErr == nil {
+		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec, parseMediaImageCount(record.RequestBody)); costErr == nil {
 			actual = cost
 		} else {
 			s.logger.Warn("media_task_service: calculate cost failed",
@@ -590,8 +616,20 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 	return nil
 }
 
+// settledImageCount 决定图片按多少张计费：上游实际返回张数优先于请求值。
+// 上游可能因安全策略少出图，一律按请求值收会多收。
+func settledImageCount(req *MediaCreateRequest, result *MediaCreateResult) int {
+	if result != nil {
+		if n := len(result.InlineURLs); n > 0 {
+			return n
+		}
+	}
+	return req.ImageCount
+}
+
 // calculateMediaCost 按媒体类型计算费用。视频/图片/音频分别走对应计费器。
-func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, actualSec, requestedSec int) (float64, error) {
+// imageCount 只对图片生效：上游按张出图也按张收费，计费张数必须与实际出图数一致。
+func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, actualSec, requestedSec, imageCount int) (float64, error) {
 	if s == nil || s.billingService == nil || s.apiKeyService == nil {
 		return 0, fmt.Errorf("media_task_service: billing dependencies are not wired")
 	}
@@ -620,7 +658,7 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 		if size == "" {
 			size = ImageBillingSize2K
 		}
-		cost := s.billingService.CalculateImageCost(model, size, 1, imagePriceConfigFromAPIKey(apiKey), multiplier)
+		cost := s.billingService.CalculateImageCost(model, size, clampImageCount(imageCount), imagePriceConfigFromAPIKey(apiKey), multiplier)
 		return cost.ActualCost, nil
 	case MediaKindAudio:
 		// 音频采用通行口径：优先按秒（media_audio），其次按分钟（realtime）。
@@ -660,13 +698,15 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 	if v, ok := body["negative_prompt"].(string); ok {
 		req.NegativePrompt = v
 	}
-	if v, ok := body["resolution"].(string); ok {
-		req.Resolution = v
-	}
+	// resolution 与 OpenAI 风格的 size 等价：客户端照搬 /v1/images/generations 的写法
+	// 传 size 时不能静默丢弃，否则上游按默认比例出图、计费也落到默认档。
+	req.Resolution = normalizeMediaResolution(firstMediaStringValue(body, "resolution", "size"))
 	if v, ok := body["ratio"].(string); ok {
 		req.Ratio = v
 	}
 	req.DurationSec = parseVideoDurationSecondsParam(body)
+	// n：图片按张计费。上游按 n 张出图也按 n 张收费，漏掉会系统性少收。
+	req.ImageCount = parseMediaImageCount(body)
 	// 图片参考。除 OpenAI 风格的 image_url / image_urls 外，还要接受
 	// 各家文档常用的 image 字段：字符串、字符串数组，以及 {"url": "..."} 对象。
 	if items, ok := body["image"].([]any); ok {
@@ -747,6 +787,55 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 		delete(req.Extra, "ratio")
 	}
 	return req, nil
+}
+
+// firstMediaStringValue 返回第一个非空字符串字段值。
+func firstMediaStringValue(body map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := body[key].(string); ok {
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
+}
+
+// normalizeMediaResolution 归一化图片尺寸参数。
+// OpenAI 的 size 允许 "auto"（由模型自选），媒体链路没有等价语义，
+// 直接透传会被当成 aspect_ratio 下发给上游导致报错，这里统一视为未指定。
+func normalizeMediaResolution(resolution string) string {
+	trimmed := strings.TrimSpace(resolution)
+	if trimmed == "" || strings.EqualFold(trimmed, "auto") {
+		return ""
+	}
+	return trimmed
+}
+
+// parseMediaImageCount 解析单次生成的图片张数 n。
+// 图片按张计费，n 缺失或非法时按 1 张（与上游默认一致），不做静默放大。
+func parseMediaImageCount(body map[string]any) int {
+	if body == nil {
+		return 1
+	}
+	var n int
+	switch v := body["n"].(type) {
+	case float64:
+		n = int(v)
+	case int:
+		n = v
+	case int64:
+		n = int(v)
+	case json.Number:
+		parsed, err := v.Int64()
+		if err != nil {
+			return 1
+		}
+		n = int(parsed)
+	default:
+		return 1
+	}
+	return clampImageCount(n)
 }
 
 // MediaInvalidRequestError 表示请求参数不满足媒体生成契约（如 resolution 档位

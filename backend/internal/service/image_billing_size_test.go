@@ -145,3 +145,23 @@ func TestCalculateImageCost_FallsBackToConfiguredLowerTier(t *testing.T) {
 	cost = svc.CalculateImageCost("gemini-3-pro-image", "4K", 1, &ImagePriceConfig{}, 1.0)
 	require.InDelta(t, 0.268, cost.TotalCost, 0.0001)
 }
+
+// TestClassifyImageBillingTier_AspectRatio 宽高比必须折算成真实像素再分档。
+// 不映射时 "1:1"（实为 1024x1024）会被判为无法识别 → 回落默认 2K，等于按 2 倍收费。
+func TestClassifyImageBillingTier_AspectRatio(t *testing.T) {
+	cases := map[string]string{
+		"1:1":  ImageBillingSize1K, // 1024x1024，长边 1024
+		"16:9": ImageBillingSize2K, // 1280x720，长边 1280
+		"9:16": ImageBillingSize2K, // 720x1280，长边 1280
+		"21:9": ImageBillingSize2K, // 1344x576，长边 1344
+		"4:3":  ImageBillingSize2K, // 1152x864，长边 1152
+	}
+	for ratio, want := range cases {
+		got, ok := ClassifyImageBillingTier(ratio)
+		require.True(t, ok, "%s 应可识别", ratio)
+		require.Equal(t, want, got, "%s 档位错误", ratio)
+	}
+	// 未收录的比例仍视为无法识别，由调用方回落到默认档。
+	_, ok := ClassifyImageBillingTier("32:9")
+	require.False(t, ok)
+}

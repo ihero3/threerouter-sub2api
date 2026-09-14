@@ -34337,6 +34337,8 @@ type MediaTaskMutation struct {
 	duration_sec     *int
 	addduration_sec  *int
 	media_url        *string
+	media_urls       *[]string
+	appendmedia_urls []string
 	thumbnail_url    *string
 	request_body     *map[string]interface{}
 	error_message    *string
@@ -35100,6 +35102,71 @@ func (m *MediaTaskMutation) ResetMediaURL() {
 	delete(m.clearedFields, mediatask.FieldMediaURL)
 }
 
+// SetMediaUrls sets the "media_urls" field.
+func (m *MediaTaskMutation) SetMediaUrls(s []string) {
+	m.media_urls = &s
+	m.appendmedia_urls = nil
+}
+
+// MediaUrls returns the value of the "media_urls" field in the mutation.
+func (m *MediaTaskMutation) MediaUrls() (r []string, exists bool) {
+	v := m.media_urls
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMediaUrls returns the old "media_urls" field's value of the MediaTask entity.
+// If the MediaTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MediaTaskMutation) OldMediaUrls(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMediaUrls is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMediaUrls requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMediaUrls: %w", err)
+	}
+	return oldValue.MediaUrls, nil
+}
+
+// AppendMediaUrls adds s to the "media_urls" field.
+func (m *MediaTaskMutation) AppendMediaUrls(s []string) {
+	m.appendmedia_urls = append(m.appendmedia_urls, s...)
+}
+
+// AppendedMediaUrls returns the list of values that were appended to the "media_urls" field in this mutation.
+func (m *MediaTaskMutation) AppendedMediaUrls() ([]string, bool) {
+	if len(m.appendmedia_urls) == 0 {
+		return nil, false
+	}
+	return m.appendmedia_urls, true
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (m *MediaTaskMutation) ClearMediaUrls() {
+	m.media_urls = nil
+	m.appendmedia_urls = nil
+	m.clearedFields[mediatask.FieldMediaUrls] = struct{}{}
+}
+
+// MediaUrlsCleared returns if the "media_urls" field was cleared in this mutation.
+func (m *MediaTaskMutation) MediaUrlsCleared() bool {
+	_, ok := m.clearedFields[mediatask.FieldMediaUrls]
+	return ok
+}
+
+// ResetMediaUrls resets all changes to the "media_urls" field.
+func (m *MediaTaskMutation) ResetMediaUrls() {
+	m.media_urls = nil
+	m.appendmedia_urls = nil
+	delete(m.clearedFields, mediatask.FieldMediaUrls)
+}
+
 // SetThumbnailURL sets the "thumbnail_url" field.
 func (m *MediaTaskMutation) SetThumbnailURL(s string) {
 	m.thumbnail_url = &s
@@ -35456,7 +35523,7 @@ func (m *MediaTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MediaTaskMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.created_at != nil {
 		fields = append(fields, mediatask.FieldCreatedAt)
 	}
@@ -35498,6 +35565,9 @@ func (m *MediaTaskMutation) Fields() []string {
 	}
 	if m.media_url != nil {
 		fields = append(fields, mediatask.FieldMediaURL)
+	}
+	if m.media_urls != nil {
+		fields = append(fields, mediatask.FieldMediaUrls)
 	}
 	if m.thumbnail_url != nil {
 		fields = append(fields, mediatask.FieldThumbnailURL)
@@ -35553,6 +35623,8 @@ func (m *MediaTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.DurationSec()
 	case mediatask.FieldMediaURL:
 		return m.MediaURL()
+	case mediatask.FieldMediaUrls:
+		return m.MediaUrls()
 	case mediatask.FieldThumbnailURL:
 		return m.ThumbnailURL()
 	case mediatask.FieldRequestBody:
@@ -35602,6 +35674,8 @@ func (m *MediaTaskMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldDurationSec(ctx)
 	case mediatask.FieldMediaURL:
 		return m.OldMediaURL(ctx)
+	case mediatask.FieldMediaUrls:
+		return m.OldMediaUrls(ctx)
 	case mediatask.FieldThumbnailURL:
 		return m.OldThumbnailURL(ctx)
 	case mediatask.FieldRequestBody:
@@ -35720,6 +35794,13 @@ func (m *MediaTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMediaURL(v)
+		return nil
+	case mediatask.FieldMediaUrls:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMediaUrls(v)
 		return nil
 	case mediatask.FieldThumbnailURL:
 		v, ok := value.(string)
@@ -35883,6 +35964,9 @@ func (m *MediaTaskMutation) ClearedFields() []string {
 	if m.FieldCleared(mediatask.FieldMediaURL) {
 		fields = append(fields, mediatask.FieldMediaURL)
 	}
+	if m.FieldCleared(mediatask.FieldMediaUrls) {
+		fields = append(fields, mediatask.FieldMediaUrls)
+	}
 	if m.FieldCleared(mediatask.FieldThumbnailURL) {
 		fields = append(fields, mediatask.FieldThumbnailURL)
 	}
@@ -35926,6 +36010,9 @@ func (m *MediaTaskMutation) ClearField(name string) error {
 		return nil
 	case mediatask.FieldMediaURL:
 		m.ClearMediaURL()
+		return nil
+	case mediatask.FieldMediaUrls:
+		m.ClearMediaUrls()
 		return nil
 	case mediatask.FieldThumbnailURL:
 		m.ClearThumbnailURL()
@@ -35991,6 +36078,9 @@ func (m *MediaTaskMutation) ResetField(name string) error {
 		return nil
 	case mediatask.FieldMediaURL:
 		m.ResetMediaURL()
+		return nil
+	case mediatask.FieldMediaUrls:
+		m.ResetMediaUrls()
 		return nil
 	case mediatask.FieldThumbnailURL:
 		m.ResetThumbnailURL()

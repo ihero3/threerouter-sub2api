@@ -75,6 +75,9 @@ func (MediaTask) Fields() []ent.Field {
 		field.Text("media_url").
 			Optional().
 			Comment("产物 URL（视频 / 图片 / 音频）"),
+		field.JSON("media_urls", []string{}).
+			Optional().
+			Comment("多张产物 URL（图片 n>1 时全量落库，轮询接口据此返回 urls）"),
 		field.Text("thumbnail_url").
 			Optional(),
 		field.JSON("request_body", map[string]any{}).

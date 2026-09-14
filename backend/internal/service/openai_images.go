@@ -483,6 +483,16 @@ func validateOpenAIImagesModel(model string) error {
 	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 }
 
+// IsOpenAINativeImageModel 判断模型是否由 OpenAI 直通链路原生支持。
+//
+// 直通链路只放行 gpt-image-* 与 grok-imagine*，其余图片厂商模型
+// （qwen-image / image-01 / seedream 等）会被 validateOpenAIImagesModel
+// 以 400 拒绝。路由层需要在放行前区分二者：原生的走直通，其余转统一媒体链路，
+// 这样客户端只换 model 就能调用任意图片模型，不必改端点。
+func IsOpenAINativeImageModel(model string) bool {
+	return isOpenAIImageGenerationModel(model)
+}
+
 func normalizeOpenAIImagesEndpointPath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	switch {

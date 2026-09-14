@@ -41,6 +41,8 @@ const (
 	FieldDurationSec = "duration_sec"
 	// FieldMediaURL holds the string denoting the media_url field in the database.
 	FieldMediaURL = "media_url"
+	// FieldMediaUrls holds the string denoting the media_urls field in the database.
+	FieldMediaUrls = "media_urls"
 	// FieldThumbnailURL holds the string denoting the thumbnail_url field in the database.
 	FieldThumbnailURL = "thumbnail_url"
 	// FieldRequestBody holds the string denoting the request_body field in the database.
@@ -74,6 +76,7 @@ var Columns = []string{
 	FieldResolution,
 	FieldDurationSec,
 	FieldMediaURL,
+	FieldMediaUrls,
 	FieldThumbnailURL,
 	FieldRequestBody,
 	FieldErrorMessage,

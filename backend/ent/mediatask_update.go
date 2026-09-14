@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/mediatask"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -257,6 +258,24 @@ func (_u *MediaTaskUpdate) SetNillableMediaURL(v *string) *MediaTaskUpdate {
 // ClearMediaURL clears the value of the "media_url" field.
 func (_u *MediaTaskUpdate) ClearMediaURL() *MediaTaskUpdate {
 	_u.mutation.ClearMediaURL()
+	return _u
+}
+
+// SetMediaUrls sets the "media_urls" field.
+func (_u *MediaTaskUpdate) SetMediaUrls(v []string) *MediaTaskUpdate {
+	_u.mutation.SetMediaUrls(v)
+	return _u
+}
+
+// AppendMediaUrls appends value to the "media_urls" field.
+func (_u *MediaTaskUpdate) AppendMediaUrls(v []string) *MediaTaskUpdate {
+	_u.mutation.AppendMediaUrls(v)
+	return _u
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (_u *MediaTaskUpdate) ClearMediaUrls() *MediaTaskUpdate {
+	_u.mutation.ClearMediaUrls()
 	return _u
 }
 
@@ -559,6 +578,17 @@ func (_u *MediaTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.MediaURLCleared() {
 		_spec.ClearField(mediatask.FieldMediaURL, field.TypeString)
 	}
+	if value, ok := _u.mutation.MediaUrls(); ok {
+		_spec.SetField(mediatask.FieldMediaUrls, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedMediaUrls(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mediatask.FieldMediaUrls, value)
+		})
+	}
+	if _u.mutation.MediaUrlsCleared() {
+		_spec.ClearField(mediatask.FieldMediaUrls, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.ThumbnailURL(); ok {
 		_spec.SetField(mediatask.FieldThumbnailURL, field.TypeString, value)
 	}
@@ -847,6 +877,24 @@ func (_u *MediaTaskUpdateOne) SetNillableMediaURL(v *string) *MediaTaskUpdateOne
 // ClearMediaURL clears the value of the "media_url" field.
 func (_u *MediaTaskUpdateOne) ClearMediaURL() *MediaTaskUpdateOne {
 	_u.mutation.ClearMediaURL()
+	return _u
+}
+
+// SetMediaUrls sets the "media_urls" field.
+func (_u *MediaTaskUpdateOne) SetMediaUrls(v []string) *MediaTaskUpdateOne {
+	_u.mutation.SetMediaUrls(v)
+	return _u
+}
+
+// AppendMediaUrls appends value to the "media_urls" field.
+func (_u *MediaTaskUpdateOne) AppendMediaUrls(v []string) *MediaTaskUpdateOne {
+	_u.mutation.AppendMediaUrls(v)
+	return _u
+}
+
+// ClearMediaUrls clears the value of the "media_urls" field.
+func (_u *MediaTaskUpdateOne) ClearMediaUrls() *MediaTaskUpdateOne {
+	_u.mutation.ClearMediaUrls()
 	return _u
 }
 
@@ -1178,6 +1226,17 @@ func (_u *MediaTaskUpdateOne) sqlSave(ctx context.Context) (_node *MediaTask, er
 	}
 	if _u.mutation.MediaURLCleared() {
 		_spec.ClearField(mediatask.FieldMediaURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.MediaUrls(); ok {
+		_spec.SetField(mediatask.FieldMediaUrls, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedMediaUrls(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mediatask.FieldMediaUrls, value)
+		})
+	}
+	if _u.mutation.MediaUrlsCleared() {
+		_spec.ClearField(mediatask.FieldMediaUrls, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ThumbnailURL(); ok {
 		_spec.SetField(mediatask.FieldThumbnailURL, field.TypeString, value)

@@ -63,6 +63,9 @@ func (r *mediaTaskRepository) Create(ctx context.Context, task *service.MediaTas
 	if task.MediaURL != "" {
 		b.SetMediaURL(task.MediaURL)
 	}
+	if len(task.MediaURLs) > 0 {
+		b.SetMediaUrls(task.MediaURLs)
+	}
 	if task.ThumbnailURL != "" {
 		b.SetThumbnailURL(task.ThumbnailURL)
 	}
@@ -246,6 +249,7 @@ func entToMediaTaskRecord(mt *dbent.MediaTask) *service.MediaTaskRecord {
 		Resolution:     mt.Resolution,
 		DurationSec:    mt.DurationSec,
 		MediaURL:       mt.MediaURL,
+		MediaURLs:      mt.MediaUrls,
 		ThumbnailURL:   mt.ThumbnailURL,
 		RequestBody:    mt.RequestBody,
 		ErrorMessage:   mt.ErrorMessage,

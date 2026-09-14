@@ -154,15 +154,33 @@ func DetectModelPlatform(model string) (string, bool) {
 	case strings.HasPrefix(normalized, "seedance-"),
 		strings.HasPrefix(normalized, "doubao-seedance-"),
 		strings.Contains(normalized, "jimeng-video"),
-		strings.HasPrefix(normalized, "minimax-hailuo"),
+		// minimax-h 统一前缀覆盖 hailuo / h1 / h3 等系列，与
+		// IsKnownVideoVendorModel 保持一致，避免新系列漏收录。
+		strings.HasPrefix(normalized, "minimax-h"),
 		strings.HasPrefix(normalized, "minimax-video-"),
-		strings.HasPrefix(normalized, "minimax-h3"),
 		strings.HasPrefix(normalized, "wan2-"),
 		strings.HasPrefix(normalized, "wan2."),
 		strings.HasPrefix(normalized, "wan3-"),
 		strings.HasPrefix(normalized, "wan3."),
 		strings.HasPrefix(normalized, "wanx-"),
-		strings.HasPrefix(normalized, "wan-video-"):
+		strings.HasPrefix(normalized, "wan-video-"),
+		strings.Contains(normalized, "i2v"):
+		return PlatformDeepseek, true
+	// Image vendor models ride the same DeepSeek/OpenAI-compatible carrier
+	// platform as the video vendors: the concrete account is chosen by its
+	// model_mapping and base_url, while the wire contract is chosen by the
+	// image adapter from the model name. Without this branch a composite group
+	// cannot resolve a target platform and the request dies in
+	// SelectAccountForModel with "composite target platform unknown" — the
+	// unified entrypoint promises model-only routing, so it must resolve.
+	case strings.HasPrefix(normalized, "qwen-image"),
+		strings.HasPrefix(normalized, "qwen_image"),
+		strings.Contains(normalized, "seedream"),
+		strings.HasPrefix(normalized, "seedance-image"),
+		strings.Contains(normalized, "jimeng-image"),
+		strings.HasPrefix(normalized, "minimax-image"),
+		strings.HasPrefix(normalized, "hailuo-image"),
+		strings.HasPrefix(normalized, "image-01"):
 		return PlatformDeepseek, true
 	default:
 		return "", false

@@ -81,6 +81,18 @@ func RegisterGatewayRoutes(
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI:
+			// OpenAI 直通只支持原生图片模型（gpt-image-* / grok-imagine*）。
+			// 其余已知图片厂商模型若也走直通，会被模型白名单以 400 拒绝，
+			// 客户端就不得不换成 /v1/media/generations。这里按 model 分流：
+			// 原生的走直通，其余转统一媒体链路，保证 base_url + model 即可调用。
+			if body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request); err == nil && len(body) > 0 {
+				model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
+				resetRequestBody(c, body)
+				if service.IsKnownImageVendorModel(model) && !service.IsOpenAINativeImageModel(model) {
+					h.MediaGateway.Create(c)
+					return
+				}
+			}
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
@@ -259,13 +271,16 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
-		gateway.POST("/chat/completions", func(c *gin.Context) {
+		textCompletionsHandler := func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
 			}
 			h.Gateway.ChatCompletions(c)
-		})
+		}
+		// 跨模态：客户端把图片/视频/音频模型送进 chat 端点时自动转对应链路，
+		// 并把结果包装成 chat 结构，避免 SDK 解析失败。
+		gateway.POST("/chat/completions", chatCompletionsWithDispatch(h, textCompletionsHandler))
 		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -314,6 +329,10 @@ func RegisterGatewayRoutes(
 		gateway.POST("/video-tasks", h.VideoGateway.CreateTask)
 		gateway.GET("/video-tasks/:task_id", h.VideoGateway.GetTask)
 		gateway.GET("/video-tasks/:task_id/content", h.VideoGateway.GetTaskContent)
+
+		// 统一入口：只认 model，按模态自动分派到文本 / 图片 / 视频 / 音频。
+		// 客户端只需 base_url + api_key + model，无需按模态挑选端点。
+		gateway.POST("/generations", generationsHandler(h, textCompletionsHandler))
 
 		// 统一媒体生成（图片 / 视频 / 音频）总入口
 		gateway.POST("/media", h.MediaGateway.Create)

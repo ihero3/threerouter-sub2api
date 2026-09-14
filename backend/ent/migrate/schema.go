@@ -1307,6 +1307,7 @@ var (
 		{Name: "resolution", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "duration_sec", Type: field.TypeInt, Nullable: true},
 		{Name: "media_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "media_urls", Type: field.TypeJSON, Nullable: true},
 		{Name: "thumbnail_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "request_body", Type: field.TypeJSON, Nullable: true},
 		{Name: "error_message", Type: field.TypeString, Nullable: true, Size: 2147483647},
