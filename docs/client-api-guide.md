@@ -291,11 +291,29 @@ curl https://<站点>/v1/audio/speech \
 | 401 | `authentication_error` | API Key 无效 |
 | 403 | `permission_error` | 分组未开通该能力（如生图权限未开）。联系服务方开通 |
 | 404 | `not_found_error` | 端点在当前分组平台下不支持 |
-| 429 | `rate_limit_error` | 限流，按 `Retry-After` 退避重试 |
+| 429 | `rate_limit_error` | 限流，按 `Retry-After` 退避重试。详见下方「429 处理」 |
 | 402 / 配额类 | `billing_error` | 余额或平台配额不足，充值后重试 |
 | 503 | `capacity_error` | 暂无可用渠道（上游账号全部不可用），稍后重试 |
 | 502 | `api_error` | 消息含 `canceled before upstream responded`：**客户端提前断开**，把提交超时调到 300 秒以上。含 `timed out after` 则是上游确实没响应，可重试 |
 | 5xx | `api_error` / `upstream_error` | 上游故障，可重试；保留 `id` 便于排查 |
+
+### 429 处理（限流）
+
+限流是**正常保护**，不是服务故障。响应同时带 `Retry-After` 头（秒）和可读文案：
+
+```json
+{"error": {
+  "message": "Rate limit exceeded: current limit is 30 requests/minute, please retry after 42 seconds. 当前限额 30 次/分钟，请 42 秒后重试。如需更高限额请联系服务方调整 / Contact your provider to raise this limit.",
+  "type": "rate_limit_error",
+  "code": "rate_limit_exceeded"
+}}
+```
+
+正确处理：
+
+1. **读 `Retry-After` 头再退避**，不要用固定间隔猛重试。OpenAI 官方 SDK 会自动读这个头并重试，手写 HTTP 客户端要自己实现。
+2. **不要用「立即重试」**：被拒绝的请求同样计入窗口计数，紧耦合重试会让计数继续上涨、窗口更难腾出空间，表现为「一直报错」。
+3. 长期撞限说明当前的次/分钟额度不够用，联系服务方调整，而不是在客户端加重试次数。
 
 ---
 
@@ -308,7 +326,8 @@ curl https://<站点>/v1/audio/speech \
 - [ ] 视频必须实现轮询，不能假设同步返回；单次轮询 30 秒超时即可
 - [ ] 产物 URL 是临时签名，及时转存
 - [ ] 生图失败 403 时提示用户联系服务方开通生图权限
-- [ ] 对 429 / 5xx 做指数退避，并用 `Idempotency-Key` 头防重复扣费（媒体创建支持幂等）
+- [ ] **429 必须读 `Retry-After` 头退避**，不要立即重试（见第 8 节「429 处理」）
+- [ ] 对 5xx 做指数退避，并用 `Idempotency-Key` 头防重复扣费（媒体创建支持幂等）
 
 ---
 

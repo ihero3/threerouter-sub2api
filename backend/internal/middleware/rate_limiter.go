@@ -140,7 +140,7 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 		if err != nil {
 			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", r.prefix+key, failureModeLabel(failureMode), err)
 			if failureMode == RateLimitFailClose {
-				abortRateLimit(c, window)
+				abortRateLimit(c, limit, window)
 				return
 			}
 			// Redis 错误时放行，避免影响正常服务
@@ -150,7 +150,7 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 
 		// 超过限制
 		if !result.Allowed {
-			abortRateLimit(c, result.RetryAfter)
+			abortRateLimit(c, limit, result.RetryAfter)
 			return
 		}
 
@@ -166,18 +166,42 @@ func windowTTLMillis(window time.Duration) int64 {
 	return ttl
 }
 
-func abortRateLimit(c *gin.Context, retryAfter time.Duration) {
+func abortRateLimit(c *gin.Context, limit int, retryAfter time.Duration) {
+	retrySeconds := 0
 	if retryAfter > 0 {
+		// 向上取整：不足 1 秒按 1 秒计，避免客户端拿到 0 后立即重试。
 		seconds := int64(retryAfter / time.Second)
 		if retryAfter%time.Second > 0 {
 			seconds++
 		}
+		retrySeconds = int(seconds)
 		c.Header("Retry-After", strconv.FormatInt(seconds, 10))
 	}
 	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-		"error":   "rate limit exceeded",
-		"message": "Too many requests, please try again later",
+		"error": "rate limit exceeded",
+		// 与 gateway 侧 RPM 超限同口径：带上限额与等待秒数，让调用方知道
+		// 该等多久、超限到什么程度，而不是当成一次随机的服务故障。
+		"message": rateLimitMessage(limit, retrySeconds),
 	})
+}
+
+// rateLimitMessage 生成 IP 维度限流的 429 文案（中英双语）。
+// 无有效限额时降级为不含 N 的文案。
+func rateLimitMessage(limit, retrySeconds int) string {
+	if retrySeconds < 1 {
+		retrySeconds = 1
+	}
+	if limit > 0 {
+		return fmt.Sprintf(
+			"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds. "+
+				"当前限额 %d 次/分钟，请 %d 秒后重试。",
+			limit, retrySeconds, limit, retrySeconds,
+		)
+	}
+	return fmt.Sprintf(
+		"Rate limit exceeded: please retry after %d seconds. 请求过于频繁，请 %d 秒后重试。",
+		retrySeconds, retrySeconds,
+	)
 }
 
 func failureModeLabel(mode RateLimitFailureMode) string {

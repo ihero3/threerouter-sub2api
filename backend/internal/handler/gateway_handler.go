@@ -2499,6 +2499,38 @@ func extractQuotaResetSeconds(err error) int {
 	return int(math.Ceil(secs))
 }
 
+// rpmLimitMessage 生成带具体限额与建议等待秒数的 RPM 超限文案（中英双语）。
+//
+// 背景：旧文案是一句干巴巴的 "requests-per-minute limit exceeded"——最终用户
+// 既不知道自己超了多少、也不知道要等多久，只能判定"服务不稳定"。
+// 带上 N（限额）与 X（重试秒数）后给出的是可执行指引；配合已有的 Retry-After 头，
+// OpenAI 兼容 SDK 会自动退避重试，多数用户根本感知不到这次拒绝。
+//
+// metadata 缺失时（如直接返回哨兵错误的旧路径）降级为不含限额的文案，不报错。
+func rpmLimitMessage(err error, retrySeconds int) string {
+	if retrySeconds < 1 {
+		retrySeconds = 1
+	}
+	const contactHint = "如需更高限额请联系服务方调整 / Contact your provider to raise this limit."
+	limit := 0
+	if appErr := pkgerrors.FromError(err); appErr != nil {
+		if parsed, convErr := strconv.Atoi(appErr.Metadata["rpm_limit"]); convErr == nil {
+			limit = parsed
+		}
+	}
+	if limit <= 0 {
+		return fmt.Sprintf(
+			"Rate limit exceeded: please retry after %d seconds. 请求过于频繁，请 %d 秒后重试。%s",
+			retrySeconds, retrySeconds, contactHint,
+		)
+	}
+	return fmt.Sprintf(
+		"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds. "+
+			"当前限额 %d 次/分钟，请 %d 秒后重试。%s",
+		limit, retrySeconds, limit, retrySeconds, contactHint,
+	)
+}
+
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
@@ -2522,9 +2554,10 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 	// 用户/分组 RPM 超限统一映射为 HTTP 429；保留与其它 rate_limit 一致的错误码便于客户端分类。
 	// 返回 Retry-After 秒数（当前分钟剩余秒数），让 SDK 自动退避。
 	if errors.Is(err, service.ErrGroupRPMExceeded) || errors.Is(err, service.ErrUserRPMExceeded) {
-		msg := pkgerrors.Message(err)
+		// 文案带上限额与重试秒数（见 rpmLimitMessage 注释）：让用户拿到可执行指引，
+		// 而不是一句无法判断的 "limit exceeded"。retrySeconds 与 Retry-After 头同源。
 		retrySeconds := 60 - int(time.Now().Unix()%60)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, retrySeconds
+		return http.StatusTooManyRequests, "rate_limit_exceeded", rpmLimitMessage(err, retrySeconds), retrySeconds
 	}
 	if errors.Is(err, service.ErrUserPlatformDailyQuotaExhausted) ||
 		errors.Is(err, service.ErrUserPlatformWeeklyQuotaExhausted) ||

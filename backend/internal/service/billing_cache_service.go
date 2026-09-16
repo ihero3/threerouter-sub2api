@@ -776,6 +776,21 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	return nil
 }
 
+// rpmLimitMetadata 给 RPM 超限错误附加限额上下文。
+//
+// 限额数值必须随 error 一起上抛：handler 侧（billingErrorDetails）只拿到一个 error，
+// 拿不到 group / user 对象，无法反推本次命中的是哪个维度、限额是多少。
+//
+// metadata 键：
+//   - rpm_limit：本次命中的限额（次/分钟）
+//   - rpm_scope：命中维度（group_override / group / user），供日志与文案措辞用
+func rpmLimitMetadata(limit int, scope string) map[string]string {
+	return map[string]string{
+		"rpm_limit": strconv.Itoa(limit),
+		"rpm_scope": scope,
+	}
+}
+
 // checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：
 //
 //  1. (用户, 分组) rpm_override       — 最细粒度：管理员为特定用户在特定分组设定的专属限额。
@@ -836,7 +851,7 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 				)
 				// fail-open
 			} else if count > group.RPMLimit {
-				return ErrGroupRPMExceeded
+				return ErrGroupRPMExceeded.WithMetadata(rpmLimitMetadata(group.RPMLimit, "group"))
 			}
 		}
 	}
