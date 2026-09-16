@@ -464,9 +464,36 @@ func NewMiniMaxImageAdapter() *MiniMaxImageAdapter {
 	return a
 }
 
+// normalizeMiniMaxImageModel 把带厂商前缀的别名收敛成 MiniMax 官方枚举值。
+//
+// MiniMax /v1/image_generation 的 model 是**枚举**，官方只接受 image-01 / image-01-live
+// （platform.minimaxi.com 文档：model 可选项 image-01、image-01-live）。而本仓为了与
+// 其它厂商统一命名，对外暴露的是 minimax-image-01 这类带前缀的名字。选号阶段若账号没配
+// model_mapping，UpstreamModel 就等于客户端传的 public model，原样发给上游会被判
+// 非法参数——表现为 HTTP 200 + base_resp.status_code != 0（或 400），图片永远出不来，
+// 也就永远不会有成功的用量记录。这里做归一，让"客户端写 minimax-image-01"也能出图。
+//
+// 只收敛"带 minimax/hailuo 字样"的别名，其余名字（含渠道私有命名、image-01-live）
+// 原样透传；需要指定任意其它名字时用账号 model_mapping 即可。
+func normalizeMiniMaxImageModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	switch m {
+	case "", "image-01", "image-01-live":
+		return m
+	}
+	if strings.Contains(m, "minimax") || strings.Contains(m, "hailuo") {
+		if strings.Contains(m, "live") {
+			return "image-01-live"
+		}
+		return "image-01"
+	}
+	return model
+}
+
 func buildMiniMaxImageCreateBody(req MediaCreateRequest) []byte {
+	model := normalizeMiniMaxImageModel(req.UpstreamModel)
 	body := map[string]any{
-		"model":  req.UpstreamModel,
+		"model":  model,
 		"prompt": req.Prompt,
 	}
 	if req.Resolution != "" {

@@ -92,6 +92,12 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
 	}
+	// DeepSeek 只实现 response_format={"type":"json_object"}，客户端发来的
+	// json_schema 结构化输出会被上游 400 拒绝（"This response_format type is
+	// unavailable now"）。此处降级并补足官方要求的 "json" 关键词。
+	if normalizedBody, normalized := NormalizeDeepSeekResponseFormat(account, upstreamModel, upstreamBody); normalized {
+		upstreamBody = normalizedBody
+	}
 
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)

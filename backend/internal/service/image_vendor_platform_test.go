@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 // TestDetectModelPlatformImageVendors 图片厂商模型必须能解析出承载平台。
 //
@@ -78,5 +81,31 @@ func TestMiniMaxImageAdapterSupportsMiniMaxImage01(t *testing.T) {
 	}
 	if adapter.Supports(PlatformDeepseek, "qwen-image-3.0-pro") {
 		t.Error("MiniMax 图片 adapter 不应抢走 qwen-image 模型")
+	}
+}
+
+// TestBuildMiniMaxImageCreateBodyNormalizesModel 发给上游的 model 必须是 MiniMax
+// 官方枚举值（image-01 / image-01-live）。客户端按本仓统一命名传 minimax-image-01 时，
+// 若原样转发会被上游判非法参数，图片永远出不来、用量记录也就永远是空的。
+func TestBuildMiniMaxImageCreateBodyNormalizesModel(t *testing.T) {
+	cases := map[string]string{
+		"minimax-image-01":      "image-01",
+		"MiniMax-Image-01":      "image-01",
+		"minimax-image":         "image-01",
+		"hailuo-image-01":       "image-01",
+		"image-01":              "image-01",
+		"image-01-live":         "image-01-live",
+		"minimax-image-01-live": "image-01-live",
+		"image-01-preview":      "image-01-preview", // 渠道私有命名原样透传
+	}
+	for in, want := range cases {
+		body := buildMiniMaxImageCreateBody(MediaCreateRequest{UpstreamModel: in, Prompt: "a cat"})
+		var got map[string]any
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("model %q 请求体非法 JSON: %v", in, err)
+		}
+		if got["model"] != want {
+			t.Errorf("model %q → 上游 model = %v, want %q", in, got["model"], want)
+		}
 	}
 }

@@ -109,6 +109,10 @@ const img = await client.images.generate({
 
 > 新增模型会持续补充，判定逻辑在 `service.DispatchModelCapability`。
 
+> **模型名会自动归一到厂商官方值**：客户端写 `minimax-image-01` 时，网关发给 MiniMax 的
+> `model` 会自动转成官方枚举 `image-01`（MiniMax `/v1/image_generation` 只接受
+> `image-01` / `image-01-live`）。因此**两种写法都可以**，计费与日志里记录的仍是客户端传的 `minimax-image-01`。
+
 ---
 
 ## 4. 生图
@@ -288,6 +292,7 @@ curl https://<站点>/v1/audio/speech \
 | HTTP | `type` | 含义 / 处理建议 |
 |---|---|---|
 | 400 | `invalid_request_error` | 参数不合法（缺 `model`、`size` 档位非法）。检查请求体 |
+| 400 | `invalid_request_error` | 消息为 `This response_format type is unavailable now`：上游不支持你发的 `response_format` 类型。DeepSeek 系已由网关自动降级为 `json_object`；若仍出现，说明该上游其它结构化类型也不支持，请改用 `json_object` |
 | 401 | `authentication_error` | API Key 无效 |
 | 403 | `permission_error` | 分组未开通该能力（如生图权限未开）。联系服务方开通 |
 | 404 | `not_found_error` | 端点在当前分组平台下不支持 |
@@ -296,6 +301,22 @@ curl https://<站点>/v1/audio/speech \
 | 503 | `capacity_error` | 暂无可用渠道（上游账号全部不可用），稍后重试 |
 | 502 | `api_error` | 消息含 `canceled before upstream responded`：**客户端提前断开**，把提交超时调到 300 秒以上。含 `timed out after` 则是上游确实没响应，可重试 |
 | 5xx | `api_error` / `upstream_error` | 上游故障，可重试；保留 `id` 便于排查 |
+
+### 结构化输出（`response_format`）
+
+各上游对 OpenAI 结构化输出的支持不一致，网关已按上游能力自动适配：
+
+| 上游模型 | `json_schema`（严格 schema） | `json_object`（合法 JSON） |
+|---|---|---|
+| DeepSeek（`deepseek-*`） | ❌ 上游会直接 400 `This response_format type is unavailable now`；**网关自动降级为 `json_object`**，并保证 prompt 内出现 "json" 关键词（缺失时自动补一条 system 提示，附带你发送的 schema 作为参考） | ✅ |
+| Kimi（`kimi-*`） | ✅ 原生支持 | ✅ |
+| OpenAI（`gpt-*` 等） | ✅ | ✅ |
+
+对客户端的要求：
+
+1. **仍然要自己校验返回值**。降级后上游只保证「输出是合法 JSON」，字段是否完全符合你的 schema 由模型尽力而为；业务侧请保留一次 `json.loads` + 字段校验。
+2. 如果字段必须严格一致，**优先把 schema 的关键字段说明也写进 prompt**（不要只靠 `response_format`），降级链路上这最稳。
+3. 想拿到明确的字段约束，请选用支持 `json_schema` 的模型（如 Kimi / OpenAI 系），而不是依赖降级。
 
 ### 429 处理（限流）
 
