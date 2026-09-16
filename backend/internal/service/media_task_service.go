@@ -159,13 +159,17 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		account, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
 		if selectErr != nil || account == nil {
+			// 整单失败（选号耗尽 / 上游全部失败）也要在使用记录里留一条 0 费用行，
+			// 否则用户与运营在「用量明细」里完全看不到这次调用。
 			if lastUpstreamErr != nil {
+				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
 				return nil, lastUpstreamErr
 			}
 			if selectErr == nil {
 				selectErr = fmt.Errorf("media_task_service: no available account for model %s", publicModel)
 			}
 			if errors.Is(selectErr, ErrNoAvailableAccounts) {
+				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
 				return nil, fmt.Errorf("media_task_service: no available account for model %s", publicModel)
 			}
 			return nil, fmt.Errorf("media_task_service: select account: %w", selectErr)
@@ -334,6 +338,8 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	if lastUpstreamErr == nil {
 		lastUpstreamErr = fmt.Errorf("media_task_service: upstream account switches exhausted")
 	}
+	// 轮换上限用尽：同样补 0 费用使用记录，保持「调用过就有一行」的口径。
+	s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
 	return nil, lastUpstreamErr
 }
 

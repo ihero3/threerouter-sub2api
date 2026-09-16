@@ -133,11 +133,14 @@ func settleMediaAudioTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps
 
 	cost, multiplier := calculateAudioTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.DurationSec, in.RequestedDurationSec)
 	if cost == nil {
+		// 同图片链路：算不出费用也必须留下可见的 0 费用行，
+		// 不能让一次成功的音频合成在用量记录里无痕消失。
 		logger.L().Warn("audio billing: cost calculation returned nil, refund reserved quota",
 			zap.String("local_id", in.LocalID),
 			zap.String("model", in.Model),
 		)
 		releaseMediaReservedQuota(deps.apiKeyService, ctx, in.APIKeyID, reservedCostOf(in.ReservedCost))
+		writeMediaAudioZeroCostUsageLog(ctx, deps, in, apiKey, now)
 		return 0
 	}
 

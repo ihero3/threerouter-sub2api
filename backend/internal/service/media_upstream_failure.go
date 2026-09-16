@@ -41,10 +41,20 @@ var mediaBillingFailureMarkers = []string{
 	"exceeded your current quota",
 	"billing",
 	"payment required",
+	// DashScope 免费额度用尽：HTTP 403 + {"code":"AllocationQuota.FreeTierOnly"}。
+	// 这是额度问题而非鉴权问题——按 auth 归类会把一个完全可用的账号冷却 10 分钟，
+	// 且错误面板会把「该充值/关开关」误导成「密钥失效」。
+	"free quota exhausted",
+	"quota exhausted",
+	"exceeded your free quota",
+	"free tier only",
+	"freetieronly",
+	"allocationquota",
 	"欠费",
 	"余额不足",
 	"额度不足",
 	"配额不足",
+	"免费额度",
 }
 
 var mediaContentPolicyMarkers = []string{

@@ -52,6 +52,21 @@ func TestClassifyMediaUpstreamFailure(t *testing.T) {
 			body:      "upstream unavailable",
 			wantClass: MediaFailureServer, wantFailover: true, wantCooldown: true, wantMinSeconds: 60,
 		},
+		{
+			// DashScope 免费额度用尽：HTTP 403 + AllocationQuota.FreeTierOnly。
+			// 按 auth 归类会把一个完全可用的账号冷却 10 分钟，且错误面板会误导成「密钥失效」。
+			name:      "dashscope free tier exhausted 403 is billing quota not auth",
+			status:    http.StatusForbidden,
+			body:      `{"code":"AllocationQuota.FreeTierOnly","message":"Free quota exhausted. To continue accessing the model on a paid basis, please add funds or disable the \"use free tier only\" mode in the management console.","request_id":"6ef517f6"}`,
+			wantClass: MediaFailureBillingQuota, wantFailover: true, wantCooldown: true, wantMinSeconds: 30 * 60,
+		},
+		{
+			// 没有额度文案的裸 403 仍按鉴权失败处理，避免把密钥失效当成额度问题。
+			name:      "plain 403 without quota marker stays auth",
+			status:    http.StatusForbidden,
+			body:      `{"error":{"message":"Forbidden"}}`,
+			wantClass: MediaFailureAuth, wantFailover: true, wantCooldown: true, wantMinSeconds: 10 * 60,
+		},
 	}
 
 	for _, tt := range tests {

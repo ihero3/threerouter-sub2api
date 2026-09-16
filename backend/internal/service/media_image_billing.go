@@ -127,11 +127,14 @@ func settleMediaImageTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps
 
 	cost, multiplier := calculateImageTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.Model, in.Resolution, in.ImageCount)
 	if cost == nil {
+		// 算不出费用不能让这次调用从「使用记录」里凭空消失：和其他降级分支口径一致，
+		// 退还预扣 + 写 0 费用日志，保证出图成功一定有行可对账。
 		logger.L().Warn("image billing: cost calculation returned nil, refund reserved quota",
 			zap.String("local_id", in.LocalID),
 			zap.String("model", in.Model),
 		)
 		releaseMediaReservedQuota(deps.apiKeyService, ctx, in.APIKeyID, reservedCostOf(in.ReservedCost))
+		writeMediaImageZeroCostUsageLog(ctx, deps, in, apiKey, now)
 		return 0
 	}
 
