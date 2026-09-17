@@ -230,6 +230,11 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		defer cancelPersist()
 
 		localID := generateMediaLocalID(kind)
+		// 明细元数据（入站/上游端点、UA、IP、起算时间、请求与真实输出尺寸）：
+		// 同步终态（创建即成功/失败）直接用；异步终态由结算器按 localID 回源缓存，
+		// 否则轮询时拿不到 gin 上下文与 adapter 响应，明细会缺一半。
+		usageMeta := newMediaUsageMeta(c, createResult.UpstreamEndpoint, req.Resolution, createResult.UpstreamSize)
+		storeMediaEndpointMeta(localID, usageMeta)
 		record := &MediaTaskRecord{
 			LocalID:        localID,
 			MediaKind:      kind,
@@ -277,6 +282,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
 			imgInput.Account = account
+			imgInput.RequestedSize = req.Resolution
 			settleMediaImageTaskFailure(persistCtx, s.billingDeps(), imgInput)
 		} else if createResult.Status == "failed" && kind == MediaKindAudio {
 			audioInput := mediaAudioBillingInputFromRecord(record)
@@ -324,12 +330,18 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		if kind == MediaKindImage && createResult.Status == "succeeded" {
 			imgInput := mediaImageBillingInputFromRecord(saved, settledImageCount(req, createResult))
 			imgInput.Account = account
+			// 请求尺寸与上游真实输出尺寸分开带：计费档位与 usage_logs 明细
+			// 由 resolveMediaImageBillingSize 统一推导，跨厂商口径一致。
+			imgInput.RequestedSize = req.Resolution
+			imgInput.OutputSize = createResult.UpstreamSize
+			imgInput.Meta = usageMeta
 			settleMediaImageTaskSuccess(persistCtx, s.billingDeps(), imgInput)
 		}
 		// 音频 adapter 目前均同步返回，创建成功即终态，同样立刻结算。
 		if kind == MediaKindAudio && createResult.Status == "succeeded" {
 			audioInput := mediaAudioBillingInputFromRecord(saved)
 			audioInput.Account = account
+			audioInput.Meta = usageMeta
 			settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 		}
 		return saved, nil

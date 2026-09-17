@@ -52,6 +52,9 @@ type videoTaskBillingInput struct {
 	// 避免一律按默认 8 秒计价。
 	RequestedDurationSec int
 	ReservedCost         *float64
+	// Meta 创建阶段采集的明细元数据（入站/上游端点、UA、IP、起始时间）。
+	// 视频几乎都是异步结算，创建时按 LocalID 存缓存，轮询终态取回。
+	Meta *mediaUsageMeta
 }
 
 // VideoTaskBillingRequestID 返回视频任务的稳定幂等键：
@@ -391,6 +394,7 @@ func buildVideoTaskUsageLog(in *videoTaskBillingInput, apiKey *APIKey, subscript
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
 	}
+	applyMediaUsageMeta(usageLog, loadMediaUsageMeta(in.LocalID, in.Meta))
 	return usageLog
 }
 

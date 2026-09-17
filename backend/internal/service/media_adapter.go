@@ -70,6 +70,9 @@ type MediaCreateResult struct {
 	UpstreamRaw        []byte              // 上游原始响应
 	InlineBytes        []byte              // 同步返回的原始字节（如音频二进制），与 InlineURL 二选一
 	ErrorMessage       string
+	// UpstreamEndpoint 是本次实际打到的上游端点路径（如 /v1/image_generation）。
+	// 只用于 usage_logs 明细展示（与文本链路的 upstream_endpoint 同口径），不参与路由。
+	UpstreamEndpoint string
 }
 
 // MediaTaskResult 是查询任务状态/结果的响应。

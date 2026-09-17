@@ -42,6 +42,8 @@ type mediaAudioBillingInput struct {
 	// RequestedDurationSec 用户在创建请求里指定的时长。上游不回传真实时长时用它兜底。
 	RequestedDurationSec int
 	ReservedCost         *float64
+	// Meta 创建阶段采集的明细元数据，语义同 mediaImageBillingInput.Meta。
+	Meta *mediaUsageMeta
 }
 
 // MediaAudioBillingRequestID 返回音频任务的稳定幂等键。
@@ -254,6 +256,7 @@ func buildMediaAudioUsageLog(in *mediaAudioBillingInput, apiKey *APIKey, subscri
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
 	}
+	applyMediaUsageMeta(usageLog, loadMediaUsageMeta(in.LocalID, in.Meta))
 	return usageLog
 }
 

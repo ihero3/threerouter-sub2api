@@ -144,7 +144,11 @@ func (a vendorVideoAdapter) Create(ctx context.Context, account *Account, req Vi
 			return nil, fmt.Errorf("%s video create request: %w", a.name, err)
 		}
 	}
-	return a.parseCreate(respBody, statusCode)
+	result, parseErr := a.parseCreate(respBody, statusCode)
+	if result != nil && result.UpstreamEndpoint == "" {
+		result.UpstreamEndpoint = upstreamEndpointPath(url)
+	}
+	return result, parseErr
 }
 
 // Cancel 通过 DELETE 到任务查询端点尝试取消上游任务（很多厂商支持删除/取消）。

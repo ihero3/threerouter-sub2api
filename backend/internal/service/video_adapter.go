@@ -125,6 +125,9 @@ type VideoCreateResult struct {
 	UpstreamStatusCode int                 // 上游创建接口 HTTP 状态码，用于 failover 判定
 	UpstreamRaw        []byte              // 上游原始响应，便于排障和后续字段演进
 	ErrorMessage       string
+	// UpstreamEndpoint 是本次实际打到的上游端点路径（如 /v1/videos/generations）。
+	// 仅用于 usage_logs 明细展示（与文本链路的 upstream_endpoint 同口径），不参与路由。
+	UpstreamEndpoint string
 }
 
 // VideoTaskResult 是查询任务状态/结果的响应。
@@ -164,7 +167,7 @@ func NewOpenAIVideoAdapter() *OpenAIVideoAdapter {
 }
 
 // Create 向上游提交视频生成任务。
-func (a *OpenAIVideoAdapter) Create(ctx context.Context, account *Account, req VideoCreateRequest) (*VideoCreateResult, error) {
+func (a *OpenAIVideoAdapter) Create(ctx context.Context, account *Account, req VideoCreateRequest) (result *VideoCreateResult, err error) {
 	baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
 	if baseURL == "" {
 		return nil, fmt.Errorf("video_adapter: account %d has no base_url", account.ID)
@@ -177,6 +180,13 @@ func (a *OpenAIVideoAdapter) Create(ctx context.Context, account *Account, req V
 	// 按模型 builder 构造请求体（不同模型字段契约不同）
 	body := buildVideoCreateBody(req)
 	url := baseURL + "/videos/generations"
+	// 明细用：把本次实际打到的上游端点回填到结果里（含失败分支）。
+	endpoint := upstreamEndpointPath(url)
+	defer func() {
+		if result != nil && result.UpstreamEndpoint == "" {
+			result.UpstreamEndpoint = endpoint
+		}
+	}()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -222,7 +232,7 @@ func (a *OpenAIVideoAdapter) Create(ctx context.Context, account *Account, req V
 	}
 	status := normalizeVideoTaskStatus(upstreamResp.Status)
 
-	result := &VideoCreateResult{
+	result = &VideoCreateResult{
 		TaskID:             taskID,
 		Status:             status,
 		UpstreamStatusCode: resp.StatusCode,

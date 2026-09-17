@@ -129,7 +129,12 @@ func (a mediaVendorImageAdapter) Create(ctx context.Context, account *Account, r
 	if err != nil {
 		return nil, fmt.Errorf("%s image create request: %w", a.name, err)
 	}
-	return a.parseCreate(respBody, statusCode)
+	result, err := a.parseCreate(respBody, statusCode)
+	if result != nil {
+		// 记录上游端点路径供 usage_logs 明细展示（与文本链路 upstream_endpoint 同口径）。
+		result.UpstreamEndpoint = upstreamEndpointPath(url)
+	}
+	return result, err
 }
 
 // GetResult 图片生成一般同步返回 URL；若上游返回 task_id（异步任务）则走查询。

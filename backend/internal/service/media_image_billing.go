@@ -37,8 +37,68 @@ type mediaImageBillingInput struct {
 	Model         string
 	UpstreamModel string
 	Resolution    string
+	// RequestedSize 是客户端请求的原始尺寸（"1024x1024" / "16:9" 等）。
+	// OutputSize 是上游回传的真实输出尺寸（千问有 usage.output_width/height，
+	// MiniMax 不回传则为空）。两者分开带，是为了让不同厂商的计费档位与
+	// usage_logs 明细口径完全一致（见 resolveMediaImageBillingSize）。
+	RequestedSize string
+	OutputSize    string
 	ImageCount    int
 	ReservedCost  *float64
+	// Meta 是创建阶段采集的明细元数据（入站/上游端点、UA、IP、起算时间与尺寸）。
+	// 同步结算时直接带下来；异步轮询结算为 nil，由 hydrateMediaImageBillingMeta
+	// 按 LocalID 回源缓存，保证两条路径字段一致。
+	Meta *mediaUsageMeta
+}
+
+// resolveMediaImageBillingSize 统一图片计费档位。
+//
+// 不同厂商 adapter 的响应差异很大：千问回传真实输出像素、MiniMax 什么都不回传、
+// 客户端还可能只写 "16:9"。若直接用原始值当档位，同一张图在两个模型上会落到
+// 不同档、明细里显示的字符串也不一样。这里复用 OpenAI 原生图片链路同一个
+// ResolveImageBillingSize，保证「计费档位 + 明细字段」跨厂商一致：
+//   - 有真实输出尺寸 → 按输出分档（source=output）
+//   - 否则按请求尺寸（含 16:9 折算）分档（source=input）
+//   - 都没有 → 2K 默认档（source=default）
+func resolveMediaImageBillingSize(in *mediaImageBillingInput) ImageBillingSizeResolution {
+	if in == nil {
+		return ResolveImageBillingSize("", nil)
+	}
+	hydrateMediaImageBillingMeta(in)
+	input := strings.TrimSpace(in.RequestedSize)
+	if input == "" {
+		// 异步路径拿不到创建时的请求值，退回任务记录里存的尺寸。
+		input = strings.TrimSpace(in.Resolution)
+	}
+	var outputs []string
+	if out := strings.TrimSpace(in.OutputSize); out != "" {
+		outputs = []string{out}
+	}
+	return ResolveImageBillingSize(input, outputs)
+}
+
+// hydrateMediaImageBillingMeta 回填创建阶段暂存的明细元数据与尺寸。
+//
+// 异步出图在轮询（refreshTaskStatus）时才结算，此时 adapter 的即时响应已不可得：
+// RequestedSize / OutputSize / 端点信息都要从创建阶段的缓存回源，否则同一张图
+// 走同步与走异步会在 image_size_source 上分叉（output vs input）。幂等 —— Meta
+// 非空时不做任何事，因此创建即结算的路径调用它无副作用。
+func hydrateMediaImageBillingMeta(in *mediaImageBillingInput) {
+	if in == nil {
+		return
+	}
+	if in.Meta == nil {
+		in.Meta = takeMediaEndpointMeta(in.LocalID)
+	}
+	if in.Meta == nil {
+		return
+	}
+	if strings.TrimSpace(in.RequestedSize) == "" {
+		in.RequestedSize = in.Meta.RequestedSize
+	}
+	if strings.TrimSpace(in.OutputSize) == "" {
+		in.OutputSize = in.Meta.OutputSize
+	}
 }
 
 // MediaImageBillingRequestID 返回图片任务的稳定幂等键：
@@ -84,15 +144,6 @@ func calculateImageTaskCostBreakdown(
 	return cost, multiplier
 }
 
-// mediaImageBillingResolution 计费/日志用的图片尺寸档，缺失时落到 2K 默认档。
-func mediaImageBillingResolution(resolution string) string {
-	size := strings.TrimSpace(resolution)
-	if size == "" {
-		return ImageBillingSize2K
-	}
-	return size
-}
-
 // settleMediaImageTaskSuccess 图片任务成功终态结算：
 //  1. 算实际费用 → usage_logs（image 计费模式）→ applyUsageBilling 原子扣费
 //  2. 扣费成功后退还创建时的预扣（Key 配额净效果 = ActualCost）
@@ -125,7 +176,9 @@ func settleMediaImageTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps
 		return 0
 	}
 
-	cost, multiplier := calculateImageTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.Model, in.Resolution, in.ImageCount)
+	// 用统一后的计费档位算价，保证「明细里显示的档位」与「实际扣费的档位」是同一个值。
+	billingSize := resolveMediaImageBillingSize(in).BillingSize
+	cost, multiplier := calculateImageTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.Model, billingSize, in.ImageCount)
 	if cost == nil {
 		// 算不出费用不能让这次调用从「使用记录」里凭空消失：和其他降级分支口径一致，
 		// 退还预扣 + 写 0 费用日志，保证出图成功一定有行可对账。
@@ -222,23 +275,32 @@ func writeMediaImageZeroCostUsageLog(ctx context.Context, deps *videoTaskBilling
 }
 
 // buildMediaImageUsageLog 构造图片任务的 usage_logs 行（字段对齐同步网关图片链路）。
+//
+// 尺寸字段与 OpenAI 原生图片链路同口径：image_size 存计费档位（1K/2K/4K），
+// image_input_size / image_output_size / image_size_source / image_size_breakdown
+// 存推导依据。这样千问与 MiniMax 的明细在同一张表里长得一样。
 func buildMediaImageUsageLog(in *mediaImageBillingInput, apiKey *APIKey, subscription *UserSubscription, cost *CostBreakdown, multiplier float64, billingType int8, now time.Time) *UsageLog {
-	size := mediaImageBillingResolution(in.Resolution)
+	resolved := resolveMediaImageBillingSize(in)
+	size := resolved.BillingSize
 	imageCount := clampImageCount(in.ImageCount)
 	usageLog := &UsageLog{
-		UserID:         in.UserID,
-		APIKeyID:       in.APIKeyID,
-		AccountID:      in.AccountID,
-		RequestID:      MediaImageBillingRequestID(in.LocalID),
-		Model:          in.Model,
-		RequestedModel: in.Model,
-		UpstreamModel:  optionalTrimmedStringPtr(in.UpstreamModel),
-		ImageCount:     imageCount,
-		ImageSize:      &size,
-		RateMultiplier: multiplier,
-		BillingType:    billingType,
-		RequestType:    RequestTypeSync,
-		CreatedAt:      now,
+		UserID:             in.UserID,
+		APIKeyID:           in.APIKeyID,
+		AccountID:          in.AccountID,
+		RequestID:          MediaImageBillingRequestID(in.LocalID),
+		Model:              in.Model,
+		RequestedModel:     in.Model,
+		UpstreamModel:      optionalTrimmedStringPtr(in.UpstreamModel),
+		ImageCount:         imageCount,
+		ImageSize:          &size,
+		ImageInputSize:     optionalTrimmedStringPtr(resolved.InputSize),
+		ImageOutputSize:    optionalTrimmedStringPtr(resolved.OutputSize),
+		ImageSizeSource:    optionalTrimmedStringPtr(resolved.Source),
+		ImageSizeBreakdown: resolved.Breakdown,
+		RateMultiplier:     multiplier,
+		BillingType:        billingType,
+		RequestType:        RequestTypeSync,
+		CreatedAt:          now,
 	}
 	if in.Account != nil {
 		m := in.Account.BillingRateMultiplier()
@@ -258,6 +320,7 @@ func buildMediaImageUsageLog(in *mediaImageBillingInput, apiKey *APIKey, subscri
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
 	}
+	applyMediaUsageMeta(usageLog, loadMediaUsageMeta(in.LocalID, in.Meta))
 	return usageLog
 }
 

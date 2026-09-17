@@ -50,6 +50,7 @@ func (a *VideoAsMediaAdapter) Create(ctx context.Context, account *Account, req 
 		UpstreamStatusCode: vres.UpstreamStatusCode,
 		UpstreamRaw:        vres.UpstreamRaw,
 		ErrorMessage:       vres.ErrorMessage,
+		UpstreamEndpoint:   vres.UpstreamEndpoint,
 	}, nil
 }
 
