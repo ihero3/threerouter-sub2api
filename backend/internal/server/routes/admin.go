@@ -139,20 +139,8 @@ func RegisterAdminRoutes(
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 
-		// 视频任务管理
-		registerVideoTaskRoutes(admin, h)
-
 		// 媒体任务管理（图片 / 视频 / 音频）
 		registerMediaTaskRoutes(admin, h)
-	}
-}
-
-func registerVideoTaskRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	vt := admin.Group("/video-tasks")
-	{
-		vt.GET("", h.Admin.VideoTask.List)
-		vt.GET("/:id", h.Admin.VideoTask.Get)
-		vt.POST("/:id/cancel", h.Admin.VideoTask.Cancel)
 	}
 }
 

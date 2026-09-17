@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +46,7 @@ type MediaTaskRepo interface {
 	Create(ctx context.Context, task *MediaTaskRecord) (*MediaTaskRecord, error)
 	GetByLocalID(ctx context.Context, localID string) (*MediaTaskRecord, error)
 	GetByID(ctx context.Context, id int64) (*MediaTaskRecord, error)
-	UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error
+	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, mediaURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*MediaTaskRecord, int, error)
@@ -70,15 +71,15 @@ type MediaTaskRecord struct {
 	MediaURL       string
 	// MediaURLs 是 n>1 时的全部产物 URL，随 media_tasks.media_urls（JSONB）落库：
 	// 创建同步响应与轮询 GET /v1/media/:id 都能返回完整列表。
-	MediaURLs      []string
-	ThumbnailURL   string
-	RequestBody    map[string]any
-	ErrorMessage   string
-	CostUSD        float64
-	ReservedCost   *float64
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	FinishedAt     *time.Time
+	MediaURLs    []string
+	ThumbnailURL string
+	RequestBody  map[string]any
+	ErrorMessage string
+	CostUSD      float64
+	ReservedCost *float64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	FinishedAt   *time.Time
 }
 
 // MediaTaskService 媒体任务统一业务服务。
@@ -255,6 +256,12 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		if upstreamSize := strings.TrimSpace(createResult.UpstreamSize); upstreamSize != "" {
 			record.Resolution = upstreamSize
 		}
+		// 状态兜底：adapter 万一没回 status，空串会让任务永远卡在非终态——
+		// UpdateStatusIfProcessing 只认 "processing"，超时与取消都改不动它，
+		// 客户端只能一直轮询到一个永不结束的任务。
+		if strings.TrimSpace(record.Status) == "" {
+			record.Status = "processing"
+		}
 		if createResult.InlineURL != "" {
 			record.MediaURL = createResult.InlineURL
 			if stored, ok := s.maybeStoreMedia(persistCtx, record, createResult.InlineURL); ok {
@@ -265,12 +272,15 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		// 轮询接口从库读取后同样返回完整 urls。
 		if len(createResult.InlineURLs) > 1 {
 			urls := make([]string, 0, len(createResult.InlineURLs))
-			for _, u := range createResult.InlineURLs {
+			for i, u := range createResult.InlineURLs {
 				if u == createResult.InlineURL {
 					urls = append(urls, record.MediaURL)
 					continue
 				}
-				if stored, ok := s.maybeStoreMedia(persistCtx, record, u); ok {
+				// 多图时按序号加 salt：同一任务的每张图落在不同存储 key，
+				// 否则 mediaStorageKey 只由 localID 决定，后写会覆盖先写，
+				// n 张图最后全指向同一张（最后一张）。
+				if stored, ok := s.maybeStoreMediaIndexed(persistCtx, record, u, i); ok {
 					urls = append(urls, stored)
 					continue
 				}
@@ -381,8 +391,12 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 			zap.String("local_id", record.LocalID),
 			zap.Time("created_at", record.CreatedAt),
 		)
-		if err := s.mediaTaskRepo.UpdateStatus(ctx, record.ID, "failed", "upstream task timed out"); err != nil {
+		claimed, err := s.mediaTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, "failed", "upstream task timed out")
+		if err != nil {
 			return fmt.Errorf("media_task_service: timeout update status: %w", err)
+		}
+		if !claimed {
+			return nil
 		}
 		if record.MediaKind == MediaKindVideo {
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
@@ -491,8 +505,12 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 			}
 		}
 	case "failed", "cancelled":
-		if err := s.mediaTaskRepo.UpdateStatus(ctx, record.ID, result.Status, result.ErrorMessage); err != nil {
+		claimed, err := s.mediaTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, result.Status, result.ErrorMessage)
+		if err != nil {
 			return fmt.Errorf("media_task_service: update status: %w", err)
+		}
+		if !claimed {
+			return nil
 		}
 		if record.MediaKind == MediaKindVideo {
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
@@ -537,6 +555,12 @@ func (s *MediaTaskService) ListAdmin(ctx context.Context, userID int64, status, 
 // maybeStoreMedia 在对象存储可用时把上游媒体 URL 下载并转存为稳定 URL。
 // 返回 (稳定URL, true) 表示转存成功；否则返回 (原URL, false)。
 func (s *MediaTaskService) maybeStoreMedia(ctx context.Context, record *MediaTaskRecord, rawURL string) (string, bool) {
+	return s.maybeStoreMediaIndexed(ctx, record, rawURL, -1)
+}
+
+// maybeStoreMediaIndexed 与 maybeStoreMedia 相同，但可带序号 salt：
+// idx >= 0 时会把序号计入存储 key，用于同一任务的多张产物落到不同 key。
+func (s *MediaTaskService) maybeStoreMediaIndexed(ctx context.Context, record *MediaTaskRecord, rawURL string, idx int) (string, bool) {
 	if s == nil || s.imageStorageSetting == nil {
 		return rawURL, false
 	}
@@ -557,7 +581,12 @@ func (s *MediaTaskService) maybeStoreMedia(ctx context.Context, record *MediaTas
 		)
 		return rawURL, false
 	}
-	key := mediaStorageKey(record, contentType)
+	var key string
+	if idx >= 0 {
+		key = mediaStorageKey(record, contentType, strconv.Itoa(idx))
+	} else {
+		key = mediaStorageKey(record, contentType)
+	}
 	storedURL, err := storage.Save(ctx, key, contentType, data)
 	if err != nil {
 		s.logger.Warn("media_task_service: storage save failed, keep original URL",
@@ -570,11 +599,49 @@ func (s *MediaTaskService) maybeStoreMedia(ctx context.Context, record *MediaTas
 	return storedURL, true
 }
 
-// mediaStorageKey 生成对象存储 key，保证同一任务多次轮询不重复覆盖。
-func mediaStorageKey(record *MediaTaskRecord, contentType string) string {
+// MediaStorageEnabled 报告对象存储是否已配置可用。
+// /v1/images/edits 的上传图需要它才能转成稳定 URL；没有存储时只能内联 base64，
+// 因此必须让调用方提前知道能不能走"存起来再引用"这条路。
+func (s *MediaTaskService) MediaStorageEnabled() bool {
+	if s == nil || s.imageStorageSetting == nil {
+		return false
+	}
+	storage, ok := s.imageStorageSetting.Storage()
+	return ok && storage != nil
+}
+
+// StoreMediaBytes 把任意字节写入对象存储并返回可访问 URL。
+// 未配置存储或写入失败时返回 ("", false)，由调用方决定是否回退到内联 base64。
+func (s *MediaTaskService) StoreMediaBytes(ctx context.Context, kind MediaKind, contentType string, data []byte) (string, bool) {
+	if s == nil || s.imageStorageSetting == nil {
+		return "", false
+	}
+	storage, ok := s.imageStorageSetting.Storage()
+	if !ok || storage == nil || len(data) == 0 {
+		return "", false
+	}
+	record := &MediaTaskRecord{LocalID: generateMediaLocalID(kind), MediaKind: kind}
+	storedURL, err := storage.Save(ctx, mediaStorageKey(record, contentType), contentType, data)
+	if err != nil {
+		s.logger.Warn("media_task_service: store uploaded bytes failed",
+			zap.String("kind", string(kind)),
+			zap.Error(err),
+		)
+		return "", false
+	}
+	return storedURL, true
+}
+
+// mediaStorageKey 生成对象存储 key。salt 用于区分同一任务的多张产物：
+// 不传 salt（空串）时 key 只由 localID 决定，重复轮询同 URL 不会重复覆盖；
+// 传 salt（如多图序号）时同一任务的不同产物落在不同 key，避免后写覆盖先写。
+func mediaStorageKey(record *MediaTaskRecord, contentType string, salt ...string) string {
 	raw := record.LocalID
 	if record.UpstreamTaskID != "" {
 		raw = record.LocalID + "-" + record.UpstreamTaskID
+	}
+	if len(salt) > 0 && salt[0] != "" {
+		raw = raw + "-" + salt[0]
 	}
 	h := sha1.Sum([]byte(raw))
 	sum := hex.EncodeToString(h[:6])
@@ -611,7 +678,26 @@ func mediaExtensionForContentType(contentType string) string {
 	}
 }
 
-func downloadMediaBytes(ctx context.Context, rawURL string) ([]byte, string, error) {
+// DownloadMediaBytes 下载媒体产物字节（供 b64_json 转码等场景复用）。
+// 返回 (字节, content-type, error)。只接受 http/https，限制 200MB。
+func DownloadMediaBytes(ctx context.Context, rawURL string) ([]byte, string, error) {
+	return downloadMediaBytes(ctx, rawURL)
+}
+
+// DownloadMediaBytesLimit 与 DownloadMediaBytes 相同，但把体积上限收紧到
+// maxBytes：先用 Content-Length 预判，再在读取时硬性截断并校验。
+func DownloadMediaBytesLimit(ctx context.Context, rawURL string, maxBytes int64) ([]byte, string, error) {
+	if maxBytes <= 0 {
+		return nil, "", fmt.Errorf("download media: invalid size limit")
+	}
+	return downloadMediaBytes(ctx, rawURL, maxBytes)
+}
+
+func downloadMediaBytes(ctx context.Context, rawURL string, maxBytes ...int64) ([]byte, string, error) {
+	limit := int64(200 << 20)
+	if len(maxBytes) > 0 && maxBytes[0] > 0 {
+		limit = maxBytes[0]
+	}
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return nil, "", fmt.Errorf("unsupported url scheme")
 	}
@@ -629,9 +715,18 @@ func downloadMediaBytes(ctx context.Context, rawURL string) ([]byte, string, err
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, "", fmt.Errorf("download media: unexpected status %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 200<<20)) // 200MB 上限
+	// 先按声明长度拦一次，能省掉一次注定要失败的大流量下载。
+	if resp.ContentLength > limit {
+		return nil, "", fmt.Errorf("download media: content length %d exceeds limit %d", resp.ContentLength, limit)
+	}
+	// 多读 1 字节：读满 limit 并不代表刚好等于 limit，只有多读一字节才能区分
+	// "正好到上限" 与 "超过上限"，否则超限文件会被静默截断。
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, "", err
+	}
+	if int64(len(data)) > limit {
+		return nil, "", fmt.Errorf("download media: content exceeds limit %d", limit)
 	}
 	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
 	if contentType == "" {
@@ -688,8 +783,12 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 			}
 		}
 	}
-	if err := s.mediaTaskRepo.UpdateStatus(ctx, id, "cancelled", "cancelled by admin"); err != nil {
+	claimed, err := s.mediaTaskRepo.UpdateStatusIfProcessing(ctx, id, "cancelled", "cancelled by admin")
+	if err != nil {
 		return fmt.Errorf("media_task_service: cancel task: %w", err)
+	}
+	if !claimed {
+		return nil
 	}
 	if record.MediaKind == MediaKindVideo {
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
@@ -962,7 +1061,7 @@ func validateVideoResolution(model, resolution string) error {
 }
 
 // mediaHasImageReference 判断官方 media 素材列表里是否包含图片类素材
-//（首帧 / 尾帧 / 参考图），用于识别图生视频请求。
+// （首帧 / 尾帧 / 参考图），用于识别图生视频请求。
 func mediaHasImageReference(media []VideoMediaInput) bool {
 	for _, m := range media {
 		switch m.Type {
@@ -1048,13 +1147,13 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 			persistCtx, cancelPersist := context.WithTimeout(upstreamBase, mediaPersistTimeout)
 			defer cancelPersist()
 			audioInput := &mediaAudioBillingInput{
-				LocalID:              generateMediaLocalID(MediaKindAudio),
-				UserID:               userID,
-				APIKeyID:             apiKeyID,
-				AccountID:            account.ID,
-				Account:              account,
-				Model:                publicModel,
-				UpstreamModel:        upstreamModel,
+				LocalID:       generateMediaLocalID(MediaKindAudio),
+				UserID:        userID,
+				APIKeyID:      apiKeyID,
+				AccountID:     account.ID,
+				Account:       account,
+				Model:         publicModel,
+				UpstreamModel: upstreamModel,
 				// MediaCreateResult 不回传时长，只能取请求时长；
 				// 缺失时由音频算价内部兜底（与异步音频任务同默认时长口径）。
 				DurationSec:          req.DurationSec,

@@ -337,7 +337,11 @@ func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
+// TestGatewayRoutesNonGrokVideosEnterMediaPipeline 验证视频生成端点不再被平台门
+// 一票否决：非 grok 平台现在统一走媒体链路（MediaTaskService），能不能做由账号池
+// 决定。测试未注入完整鉴权上下文（无 auth subject），所以走到媒体链路第一步鉴权
+// 就会得到 401，而不是旧的 404 "platform not supported"。
+func TestGatewayRoutesNonGrokVideosEnterMediaPipeline(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
 	for _, tc := range []struct {
@@ -349,35 +353,32 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		{http.MethodPost, "/v1/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
 		{http.MethodPost, "/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
 		{http.MethodPost, "/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/v1/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/v1/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodGet, "/v1/videos/request-123", ""},
-		{http.MethodGet, "/videos/request-123", ""},
-		{http.MethodGet, "/v1/videos/generations/request-123", ""},
-		{http.MethodGet, "/videos/generations/request-123", ""},
-		{http.MethodGet, "/v1/videos/edits/request-123", ""},
-		{http.MethodGet, "/videos/edits/request-123", ""},
-		{http.MethodGet, "/v1/videos/extensions/request-123", ""},
-		{http.MethodGet, "/videos/extensions/request-123", ""},
-		{http.MethodGet, "/v1/videos/request-123/content", ""},
-		{http.MethodGet, "/videos/request-123/content", ""},
-		{http.MethodGet, "/v1/videos/generations/request-123/content", ""},
-		{http.MethodGet, "/videos/generations/request-123/content", ""},
-		{http.MethodGet, "/v1/videos/edits/request-123/content", ""},
-		{http.MethodGet, "/videos/edits/request-123/content", ""},
-		{http.MethodGet, "/v1/videos/extensions/request-123/content", ""},
-		{http.MethodGet, "/videos/extensions/request-123/content", ""},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
-		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
+		// 关键断言：不再是 404 "not supported"，而是进入了媒体链路（鉴权 401）。
+		require.NotEqual(t, http.StatusNotFound, w.Code, "method=%s path=%s 不应再被平台门 404", tc.method, tc.path)
+		require.NotContains(t, w.Body.String(), "not supported", "method=%s path=%s", tc.method, tc.path)
 	}
+}
+
+// TestGatewayRoutesVideoImageModelRejected 验证视频端点对图片模型给出明确 400
+// 提示，而不是建出 img_ 前缀任务导致客户端永远查不到状态。
+func TestGatewayRoutesVideoImageModelRejected(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations",
+		strings.NewReader(`{"model":"qwen-image-3.0","prompt":"a cat"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "image model")
+	require.Contains(t, w.Body.String(), "/v1/images/generations")
 }
 
 func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {

@@ -58,12 +58,12 @@ type MediaCreateRequest struct {
 
 // MediaCreateResult 是创建任务后上游的即时响应。
 type MediaCreateResult struct {
-	TaskID             string              // 上游异步任务 ID
-	InlineURL          string              // 同步返回的产物 URL
-	InlineURLs         []string            // 同步返回的多张产物 URL（n>1 时按张计费与返回）
+	TaskID     string   // 上游异步任务 ID
+	InlineURL  string   // 同步返回的产物 URL
+	InlineURLs []string // 同步返回的多张产物 URL（n>1 时按张计费与返回）
 	// UpstreamSize 是上游回传的真实输出尺寸（形如 "1024x1024"）。
 	// 不传 size 时模型会自行推荐分辨率，按请求值计费会错档，故优先用真实尺寸。
-	UpstreamSize string
+	UpstreamSize       string
 	Status             string              // processing / succeeded / failed
 	Mode               MediaCompletionMode // 规范化完成模式
 	UpstreamStatusCode int                 // 上游 HTTP 状态码，用于 failover 判定
@@ -179,7 +179,8 @@ func (r *MediaAdapterRegistry) HasExplicitAdapter(kind MediaKind, platform, mode
 //   - 明确的 video 模型（seedance/minimax-h3/minimax-video/wan*/doubao-seedance/grok-imagine-video）→ video
 //   - 明确的 image 模型（grok-imagine-image*/gpt-image/dall-e/wan-image/seedance-image 等）→ image
 //   - 明确的 audio 模型（tts/stt/whisper/mimax-tts/volc-tts 等）→ audio
-//   - 未识别时回退到请求体 hint（type/media_kind）或默认 video。
+//   - 模型名存在时以模型名为准，避免请求体 hint 绕过模型模态校验；
+//   - 模型名缺失时才回退到请求体 hint 或默认 video。
 func MediaKindFromModel(model string, body map[string]any) MediaKind {
 	kindFromBody := func() MediaKind {
 		if body == nil {
@@ -200,12 +201,11 @@ func MediaKindFromModel(model string, body map[string]any) MediaKind {
 		return ""
 	}
 
-	if b := kindFromBody(); b != "" {
-		return b
-	}
-
 	m := strings.ToLower(strings.TrimSpace(model))
 	if m == "" {
+		if b := kindFromBody(); b != "" {
+			return b
+		}
 		return MediaKindVideo
 	}
 	// 图片：优先识别（seedream / t2i / qwen-image / image-01 等，避免被 video 前辍误判）
@@ -216,6 +216,7 @@ func MediaKindFromModel(model string, body map[string]any) MediaKind {
 		strings.Contains(m, "dall-e") ||
 		strings.Contains(m, "image-01") ||
 		strings.Contains(m, "minimax-image") ||
+		strings.Contains(m, "wanx") ||
 		strings.Contains(m, "t2i") ||
 		strings.Contains(m, "-image") {
 		return MediaKindImage
@@ -260,7 +261,9 @@ func IsKnownImageVendorModel(model string) bool {
 		strings.Contains(m, "gpt-image") ||
 		strings.Contains(m, "dall-e") ||
 		strings.Contains(m, "qwen-image") ||
+		strings.Contains(m, "minimax-image") ||
 		strings.Contains(m, "image-01") ||
+		strings.Contains(m, "wanx") ||
 		strings.Contains(m, "t2i") ||
 		strings.Contains(m, "-image")
 }

@@ -51,7 +51,6 @@ func ProvideAdminHandlers(
 	moderationRuleHandler *admin.ModerationRuleHandler,
 	ticketHandler *admin.TicketHandler,
 	auditLogHandler *admin.AuditLogHandler,
-	videoTaskAdminHandler *admin.VideoTaskAdminHandler,
 	mediaTaskAdminHandler *admin.MediaTaskAdminHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
@@ -99,7 +98,8 @@ func ProvideAdminHandlers(
 		ModerationRule:         moderationRuleHandler,
 		Ticket:                 ticketHandler,
 		AuditLog:               auditLogHandler,
-		VideoTask:              videoTaskAdminHandler,
+		// MediaTask 曾被漏掉赋值，/admin/media-tasks 会因 nil handler 直接 panic。
+		MediaTask: mediaTaskAdminHandler,
 	}
 }
 
@@ -330,7 +330,6 @@ var ProviderSet = wire.NewSet(
 	admin.NewModerationRuleHandler,
 	admin.NewTicketHandler,
 	admin.NewAuditLogHandler,
-	admin.NewVideoTaskAdminHandler,
 	admin.NewMediaTaskAdminHandler,
 
 	// AdminHandlers and Handlers constructors

@@ -36,6 +36,9 @@ func CanonicalVideoModelPriceFamily(model string) string {
 		strings.HasPrefix(m, "minimax-h3"),
 		(strings.HasPrefix(m, "video-") && strings.Contains(m, "hailuo")):
 		return VideoPriceFamilyMiniMaxVideo
+	// 这里的 wanx 是**故意保留**的：wanx 已归为图片模态（见 media_adapter.go），
+	// 新请求不会再进视频链路；但历史上曾被误判为视频的任务仍躺在 video_tasks 里，
+	// 删掉这个分支会让它们的计费落到 default 按原模型名查价卡，查不到就计成 0。
 	case strings.HasPrefix(m, "wan") &&
 		(strings.Contains(m, "video") || strings.Contains(m, "wanx") ||
 			strings.Contains(m, "t2v") || strings.HasPrefix(m, "wan2") || strings.HasPrefix(m, "wan3")):

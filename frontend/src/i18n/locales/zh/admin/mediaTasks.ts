@@ -1,19 +1,19 @@
 export default {
-  videoTasks: {
-    title: '视频任务',
-    description: '管理视频生成任务（多模型视频源：MiniMax-H3 / Seedance / Wan3.0-Video 等）',
+  mediaTasks: {
+    title: '媒体任务',
+    description: '统一管理图片 / 视频 / 音频生成任务（统一媒体链路 media_tasks，新的生图与生视频任务都在这里）',
     userIdPlaceholder: '输入用户 ID 查询',
     emptyStateTitle: '请输入用户 ID',
-    userIdRequired: '请在上方输入框中输入用户 ID，然后开始查询该用户的视频任务。',
-    noData: '暂无视频任务',
-    tryOtherFilters: '当前筛选条件下未找到视频任务，请调整筛选条件。',
-    loadFailed: '加载视频任务失败',
+    userIdRequired: '请在上方输入框中输入用户 ID，然后开始查询该用户的媒体任务。',
+    noData: '暂无媒体任务',
+    tryOtherFilters: '当前筛选条件下未找到媒体任务，请调整筛选条件。',
+    loadFailed: '加载媒体任务失败',
     cancelSuccess: '任务已取消',
     cancelFailed: '取消任务失败',
     cancel: '取消',
     cancelConfirmTitle: '确认取消任务',
     cancelConfirmMessage: '确定要取消任务 #{id} 吗？取消后任务状态将被标记为 cancelled。',
-    openVideo: '打开',
+    openMedia: '打开',
     finishedAt: '完成',
     status: {
       processing: '处理中',
@@ -28,7 +28,7 @@ export default {
       user: '用户',
       channel: '渠道',
       resolution: '规格',
-      video: '视频',
+      media: '产物',
       cost: '费用',
       error: '错误信息',
       createdAt: '创建时间'

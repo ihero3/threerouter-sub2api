@@ -36,10 +36,10 @@ const confirmDialog = reactive({ visible: false, loading: false, taskId: 0 })
 
 const statusFilterOptions = computed(() => [
   { value: '', label: t('common.all') },
-  { value: 'processing', label: t('admin.videoTasks.status.processing') },
-  { value: 'succeeded', label: t('admin.videoTasks.status.succeeded') },
-  { value: 'failed', label: t('admin.videoTasks.status.failed') },
-  { value: 'cancelled', label: t('admin.videoTasks.status.cancelled') }
+  { value: 'processing', label: t('admin.mediaTasks.status.processing') },
+  { value: 'succeeded', label: t('admin.mediaTasks.status.succeeded') },
+  { value: 'failed', label: t('admin.mediaTasks.status.failed') },
+  { value: 'cancelled', label: t('admin.mediaTasks.status.cancelled') }
 ])
 
 const mediaKindOptions = computed(() => [
@@ -50,17 +50,17 @@ const mediaKindOptions = computed(() => [
 ])
 
 const columns = computed(() => [
-  { key: 'local_id', label: t('admin.videoTasks.columns.taskId'), sortable: false, width: '180px' },
+  { key: 'local_id', label: t('admin.mediaTasks.columns.taskId'), sortable: false, width: '180px' },
   { key: 'media_kind', label: 'Kind', sortable: false, width: '80px' },
-  { key: 'public_model', label: t('admin.videoTasks.columns.model'), sortable: false, width: '180px' },
-  { key: 'status', label: t('admin.videoTasks.columns.status'), sortable: false, width: '110px' },
-  { key: 'user_id', label: t('admin.videoTasks.columns.user'), sortable: false, width: '90px' },
-  { key: 'account_id', label: t('admin.videoTasks.columns.channel'), sortable: false, width: '90px' },
-  { key: 'resolution', label: t('admin.videoTasks.columns.resolution'), sortable: false, width: '120px' },
+  { key: 'public_model', label: t('admin.mediaTasks.columns.model'), sortable: false, width: '180px' },
+  { key: 'status', label: t('admin.mediaTasks.columns.status'), sortable: false, width: '110px' },
+  { key: 'user_id', label: t('admin.mediaTasks.columns.user'), sortable: false, width: '90px' },
+  { key: 'account_id', label: t('admin.mediaTasks.columns.channel'), sortable: false, width: '90px' },
+  { key: 'resolution', label: t('admin.mediaTasks.columns.resolution'), sortable: false, width: '120px' },
   { key: 'media_url', label: 'URL', sortable: false, width: '110px' },
-  { key: 'cost_usd', label: t('admin.videoTasks.columns.cost'), sortable: false, width: '100px' },
-  { key: 'error_message', label: t('admin.videoTasks.columns.error'), sortable: false },
-  { key: 'created_at', label: t('admin.videoTasks.columns.createdAt'), sortable: true, width: '180px' },
+  { key: 'cost_usd', label: t('admin.mediaTasks.columns.cost'), sortable: false, width: '100px' },
+  { key: 'error_message', label: t('admin.mediaTasks.columns.error'), sortable: false },
+  { key: 'created_at', label: t('admin.mediaTasks.columns.createdAt'), sortable: true, width: '180px' },
   { key: 'actions', label: t('common.actions'), sortable: false, width: '90px', align: 'right' as const }
 ])
 
@@ -76,7 +76,7 @@ const statusBadgeClass = (status: MediaTaskStatus) => {
   }
 }
 
-const statusLabel = (status: MediaTaskStatus) => t(`admin.videoTasks.status.${status}`)
+const statusLabel = (status: MediaTaskStatus) => t(`admin.mediaTasks.status.${status}`)
 
 const loadTasks = async () => {
   if (loadController) loadController.abort()
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex-1 sm:max-w-64">
-            <input v-model.number="filters.user_id" type="number" :placeholder="t('admin.videoTasks.userIdPlaceholder')" class="input" min="1" @change="handleFilterChange" />
+            <input v-model.number="filters.user_id" type="number" :placeholder="t('admin.mediaTasks.userIdPlaceholder')" class="input" min="1" @change="handleFilterChange" />
           </div>
           <Select v-model="filters.media_kind" :options="mediaKindOptions" class="w-40" :placeholder="'Kind'" @change="handleFilterChange" />
           <Select v-model="filters.status" :options="statusFilterOptions" class="w-40" :placeholder="t('common.status')" @change="handleFilterChange" />
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
           <template #cell-media_url="{ row }">
             <a v-if="row.media_url" :href="row.media_url" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400">
               <Icon name="externalLink" size="sm" class="inline" />
-              {{ t('admin.videoTasks.openVideo') }}
+              {{ t('admin.mediaTasks.openMedia') }}
             </a>
             <span v-else class="text-xs text-gray-400">-</span>
           </template>
@@ -199,13 +199,13 @@ onBeforeUnmount(() => {
           <template #cell-created_at="{ value, row }">
             <div class="text-sm text-gray-700 dark:text-gray-300">
               <div>{{ formatDateTime(value) }}</div>
-              <div v-if="row.finished_at" class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.videoTasks.finishedAt') }}: {{ formatDateTime(row.finished_at) }}</div>
+              <div v-if="row.finished_at" class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.mediaTasks.finishedAt') }}: {{ formatDateTime(row.finished_at) }}</div>
             </div>
           </template>
           <template #cell-actions="{ row }">
-            <button v-if="row.status === 'processing'" @click="handleCancel(row)" :disabled="cancelingIds.has(row.id)" class="btn btn-sm btn-secondary" :title="t('admin.videoTasks.cancel')">
+            <button v-if="row.status === 'processing'" @click="handleCancel(row)" :disabled="cancelingIds.has(row.id)" class="btn btn-sm btn-secondary" :title="t('admin.mediaTasks.cancel')">
               <Icon name="x" size="sm" :class="cancelingIds.has(row.id) ? 'animate-spin' : ''" />
-              {{ t('admin.videoTasks.cancel') }}
+              {{ t('admin.mediaTasks.cancel') }}
             </button>
           </template>
         </DataTable>
@@ -221,8 +221,8 @@ onBeforeUnmount(() => {
     </TablePageLayout>
     <ConfirmDialog
       :show="confirmDialog.visible"
-      :title="t('admin.videoTasks.cancelConfirmTitle')"
-      :message="t('admin.videoTasks.cancelConfirmMessage', { id: confirmDialog.taskId })"
+      :title="t('admin.mediaTasks.cancelConfirmTitle')"
+      :message="t('admin.mediaTasks.cancelConfirmMessage', { id: confirmDialog.taskId })"
       :loading="confirmDialog.loading"
       @confirm="confirmCancel"
       @close="confirmDialog.visible = false"

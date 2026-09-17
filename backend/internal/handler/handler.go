@@ -47,7 +47,6 @@ type AdminHandlers struct {
 	ModerationRule         *admin.ModerationRuleHandler
 	Ticket                 *admin.TicketHandler
 	AuditLog               *admin.AuditLogHandler
-	VideoTask              *admin.VideoTaskAdminHandler
 	MediaTask              *admin.MediaTaskAdminHandler
 }
 

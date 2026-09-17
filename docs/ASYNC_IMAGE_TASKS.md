@@ -1,5 +1,11 @@
 # Asynchronous Image Tasks
 
+> **端点定位**：本文描述的是**兼容保留**能力（`POST /v1/images/generations/async` 等）。
+> 首选端点仍是同步的 `POST /v1/images/generations`——它在任何分组下都返回 OpenAI 标准
+> `ImagesResponse`，且已内置同步等待（异步图片上游最多等 120 秒）。
+> 只有在需要"提交后立刻断开、稍后再取"且已开启对象存储时才用本套异步端点。
+> 批量场景另见 `POST /v1/images/batches`（并列能力，非降级）。
+
 Asynchronous image tasks let clients submit long-running OpenAI-compatible image requests without keeping one HTTP connection open. This avoids proxy/CDN response timeouts such as Cloudflare 524 while preserving the existing image routing, billing, moderation, concurrency, and failover behavior.
 
 ## Endpoints

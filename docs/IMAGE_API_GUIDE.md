@@ -2,11 +2,11 @@
 
 ThreeRouter 是模型聚合网关：一套 OpenAI 兼容 API，后端自动路由到 OpenAI / xAI Grok / 火山方舟（豆包 Seedream）/ 阿里通义（Qwen、Wan）/ MiniMax / Gemini 等多家服务商，调用方无需对接各家 SDK。
 
-> **端点定位**：对外主推三个 OpenAI 标准端点——`/v1/chat/completions`（文本）、
-> `/v1/images/generations`（生图）、`/v1/videos/generations`（生视频）。
-> 用户只需配置 base_url + api_key + model，任何分组下这三个端点都返回 OpenAI 标准结构。
-> `/v1/media/generations`、`/v1/generations`、`/v1/video-tasks` 等为历史兼容端点，
-> **不再推荐新接入**（详见 `docs/unified-api-entrypoint.md`）。
+> **端点定位**：生图请用 `POST /v1/images/generations`（图生图 `/v1/images/edits`）。
+> 该端点在任何分组下都返回 OpenAI 标准 `ImagesResponse`：
+> `{created, data:[{url}]}`；`response_format=b64_json` 时返回 `{b64_json}`（裸 base64）。
+> `model` 可省略，缺省 `qwen-image-3.0`。
+> `/v1/media/generations`、`/v1/generations` 属于**兼容保留**端点，返回自研任务结构。
 
 ## 快速开始
 

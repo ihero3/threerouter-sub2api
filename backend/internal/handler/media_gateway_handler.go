@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -234,42 +235,51 @@ func decodeMediaTaskRecord(data any) *service.MediaTaskRecord {
 	return &rec
 }
 
-// Create POST /v1/media/generations
-// 请求体：{ "model": "wan3.0-video", "prompt": "...", ... }
-// 响应体：{ "id": "vid_xxx", "status": "processing", "model": "wan3.0-video" }
-func (h *MediaGatewayHandler) Create(c *gin.Context) {
+// mediaCreateOutcome 是创建媒体任务的公共结果：成功时带任务记录，
+// 失败时带已经映射好的 HTTP 状态码 + OpenAI 风格错误字段。
+// 抽出它的原因是 /v1/media/generations 与 OpenAI 兼容的 /v1/images/* 必须
+// 共享同一套鉴权、权限与额度校验，只有最后一步响应结构不同。
+type mediaCreateOutcome struct {
+	record   *service.MediaTaskRecord
+	replayed bool
+	status   int
+	errType  string
+	message  string
+}
+
+// createMediaTask 执行创建媒体任务的公共流程：鉴权 → 读参 → 图片权限 → 额度 → 落库。
+// 调用方负责按自己的响应契约渲染 record。
+func (h *MediaGatewayHandler) createMediaTask(c *gin.Context) mediaCreateOutcome {
+	fail := func(status int, errType, message string) mediaCreateOutcome {
+		return mediaCreateOutcome{status: status, errType: errType, message: message}
+	}
+
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
-		mediaErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
-		return
+		return fail(http.StatusUnauthorized, "authentication_error", "Invalid API key")
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
-		mediaErrorResponse(c, http.StatusUnauthorized, "authentication_error", "User context not found")
-		return
+		return fail(http.StatusUnauthorized, "authentication_error", "User context not found")
 	}
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	bodyBytes, err := readMediaRequestBody(c)
 	if err != nil {
-		mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
-		return
+		return fail(http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 	}
 	if len(bodyBytes) == 0 {
-		mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
-		return
+		return fail(http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 	}
 
 	var body map[string]any
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid JSON body")
-		return
+		return fail(http.StatusBadRequest, "invalid_request_error", "Invalid JSON body")
 	}
 
 	publicModel, _ := body["model"].(string)
 	if strings.TrimSpace(publicModel) == "" {
-		mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return
+		return fail(http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 	kind := service.MediaKindFromModel(publicModel, body)
 
@@ -279,8 +289,7 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 	// 避免把既有视频调用一并挡在门外。
 	if kind == service.MediaKindImage && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		mediaErrorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
-		return
+		return fail(http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 	}
 
 	// 调用前额度/余额检查：余额或平台配额不足时直接拒绝，避免白白调用上游。
@@ -300,8 +309,7 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 			if retryAfter > 0 {
 				c.Header("Retry-After", strconv.Itoa(retryAfter))
 			}
-			mediaErrorResponse(c, status, code, message)
-			return
+			return fail(status, code, message)
 		}
 	}
 
@@ -320,24 +328,109 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 		// 参数契约类错误（如 resolution 档位非法）应返回 400 而非上游故障。
 		var invalidReq *service.MediaInvalidRequestError
 		if errors.As(err, &invalidReq) {
-			mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidReq.Reason)
-			return
+			return fail(http.StatusBadRequest, "invalid_request_error", invalidReq.Reason)
 		}
 		if strings.Contains(err.Error(), "no available account") {
-			mediaErrorResponse(c, http.StatusServiceUnavailable, "capacity_error", "No available media generation channels")
-			return
+			// 选号失败发生在计费之前：任务表与用量明细都不会有记录，
+			// 这条日志是运营侧唯一的排障线索（哪个分组缺哪个模型）。
+			reqLog.Warn("media_gateway.no_available_account",
+				zap.Any("group_id", apiKey.GroupID),
+				zap.String("group_platform", mediaGroupPlatform(apiKey)),
+				zap.String("model", publicModel),
+				zap.String("kind", string(kind)),
+			)
+			return fail(http.StatusServiceUnavailable, "capacity_error", mediaNoAvailableAccountMessage(publicModel))
 		}
-		mediaErrorResponse(c, http.StatusBadGateway, "api_error", "Media generation request failed")
-		return
-	}
-	if replayed {
-		c.Header("X-Idempotency-Replayed", "true")
+		return fail(http.StatusBadGateway, "api_error", "Media generation request failed")
 	}
 
 	reqLog.Info("media_gateway.create_task_succeeded",
 		zap.String("local_id", record.LocalID),
 		zap.String("status", record.Status),
 	)
+
+	return mediaCreateOutcome{record: record, replayed: replayed, status: http.StatusAccepted}
+}
+
+// mediaNoAvailableAccountMessage 生成"选不到号"的可读错误。
+//
+// 此前这里是一句无上下文的 "No available media generation channels"，用户看不出
+// 是模型没挂、分组没账号，还是账号被限流。选号阶段在计费之前就失败，任务表与
+// 用量明细都不会有记录，所以错误信息是唯一的排障线索，必须说清该做什么。
+func mediaNoAvailableAccountMessage(model string) string {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return "No available media generation channel for the requested model"
+	}
+	return fmt.Sprintf(
+		"当前分组没有可服务模型 %s 的可用账号：请在该分组内添加支持此模型的账号并挂上该模型，或改用 composite 分组由平台按模型自动选择通道",
+		trimmed,
+	)
+}
+
+// mediaGroupPlatform 取分组平台名，仅用于日志字段（分组可能未预加载）。
+func mediaGroupPlatform(apiKey *service.APIKey) string {
+	if apiKey == nil || apiKey.Group == nil {
+		return ""
+	}
+	return apiKey.Group.Platform
+}
+
+// awaitMediaTask 按 ?wait=N 等待任务到达终态，返回最终记录（失败时回退原记录）。
+// 不传 wait 时返回原记录且不额外等待 —— 现有异步客户端行为完全不变。
+func (h *MediaGatewayHandler) awaitMediaTask(c *gin.Context, record *service.MediaTaskRecord, defaultWait time.Duration) *service.MediaTaskRecord {
+	if record == nil || service.IsMediaTaskTerminal(record.Status) {
+		return record
+	}
+	wait := parseMediaWaitParam(c.Query("wait"), defaultWait)
+	if wait <= 0 {
+		return record
+	}
+	userID := record.UserID
+	refreshed, err := h.mediaTaskService.AwaitTerminal(c.Request.Context(), record.LocalID, userID, wait)
+	if err != nil || refreshed == nil {
+		return record
+	}
+	return refreshed
+}
+
+// parseMediaWaitParam 解析 ?wait=N（秒）。非法值回落默认值，上限 180 秒。
+func parseMediaWaitParam(raw string, defaultWait time.Duration) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultWait
+	}
+	seconds, err := strconv.Atoi(trimmed)
+	if err != nil || seconds < 0 {
+		return defaultWait
+	}
+	// wait=0 是显式的"不要等待"，不能被默认值覆盖。
+	if seconds == 0 {
+		return 0
+	}
+	wait := time.Duration(seconds) * time.Second
+	if wait > service.MaxMediaTaskWait {
+		wait = service.MaxMediaTaskWait
+	}
+	return wait
+}
+
+// Create POST /v1/media/generations
+// 请求体：{ "model": "wan3.0-video", "prompt": "...", ... }
+// 响应体：{ "id": "vid_xxx", "status": "processing", "model": "wan3.0-video" }
+//
+// 兼容说明：状态码恒为 202（与历史行为一致），但带 ?wait=N 时响应里的
+// status / url 会反映等待后的最新状态，客户端可省去轮询。
+func (h *MediaGatewayHandler) Create(c *gin.Context) {
+	outcome := h.createMediaTask(c)
+	if outcome.record == nil {
+		mediaErrorResponse(c, outcome.status, outcome.errType, outcome.message)
+		return
+	}
+	if outcome.replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	record := h.awaitMediaTask(c, outcome.record, 0)
 
 	response := mediaTaskResponse{
 		ID:        record.LocalID,
@@ -356,6 +449,25 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, response)
+}
+
+// HasLocalTask 判断任务是否存在于统一媒体表且属于该用户。
+//
+// 用途：视频链路收敛后，/v1/videos/generations 产出的任务写进 media_tasks，
+// 但历史上 /video-tasks 的任务仍在 video_tasks，两条链路的 local_id 都是
+// "vid_ + 32 位十六进制"，无法从字面区分。status/content 查询必须先问媒体表，
+// 查不到再回退到旧视频表，否则老任务会被判成 404。
+func (h *MediaGatewayHandler) HasLocalTask(ctx context.Context, localID string, userID int64) bool {
+	if h.mediaTaskService == nil || strings.TrimSpace(localID) == "" {
+		return false
+	}
+	// 用不带刷新的查询：这里只是判归属，真正的状态刷新交给随后的 Get 做一次，
+	// 否则每次轮询都会打两遍上游。
+	record, err := h.mediaTaskService.GetTaskByLocalID(ctx, localID)
+	if err != nil || record == nil {
+		return false
+	}
+	return record.UserID == userID
 }
 
 // Get GET /v1/media/:id
@@ -445,19 +557,19 @@ func (h *MediaGatewayHandler) GetContent(c *gin.Context) {
 // --- 响应结构 ---
 
 type mediaTaskResponse struct {
-	ID           string `json:"id"`
-	Status       string `json:"status"`
-	Model        string `json:"model"`
-	URL          string `json:"url,omitempty"`
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Model  string `json:"model"`
+	URL    string `json:"url,omitempty"`
 	// URLs 是 n>1 时的全部产物 URL（media_urls 列全量落库）。
 	// 图片为同步返回，创建响应里直接带全量；轮询路径同样返回全量。
 	URLs         []string `json:"urls,omitempty"`
-	ThumbnailURL string `json:"thumbnail_url,omitempty"`
-	Resolution   string `json:"resolution,omitempty"`
-	DurationSec  int    `json:"duration_sec,omitempty"`
-	Error        string `json:"error,omitempty"`
-	CreatedAt    string `json:"created_at"`
-	FinishedAt   string `json:"finished_at,omitempty"`
+	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
+	Resolution   string   `json:"resolution,omitempty"`
+	DurationSec  int      `json:"duration_sec,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	CreatedAt    string   `json:"created_at"`
+	FinishedAt   string   `json:"finished_at,omitempty"`
 }
 
 // --- 辅助函数 ---
@@ -477,9 +589,16 @@ func readMediaRequestBody(c *gin.Context) ([]byte, error) {
 	return io.ReadAll(c.Request.Body)
 }
 
+// mediaTaskIDParam 取路径里的任务 ID。
+//
+// 必须同时认 `request_id`：视频端点收敛后 GET /v1/videos/:request_id 会路由到
+// 媒体 handler，而那条路由的参数名是 request_id（不是 task_id / id），
+// 只认后两者会让所有视频状态查询都变成 "task_id is required"。
 func mediaTaskIDParam(c *gin.Context) string {
-	if taskID := strings.TrimSpace(c.Param("task_id")); taskID != "" {
-		return taskID
+	for _, key := range []string{"task_id", "id", "request_id"} {
+		if taskID := strings.TrimSpace(c.Param(key)); taskID != "" {
+			return taskID
+		}
 	}
-	return strings.TrimSpace(c.Param("id"))
+	return ""
 }

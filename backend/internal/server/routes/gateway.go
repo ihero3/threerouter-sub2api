@@ -78,18 +78,26 @@ func RegisterGatewayRoutes(
 	isOpenAIOnlyEndpointGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
+	// imagesHandler 让 /v1/images/* 在任何分组下都返回同一份 OpenAI ImagesResponse。
+	//
+	// 此前同一个端点会按分组返回两套结构：openai/grok 组走原生直通（OpenAI 结构），
+	// 其余组转统一媒体链路后返回自研的 {id,status,url}（OpenAI SDK 直接校验失败）。
+	// 现在统一媒体链路侧由 MediaGateway.CreateImages 做响应适配，用户只需要
+	// base_url + api_key + model，不必知道自己被分在哪个组。
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI:
 			// OpenAI 直通只支持原生图片模型（gpt-image-* / grok-imagine*）。
 			// 其余已知图片厂商模型若也走直通，会被模型白名单以 400 拒绝，
 			// 客户端就不得不换成 /v1/media/generations。这里按 model 分流：
-			// 原生的走直通，其余转统一媒体链路，保证 base_url + model 即可调用。
+			// 原生的走直通，其余转统一媒体链路（OpenAI 响应）。
+			// 无论接下来走哪条路都要把 body 还回去：预读已经把 Request.Body
+			// 消费掉了，不还回去下游只能读到空 body（"Request body is empty"）。
 			if body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request); err == nil && len(body) > 0 {
 				model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
 				resetRequestBody(c, body)
 				if service.IsKnownImageVendorModel(model) && !service.IsOpenAINativeImageModel(model) {
-					h.MediaGateway.Create(c)
+					h.MediaGateway.CreateImages(c)
 					return
 				}
 			}
@@ -97,54 +105,87 @@ func RegisterGatewayRoutes(
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
 		default:
-			// 非 Grok/OpenAI 平台：让已知图片模型走统一媒体链路
-			body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
-			if err == nil && len(body) > 0 {
-				model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
-				if service.IsKnownImageVendorModel(model) {
-					resetRequestBody(c, body)
-					h.MediaGateway.Create(c)
+			// 其余平台（composite / deepseek / kimi / zhipu / anthropic …）统一走
+			// 媒体链路：model 缺省时会自动补默认图片模型，返回 OpenAI 标准结构。
+			// 只有"明确不是图片模型"才保留原来的 404，避免把文本/视频模型的
+			// 误用包装成"没有可用通道"。
+			// model 为空时由 CreateImages 补默认图片模型，不能在这里拦掉。
+			model := requestModelFromBody(c)
+			if model != "" && service.MediaKindFromModel(model, nil) != service.MediaKindImage {
+				// 已知的视频模型打到了生图端点：这是调用方用错端点，必须说清
+				// 该改成哪个端点。笼统回 "platform not supported" 会让人以为
+				// 是分组/平台配置有问题，白白去查账号。
+				if service.IsKnownVideoVendorModel(model) {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": gin.H{
+							"type": "invalid_request_error",
+							"message": "model " + model +
+								" is a video model; submit it to POST /v1/videos/generations instead",
+						},
+					})
 					return
 				}
-				resetRequestBody(c, body)
-			}
-			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Images API is not supported for this platform",
-				},
-			})
-		}
-	}
-	videoGenerationHandler := func(c *gin.Context) {
-		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
-		if err == nil && len(body) > 0 {
-			model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
-			if service.IsKnownVideoVendorModel(model) {
-				resetRequestBody(c, body)
-				h.VideoGateway.CreateTask(c)
+				// 其余（文本模型、尚未收录的模型）保持历史行为：平台侧 404。
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Images API is not supported for this platform",
+					},
+				})
 				return
 			}
-			resetRequestBody(c, body)
+			h.MediaGateway.CreateImages(c)
 		}
-		// Video status/content lookups below already allow Composite groups; keep
-		// task creation aligned so composite keys that route to Grok accounts can
-		// submit video generation jobs.
-		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite {
+	}
+	// videoGenerationHandler 把视频生成收敛到统一媒体链路（MediaTaskService）。
+	//
+	// 此前只有"已知视频厂商模型"才走任务链路，其余一律 404 或转 Grok，等于要求
+	// 用户先判断自己用的模型在不在白名单里。现在除 Grok 原生链路外全部交给统一
+	// 链路按 model 选号：能不能做由账号池决定，不由模型名硬编码决定。
+	videoGenerationHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
+		// 必须拦掉非视频模态：任务的 local_id 前缀由模态决定（视频是 vid_），
+		// 而 GET /v1/videos/:request_id 只对 vid_ 做媒体表路由。图片模型打进来
+		// 会建出一个 img_ 任务 —— 钱扣了、任务也在跑，但客户端永远查不到状态。
+		// 未知模型仍放行：MediaKindFromModel 对未收录模型默认判为 video，
+		// 能不能做交给账号池决定，这是收敛的初衷。
+		if model := requestModelFromBody(c); model != "" {
+			kind := service.MediaKindFromModel(model, nil)
+			if kind == service.MediaKindImage {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": gin.H{
+						"type": "invalid_request_error",
+						"message": "model " + model +
+							" is an image model; submit it to POST /v1/images/generations instead",
+					},
+				})
+				return
+			}
+			if kind == service.MediaKindAudio {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": gin.H{
+						"type": "invalid_request_error",
+						"message": "model " + model +
+							" is an audio model; submit it to POST /v1/audio/speech instead",
+					},
+				})
+				return
+			}
+		}
+		h.MediaGateway.Create(c)
 	}
 	videoStatusHandler := func(c *gin.Context) {
-		if strings.HasPrefix(c.Param("request_id"), "vid_") {
+		// 视频任务收敛后写入 media_tasks，历史任务仍在 video_tasks，两者 local_id
+		// 都是 "vid_ + 32 位十六进制"：先问媒体表，查不到再回退旧视频表。
+		if requestID := strings.TrimSpace(c.Param("request_id")); strings.HasPrefix(requestID, "vid_") {
+			if gatewayMediaTaskExists(c, h, requestID) {
+				h.MediaGateway.Get(c)
+				return
+			}
 			h.VideoGateway.GetTask(c)
 			return
 		}
@@ -164,7 +205,11 @@ func RegisterGatewayRoutes(
 		})
 	}
 	videoContentHandler := func(c *gin.Context) {
-		if strings.HasPrefix(c.Param("request_id"), "vid_") {
+		if requestID := strings.TrimSpace(c.Param("request_id")); strings.HasPrefix(requestID, "vid_") {
+			if gatewayMediaTaskExists(c, h, requestID) {
+				h.MediaGateway.GetContent(c)
+				return
+			}
 			h.VideoGateway.GetTaskContent(c)
 			return
 		}
@@ -773,6 +818,29 @@ func compositeGeminiModelFromParams(c *gin.Context) string {
 		return strings.TrimSpace(modelAction[:idx])
 	}
 	return modelAction
+}
+
+// requestModelFromBody 读取并还原请求体，返回其中的 model 字段（兼容 multipart）。
+// 用于判定请求的模态，在真正建任务（并预扣费用）之前拦掉用错端点的情况。
+func requestModelFromBody(c *gin.Context) string {
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil || len(body) == 0 {
+		return ""
+	}
+	model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
+	resetRequestBody(c, body)
+	return model
+}
+
+// gatewayMediaTaskExists 判断 vid_ 任务是否存在于统一媒体表，
+// 用于视频 status/content 在"新链路（media_tasks）"与"历史链路（video_tasks）"
+// 之间做兼容路由。取不到用户身份时按不存在处理，回退旧链路。
+func gatewayMediaTaskExists(c *gin.Context, h *handler.Handlers, localID string) bool {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		return false
+	}
+	return h.MediaGateway.HasLocalTask(c.Request.Context(), localID, subject.UserID)
 }
 
 func resetRequestBody(c *gin.Context, body []byte) {

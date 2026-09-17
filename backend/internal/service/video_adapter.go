@@ -103,8 +103,11 @@ func IsKnownVideoVendorModel(model string) bool {
 		strings.HasPrefix(m, "minimax-video"),
 		(strings.HasPrefix(m, "video-") && strings.Contains(m, "hailuo")):
 		return true
+	// 注意：wanx 是阿里通义万相的**图像**系列（wanx2.1、wanx2.0-t2i-turbo…），
+	// 不能因为都以 "wan" 开头就跟 wan2/wan3 视频系列混在一起。含 wanx 的模型
+	// 由图片规则先行命中；这里若也收录，会把生图请求送进视频链路。
 	case strings.HasPrefix(m, "wan") &&
-		(strings.Contains(m, "video") || strings.Contains(m, "wanx") ||
+		(strings.Contains(m, "video") ||
 			strings.Contains(m, "t2v") || strings.Contains(m, "i2v") ||
 			strings.HasPrefix(m, "wan2") || strings.HasPrefix(m, "wan3")):
 		return true
@@ -161,7 +164,10 @@ type OpenAIVideoAdapter struct {
 func NewOpenAIVideoAdapter() *OpenAIVideoAdapter {
 	return &OpenAIVideoAdapter{
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			// MediaTaskService bounds creation at 300 seconds. Keep the
+			// transport timeout aligned so this client does not truncate a
+			// valid long-running submission first.
+			Timeout: 300 * time.Second,
 		},
 	}
 }
@@ -338,7 +344,7 @@ func (a *OpenAIVideoAdapter) GetResult(ctx context.Context, account *Account, up
 		return nil, fmt.Errorf("video_adapter: unmarshal get response: %w", err)
 	}
 
-	result.Status = upstreamResp.Status
+	result.Status = normalizeVideoTaskStatus(upstreamResp.Status)
 	result.VideoURL = upstreamResp.VideoURL
 	if result.VideoURL == "" {
 		result.VideoURL = upstreamResp.URL

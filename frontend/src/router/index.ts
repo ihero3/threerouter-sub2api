@@ -932,20 +932,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
-  // ==================== Admin: Video Tasks ====================
-  {
-    path: '/admin/video-tasks',
-    name: 'AdminVideoTasks',
-    component: () => import('@/views/admin/VideoTasksView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Video Tasks',
-      titleKey: 'admin.videoTasks.title',
-      descriptionKey: 'admin.videoTasks.description'
-    }
-  },
-
   // ==================== Admin: Media Tasks ====================
   {
     path: '/admin/media-tasks',
@@ -955,8 +941,8 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: true,
       title: 'Media Tasks',
-      titleKey: 'admin.videoTasks.title',
-      descriptionKey: 'admin.videoTasks.description'
+      titleKey: 'admin.mediaTasks.title',
+      descriptionKey: 'admin.mediaTasks.description'
     }
   },
 

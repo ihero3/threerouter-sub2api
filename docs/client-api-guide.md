@@ -22,22 +22,32 @@ Content-Type: application/json
 
 ## 1. 端点一览
 
+**推荐用这 3 个**（任何分组下响应结构完全一致）：
+
 | 端点 | 用途 | 建议 |
 |---|---|---|
 | `POST /v1/chat/completions` | 文本对话 | ✅ OpenAI SDK 原生支持 |
-| `POST /v1/images/generations` | 生图 / 图生图 | ✅ OpenAI SDK 原生支持 |
-| `POST /v1/videos/generations` | 生视频（提交任务） | 提交后需轮询 |
-| `POST /v1/audio/speech` | 语音合成 | 同步返回音频字节 |
-| `POST /v1/media/generations` | **媒体总入口**（图/视频/音频三合一） | ✅ 推荐 |
-| `POST /v1/generations` | **万能入口**（文本也走） | 自研端点，SDK 需 `client.post` |
-| `GET /v1/media/{id}` | 查任务状态与结果 | 视频必用 |
-| `GET /v1/media/{id}/content` | 下载产物内容（302 跳转） | 可选 |
+| `POST /v1/images/generations`（`/v1/images/edits` 同） | 生图 / 图生图 | ✅ OpenAI SDK 原生支持，同步出图 |
+| `POST /v1/videos/generations`（`/v1/videos` 同） | 生视频 | 提交后轮询；带 `?wait=N` 可由服务端同步等待 |
+
+配套查询端点：`GET /v1/media/{id}` 查状态、`GET /v1/media/{id}/content` 下载产物。
+音频用 `POST /v1/audio/speech`（同步返回音频字节）。
+
+**兼容保留（不推荐新接入）**
+
+| 端点 | 状态 |
+|---|---|
+| `POST /v1/media/generations`、`POST /v1/media` | 媒体总入口，返回自研任务结构 `{id,status,url}` |
+| `POST /v1/generations` | 万能入口（文本也走），自研端点，SDK 需 `client.post` |
+| `POST /v1/video-tasks` | **只读兼容，不再维护**：历史任务仍可查询，新接入请用 `/v1/videos/generations` |
+| `POST /v1/images/generations/async`、`POST /v1/images/edits/async` | 异步生图（依赖对象存储） |
+| `POST /v1/images/batches` 及子路由 | **并列能力（非降级）**：批量生图，见第 4 节「批量与异步」 |
 
 **选型建议**
 
 - 用 OpenAI 官方 SDK → 按模态用标准方法，**只换 `model` 就能切换厂商**（文本/图片零改造）。
 - 想真正「一个端点吃所有模型」→ 用 `/v1/generations`，代价是 SDK 没有对应方法，需要手写 HTTP。
-- 视频是异步的，**任何端点提交后都要轮询** `GET /v1/media/{id}`。
+- 视频默认异步；**不想写轮询就加 `?wait=180`**（上限 180 秒），服务端内部轮询，出片直接返回。
 
 ---
 
@@ -121,34 +131,38 @@ const img = await client.images.generate({
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `model` | string | 是 | 见第 3 节 |
+| `model` | string | 否 | 见第 3 节；**不传时默认 `qwen-image-3.0`** |
 | `prompt` | string | 是 | 提示词 |
 | `size` / `resolution` | string | 否 | 二者等价。支持 `1024x1024`、`1280x720`、`1:1`、`16:9`、`2K`、`4K` 等写法。**不传时按上游返回的真实尺寸计费** |
 | `n` | int | 否 | 生成张数。千问上限 6、MiniMax 上限 9，超出自动收敛 |
-| `image` / `image_url` / `image_urls` | string \| array | 否 | 图生图参考图，支持裸 URL、`{"url": "..."}`、数组 |
+| `response_format` | string | 否 | `url`（默认）或 `b64_json`。由平台消费后删除，**不透传给上游** |
+| `image` / `image_url` / `image_urls` | string \| array | 否 | 图生图参考图，支持裸 URL、`{"url": "..."}`、数组；`/images/edits` 支持 multipart 上传文件 |
 | `negative_prompt` | string | 否 | 负面提示词 |
 | `seed` | int | 否 | 随机种子 |
 
 其余厂商专有字段（如 `prompt_extend`、`watermark`、`subject_reference`）会原样透传给上游。
 
-### 响应
+### 响应（OpenAI 标准结构，任何分组一致）
 
 ```json
 {
-  "id": "img_xxxx",
-  "status": "succeeded",
-  "model": "qwen-image-3.0-pro",
-  "url": "https://.../a.png",
-  "urls": ["https://.../a.png", "https://.../b.png"],
-  "created_at": "2026-09-13T10:00:00Z"
+  "created": 1757745600,
+  "data": [
+    { "url": "https://.../a.png" },
+    { "url": "https://.../b.png" }
+  ]
 }
 ```
 
-走 `/v1/images/generations` 时返回 OpenAI 标准结构 `{"created": ..., "data": [{"url": ...}]}`。
+`response_format=b64_json` 时 `data` 项改为 `{"b64_json": "<裸 base64，无 data: 前缀>"}`。
 
-- 图片是**同步**返回：`status` 直接是 `succeeded`，`url` 可直接使用。
-- `n>1` 时创建响应与**轮询接口都返回全量 `urls`**（已落库）。
-- 产物 URL 为**临时签名地址**，请自行转存。
+- 图片**同步**返回，HTTP `200`；`n>1` 时 `data` 有多项。
+- 失败返回 OpenAI 错误结构 `{"error":{"type":...,"message":...}}`，`message` 带上上游原因。
+- 极少数异步图片上游超时未出图时返回 `504` + 任务 ID，可用 `GET /v1/media/{id}` 轮询。
+- 产物 URL 为**临时签名地址**（未配置对象存储时部分上游回 data URI），请自行转存。
+
+> 经 `/v1/media/generations`、`/v1/generations` 提交时仍是自研任务结构
+> `{id, status, url, urls, created_at}`——这两个端点属于兼容保留路径。
 
 ### 计费口径
 
@@ -181,7 +195,35 @@ const img = await client.images.generate({
 
 ---
 
+### 批量与异步生图
+
+批量不是"降级功能"，而是**并列能力**：单张出图用 `/v1/images/generations`，
+一次几十上百张用批量端点，需要落对象存储用异步端点。
+
+| 场景 | 端点 | 返回 |
+|---|---|---|
+| 单张 / 少量 | `POST /v1/images/generations` | 同步 OpenAI 结构 |
+| 批量 | `POST /v1/images/batches` | 批量任务；子路由支持列表 / 条目 / 下载 / 取消 / 删除 |
+| 异步 + 对象存储 | `POST /v1/images/generations/async` | `{task_id, poll_url}`，需先开启对象存储 |
+
+---
+
 ## 5. 生视频
+
+### 同步等待 `?wait=N`（不想写轮询就用它）
+
+默认视频是异步的：`202` + `{id, status:"processing"}`，客户端轮询 `GET /v1/videos/{id}`。
+加上 `?wait=N`（秒，**上限 180**）后，服务端会在返回前内部轮询：N 秒内出片就直接带回
+结果，超时才回 `processing`，客户端再按老办法轮询。不传 `wait` 时行为与以前完全一致。
+
+```bash
+curl -X POST "https://<站点>/v1/videos/generations?wait=180" \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d '{"model":"seedance-1.0-pro","prompt":"海浪拍打礁石","resolution":"1080p"}'
+```
+
+> 视频任务统一写入 `media_tasks`（与图片同表、同结算口径）；历史 `/v1/video-tasks`
+> 任务仍在旧表，`vid_` 开头的 ID 会先查新表再回退旧表，**老任务不会查不到**。
 
 ### 超时设置（重要，别设 60 秒）
 
@@ -254,10 +296,11 @@ const img = await client.images.generate({
 POST /v1/videos/generations   ->  {"id":"vid_xxx","status":"processing"}
 
 # 2. 轮询（建议 3~5 秒一次，最长 10 分钟）
-GET  /v1/media/vid_xxx        ->  {"id":"vid_xxx","status":"succeeded","url":"https://.../a.mp4"}
+GET  /v1/videos/vid_xxx       ->  {"id":"vid_xxx","status":"succeeded","url":"https://.../a.mp4"}
+#   （等价写法：GET /v1/media/vid_xxx，两者查同一张表）
 
 # 3. 下载（可选，302 跳转到真实地址）
-GET  /v1/media/vid_xxx/content
+GET  /v1/videos/vid_xxx/content
 ```
 
 `status` 取值：`processing` / `succeeded` / `failed` / `cancelled`；失败时带 `error` 字段。

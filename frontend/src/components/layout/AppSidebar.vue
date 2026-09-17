@@ -989,8 +989,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/tickets', label: t('nav.ticketManagement'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/video-tasks', label: t('admin.videoTasks.title'), icon: VideoIcon, hideInSimpleMode: true },
-    { path: '/admin/media-tasks', label: 'Media Tasks', icon: VideoIcon, hideInSimpleMode: true },
+    { path: '/admin/media-tasks', label: t('admin.mediaTasks.title'), icon: VideoIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
 

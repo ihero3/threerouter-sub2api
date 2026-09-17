@@ -19,7 +19,7 @@ type MediaTaskRepository interface {
 	Create(ctx context.Context, task *service.MediaTaskRecord) (*service.MediaTaskRecord, error)
 	GetByLocalID(ctx context.Context, localID string) (*service.MediaTaskRecord, error)
 	GetByID(ctx context.Context, id int64) (*service.MediaTaskRecord, error)
-	UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error
+	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, mediaURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*service.MediaTaskRecord, int, error)
@@ -107,19 +107,21 @@ func (r *mediaTaskRepository) GetByID(ctx context.Context, id int64) (*service.M
 	return entToMediaTaskRecord(mt), nil
 }
 
-func (r *mediaTaskRepository) UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error {
-	b := r.client.MediaTask.UpdateOneID(id).SetStatus(status)
+func (r *mediaTaskRepository) UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error) {
+	b := r.client.MediaTask.Update().
+		Where(dbmediatask.IDEQ(id), dbmediatask.StatusEQ("processing")).
+		SetStatus(status)
 	if errorMsg != "" {
 		b.SetErrorMessage(errorMsg)
 	}
 	if status == "succeeded" || status == "failed" || status == "cancelled" {
-		now := time.Now()
-		b.SetFinishedAt(now)
+		b.SetFinishedAt(time.Now())
 	}
-	if err := b.Exec(ctx); err != nil {
-		return fmt.Errorf("media_task_repo: update status: %w", err)
+	affected, err := b.Save(ctx)
+	if err != nil {
+		return false, fmt.Errorf("media_task_repo: conditional update status: %w", err)
 	}
-	return nil
+	return affected > 0, nil
 }
 
 func (r *mediaTaskRepository) UpdateResult(ctx context.Context, id int64, status, mediaURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error) {
