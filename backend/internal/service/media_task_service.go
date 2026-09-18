@@ -344,7 +344,12 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			// 否则用户为一条不存在的任务付费，用量记录里也没有对应行可对账。
 			// 这里只走错误分支，不动任何成功路径的计费结果。
 			if record.ReservedCost != nil {
-				releaseMediaReservedQuota(s.apiKeyService, persistCtx, apiKeyID, *record.ReservedCost)
+				// 退款必须另起 context：Create 失败最常见的成因就是 persistCtx
+				// 自身超时（DB 慢），沿用它会让退款在同一条已过期的链上失败，
+				// 预扣照样留在用户配额上，等于没修。
+				refundCtx, cancelRefund := context.WithTimeout(upstreamBase, mediaPersistTimeout)
+				defer cancelRefund()
+				releaseMediaReservedQuota(s.apiKeyService, refundCtx, apiKeyID, *record.ReservedCost)
 			}
 			return nil, fmt.Errorf("media_task_service: save task: %w", saveErr)
 		}
@@ -431,12 +436,22 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 		if !claimed {
 			return nil
 		}
+		// 超时兜底也要带上账号：usage_logs 的 account_rate_multiplier 由它推导，
+		// 缺了会让超时失败的行与成功/失败行口径不一致（对账时看不出倍率）。
+		// 取不到账号不能中断结算——预扣仍要退，0 费用日志仍要写。
+		var timeoutAccount *Account
+		if s.accountService != nil {
+			if acc, accErr := s.accountService.GetByID(ctx, record.AccountID); accErr == nil {
+				timeoutAccount = acc
+			}
+		}
 		if record.MediaKind == MediaKindVideo {
 			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
 				LocalID:              record.LocalID,
 				UserID:               record.UserID,
 				APIKeyID:             record.APIKeyID,
 				AccountID:            record.AccountID,
+				Account:              timeoutAccount,
 				Model:                record.PublicModel,
 				UpstreamModel:        record.UpstreamModel,
 				Resolution:           record.Resolution,
@@ -447,9 +462,12 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 		} else if record.MediaKind == MediaKindImage {
 			// 异步出图超时：退预扣 + 0 费用日志，让超时调用在用量记录里可见。
 			imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
+			imgInput.Account = timeoutAccount
 			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
 		} else if record.MediaKind == MediaKindAudio {
-			settleMediaAudioTaskFailure(ctx, s.billingDeps(), mediaAudioBillingInputFromRecord(record))
+			audioInput := mediaAudioBillingInputFromRecord(record)
+			audioInput.Account = timeoutAccount
+			settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
 		}
 		return nil
 	}

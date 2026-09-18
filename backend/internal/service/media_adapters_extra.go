@@ -127,7 +127,17 @@ func (a *openAICompatMediaAdapter) Create(ctx context.Context, account *Account,
 	}
 
 	taskID := firstNonEmptyString(createResp.TaskID, createResp.ID)
-	if taskID == "" && (createResp.URL == "" || len(createResp.Data) == 0) {
+	// 同步产物必须收集全部（含 b64_json 转成的 data URI）：
+	// 只取 data[0].url 会漏掉纯 base64 响应，也会在 n>1 时只交付一张。
+	patchURLs := collectOpenAIMediaImageURLs(respBody)
+	if headerURL := strings.TrimSpace(createResp.URL); headerURL != "" {
+		patchURLs = append([]string{headerURL}, patchURLs...)
+	}
+	// 判空必须用"实际可用产物数"，不能用 len(Data)：
+	// Data 非空但每项只带 b64_json 时，旧逻辑不会 failed，任务却既无任务号
+	// 也无 URL —— PollTask 遇空 UpstreamTaskID 直接跳过，超时兜底永远不可达，
+	// 预扣就此挂账。这里堵死：既没有任务号又拿不到图，就是上游失败。
+	if taskID == "" && len(patchURLs) == 0 {
 		return &MediaCreateResult{
 			Status:             "failed",
 			Mode:               MediaCompletionFailed,
@@ -136,10 +146,9 @@ func (a *openAICompatMediaAdapter) Create(ctx context.Context, account *Account,
 			ErrorMessage:       "upstream create response missing task id or url",
 		}, nil
 	}
-
-	inlineURL := createResp.URL
-	if inlineURL == "" && len(createResp.Data) > 0 {
-		inlineURL = createResp.Data[0].URL
+	inlineURL := ""
+	if len(patchURLs) > 0 {
+		inlineURL = patchURLs[0]
 	}
 	status := "processing"
 	if inlineURL != "" {
@@ -148,6 +157,7 @@ func (a *openAICompatMediaAdapter) Create(ctx context.Context, account *Account,
 	return &MediaCreateResult{
 		TaskID:             taskID,
 		InlineURL:          inlineURL,
+		InlineURLs:         patchURLs,
 		Status:             status,
 		Mode:               mediaCompletionModeFromStatus(status),
 		UpstreamStatusCode: resp.StatusCode,

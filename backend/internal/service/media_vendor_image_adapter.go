@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // mediaVendorImageAdapter 是图片生成厂商 adapter 底座。
@@ -250,6 +252,35 @@ func buildSeedanceImageCreateBody(req MediaCreateRequest) []byte {
 	return data
 }
 
+// collectOpenAIMediaImageURLs 从 OpenAI 风格响应的 data[] 里收集**全部**图片产物。
+//
+// 每条要点都对应一个已发生过的缺陷：
+//  1. b64_json 没有可访问 URL，必须转成 data URI —— 否则只回 base64 的上游会被
+//     当成"没有产物"：Seedance 因此判 succeeded 却交付不了图（照扣费用），
+//     通用 adapter 因此永远停在 processing（预扣挂账）。
+//  2. 收集全部而不是只取 data[0] —— n>1 时只交一张却按 n 张计费，属于少给货。
+//  3. 返回空切片代表"上游没交付任何图"，由调用方判 failed，
+//     避免"任务成功 + 立即扣费 + 调用方拿不到图"这种组合。
+//
+// 与 MiniMax 的 ImageBase64 处理保持同一口径，三家厂商落到同一套语义。
+func collectOpenAIMediaImageURLs(respBody []byte) []string {
+	urls := make([]string, 0, 4)
+	data := gjson.GetBytes(respBody, "data")
+	if !data.Exists() || !data.IsArray() {
+		return urls
+	}
+	for _, item := range data.Array() {
+		if u := strings.TrimSpace(item.Get("url").String()); u != "" {
+			urls = append(urls, u)
+			continue
+		}
+		if b64 := strings.TrimSpace(item.Get("b64_json").String()); b64 != "" {
+			urls = append(urls, "data:image/png;base64,"+b64)
+		}
+	}
+	return urls
+}
+
 func parseSeedanceImageCreateResult(respBody []byte, statusCode int) (*MediaCreateResult, error) {
 	if statusCode >= 400 {
 		return &MediaCreateResult{
@@ -257,6 +288,8 @@ func parseSeedanceImageCreateResult(respBody []byte, statusCode int) (*MediaCrea
 			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
 		}, nil
 	}
+	// 这里只做 JSON 合法性校验（沿用历史错误语义），产物统一由
+	// collectOpenAIMediaImageURLs 收集，避免 struct 字段漏读。
 	var resp struct {
 		Data []struct {
 			URL     string `json:"url"`
@@ -266,12 +299,19 @@ func parseSeedanceImageCreateResult(respBody []byte, statusCode int) (*MediaCrea
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return nil, fmt.Errorf("seedance image unmarshal response: %w", err)
 	}
-	url := ""
-	if len(resp.Data) > 0 {
-		url = resp.Data[0].URL
+	urls := collectOpenAIMediaImageURLs(respBody)
+	if len(urls) == 0 {
+		// 判 succeeded 的代价是立刻真实扣费（MediaTaskService 同步分支），
+		// 而调用方随后在 handler 里拿到 502 —— 钱扣了、图没有、失败结算也不触发。
+		// 所以这里必须与 Wan / MiniMax 口径一致：没有产物就是失败。
+		return &MediaCreateResult{
+			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+			ErrorMessage: "seedance image response contained no image url or b64_json",
+		}, nil
 	}
 	return &MediaCreateResult{
-		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: urls[0], InlineURLs: urls,
+		UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
 	}, nil
 }
 
