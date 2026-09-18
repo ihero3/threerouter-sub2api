@@ -22,6 +22,7 @@ type mediaVendorImageAdapter struct {
 	name           string
 	httpClient     *http.Client
 	supports       func(platform, model string) bool
+	validateCreate func(MediaCreateRequest) error
 	buildCreate    func(MediaCreateRequest) []byte
 	parseCreate    func(respBody []byte, statusCode int) (*MediaCreateResult, error)
 	buildCreateURL func(account *Account) (string, error)
@@ -105,6 +106,12 @@ func (a mediaVendorImageAdapter) do(ctx context.Context, account *Account, metho
 func (a mediaVendorImageAdapter) Create(ctx context.Context, account *Account, req MediaCreateRequest) (*MediaCreateResult, error) {
 	if a.buildCreate == nil || a.parseCreate == nil {
 		return nil, fmt.Errorf("%s image adapter is missing create handlers", a.name)
+	}
+	// 厂商侧参数上限前置校验：已知必失败的请求不打上游，错误也更好懂。
+	if a.validateCreate != nil {
+		if err := a.validateCreate(req); err != nil {
+			return nil, err
+		}
 	}
 	baseURL, err := a.baseURL(account)
 	if err != nil {
@@ -232,7 +239,9 @@ func buildSeedanceImageCreateBody(req MediaCreateRequest) []byte {
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "image", "image_urls", "size", "resolution", "seed", "media", "video_create_path":
+		case "model", "prompt", "image", "image_urls", "size", "resolution", "seed", "media", "video_create_path",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		body[k] = v
@@ -357,7 +366,9 @@ func buildWanImageCreateBody(req MediaCreateRequest) []byte {
 	for k, v := range req.Extra {
 		switch k {
 		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path",
-			"input", "parameters", "image", "image_url", "image_urls":
+			"input", "parameters", "image", "image_url", "image_urls",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		params[k] = v
@@ -455,6 +466,14 @@ func NewMiniMaxImageAdapter() *MiniMaxImageAdapter {
 	}
 	a.buildCreate = buildMiniMaxImageCreateBody
 	a.parseCreate = parseMiniMaxImageCreateResult
+	// 官方限制 prompt 最长 1500 字符（按字符数，中文同计），超长上游报
+	// 2013 invalid params。前置拒绝：省一次必然失败的调用，错误信息直接可读。
+	a.validateCreate = func(req MediaCreateRequest) error {
+		if n := len([]rune(req.Prompt)); n > 1500 {
+			return fmt.Errorf("minimax image: prompt length %d exceeds the 1500-character limit; please shorten the prompt", n)
+		}
+		return nil
+	}
 	a.buildCreateURL = func(account *Account) (string, error) {
 		baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
 		if baseURL == "" {
@@ -518,8 +537,27 @@ func buildMiniMaxImageCreateBody(req MediaCreateRequest) []byte {
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path", "width", "height", "aspect_ratio", "n", "subject_reference":
+		// subject_reference 故意不在排除列表：它是 MiniMax 原生字段，必须能透传，
+		// 否则下面的「用户显式传了就不覆盖」判断永远看不到它，用户自定义会被静默丢弃。
+		case "model", "prompt", "size", "resolution", "seed", "media", "video_create_path",
+			"width", "height", "aspect_ratio", "n",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id",
+			// 以下字段已转成结构化字段、或 MiniMax 根本不支持：
+			// 原样透传会污染请求体，轻则被忽略，重则触发参数类型错误。
+			// image/image_url/image_urls 已由 ImageRefURLs 转成 subject_reference，
+			// 再发一份同义的 image 字段对上游是无意义噪声。
+			"image", "image_url", "image_urls", "image_file",
+			"negative_prompt", "quality":
 			continue
+		}
+		// style 两边语义不同：OpenAI 用字符串（vivid/natural），MiniMax 用对象
+		// （{style_type, style_weight}）。字符串形态对 MiniMax 是非法类型，直接丢弃；
+		// 对象形态是 MiniMax 原生写法，保留透传，不误伤按官方文档调用的用户。
+		if k == "style" {
+			if _, ok := v.(map[string]any); !ok {
+				continue
+			}
 		}
 		body[k] = v
 	}
@@ -586,6 +624,10 @@ func parseMiniMaxImageCreateResult(respBody []byte, statusCode int) (*MediaCreat
 		if msg := strings.TrimSpace(resp.BaseResp.StatusMsg); msg != "" {
 			message += ": " + msg
 		}
+		// 光有数字调用方无法自助排障，补一句可执行的排查指引。
+		if hint := miniMaxImageStatusHint(resp.BaseResp.StatusCode); hint != "" {
+			message += " (" + hint + ")"
+		}
 		return failed(message), nil
 	}
 	urls := make([]string, 0, len(resp.Data.ImageURLs))
@@ -611,6 +653,28 @@ func parseMiniMaxImageCreateResult(respBody []byte, statusCode int) (*MediaCreat
 		UpstreamStatusCode: statusCode,
 		UpstreamRaw:        respBody,
 	}, nil
+}
+
+// miniMaxImageStatusHint 把 MiniMax 业务错误码翻成一句可执行的排查指引。
+//
+// 官方文档只给了码值表，调用方拿到 "minimax 1026" 不知道该改 prompt 还是改参考图，
+// 只能来问运营。这里对高频码补一句说明，让错误能自助闭环。
+// 注意 1026 是内容安全拦截，而 MiniMax 的参考图（subject_reference）只接受单人正面
+// 人像，传风景/物品图同样会落到这里——不加这句说明，用户会误判成 prompt 违规。
+func miniMaxImageStatusHint(code int) string {
+	switch code {
+	case 1002:
+		return "触发限流，请稍后重试或降低并发"
+	case 1004, 2049:
+		return "API Key 鉴权失败，请检查该账号的接口密钥是否正确、是否已过期"
+	case 1008:
+		return "账号余额不足，请充值后重试"
+	case 1026:
+		return "内容安全拦截：请调整 prompt 措辞；若带了参考图，注意 MiniMax 图生图仅支持单人正面人像照片，非人像参考图同样会被拒"
+	case 2013:
+		return "参数异常：请检查 prompt 是否超过 1500 字符、model 是否为 image-01/image-01-live、size 是否为 8 的倍数且在 [512,2048]、参考图是否为可公网访问的 JPG/PNG 且小于 10MB"
+	}
+	return ""
 }
 
 // firstIntBeforeX 从 "1280x1024" 提取宽度。

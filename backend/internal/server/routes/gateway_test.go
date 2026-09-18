@@ -173,6 +173,9 @@ func TestGatewayRoutesAsyncImagesPathsAreRegistered(t *testing.T) {
 		"POST /images/generations/async",
 		"POST /images/edits/async",
 		"GET /images/tasks/:task_id",
+		// 凭 request_id 找回原任务：提交响应丢失时的唯一自救入口，不能被误删。
+		"GET /v1/images/generations/by-request/:request_id",
+		"GET /images/generations/by-request/:request_id",
 	} {
 		require.True(t, registered[route], "%s should be registered", route)
 	}

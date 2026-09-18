@@ -1117,16 +1117,38 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	if !endpoint.RequiresRequestBody() || !gjson.ValidBytes(body) {
 		return body, contentType, nil
 	}
+	// request_id 是本网关的幂等键，xAI 的请求 schema 里没有这个字段，必须剔除后再上行：
+	// 一是不能把调用方的私有标识透给上游；二是未知顶层参数是否被上游判非法取决于
+	// 其校验严格程度，照文档传键的客户端不该因此冒调不通的风险。
+	body, err := dropGrokMediaClientRequestID(body)
+	if err != nil {
+		return nil, "", err
+	}
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		out, err := applyGrokImagineImageGeometry(body)
+		geometry, err := applyGrokImagineImageGeometry(body)
 		if err != nil {
 			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
 		}
-		return out, contentType, nil
+		return geometry, contentType, nil
 	default:
 		return body, contentType, nil
 	}
+}
+
+// dropGrokMediaClientRequestID 删除请求体顶层的 request_id（客户端幂等键）。
+//
+// 只删顶层：响应体里的 request_id（上游任务号）以及嵌在 image/video 对象里的
+// 引用字段都不属于幂等键，保持原样。
+func dropGrokMediaClientRequestID(body []byte) ([]byte, error) {
+	if !gjson.GetBytes(body, "request_id").Exists() {
+		return body, nil
+	}
+	out, err := sjson.DeleteBytes(body, "request_id")
+	if err != nil {
+		return nil, fmt.Errorf("sanitize grok media request_id: %w", err)
+	}
+	return out, nil
 }
 
 func (r GrokMediaRequestInfo) HasInputImage() bool {

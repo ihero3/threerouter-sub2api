@@ -93,6 +93,9 @@ export default {
       schedulableHint: '开启后账号参与API请求调度',
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
+      // 关闭调度只是"不再被选中接收新请求"，在途请求不会被中断。有在途请求时
+      // 明说这一点，避免运维以为关闭会把正在跑的请求打断。
+      schedulableDisabledInFlight: '调度已关闭：正在执行的 {count} 个请求会继续跑完，之后不再接收新请求',
       failedToToggleSchedulable: '切换调度状态失败',
       groupCountTotal: '共 {count} 个分组',
       columns: {

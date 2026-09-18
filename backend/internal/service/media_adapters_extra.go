@@ -219,7 +219,9 @@ func (a *openAICompatMediaAdapter) buildCreateBody(req MediaCreateRequest) []byt
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "input", "size", "resolution", "image_url", "image_urls", "media":
+		case "model", "prompt", "input", "size", "resolution", "image_url", "image_urls", "media",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		body[k] = v

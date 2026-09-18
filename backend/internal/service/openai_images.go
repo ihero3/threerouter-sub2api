@@ -817,13 +817,23 @@ func buildOpenAIImagesURL(base string, endpoint string) string {
 
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {
 	model = strings.TrimSpace(model)
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	isMultipart := err == nil && strings.EqualFold(mediaType, "multipart/form-data")
+	// request_id 是本网关的幂等标识，不是 OpenAI 参数。官方 API 对未知顶层参数会
+	// 整单拒绝（Unrecognized request argument），因此无论是否改写 model 都必须剔除。
+	// 同步与异步图片端点最终都汇到这条转发路径，在这里处理可一次覆盖两条链路。
+	if isMultipart {
+		// multipart 本就是逐 part 重建，顺带丢掉该字段；model 为空时也走一遍，
+		// 因为剔除与是否改写 model 无关。
+		return rewriteOpenAIImagesMultipartModel(body, contentType, model)
+	}
+	if len(body) > 0 && gjson.ValidBytes(body) && gjson.GetBytes(body, "request_id").Exists() {
+		if stripped, err := sjson.DeleteBytes(body, "request_id"); err == nil {
+			body = stripped
+		}
+	}
 	if model == "" {
 		return body, contentType, nil
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err == nil && strings.EqualFold(mediaType, "multipart/form-data") {
-		rewrittenBody, rewrittenType, rewriteErr := rewriteOpenAIImagesMultipartModel(body, contentType, model)
-		return rewrittenBody, rewrittenType, rewriteErr
 	}
 	rewritten, err := sjson.SetBytes(body, "model", model)
 	if err != nil {
@@ -857,6 +867,11 @@ func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model st
 		}
 
 		formName := strings.TrimSpace(part.FormName())
+		// request_id 是本网关的幂等标识，官方 API 不认这个字段，直接丢弃。
+		if strings.EqualFold(formName, "request_id") && part.FileName() == "" {
+			_ = part.Close()
+			continue
+		}
 		partHeader := cloneMultipartHeader(part.Header)
 		target, err := writer.CreatePart(partHeader)
 		if err != nil {
@@ -864,7 +879,7 @@ func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model st
 			return nil, "", fmt.Errorf("create multipart part: %w", err)
 		}
 
-		if formName == "model" && part.FileName() == "" {
+		if formName == "model" && part.FileName() == "" && model != "" {
 			if _, err := target.Write([]byte(model)); err != nil {
 				_ = part.Close()
 				return nil, "", fmt.Errorf("rewrite multipart model: %w", err)
@@ -880,7 +895,7 @@ func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model st
 		_ = part.Close()
 	}
 
-	if !modelWritten {
+	if !modelWritten && model != "" {
 		if err := writer.WriteField("model", model); err != nil {
 			return nil, "", fmt.Errorf("append multipart model field: %w", err)
 		}

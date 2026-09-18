@@ -94,7 +94,8 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	close(release)
 	require.Eventually(t, func() bool {
 		got, err := tasks.Get(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 9}, accepted.TaskID)
-		return err == nil && got.Status == service.ImageTaskStatusCompleted
+		return err == nil && got.Status == service.ImageTaskStatusSucceeded &&
+			got.LegacyStatus == service.ImageTaskStatusCompleted
 	}, time.Second, 10*time.Millisecond)
 
 	pollReq := httptest.NewRequest(http.MethodGet, accepted.PollURL, nil)

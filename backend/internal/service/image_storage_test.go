@@ -217,7 +217,7 @@ func TestImageTaskServiceCompleteOffloadsToStorage(t *testing.T) {
 
 	got, err := svc.Get(context.Background(), owner, created.ID)
 	require.NoError(t, err)
-	require.Equal(t, ImageTaskStatusCompleted, got.Status)
+	require.Equal(t, ImageTaskStatusSucceeded, got.Status)
 	require.Equal(t, "https://cdn.test/images/"+created.ID+"-0.png", got.ImageURL)
 	require.NotContains(t, string(got.Result), "b64_json", "large base64 must not be persisted to Redis")
 	require.Len(t, storage.saved, 1)

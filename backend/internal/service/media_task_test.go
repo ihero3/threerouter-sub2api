@@ -69,6 +69,30 @@ func TestBuildSeedanceVideoCreateBody_Content(t *testing.T) {
 	require.Equal(t, "sunset", content[0].(map[string]any)["text"])
 }
 
+func TestBuildVideoCreateBodyDoesNotLetOriginalModelOverrideMapping(t *testing.T) {
+	body := buildVideoCreateBody(VideoCreateRequest{
+		UpstreamModel: "doubao-seedance-1-5-pro",
+		Prompt:        "sunset",
+		Resolution:    "1080p",
+		DurationSec:   8,
+		Extra: map[string]any{
+			"model":      "seedance-1.0-pro",
+			"prompt":     "original prompt",
+			"resolution": "480p",
+			"duration":   2,
+			"ratio":      "16:9",
+		},
+	})
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Equal(t, "doubao-seedance-1-5-pro", payload["model"])
+	require.Equal(t, "sunset", payload["prompt"])
+	require.Equal(t, "1080p", payload["resolution"])
+	require.Equal(t, float64(8), payload["duration"])
+	require.Equal(t, "16:9", payload["ratio"])
+}
+
 func TestParseMediaCreateRequest_IgnoresRatioForImageToVideo(t *testing.T) {
 	// image 字段存在 → 图生视频：Ratio 清空且 Extra 里的 ratio 一并删除。
 	req, err := parseMediaCreateRequest(MediaKindVideo, "minimax-h3", map[string]any{

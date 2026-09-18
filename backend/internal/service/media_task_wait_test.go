@@ -40,6 +40,10 @@ func (f *fakeMediaTaskRepoForWait) UpdateResult(ctx context.Context, id int64, s
 	return true, nil
 }
 
+func (f *fakeMediaTaskRepoForWait) UpdateCostUSD(ctx context.Context, id int64, costUSD float64) error {
+	return nil
+}
+
 func (f *fakeMediaTaskRepoForWait) UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error {
 	return nil
 }

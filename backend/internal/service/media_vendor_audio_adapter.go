@@ -210,7 +210,9 @@ func buildMiniMaxTTSBody(req MediaCreateRequest) []byte {
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "text", "media", "video_create_path":
+		case "model", "prompt", "text", "media", "video_create_path",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		body[k] = v
@@ -283,7 +285,9 @@ func buildVolcanoTTSBody(req MediaCreateRequest) []byte {
 	}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "media", "video_create_path", "app", "user", "request":
+		case "model", "prompt", "media", "video_create_path", "app", "user", "request",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		body[k] = v
@@ -354,7 +358,9 @@ func buildAliyunTTSBody(req MediaCreateRequest) []byte {
 	params := map[string]any{}
 	for k, v := range req.Extra {
 		switch k {
-		case "model", "prompt", "media", "video_create_path", "input", "parameters":
+		case "model", "prompt", "media", "video_create_path", "input", "parameters",
+			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
+			"request_id":
 			continue
 		}
 		params[k] = v

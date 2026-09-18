@@ -4,6 +4,8 @@
 > 首选端点仍是同步的 `POST /v1/images/generations`——它在任何分组下都返回 OpenAI 标准
 > `ImagesResponse`，且已内置同步等待（异步图片上游最多等 120 秒）。
 > 只有在需要"提交后立刻断开、稍后再取"且已开启对象存储时才用本套异步端点。
+> **需要幂等重试、或需要按 `request_id` 找回超时任务时，本套异步端点是唯一提供该保证的
+> 路径**（详见下文 Idempotency 与 HTTP status code contract）。
 > 批量场景另见 `POST /v1/images/batches`（并列能力，非降级）。
 
 Asynchronous image tasks let clients submit long-running OpenAI-compatible image requests without keeping one HTTP connection open. This avoids proxy/CDN response timeouts such as Cloudflare 524 while preserving the existing image routing, billing, moderation, concurrency, and failover behavior.
@@ -16,9 +18,10 @@ The authenticated gateway exposes both `/v1` paths and their existing no-prefix 
 POST /v1/images/generations/async
 POST /v1/images/edits/async
 GET  /v1/images/tasks/{task_id}
+GET  /v1/images/generations/by-request/{request_id}
 ```
 
-The aliases are `/images/generations/async`, `/images/edits/async`, and `/images/tasks/{task_id}`.
+The aliases are `/images/generations/async`, `/images/edits/async`, `/images/tasks/{task_id}`, and `/images/generations/by-request/{request_id}`.
 
 Only OpenAI and Grok groups are supported. Requests use the same JSON or multipart payload as the corresponding synchronous endpoint. Streaming image requests are rejected because a polled task returns one final JSON result.
 
@@ -83,6 +86,7 @@ Two further causes of a 404 that are unrelated to storage: the API key's group m
 curl -i https://api.example.com/v1/images/generations/async \
   -H 'Authorization: Bearer sk-...' \
   -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: req-8f2c1a94' \
   -d '{
     "model": "gpt-image-1",
     "prompt": "A lighthouse during a winter storm",
@@ -98,6 +102,7 @@ The server stores the initial task in Redis and responds with `202 Accepted`:
   "task_id": "imgtask_0123456789abcdef",
   "object": "image.generation.task",
   "status": "processing",
+  "request_id": "req-8f2c1a94",
   "created_at": 1784092800,
   "expires_at": 1784179200,
   "poll_url": "/v1/images/tasks/imgtask_0123456789abcdef"
@@ -105,6 +110,103 @@ The server stores the initial task in Redis and responds with `202 Accepted`:
 ```
 
 `Location` contains the polling path and `Retry-After: 3` provides the recommended polling interval.
+
+## Idempotency
+
+Submitting the same work twice is the expensive failure mode for image generation: it burns upstream spend and the caller's balance twice over. Supply a unique key per logical request and the server guarantees it creates the task exactly once.
+
+Two equivalent ways to send it — the header takes precedence when both are present:
+
+```text
+Idempotency-Key: <unique-request-id>          # header form
+{ "request_id": "<unique-request-id>", ... }  # body form
+```
+
+Behaviour on repeat:
+
+| Situation | Response |
+|---|---|
+| Same key, same payload | `202` with the **original** body (same `task_id`) plus `X-Idempotency-Replayed: true` |
+| Same key, different payload | `409` `IDEMPOTENCY_KEY_CONFLICT` — the key was reused for different work |
+| Same key, first request still in flight | `409` `IDEMPOTENCY_IN_PROGRESS` with `Retry-After` |
+
+Replay is a normal `202`, not a `409`, because the caller's intent was fulfilled: the task exists and the same `task_id` is returned. `409` is reserved for genuine conflicts.
+
+Keys are scoped per API key — the same unit that owns the task, so polling and recovery always agree. Keys are remembered for 24 hours; a key is reusable once its record expires.
+
+The key is never forwarded upstream (OpenAI's API rejects unknown top-level arguments), and `request_id` is stripped from the body before the request is dispatched.
+
+Omitting the key is allowed and preserves the legacy behaviour — every submission creates a new task. That is exactly the case that risks duplicate generation, so clients retrying on timeout should always send one.
+
+### Same key, same sources, on every create endpoint
+
+The two key sources above are accepted by every generation endpoint that creates a task in the unified media pipeline — the same client can switch endpoints without changing how it guards retries:
+
+| Endpoint | Header key | Body `request_id` |
+|---|---|---|
+| `POST /v1/images/generations/async` | yes | yes |
+| `POST /v1/images/generations` and `/v1/images/edits` | yes | yes |
+| `POST /v1/media/generations` | yes | yes |
+| `POST /v1/videos/generations` (and `/videos/edits`, `/videos/extensions`) | yes | yes |
+
+Replays are marked with `X-Idempotency-Replayed: true` on all of them. The non-async endpoints answer `202` with a task id, so they are equally safe to poll via `GET /v1/videos/{task_id}` (or the images polling endpoint for image tasks).
+
+> **Grok groups are not covered.** When the group's platform is `grok`, the entries above are
+> forwarded to xAI's native Imagine API instead of the task pipeline, so no key is honoured
+> and no task is stored. See "One exception: the Grok passthrough" below.
+
+### One exception: the OpenAI-native passthrough
+
+When the group's platform is `openai` **and** the model is an OpenAI-native image model (`gpt-image-*`), `POST /v1/images/generations` is a plain synchronous passthrough to the upstream and is **not** covered by the task pipeline: no key is honoured, no task is stored, and there is no `by-request` recovery. If the response is lost, the upstream generation still happened and it cannot be recovered — send such requests to `POST /v1/images/generations/async` when exactly-once semantics matter, or accept the duplicate-spend risk. Every other group/model combination goes through the task pipeline and honours both key sources.
+
+### One exception: the Grok passthrough
+
+When the group's platform is `grok`, `POST /v1/images/generations`, `/v1/images/edits`, `/v1/videos/generations`, `/v1/videos/edits` and `/v1/videos/extensions` are forwarded straight to xAI's Imagine API. xAI runs the job asynchronously and answers with its own `request_id`, which `GET /v1/videos/{request_id}` then looks up. There is no gateway task row, so **neither key source is honoured on this path** — a retry creates a second upstream job, exactly like the OpenAI-native passthrough above.
+
+A body `request_id` is removed before the request is dispatched. xAI's request schema has no such field, so forwarding it would both leak the caller's key upstream and risk a `400` from a strict validator; on this path the field is simply inert. Use a `composite` group — or any other platform — when exactly-once semantics matter.
+
+## Recover a task by request_id
+
+If the submit response is lost to a network timeout, a dropped connection, or a `502`, the caller is left holding only the key. Fetch the original task with it rather than resubmitting:
+
+```bash
+curl https://api.example.com/v1/images/generations/by-request/req-8f2c1a94 \
+  -H 'Authorization: Bearer sk-...'
+```
+
+This returns `200` with the same task object as the polling endpoint (including `request_id`), or `404` when the key is unknown — or was never successfully submitted, in which case there is no task to recover and the caller may safely resubmit with a fresh key.
+
+## HTTP status code contract
+
+This table is the authoritative answer to "did my request create a task?" — the question a client must resolve before deciding to retry.
+
+| Response | Task created? | Meaning |
+|---|---|---|
+| `202` | **Yes** | Accepted; poll `poll_url`. Also returned when an idempotent replay occurs (check `X-Idempotency-Replayed`). |
+| `200` | **Yes** (already done) | Returned by the polling and by-request endpoints, not by submit. |
+| `400` | No | Invalid parameters or malformed body. Rejected before any task is created. |
+| `401` / `403` | No | Authentication or permission failure. Rejected before any task is created. |
+| `404` | No | Feature disabled, unsupported platform, or unknown/foreign task ID. |
+| `409` | **Depends** | Idempotency conflict. `IDEMPOTENCY_IN_PROGRESS`: a task **was** created — recover it by `request_id`. `IDEMPOTENCY_KEY_CONFLICT`: the key was reused with a different payload; the original task exists under that key. |
+| `413` | No | Body exceeded the size limit. |
+| `429` | No | Rate limited before task creation. Retry after the interval in `Retry-After`. |
+| `500` / `502` / `503` | **Possibly** | The task may already exist — for example the response was lost after the task was stored, or the upstream call failed after submission. **Do not blind-retry.** Query `/images/generations/by-request/{request_id}` first. |
+| Timeout / connection reset | **Possibly** | Same as above. |
+
+### Why `5xx` and timeouts are "possibly"
+
+Upstream generation deliberately runs detached from the client's connection (see `upstreamBase` in `MediaTaskService`): once a submission is accepted, the server finishes the work and records it even if the caller has already gone away. That is what prevents silently billing a generation the caller never learns about — but it also means an ambiguous failure can leave a real task behind.
+
+The only safe client protocol is therefore:
+
+```text
+submit with Idempotency-Key
+  → 202                : poll task_id
+  → 409 IN_PROGRESS    : poll the task from the replayed response / by request_id
+  → timeout / 5xx      : GET by-request/{request_id}, then poll; never resubmit blindly
+```
+
+Because a `409 IN_PROGRESS` carries the `Retry-After` for the lock window and a replay returns the original `202` body, a client that always reuses the same key converges on exactly one task no matter how many times it retries.
 
 ## Poll a task
 
@@ -135,7 +237,8 @@ On success, `result` mirrors the synchronous image API body, except each image h
   "id": "imgtask_0123456789abcdef",
   "task_id": "imgtask_0123456789abcdef",
   "object": "image.generation.task",
-  "status": "completed",
+  "status": "succeeded",
+  "legacy_status": "completed",
   "http_status": 200,
   "image_url": "https://...",
   "result": {
@@ -148,6 +251,18 @@ On success, `result` mirrors the synchronous image API body, except each image h
 }
 ```
 
+### Status values
+
+`status` uses the client-facing vocabulary; `legacy_status` carries the original internal value so that callers already branching on `completed` keep working.
+
+| `status` | `legacy_status` | Meaning |
+|---|---|---|
+| `processing` | `processing` | Accepted and running. Keep polling. |
+| `succeeded` | `completed` | Finished; read `result` / `image_url`. |
+| `failed` | `failed` | Finished unsuccessfully; read `error`. |
+
+`accepted`, `queued`, and `cancelled` are **not produced**: a submission starts executing immediately (there is no queue stage) and cancellation is not currently exposed. Clients should treat these as unreachable rather than waiting for them.
+
 For URL responses, `image_url` mirrors the first `data[].url` for simple clients. On failure, the task reaches `failed` and exposes the original OpenAI-compatible error object where available:
 
 ```json
@@ -156,6 +271,7 @@ For URL responses, `image_url` mirrors the first `data[].url` for simple clients
   "task_id": "imgtask_0123456789abcdef",
   "object": "image.generation.task",
   "status": "failed",
+  "legacy_status": "failed",
   "http_status": 502,
   "error": {
     "type": "api_error",

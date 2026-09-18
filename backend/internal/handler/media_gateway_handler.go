@@ -189,13 +189,14 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 	}
 
 	actorScope := "user:" + strconv.FormatInt(subject.UserID, 10)
+	key := resolveMediaIdempotencyKey(c.GetHeader("Idempotency-Key"), body)
 	var record *service.MediaTaskRecord
 	result, err := coordinator.Execute(c.Request.Context(), service.IdempotencyExecuteOptions{
 		Scope:          "media_create",
 		ActorScope:     actorScope,
 		Method:         c.Request.Method,
 		Route:          c.FullPath(),
-		IdempotencyKey: c.GetHeader("Idempotency-Key"),
+		IdempotencyKey: key,
 		Payload:        body,
 		RequireKey:     false,
 	}, func(ctx context.Context) (any, error) {
@@ -217,6 +218,28 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 		}
 	}
 	return record, result != nil && result.Replayed, nil
+}
+
+// resolveMediaIdempotencyKey 决定本次创建用哪个幂等键。
+//
+// 与 /v1/images/generations/async 保持同一口径：Idempotency-Key 头优先（跨语言
+// 通用做法），其次回落到请求体 request_id。视频创建与同步生图共用
+// mediaCreateIdempotent，因此两条链路一起获益。request_id 只是本网关的标识，
+// adapter 侧已把它从上游请求体中剔除。
+//
+// 两者都为空时返回空串：调用方（含协调器）按"未提供幂等键"处理，保持历史行为。
+func resolveMediaIdempotencyKey(headerKey string, body map[string]any) string {
+	if key := strings.TrimSpace(headerKey); key != "" {
+		return key
+	}
+	if body == nil {
+		return ""
+	}
+	value, ok := body["request_id"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 // decodeMediaTaskRecord 在幂等重放时把存储的 JSON 数据（map)还原为 MediaTaskRecord。

@@ -61,7 +61,10 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 
 	completed, err := svc.Get(context.Background(), owner, created.ID)
 	require.NoError(t, err)
-	require.Equal(t, ImageTaskStatusCompleted, completed.Status)
+	// 公开视图用客户端契约口径的 succeeded；内部历史值 completed 通过
+	// legacy_status 一并给出，保证按旧值判断的调用方不被打断。
+	require.Equal(t, ImageTaskStatusSucceeded, completed.Status)
+	require.Equal(t, ImageTaskStatusCompleted, completed.LegacyStatus)
 	require.Equal(t, http.StatusOK, completed.HTTPStatus)
 	require.Equal(t, "https://example.test/image.png", completed.ImageURL)
 	require.JSONEq(t, string(result), string(completed.Result))

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -138,6 +138,12 @@ const confirmCancel = async () => {
     confirmDialog.loading = false
   }
 }
+
+// 进页面就拉数据：此前只在点刷新或改筛选时才请求，从左侧菜单进来看到的是空表
+// （要手动点一次刷新才出数据），与其它管理页"挂载即加载"的行为不一致。
+onMounted(() => {
+  loadTasks()
+})
 
 onBeforeUnmount(() => {
   if (loadController) loadController.abort()

@@ -21,6 +21,7 @@ type MediaTaskRepository interface {
 	GetByID(ctx context.Context, id int64) (*service.MediaTaskRecord, error)
 	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, mediaURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
+	UpdateCostUSD(ctx context.Context, id int64, costUSD float64) error
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*service.MediaTaskRecord, int, error)
 	ListProcessingTasks(ctx context.Context, before time.Time, limit int) ([]*service.MediaTaskRecord, error)
@@ -140,6 +141,12 @@ func (r *mediaTaskRepository) UpdateResult(ctx context.Context, id int64, status
 		return false, fmt.Errorf("media_task_repo: update result: %w", err)
 	}
 	return affected > 0, nil
+}
+
+// UpdateCostUSD 只回写费用列，不带状态守卫。调用方（同步出图/音频结算）在任务
+// 已是终态后补写实际费用；不存在或已删除时返回错误由调用方记日志降级。
+func (r *mediaTaskRepository) UpdateCostUSD(ctx context.Context, id int64, costUSD float64) error {
+	return r.client.MediaTask.UpdateOneID(id).SetCostUsd(costUSD).Exec(ctx)
 }
 
 func (r *mediaTaskRepository) UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error {

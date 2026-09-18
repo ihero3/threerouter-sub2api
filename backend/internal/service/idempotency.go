@@ -437,6 +437,54 @@ func (c *IdempotencyCoordinator) Execute(
 	return &IdempotencyExecuteResult{Data: data}, nil
 }
 
+// IdempotencyLookupResult 是按幂等键反查到的记录视图。
+//
+// 存在意义：异步任务的提交响应一旦因客户端超时/断连而丢失，调用方手里就只剩
+// 幂等键，必须能凭它把原任务找回来（否则只能重试并重复计费）。这里只暴露
+// 找回所需的最小字段，不把内部记录直接泄给 handler。
+type IdempotencyLookupResult struct {
+	Found        bool
+	Status       string
+	ResponseBody *string
+	ExpiresAt    time.Time
+}
+
+// Lookup 按 scope + 幂等键反查已落库的记录，用于"凭 request_id 找回原任务"。
+//
+// 安全性依赖调用方把 owner 编进 scope（见 ImageTaskIdempotencyScope）：keyHash 是
+// 全局的，若多个调用方共用同一个 scope，A 就能用自己猜到的 key 读出 B 的记录。
+// 因此这里不做指纹校验（查询请求里没有原始 payload），隔离完全由 scope 承担。
+func (c *IdempotencyCoordinator) Lookup(ctx context.Context, scope, idempotencyKey string) (*IdempotencyLookupResult, error) {
+	if c == nil || c.repo == nil {
+		return nil, ErrIdempotencyStoreUnavail
+	}
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return nil, infraerrors.BadRequest("IDEMPOTENCY_SCOPE_REQUIRED", "idempotency scope is required")
+	}
+	key, err := NormalizeIdempotencyKey(idempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	if key == "" {
+		return &IdempotencyLookupResult{}, nil
+	}
+	record, err := c.repo.GetByScopeAndKeyHash(ctx, scope, HashIdempotencyKey(key))
+	if err != nil {
+		return nil, ErrIdempotencyStoreUnavail.WithCause(err)
+	}
+	// 仓储以 (nil, nil) 表达"没有这条记录"，不是错误。
+	if record == nil {
+		return &IdempotencyLookupResult{}, nil
+	}
+	return &IdempotencyLookupResult{
+		Found:        true,
+		Status:       record.Status,
+		ResponseBody: record.ResponseBody,
+		ExpiresAt:    record.ExpiresAt,
+	}, nil
+}
+
 func (c *IdempotencyCoordinator) conflictWithRetryAfter(base *infraerrors.ApplicationError, lockedUntil *time.Time, now time.Time) error {
 	if lockedUntil == nil {
 		return base

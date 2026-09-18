@@ -48,6 +48,10 @@ type MediaTaskRepo interface {
 	GetByID(ctx context.Context, id int64) (*MediaTaskRecord, error)
 	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, mediaURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
+	// UpdateCostUSD 只回写费用，不动状态。同步出图/音频在创建时就已落成终态，
+	// 结算发生在 Create 之后，UpdateResult 的 processing 状态守卫对它们永远匹配
+	// 不上，必须走这个无守卫的窄更新把实际费用写回 media_tasks.cost_usd。
+	UpdateCostUSD(ctx context.Context, id int64, costUSD float64) error
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*MediaTaskRecord, int, error)
 	ListProcessingTasks(ctx context.Context, before time.Time, limit int) ([]*MediaTaskRecord, error)
@@ -204,6 +208,11 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			lastUpstreamErr = fmt.Errorf("media_task_service: upstream create: %w", createErr)
 			continue
 		}
+		if createResult == nil {
+			lastUpstreamErr = fmt.Errorf("media_task_service: upstream create returned empty result")
+			excluded[account.ID] = struct{}{}
+			continue
+		}
 
 		if createResult.Status == "failed" && createResult.Mode == MediaCompletionFailed {
 			s.logger.Warn("media_task_service: upstream returned failure",
@@ -288,17 +297,17 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			}
 			record.MediaURLs = urls
 		}
-		if createResult.Status == "failed" && kind == MediaKindImage {
+		if record.Status == "failed" && kind == MediaKindImage {
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
 			imgInput.Account = account
 			imgInput.RequestedSize = req.Resolution
 			settleMediaImageTaskFailure(persistCtx, s.billingDeps(), imgInput)
-		} else if createResult.Status == "failed" && kind == MediaKindAudio {
+		} else if record.Status == "failed" && kind == MediaKindAudio {
 			audioInput := mediaAudioBillingInputFromRecord(record)
 			audioInput.Account = account
 			settleMediaAudioTaskFailure(persistCtx, s.billingDeps(), audioInput)
-		} else if createResult.Status == "failed" && kind == MediaKindVideo {
+		} else if record.Status == "failed" && kind == MediaKindVideo {
 			// 不触发 failover 的上游失败：无预扣可退，仍写 0 费用日志保持审计完整
 			settleVideoTaskFailure(persistCtx, s.billingDeps(), &videoTaskBillingInput{
 				LocalID:              record.LocalID,
@@ -312,7 +321,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				DurationSec:          record.DurationSec,
 				RequestedDurationSec: record.DurationSec,
 			})
-		} else if createResult.Status != "failed" {
+		} else if record.Status != "failed" {
 			if kind == MediaKindVideo {
 				// 创建时上游真实时长未知（0），用用户请求时长预估。
 				if cost, costErr := estimateVideoTaskCost(persistCtx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
@@ -331,13 +340,19 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 
 		saved, saveErr := s.mediaTaskRepo.Create(persistCtx, record)
 		if saveErr != nil {
+			// 预扣在上一步已经落到 Key 配额上，而任务行没建成：必须原路退回，
+			// 否则用户为一条不存在的任务付费，用量记录里也没有对应行可对账。
+			// 这里只走错误分支，不动任何成功路径的计费结果。
+			if record.ReservedCost != nil {
+				releaseMediaReservedQuota(s.apiKeyService, persistCtx, apiKeyID, *record.ReservedCost)
+			}
 			return nil, fmt.Errorf("media_task_service: save task: %w", saveErr)
 		}
 
 		// 同步出图：创建即终态，立刻结算（写 usage_logs + 扣余额/订阅 + 预扣转实扣）。
 		// 异步出图（status=processing）留到 refreshTaskStatus 命中 succeeded 时结算，
 		// 两处由任务状态互斥，不会重复扣费。
-		if kind == MediaKindImage && createResult.Status == "succeeded" {
+		if kind == MediaKindImage && saved.Status == "succeeded" {
 			imgInput := mediaImageBillingInputFromRecord(saved, settledImageCount(req, createResult))
 			imgInput.Account = account
 			// 请求尺寸与上游真实输出尺寸分开带：计费档位与 usage_logs 明细
@@ -345,14 +360,32 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			imgInput.RequestedSize = req.Resolution
 			imgInput.OutputSize = createResult.UpstreamSize
 			imgInput.Meta = usageMeta
-			settleMediaImageTaskSuccess(persistCtx, s.billingDeps(), imgInput)
+			// 实际费用必须回写 media_tasks.cost_usd：管理端 Media Tasks 的 COST 列
+			// 读的是任务行本身，异步路径经 UpdateResult 回写，同步路径只能在这里补。
+			// 回写失败只记日志——扣费已生效，不能因展示字段失败回滚整个创建。
+			actual := settleMediaImageTaskSuccess(persistCtx, s.billingDeps(), imgInput)
+			if err := s.mediaTaskRepo.UpdateCostUSD(persistCtx, saved.ID, actual); err != nil {
+				s.logger.Warn("media_task_service: sync image cost writeback failed",
+					zap.String("local_id", saved.LocalID),
+					zap.Float64("actual_cost", actual),
+					zap.Error(err),
+				)
+			}
 		}
 		// 音频 adapter 目前均同步返回，创建成功即终态，同样立刻结算。
-		if kind == MediaKindAudio && createResult.Status == "succeeded" {
+		if kind == MediaKindAudio && saved.Status == "succeeded" {
 			audioInput := mediaAudioBillingInputFromRecord(saved)
 			audioInput.Account = account
 			audioInput.Meta = usageMeta
-			settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
+			// 与同步出图同因：结算返回的实际费用要回写任务行，否则管理端 COST 恒为 0。
+			actual := settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
+			if err := s.mediaTaskRepo.UpdateCostUSD(persistCtx, saved.ID, actual); err != nil {
+				s.logger.Warn("media_task_service: sync audio cost writeback failed",
+					zap.String("local_id", saved.LocalID),
+					zap.Float64("actual_cost", actual),
+					zap.Error(err),
+				)
+			}
 		}
 		return saved, nil
 	}

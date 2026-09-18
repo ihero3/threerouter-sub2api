@@ -19,9 +19,45 @@ const (
 	ImageTaskStatusCompleted  = "completed"
 	ImageTaskStatusFailed     = "failed"
 
+	// ImageTaskStatusSucceeded 是对外契约口径的成功状态名（客户端约定用词）。
+	// 内部仍沿用 completed：该值已写进 Redis 且被既有调用方读取，直接改名会
+	// 静默打断它们，因此只在公开视图上做映射（见 imageTaskPublicStatus）。
+	ImageTaskStatusSucceeded = "succeeded"
+
+	// ImageTaskIdempotencyScopeBase 是异步图片提交的幂等域前缀。
+	// 实际域为 base + ":" + actorScope，见 ImageTaskIdempotencyScope。
+	ImageTaskIdempotencyScopeBase = "gateway:images:async"
+
 	defaultImageTaskTTL              = 24 * time.Hour
 	defaultImageTaskExecutionTimeout = 30 * time.Minute
 )
+
+// ImageTaskIdempotencyScope 返回异步图片提交的幂等域。
+//
+// owner 必须编进 scope：idempotency_records 的唯一键是 (scope, key_hash)，
+// key_hash 不含调用者。若所有用户共用同一个 scope，A 就能用猜到的 request_id
+// 读到 B 的提交响应（进而拿到 B 的 task_id），且两人用同一个 request_id 还会
+// 互相撞 409。把 actorScope 拼进 scope 一次性解决隔离与键碰撞两个问题。
+func ImageTaskIdempotencyScope(actorScope string) string {
+	actorScope = strings.TrimSpace(actorScope)
+	if actorScope == "" {
+		actorScope = "user:0"
+	}
+	return ImageTaskIdempotencyScopeBase + ":" + actorScope
+}
+
+// imageTaskPublicStatus 把内部状态映射成客户端契约（需求口径）的状态名。
+//
+// 内部沿用 completed（历史值，已落进 Redis 与既有客户端），对外暴露 succeeded；
+// 两者同时出现在响应里（status + legacy_status），既有读法不被打断。
+func imageTaskPublicStatus(status string) string {
+	switch status {
+	case ImageTaskStatusCompleted:
+		return ImageTaskStatusSucceeded
+	default:
+		return status
+	}
+}
 
 var (
 	ErrImageTaskNotFound    = infraerrors.New(http.StatusNotFound, "IMAGE_TASK_NOT_FOUND", "image task not found")
@@ -46,12 +82,18 @@ type ImageTaskRecord struct {
 
 // ImageTask is the API-safe task representation returned to callers.
 type ImageTask struct {
-	ID          string          `json:"id"`
-	TaskID      string          `json:"task_id"`
-	Object      string          `json:"object"`
-	Status      string          `json:"status"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	ImageURL    string          `json:"image_url,omitempty"`
+	ID     string `json:"id"`
+	TaskID string `json:"task_id"`
+	Object string `json:"object"`
+	// Status 是客户端契约口径：processing / succeeded / failed。
+	Status string `json:"status"`
+	// LegacyStatus 是内部历史口径的原值（processing / completed / failed）。
+	// 保留它是为了让已按 completed 判断的调用方不因改名而中断。
+	LegacyStatus string `json:"legacy_status"`
+	HTTPStatus   int    `json:"http_status,omitempty"`
+	ImageURL     string `json:"image_url,omitempty"`
+	// RequestID 回显提交时使用的幂等键，便于调用方把响应与自己发起的请求对上。
+	RequestID   string          `json:"request_id,omitempty"`
 	Result      json.RawMessage `json:"result,omitempty"`
 	Error       json.RawMessage `json:"error,omitempty"`
 	CreatedAt   int64           `json:"created_at"`
@@ -240,17 +282,18 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 		return nil
 	}
 	return &ImageTask{
-		ID:          task.ID,
-		TaskID:      task.ID,
-		Object:      "image.generation.task",
-		Status:      task.Status,
-		HTTPStatus:  task.HTTPStatus,
-		ImageURL:    firstImageTaskURL(task.Result),
-		Result:      task.Result,
-		Error:       task.Error,
-		CreatedAt:   task.CreatedAt,
-		CompletedAt: task.CompletedAt,
-		ExpiresAt:   task.ExpiresAt,
+		ID:           task.ID,
+		TaskID:       task.ID,
+		Object:       "image.generation.task",
+		Status:       imageTaskPublicStatus(task.Status),
+		LegacyStatus: task.Status,
+		HTTPStatus:   task.HTTPStatus,
+		ImageURL:     firstImageTaskURL(task.Result),
+		Result:       task.Result,
+		Error:        task.Error,
+		CreatedAt:    task.CreatedAt,
+		CompletedAt:  task.CompletedAt,
+		ExpiresAt:    task.ExpiresAt,
 	}
 }
 

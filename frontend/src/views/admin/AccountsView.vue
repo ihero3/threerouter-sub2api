@@ -2467,6 +2467,15 @@ const handleToggleSchedulable = async (a: Account) => {
   try {
     const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
+    // 关闭调度只影响"新的选号"：后端没有任何中断在途请求的路径（账号仅从调度
+    // 候选里移除），所以正在跑的请求会自然跑完。这里把这件事说出来，否则运维
+    // 看到开关变灰会以为正在生成的图片/视频被打断了。
+    if (!nextSchedulable) {
+      const inFlight = updated?.current_concurrency ?? a.current_concurrency ?? 0
+      if (inFlight > 0) {
+        appStore.showInfo(t('admin.accounts.schedulableDisabledInFlight', { count: inFlight }))
+      }
+    }
     enterAutoRefreshSilentWindow()
   } catch (error) {
     console.error('Failed to toggle schedulable:', error)

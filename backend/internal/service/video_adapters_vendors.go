@@ -547,6 +547,8 @@ func mergeVideoExtra(body map[string]any, extra map[string]any) {
 		"audio_url": {}, "audio_urls": {}, "media": {},
 		"resolution": {}, "ratio": {}, "duration": {}, "duration_sec": {}, "seed": {},
 		"video_create_path": {}, "video_query_path": {},
+		// request_id 是网关的幂等标识，不是厂商参数，不能透传给上游。
+		"request_id": {},
 	}
 	for k, v := range extra {
 		key := strings.TrimSpace(k)

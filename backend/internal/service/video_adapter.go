@@ -393,6 +393,13 @@ func buildVideoCreateBody(req VideoCreateRequest) []byte {
 	}
 	// 透传上游专有参数
 	for k, v := range req.Extra {
+		switch k {
+		case "model", "prompt", "negative_prompt", "image_url", "image_urls", "video_url", "resolution", "duration", "duration_sec", "seed",
+			// request_id 是本网关的幂等标识，上游不认；OpenAI 官方 API 对未知顶层
+			// 参数会整单拒绝（Unrecognized request argument）。
+			"request_id":
+			continue
+		}
 		body[k] = v
 	}
 

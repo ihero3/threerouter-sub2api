@@ -95,6 +95,9 @@ export default {
       schedulableHint: 'Enable to include this account in API request scheduling',
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
+      // Turning scheduling off only stops new requests from being routed here;
+      // in-flight requests keep running. Say so explicitly when there are any.
+      schedulableDisabledInFlight: 'Scheduling disabled: {count} in-flight request(s) will finish first; no new requests will be routed to this account.',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
       groupCountTotal: '{count} groups total',
       platforms: {
