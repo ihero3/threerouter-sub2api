@@ -297,7 +297,6 @@ func (*WanVideoAdapter) Supports(platform, model string) bool {
 	return a.supports(platform, model)
 }
 
-
 // --- Shared request builders ---
 
 // seedanceVideoContent converts the unified request to Volcano Ark content items.
@@ -507,7 +506,6 @@ func buildWanVideoCreateBody(req VideoCreateRequest) []byte {
 	return data
 }
 
-
 // wanVideoMedia converts the unified request into DashScope Wan media objects.
 // Explicit `media` (from all-in-one callers) is preserved as-is; the flattened
 // image/video/audio fields are mapped onto first_frame/reference_video/
@@ -695,6 +693,23 @@ func parseSeedanceVideoCreateResult(respBody []byte, statusCode int) (*VideoCrea
 	return parseGenericVideoCreateResultWithPaths(respBody, statusCode, "task_id", "data.task_id", "id")
 }
 
+// guardVideoResultWithoutURL 对齐 Grok 侧 IsGrokVideoStatusBillable 的口径：
+// 上游报 succeeded 却没给视频 URL 时不能算完成 —— 服务层一旦看到 succeeded 就
+// 立刻真实扣费，而调用方拿不到视频，等于"扣了钱没货"。
+//
+// 这里降级为 processing 继续轮询（URL 可能稍后才出现），而不是直接判 failed：
+// 视频是异步产物，误判失败会让上游已完成的任务白白作废。一直拿不到 URL 时
+// 由 maxMediaTaskDurationBeforeFail 超时兜底判失败并退预扣，不会挂账。
+func guardVideoResultWithoutURL(result *VideoTaskResult) {
+	if result == nil || result.Status != "succeeded" {
+		return
+	}
+	if strings.TrimSpace(result.VideoURL) != "" {
+		return
+	}
+	result.Status = "processing"
+}
+
 func parseSeedanceVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskResult, error) {
 	result := &VideoTaskResult{StatusCode: statusCode, UpstreamRaw: respBody}
 	if statusCode >= 400 {
@@ -715,6 +730,7 @@ func parseSeedanceVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskR
 		"duration_seconds", "data.duration_seconds",
 	)
 	result.ErrorMessage = stringAtPath(data, "error.message", "message")
+	guardVideoResultWithoutURL(result)
 	return result, nil
 }
 
@@ -802,6 +818,7 @@ func parseMiniMaxVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskRe
 		"task.video.duration", "task.duration_seconds",
 	)
 	result.ErrorMessage = stringAtPath(data, "task.error.message", "error.message", "message")
+	guardVideoResultWithoutURL(result)
 	return result, nil
 }
 
@@ -826,9 +843,9 @@ func parseWanVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskResult
 		"output.video.duration", "data.duration", "usage.video_duration",
 	)
 	result.ErrorMessage = stringAtPath(data, "message", "output.message", "error.message")
+	guardVideoResultWithoutURL(result)
 	return result, nil
 }
-
 
 // --- small path helpers ---
 

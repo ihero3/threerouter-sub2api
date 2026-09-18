@@ -948,7 +948,14 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 }
 
 // handleAuthError 处理认证类错误(401/403)，停止账号调度
+//
+// 空指针校验不是洁癖：本函数会在流式/WebSocket 转发协程里被调用，那里panic
+// 会直接打崩整个进程，而不是退化成一次请求失败。同文件的其它方法（如 applyMix）
+// 一直都有这层校验，这里补上是把口径对齐。
 func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account, errorMsg string) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
 	s.notifyAccountSchedulingBlocked(account, time.Time{}, "auth_error")
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		slog.Warn("account_set_error_failed", "account_id", account.ID, "error", err)

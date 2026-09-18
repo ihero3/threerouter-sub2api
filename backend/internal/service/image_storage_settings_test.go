@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -221,16 +222,35 @@ func TestImageStorageSettingsRejectSecretWithEphemeralKey(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {
+// 凭证不全过去是"整体禁用"，现在语义变了：降级为 URL 透传，不再整体禁用。
+//
+// 理由：对象存储要挡的是"几 MB 内嵌产物躺进 Redis 24h"，不是 URL——上游
+// http 链接只有几十字节，原样转发没问题。真正需要一口拒绝的是 b64 / data URI，
+// 那件事由 ImageTaskService.Complete 里的 rejectInlineImageResult 兜底。
+func TestImageStorageSettingsIncompleteFallsBackToURLPassthrough(t *testing.T) {
 	svc, _, built := newImageStorageFixture(t, config.ImageStorageConfig{})
 	ctx := context.Background()
 
 	_, err := svc.Update(ctx, ImageStorageSettings{Enabled: true, Bucket: "my-images"})
 	require.NoError(t, err)
 
-	_, enabled := svc.resolve()
-	require.False(t, enabled, "missing credentials must not enable the feature")
+	uploader, enabled := svc.resolve()
+	require.True(t, enabled, "missing credentials downgrade to url passthrough instead of disabling async entirely")
+	require.Nil(t, uploader, "no uploader is available without complete credentials")
 	require.Empty(t, *built, "no client is built from an incomplete configuration")
+}
+
+// A task service bound to an incomplete configuration must report itself as
+// enabled but without offloading — that pair is what drives both the submit-side
+// rejection of response_format=b64_json and the complete-side result guard.
+func TestImageTaskServiceOffloadEnabledTracksUploader(t *testing.T) {
+	svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{})
+	_, err := svc.Update(context.Background(), ImageStorageSettings{Enabled: true, Bucket: "my-images"})
+	require.NoError(t, err)
+
+	tasks := NewImageTaskServiceWithResolver(&imageTaskMemoryStore{}, svc.Resolver(), time.Hour, time.Minute)
+	require.True(t, tasks.Enabled())
+	require.False(t, tasks.OffloadEnabled())
 }
 
 // Deployments that already enabled the feature through config.yaml must keep

@@ -96,6 +96,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "streaming image requests cannot be submitted as asynchronous tasks")
 		return
 	}
+	if h.rejectInlineResponseIfNoObjectStorage(c, body) {
+		return
+	}
 	if err := h.validateRequest(c, platform, body); err != nil {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
@@ -591,6 +594,51 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	taskCtx.Writer = recorderCtx.Writer
 	taskCtx.Request = request
 	return taskCtx, recorder, cancel
+}
+
+// rejectInlineResponseIfNoObjectStorage 在没有对象存储时拒绝 response_format=b64_json。
+//
+// 为什么必须提前拦：异步链路原样把 response_format 透传给上游（由厂商决定返回什么），
+// 若此刻没有对象存储，几 MB 的内嵌产物既不能落 Redis、也不能转发，只能在上游生成
+// 完成后让任务失败——那时钱已经扣了，图却没有。与其让用户收到一句看不懂的失败原因，
+// 不如在提交时就 400 并给出两条出路。
+//
+// 契约上刻意不做静默降级（悄悄把 b64 换成 url）：客户端显式要什么就必须给什么，
+// 给不出要报错，不能替它换。
+func (h *AsyncImageHandler) rejectInlineResponseIfNoObjectStorage(c *gin.Context, body []byte) bool {
+	if h == nil || h.tasks == nil || h.tasks.OffloadEnabled() {
+		return false
+	}
+	if !asyncImageRequestsInlineResponse(c.GetHeader("Content-Type"), body) {
+		return false
+	}
+	imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error",
+		"response_format=b64_json is not supported for async image tasks without object storage: configure image object storage, omit response_format (defaults to url), or use the synchronous /v1/images/generations endpoint")
+	return true
+}
+
+// asyncImageRequestsInlineResponse 判断请求是否显式要求上游返回内嵌图片数据。
+// multipart（/v1/images/edits）与 JSON 两种写法都要覆盖，否则 edits 会绕过拦截。
+func asyncImageRequestsInlineResponse(contentType string, body []byte) bool {
+	if isMultipartImagesContentType(contentType) {
+		_, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+		if err != nil {
+			return false
+		}
+		boundary := strings.TrimSpace(params["boundary"])
+		if boundary == "" {
+			return false
+		}
+		value, found := multipartFieldValue(body, boundary, "response_format")
+		return found && strings.EqualFold(strings.TrimSpace(value), "b64_json")
+	}
+	var envelope struct {
+		ResponseFormat string `json:"response_format"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(envelope.ResponseFormat), "b64_json")
 }
 
 func asyncImageRequestStreams(contentType string, body []byte) bool {

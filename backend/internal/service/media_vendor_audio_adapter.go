@@ -243,6 +243,14 @@ func parseMiniMaxTTSResult(respBody []byte, statusCode int) (*MediaCreateResult,
 			url = u
 		}
 	}
+	// 没有产物就必须判失败：音频是同步终态，服务层会立刻真实扣费，
+	// succeeded 却给不出 URL 等于"扣了钱没有声音"。与图片侧同口径。
+	if url == "" {
+		return &MediaCreateResult{
+			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+			ErrorMessage: "minimax tts response contained no audio url",
+		}, nil
+	}
 	return &MediaCreateResult{
 		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
 	}, nil
@@ -310,6 +318,13 @@ func parseVolcanoTTSResult(respBody []byte, statusCode int) (*MediaCreateResult,
 	url := ""
 	if u, ok := data["data"].(string); ok {
 		url = u
+	}
+	// 同上：火山把音频直接放在 data 字段，取不到就是没有产物，不能算 succeeded。
+	if url == "" {
+		return &MediaCreateResult{
+			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+			ErrorMessage: "volcano tts response contained no audio url",
+		}, nil
 	}
 	return &MediaCreateResult{
 		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
@@ -402,6 +417,13 @@ func parseAliyunTTSResult(respBody []byte, statusCode int) (*MediaCreateResult, 
 		}
 	}
 	walk(data)
+	// 同上：遍历兜底也没找到 http 开头的产物，就是没有产物。
+	if url == "" {
+		return &MediaCreateResult{
+			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+			ErrorMessage: "dashscope tts response contained no audio url",
+		}, nil
+	}
 	return &MediaCreateResult{
 		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
 	}, nil

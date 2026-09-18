@@ -179,6 +179,20 @@ func (s *ImageTaskService) Enabled() bool {
 	return enabled
 }
 
+// OffloadEnabled 表示当前是否已装配对象存储。
+//
+// 与 Enabled 的区别：开启但凭证不全时 Enabled=true（降级为 URL 透传，可直接转发上游
+// http 链接），而 OffloadEnabled=false（无法接住内嵌 b64 / data URI 这类大产物）。
+// 提交侧据此提前拒绝"异步 + b64_json"这类组合：这类组合若不拦，只能等上游生成完
+// （已经扣了费）才在落库那一刻失败——用户既没拿到图，钱也已经花了。
+func (s *ImageTaskService) OffloadEnabled() bool {
+	if s == nil || s.store == nil {
+		return false
+	}
+	uploader, _ := s.current()
+	return uploader != nil
+}
+
 // Pollable 表示已创建的任务能否被查询。
 // 比 Enabled 弱：只要 store 可用即可，从而在功能被关掉后仍能取回进行中的任务结果。
 func (s *ImageTaskService) Pollable() bool {
@@ -233,7 +247,8 @@ func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode i
 	if !json.Valid(result) {
 		return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "upstream returned a non-JSON image response"))
 	}
-	if uploader, _ := s.current(); uploader != nil {
+	uploader, _ := s.current()
+	if uploader != nil {
 		rewritten, err := uploader.Rewrite(ctx, id, result)
 		if err != nil {
 			// 转存失败不回退存 base64，避免大 blob 撑爆 Redis：直接把任务标记为失败。
@@ -241,6 +256,14 @@ func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode i
 			return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "failed to store generated image to object storage"))
 		}
 		result = rewritten
+	} else if err := rejectInlineImageResult(result); err != nil {
+		// 没有对象存储（URL 透传模式）：产物必须是 http(s) 链接。
+		// 触发点分两类，都在这里显式失败并给出可执行出路：
+		//   1) 内嵌 b64_json / data URI —— 几 MB 且要留 24h，绝不能落 Redis；
+		//   2) 结构不合法或一张图都没有 —— 默默 succeeded 就是"扣了钱不给货"。
+		logger.L().Error("image_task.inline_result_rejected", zap.String("task_id", id), zap.Error(err))
+		return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error",
+			"async image result cannot be returned without object storage: "+err.Error()))
 	}
 	return s.finish(ctx, id, ImageTaskStatusCompleted, statusCode, result, nil)
 }

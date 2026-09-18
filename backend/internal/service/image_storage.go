@@ -110,6 +110,53 @@ func (u *ImageResultUploader) Rewrite(ctx context.Context, taskID string, result
 	return out, nil
 }
 
+// rejectInlineImageResult 在没有对象存储时挡住会撑爆 Redis 的产物。
+//
+// 没有对象存储时异步结果会**原样**落 Redis 并保留 24 小时（defaultImageTaskTTL）。
+// 上游返回的 http URL 只有几十字节，直接存任务记录转发毫无压力；但内嵌的
+// b64_json / data URI 动辄几 MB 一张，n>1 时更甚——Redis 是单线程内存库，
+// 这类 value 写入会阻塞、留 24 小时会吃掉大量内存。
+// 所以这里显式拒绝，让任务带着明确原因失败，而不是静默把大 blob 塞进去。
+func rejectInlineImageResult(result json.RawMessage) error {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(result, &top); err != nil {
+		return fmt.Errorf("parse image response: %w", err)
+	}
+	rawData, ok := top["data"]
+	if !ok {
+		return errors.New("upstream image response has no data field")
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(rawData, &items); err != nil {
+		return fmt.Errorf("parse image response data: %w", err)
+	}
+	if len(items) == 0 {
+		// 一张图都没产出却让任务 succeeded，等于"扣了钱不给货"：
+		// 宁可明确失败，也不要给调用方一个没有图片的空胜利。
+		return errors.New("upstream image response contains no image")
+	}
+	for i, item := range items {
+		if raw, ok := item["b64_json"]; ok {
+			var b64 string
+			if err := json.Unmarshal(raw, &b64); err == nil && strings.TrimSpace(b64) != "" {
+				return fmt.Errorf("image %d is inline base64: configure image object storage, request response_format=url, or use the synchronous endpoint", i)
+			}
+		}
+		raw, ok := item["url"]
+		if !ok {
+			return fmt.Errorf("image %d has neither url nor b64_json", i)
+		}
+		var rawURL string
+		if err := json.Unmarshal(raw, &rawURL); err != nil || strings.TrimSpace(rawURL) == "" {
+			return fmt.Errorf("image %d has an empty url", i)
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(rawURL)), "data:") {
+			return fmt.Errorf("image %d is an inline data URI: configure image object storage, request response_format=url, or use the synchronous endpoint", i)
+		}
+	}
+	return nil
+}
+
 func (u *ImageResultUploader) fetchImageBytes(ctx context.Context, item map[string]json.RawMessage) ([]byte, string, error) {
 	if raw, ok := item["b64_json"]; ok {
 		var b64 string

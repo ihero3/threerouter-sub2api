@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -94,10 +93,11 @@ func newStubMediaAdapter(t *testing.T, respBody string) (*openAICompatMediaAdapt
 func TestCompatImageCreateFailsWhenNoTaskAndNoOutput(t *testing.T) {
 	t.Parallel()
 
-	// 关键回归：Data 非空但只带 b64_json 时，旧逻辑不会 failed，
-	// 任务变成「无 task_id 的 processing」—— PollTask 遇空 UpstreamTaskID 直接跳过，
-	// 30 分钟超时兜底也不可达，预扣永久挂账且没有 usage_logs。
-	adapter, account := newStubMediaAdapter(t, `{"data":[{"b64_json":"AAAA"}]}`)
+	// 关键回归：Data 非空但每项既无 url 也无 b64_json 时，旧逻辑因 len(Data)!=0
+	// 而不判 failed，任务变成「无 task_id 的 processing」—— PollTask 遇空
+	// UpstreamTaskID 直接跳过，30 分钟超时兜底也不可达，预扣永久挂账且没有 usage_logs。
+	// 注意：只带 b64_json 的场景**不是**这里要覆盖的——b64 现已转成 data URI 正常交付。
+	adapter, account := newStubMediaAdapter(t, `{"data":[{}],"created":123}`)
 
 	res, err := adapter.Create(context.Background(), account, MediaCreateRequest{UpstreamModel: "m", Prompt: "p"})
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestCompatImageCreateCollectsEveryImage(t *testing.T) {
 func TestCompatImageCreateKeepsAsyncTask(t *testing.T) {
 	t.Parallel()
 
-	// 纯异步形态不能被误伤：有 task_id 就是 processing，产物为空是正常的。
+	// 纯异步形态不能被误伤：有 task_id 就是 processing，此时没有同步产物是正常的。
 	adapter, account := newStubMediaAdapter(t, `{"id":"task-123"}`)
 
 	res, err := adapter.Create(context.Background(), account, MediaCreateRequest{UpstreamModel: "m", Prompt: "p"})
@@ -134,5 +134,5 @@ func TestCompatImageCreateKeepsAsyncTask(t *testing.T) {
 	require.Equal(t, "processing", res.Status)
 	require.Equal(t, "task-123", res.TaskID)
 	require.Empty(t, res.InlineURL)
-	require.Less(t, len(strings.TrimSpace(res.InlineURLs[0]+res.InlineURLs[0])), 2)
+	require.Empty(t, res.InlineURLs)
 }

@@ -110,9 +110,16 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 		return nil, false
 	}
 	if !cfg.IsConfigured() {
-		logger.L().Warn("image_storage is enabled but not fully configured; async image tasks are disabled",
+		// 凭证不全不再整体禁用异步，而是降级为「仅 URL 透传」模式。
+		//
+		// 对象存储真正要挡的是"几 MB 的内嵌产物躺进 Redis 24 小时"，不是 URL：
+		// 上游返回的 http URL 只有几十字节，直接存任务记录转发完全没问题。
+		// 于是这里放行 uploader=nil，由 ImageTaskService.Complete 兜底——
+		// 一旦产物是 b64_json 或 data URI（几 MB）就明确报错，绝不默默落 Redis。
+		logger.L().Warn("image_storage is enabled but not fully configured; async image tasks fall back to url passthrough",
 			zap.Strings("missing_keys", cfg.MissingCredentialKeys()))
-		return nil, false
+		s.enabled = true
+		return nil, true
 	}
 
 	storage, err := s.factory(ctx, cfg)

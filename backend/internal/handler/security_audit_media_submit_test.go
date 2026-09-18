@@ -112,7 +112,9 @@ func TestAsyncImageSuccessfulPrecheckIsNotRepeatedByDetachedExecution(t *testing
 		executionMu.Lock()
 		repeatedDecision = decision != nil
 		executionMu.Unlock()
-		c.JSON(http.StatusOK, gin.H{"created": 1, "data": []any{}})
+		// 桩必须返回一张真实图片：空 data 数组属于"扣了钱不给货"，
+		// 会被 Complete 判为 failed，本用例断言的是 completed。
+		c.JSON(http.StatusOK, gin.H{"created": 1, "data": []gin.H{{"url": "https://example.test/async.png"}}})
 	}
 
 	router := gin.New()

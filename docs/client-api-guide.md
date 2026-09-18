@@ -40,7 +40,7 @@ Content-Type: application/json
 | `POST /v1/media/generations`、`POST /v1/media` | 媒体总入口，返回自研任务结构 `{id,status,url}` |
 | `POST /v1/generations` | 万能入口（文本也走），自研端点，SDK 需 `client.post` |
 | `POST /v1/video-tasks` | **只读兼容，不再维护**：历史任务仍可查询，新接入请用 `/v1/videos/generations` |
-| `POST /v1/images/generations/async`、`POST /v1/images/edits/async` | 异步生图（依赖对象存储） |
+| `POST /v1/images/generations/async`、`POST /v1/images/edits/async` | 异步生图（需后台开启开关；不配对象存储也能用，降级为 URL 透传） |
 | `POST /v1/images/batches` 及子路由 | **并列能力（非降级）**：批量生图，见第 4 节「批量与异步」 |
 
 **选型建议**
@@ -204,7 +204,7 @@ const img = await client.images.generate({
 |---|---|---|
 | 单张 / 少量 | `POST /v1/images/generations` | 同步 OpenAI 结构 |
 | 批量 | `POST /v1/images/batches` | 批量任务；子路由支持列表 / 条目 / 下载 / 取消 / 删除 |
-| 异步 + 对象存储 | `POST /v1/images/generations/async` | `{task_id, poll_url}`，需先开启对象存储 |
+| 异步 | `POST /v1/images/generations/async` | `{task_id, poll_url}`，需先开启后台开关；未配对象存储时为 URL 透传，详见 docs/ASYNC_IMAGE_TASKS.md |
 
 ---
 

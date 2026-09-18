@@ -3,7 +3,8 @@
 > **端点定位**：本文描述的是**兼容保留**能力（`POST /v1/images/generations/async` 等）。
 > 首选端点仍是同步的 `POST /v1/images/generations`——它在任何分组下都返回 OpenAI 标准
 > `ImagesResponse`，且已内置同步等待（异步图片上游最多等 120 秒）。
-> 只有在需要"提交后立刻断开、稍后再取"且已开启对象存储时才用本套异步端点。
+> 只有在需要"提交后立刻断开、稍后再取"时才用本套异步端点（对象存储配不配都能用，
+> 区别见 [Enabling the feature](#enabling-the-feature)）。
 > **需要幂等重试、或需要按 `request_id` 找回超时任务时，本套异步端点是唯一提供该保证的
 > 路径**（详见下文 Idempotency 与 HTTP status code contract）。
 > 批量场景另见 `POST /v1/images/batches`（并列能力，非降级）。
@@ -25,9 +26,34 @@ The aliases are `/images/generations/async`, `/images/edits/async`, `/images/tas
 
 Only OpenAI and Grok groups are supported. Requests use the same JSON or multipart payload as the corresponding synchronous endpoint. Streaming image requests are rejected because a polled task returns one final JSON result.
 
-## Enabling the feature (object storage)
+## Enabling the feature
 
-Asynchronous image tasks are **disabled by default** and gated on object storage. When the switch is off — or the S3 credentials are incomplete — the async endpoints return `404` and never create a task or write to Redis. This is deliberate: without offloading, large `b64_json` results (several MB each, e.g. `gpt-image-1`) would accumulate in Redis and exhaust its memory.
+异步图片任务有三种运行形态，取决于后台「Async image object storage」开关与凭证是否齐全：
+
+| 形态 | 条件 | `/async` 提交 | 产物约定 |
+| --- | --- | --- | --- |
+| **完全离线** | 开关关闭 | `404 async image tasks are not enabled`，不创建任务、不写 Redis | — |
+| **URL 透传** | 开关打开但凭证不全 | `202`，正常异步 | **产物必须是 http(s) 链接**；见下文 |
+| **完全转存** | 开关打开且凭证齐全 | `202`，正常异步 | 全部图片转存对象存储，Redis 只留小 JSON |
+
+第二行（URL 透传）是新形态，它解决的是「我想用异步，但不想为了异步专门配一套对象存储」。
+对象存储真正要挡的是「几 MB 的内嵌产物躺进 Redis 24 小时」，不是 URL：上游返回的 http 链接
+只有几十字节，直接存任务记录转发完全没问题。所以凭证不全不再整体禁用异步，而是降级为
+"只接受 URL 类产物"。
+
+URL 透传形态下，任务完成时会对产物做一次校验，以下情况明确失败（**不会被静默放行**）：
+
+- 产物含 `b64_json` 或 `data:` URI —— 这类产物每张几 MB 且要在 Redis 里留存 24 小时，不能放行；
+- `data` 数组为空、没有 `data` 字段、或某个条目既无 `url` 也无 `b64_json` ——
+  默默 succeeded 就等于"扣了钱不给货"，宁可明确失败。
+
+失败时任务的 `error.message` 会给出可执行的出路，例如
+`image 0 is inline base64: configure image object storage, request response_format=url, or use the synchronous endpoint`。
+
+为避免"上游生成完了（已经扣费）才发现存不下"，提交时会提前检查：没有对象存储而请求显式
+要求 `response_format=b64_json`（JSON 与 multipart 两种写法都覆盖），直接 `400`，不生成、
+不扣费。**这里刻意不做静默降级**（悄悄把 b64 换成 url）：客户端显式要什么就必须给什么，
+给不出要报错，不能替它做主。
 
 ### From the admin UI (recommended)
 
@@ -66,15 +92,17 @@ To support a different vendor beyond the S3-compatible client, implement the `se
 
 ### Troubleshooting: the endpoints return 404 after enabling
 
-`404 async image tasks are not enabled` means `image_storage` did not resolve to a complete configuration, so the feature stayed off. The route exists either way — the 404 comes from the handler, not from an unregistered path, which makes it easy to mistake for a missing build.
+`404 async image tasks are not enabled` 现在只有一个含义：**开关完全关闭**。
+凭证不全不再产生这个 404——那种情况会降级为 URL 透传并正常接受任务（见上表）。
 
 Check the startup log for:
 
 ```text
-WARN image_storage.enabled is true but object storage is not fully configured; async image tasks are disabled  missing_keys=[...]
+WARN image_storage is enabled but not fully configured; async image tasks fall back to url passthrough  missing_keys=[...]
 ```
 
-`missing_keys` names exactly which credentials were empty when the config was loaded.
+出现这条日志**不代表功能不可用**，只代表降级为 URL 透传；`missing_keys` 列出了补齐凭证所需的键。
+只有在日志里看到 `async image tasks are disabled` 才是真的没启用。
 
 Note that releases **before v0.1.161 silently dropped `IMAGE_STORAGE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and `_PUBLIC_BASE_URL`** when they were supplied only through the environment: those keys had no registered default, and viper cannot see an environment variable for a key it does not already know about. Deployments driven purely by `environment:` — which is what `deploy/docker-compose.yml` does by default — therefore reported `enabled: true` with empty credentials and 404'd on every async call. On an affected release the workaround is to also place the `image_storage` block in `/app/data/config.yaml` (copy it from `deploy/config.example.yaml`); once the keys exist in the file, the environment overrides apply normally.
 
@@ -176,6 +204,116 @@ curl https://api.example.com/v1/images/generations/by-request/req-8f2c1a94 \
 
 This returns `200` with the same task object as the polling endpoint (including `request_id`), or `404` when the key is unknown — or was never successfully submitted, in which case there is no task to recover and the caller may safely resubmit with a fresh key.
 
+## Client playbook: 怎么轮询、怎么最快拿到图
+
+这一段是给客户端实现者的完整动作说明，照抄即可。
+
+### 1. 提交：务必带幂等键
+
+```http
+POST /v1/images/generations/async
+Authorization: Bearer sk-...
+Idempotency-Key: <你这边生成的唯一键，例如 uuid v4>
+Content-Type: application/json
+
+{"model":"gpt-image-1","prompt":"..."}
+```
+
+不要带 `response_format=b64_json`——除非服务端配了对象存储，否则会被 `400` 拒绝（详见上文表格）。
+不带这个字段时上游默认返回 `url`，正是 URL 透传形态需要的产物。
+
+### 2. 轮询：间隔 3 秒，别更快
+
+服务端会在 processing 期间返回 `Retry-After: 3`。**照这个值等，不要用 100ms 死循环**：
+
+```text
+interval = Retry-After（缺省 3 秒）
+最多轮询到 expires_at（提交起 24 小时）
+status == "processing" → 继续等
+status == "succeeded"  → 立刻取图（见第 3 步）
+status == "failed"     → 读 error.message，不要重试同一 request_id
+```
+
+CPU 与 QPS 都省下来了，而且 `succeeded` 的到达延迟几乎不受影响——因为服务端是在任
+务完成那一刻就写好状态的，轮询只是去取，不是去催。
+
+### 3. 取图：拿到 succeeded 就立刻下载，不要延迟
+
+这是唯一需要客户端配合的点。
+
+异步把"出图"和"取图"在时间上解耦了。转存模式下返回的是对象存储链接（长期有效）；
+**URL 透传模式下返回的是上游厂商的原始链接，各家有效期不同（多为数小时到数天），
+本仓库里没有逐家的实测依据**。所以规则很简单：
+
+**一旦拿到 `status == succeeded`，立刻并发下载 `result.data[].url` 到你自己的存储，
+不要再排队、不要再等用户点击、不要只把 URL 存数据库然后过几小时才用。**
+
+推荐的落地方式：
+
+```text
+succeeded
+  → 并发下载所有 url（各自的超时建议 30 秒，带 1 次重试）
+  → 落到你自己的存储 / 本地文件
+  → 之后再展示给用户的，用你自己那份
+```
+
+下载失败（403 / 404）说明上游链接已过期，此时：
+
+- 幂等键不变，**重新提交一次**（重放会直接返回原任务的 `202`，不会重复扣费）；
+- 如果任务已经过期查不到了（`IMAGE_TASK_NOT_FOUND`），才换新幂等键重新生成。
+
+### 4. 伪代码（TypeScript）
+
+```ts
+async function generateImage(prompt: string): Promise<string[]> {
+  const key = crypto.randomUUID();
+  const submit = await fetch(`${BASE}/v1/images/generations/async`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': key,
+    },
+    body: JSON.stringify({ model: 'gpt-image-1', prompt }),
+  });
+  // 超时/5xx 先按第 5 步找回，绝不盲目重提
+  if (submit.status !== 202) throw new Error(`submit failed: ${submit.status}`);
+  const task = await submit.json();
+
+  let delay = 3000;
+  for (;;) {
+    await sleep(delay);
+    const res = await fetch(`${BASE}${task.poll_url}`, {
+      headers: { 'Authorization': `Bearer ${API_KEY}` },
+    });
+    if (res.status !== 200) throw new Error(`poll failed: ${res.status}`);
+    const body = await res.json();
+    if (body.status === 'succeeded') {
+      // 立刻下载，别拖
+      return await Promise.all(
+        body.result.data.map((it: any) => downloadToOwnStorage(it.url)),
+      );
+    }
+    if (body.status === 'failed') throw new Error(JSON.stringify(body.error));
+    delay = Number(res.headers.get('Retry-After') ?? 3) * 1000;
+  }
+}
+```
+
+### 5. 提交后没拿到响应（超时/502/断线）
+
+**不要重提。** 用同一个幂等键找回：
+
+```http
+GET /v1/images/generations/by-request/<同一个 key>
+```
+
+返回 `200` 就是原来的那个任务（带 `request_id`），继续轮询它的 `task_id` 即可；
+返回 `404` 才说明当时没创建成功，可以安全地换新键重提。
+
+原因：服务端对上游的调用刻意脱离了客户端取消链，客户端超时后任务仍在跑、仍会计费。
+盲目重提 = 真的再生成一次 + 再扣一次费。
+
 ## HTTP status code contract
 
 This table is the authoritative answer to "did my request create a task?" — the question a client must resolve before deciding to retry.
@@ -230,7 +368,13 @@ While work is in progress:
 }
 ```
 
-On success, `result` mirrors the synchronous image API body, except each image has been offloaded to object storage: `data[].url` points at the stored object and `b64_json` is stripped (so both URL and base64 upstream formats end up as compact stored links):
+On success, `result` mirrors the synchronous image API body. The difference between the two enabled states is what `data[].url` points at:
+
+- **完全转存（配了对象存储）**：每张图都已上传到对象存储，`data[].url` 指向存好的对象
+  （长期直链或 presigned），`b64_json` 已剔除——所以不管上游返回的是 url 还是 base64，
+  最终统一变成紧凑的托管链接。
+- **URL 透传（没配对象存储）**：`data[].url` 原样是**上游厂商的链接**，不做任何搬运。
+  链接时效性由上游决定，客户端应立刻取走（见上一段 Client playbook）。
 
 ```json
 {

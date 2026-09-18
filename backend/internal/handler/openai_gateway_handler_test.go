@@ -1928,6 +1928,7 @@ type openAIWSFailoverHandlerAccountRepoStub struct {
 	service.AccountRepository
 	accounts       []service.Account
 	rateLimitedIDs []int64
+	authErrorIDs   []int64
 }
 
 type openAIHTTPPassthroughFailoverUpstream struct {
@@ -2044,6 +2045,15 @@ func (s *openAIWSFailoverHandlerAccountRepoStub) GetByID(ctx context.Context, id
 		}
 	}
 	return nil, nil
+}
+
+// SetError 必须显式实现：本桩嵌入的是 nil 的 service.AccountRepository，
+// 未实现的方法会被提升到那个 nil 接口上，调用即 panic。而本函数是在 WebSocket
+// 转发协程里被调用的，panic 会让整个测试进程挂掉——后面所有用例都不会执行，
+// handler 包因此长期拿不到有效信号。
+func (s *openAIWSFailoverHandlerAccountRepoStub) SetError(_ context.Context, id int64, _ string) error {
+	s.authErrorIDs = append(s.authErrorIDs, id)
+	return nil
 }
 
 func (s *openAIWSFailoverHandlerAccountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
