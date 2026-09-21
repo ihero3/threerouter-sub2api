@@ -36,7 +36,14 @@ import (
 // 因此不做降级；GLM 尚未核实，暂不纳入。
 const deepSeekJSONSchemaHintLimit = 1500
 
-const deepSeekJSONKeywordSystemHintLead = "请严格以 JSON 格式输出。"
+// deepSeekJSONKeywordSystemHintLead 是补进 prompt 的 JSON 输出提示。
+//
+// 必须**含小写 ascii 的 "json"**：上游的校验是"prompt 里要有 json 字样"，其报错与
+// 文档引用的都是小写的 `json`（"Prompt must contain the word 'json'"）。早期这里写的
+// 是大写 `JSON`，如果上游按小写字面匹配，这句提示形同没写，客户端会被再拒一次 400
+// ——而那个 400 与本次工单（json_schema 类型被拒）长得完全不同，极难排查。
+// 小写同时满足"按小写字面匹配"和"忽略大小写匹配"两种实现；反过来则不然。
+const deepSeekJSONKeywordSystemHintLead = "请严格以 json 格式输出。"
 
 // NormalizeDeepSeekResponseFormat 在命中 DeepSeek 结构化输出不兼容时改写请求体，
 // 返回改写后的 body 与是否发生改写。未命中或改写失败时原样返回入参。
@@ -72,8 +79,31 @@ func isDeepSeekResponseFormatTarget(account *Account, upstreamModel string) bool
 	if account != nil && account.Platform == PlatformDeepseek {
 		return true
 	}
-	model := strings.ToLower(strings.TrimSpace(upstreamModel))
-	return model == "deepseek" || strings.HasPrefix(model, "deepseek-")
+	return IsDeepSeekModelID(upstreamModel)
+}
+
+// IsDeepSeekModelID 识别 DeepSeek 系模型名。
+//
+// 覆盖三种写法，其中第三种是线上真实出现过的：
+//   - deepseek
+//   - deepseek-<xxx>
+//   - <vendor>/deepseek-<xxx> —— 中转站（如本次的「星图」）普遍用 vendor/model
+//     斜杠形式，且其错误回显里的模型名就是 "deepseek/deepseek-v4.1-flash"。
+//     早期实现只认前两种，斜杠形式会整个漏判。
+func IsDeepSeekModelID(model string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if normalized == "" {
+		return false
+	}
+	if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
+		normalized = normalized[idx+1:]
+	}
+	if normalized == "" {
+		return false
+	}
+	return normalized == "deepseek" ||
+		strings.HasPrefix(normalized, "deepseek-") ||
+		strings.HasPrefix(normalized, "deepseek_")
 }
 
 func accountDisplayName(account *Account) string {

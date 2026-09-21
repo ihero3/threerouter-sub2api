@@ -355,6 +355,11 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
+	// 本条出口是一次性发送（没有重试循环），因此它是唯一不会命中
+	// normalizeOpenAIResponsesRejectedFieldRetryBody 的 Responses 出口。补一次
+	// 被拒字段重发，使"上游不支持 json_schema"这类 400 与其它出口一样能自愈。
+	// 未命中或重发失败时原样返回旧响应，下方错误处理链不变。
+	resp = s.retryOpenAIResponsesRejectedFieldOnce(ctx, c, account, resp, responsesBody, token, promptCacheKey, proxyURL, true, compatPromptCacheTenantIsolated)
 	defer func() { _ = resp.Body.Close() }()
 
 	// 8. Handle error response with failover

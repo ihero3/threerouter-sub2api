@@ -77,7 +77,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions request: %w", err)
 	}
-	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
+	if normalizedBody, normalized := normalizeOpenAICCUpstreamBody(account, upstreamModel, chatBody); normalized {
 		chatBody = normalizedBody
 	}
 	if account.Platform == PlatformOpenAI {

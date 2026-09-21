@@ -79,6 +79,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions fallback request: %w", err)
 	}
+	// 本条路径此前整段缺失上游归一化，导致客户端用 Responses 结构化输出
+	// （text.format=json_schema）时被转成 response_format=json_schema 原样发给只
+	// 支持 json_object 的上游，直接 400（线上工单 f74e374a）。现在与另外两条
+	// CC 出口共用同一组归一化，不再按入站端点分别复制。
+	if normalizedBody, normalized := normalizeOpenAICCUpstreamBody(account, upstreamModel, chatBody); normalized {
+		chatBody = normalizedBody
+	}
 	chatBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, chatBody)
 	if err != nil {
 		var blocked *OpenAIFastBlockedError

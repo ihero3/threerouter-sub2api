@@ -89,13 +89,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
-	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
-		upstreamBody = normalizedBody
-	}
-	// DeepSeek 只实现 response_format={"type":"json_object"}，客户端发来的
-	// json_schema 结构化输出会被上游 400 拒绝（"This response_format type is
-	// unavailable now"）。此处降级并补足官方要求的 "json" 关键词。
-	if normalizedBody, normalized := NormalizeDeepSeekResponseFormat(account, upstreamModel, upstreamBody); normalized {
+	// 上游归一化集中到 CC 公共出口统一执行（含 GLM effort、DeepSeek
+	// response_format 降级），避免各入站端点各自复制时出现遗漏。
+	if normalizedBody, normalized := normalizeOpenAICCUpstreamBody(account, upstreamModel, upstreamBody); normalized {
 		upstreamBody = normalizedBody
 	}
 
