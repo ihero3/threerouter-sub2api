@@ -227,6 +227,36 @@ func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
+// GetInviteRelations 返回某个用户的完整邀请关系：上游链路（谁把他拉进来的）
+// 与下游后代（他拉进来的人，含层级）。
+// GET /api/v1/admin/affiliates/relations?user_id=123
+func (h *AffiliateHandler) GetInviteRelations(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	relation, err := h.affiliateService.AdminGetInviteRelations(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, relation)
+}
+
+// ListUnsourcedUsers 列出没有邀请来源的账号（来路不明），用于排查批量注册等异常。
+// GET /api/v1/admin/affiliates/relations/unsourced
+func (h *AffiliateHandler) ListUnsourcedUsers(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filter := parseAffiliateRecordFilter(c, page, pageSize)
+	items, total, err := h.affiliateService.AdminListUnsourcedUsers(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, filter.Page, filter.PageSize)
+}
+
 // ListTransferRecords returns all affiliate quota-to-balance transfer records.
 // GET /api/v1/admin/affiliates/transfers
 func (h *AffiliateHandler) ListTransferRecords(c *gin.Context) {

@@ -392,6 +392,55 @@ export default {
       invitesDescription: 'View site-wide inviter and invitee relationships',
       rebatesDescription: 'View recharge orders that generated affiliate rebates',
       transfersDescription: 'View affiliate quota transfers into account balance',
+      relationsDescription: 'Trace a user invite chain and audit accounts with no invite source',
+      relations: {
+        tabs: {
+          relations: 'Relations',
+          unsourced: 'No invite source'
+        },
+        searchPlaceholder: 'User ID / email / username',
+        search: 'Search',
+        searching: 'Searching...',
+        notFound: 'No matching user found',
+        pickUser: 'Several users matched, pick one',
+        invalidInput: 'Enter a user ID, email or username',
+        loadFailed: 'Failed to load invite relations',
+        currentUser: 'current',
+        inviter: 'Invited by',
+        noInviter: 'No invite source (origin unknown)',
+        boundAt: 'bound at',
+        chainUp: 'Invite chain (upward)',
+        chainTop: 'Top of chain, no inviter',
+        ancestorDirect: 'Direct inviter',
+        ancestorLevel: 'L{n} up',
+        chainEmpty: 'This user has no invite source and is the top of the chain',
+        descendants: 'Users they invited (downward)',
+        descendantsEmpty: 'No one invited yet',
+        descendantCount: '{count} users',
+        depthLevel: 'L{n}',
+        truncated: 'Result hit the depth or row limit and may be incomplete',
+        rebateHint: 'Amount = rebates this user generated for their direct inviter (invite + recharge). Rebates only flow one level up, so only level 1 amounts belong to the queried user.',
+        columns: {
+          depth: 'Level',
+          user: 'User',
+          createdAt: 'Registered',
+          rebate: 'Rebate'
+        },
+        unsourced: {
+          description: 'Accounts without an invite source: either no affiliate profile at all (mostly accounts registered before the affiliate feature launched), or a profile with an empty inviter.',
+          total: 'Accounts without source',
+          empty: 'No accounts match the filters',
+          hasProfile: 'profile',
+          noProfile: 'no profile',
+          columns: {
+            user: 'User',
+            createdAt: 'Registered',
+            balance: 'Balance',
+            totalRecharged: 'Total recharged',
+            profile: 'Profile'
+          }
+        }
+      },
       errors: {
         loadFailed: 'Failed to load affiliate records'
       },
@@ -405,7 +454,14 @@ export default {
         user: 'User',
         affCode: 'Invite Code',
         order: 'Order',
+        inviteRebate: 'Invite Rebate',
+        rechargeRebate: 'Recharge Rebate',
         totalRebate: 'Total Rebate',
+        rebateType: 'Rebate Type',
+        types: {
+          invite: 'Invite Rebate',
+          recharge: 'Recharge Rebate'
+        },
         orderAmount: 'Top-up Amount',
         payAmount: 'Paid Amount',
         rebateAmount: 'Rebate Amount',
@@ -652,6 +708,8 @@ export default {
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
       // Balance History
       balanceHistory: 'Recharge History',
+      // Invite relations (jump to the relations page for this user)
+      inviteRelations: 'Invite Relations',
       balanceHistoryTip: 'Click to open recharge history',
       columnAlwaysVisible: 'This column is always visible',
       // Per-platform usage breakdown (hover tooltip)

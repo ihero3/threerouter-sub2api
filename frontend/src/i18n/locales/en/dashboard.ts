@@ -694,12 +694,18 @@ export default {
     },
     invitees: {
       title: 'Invited Users',
-      empty: 'No invited users yet',
+      empty: 'No rebates yet',
+      filteredHint: 'Showing {shown} users who generated rebates. {total} users invited in total; the rest have not generated any rebate yet.',
       columns: {
         email: 'Email',
         username: 'Username',
+        rebateType: 'Rebate Type',
         rebate: 'Rebate',
-        joinedAt: 'Joined At'
+        rebatedAt: 'Rebated At'
+      },
+      types: {
+        invite: 'Invite Rebate',
+        recharge: 'Recharge Rebate'
       }
     },
     tips: {

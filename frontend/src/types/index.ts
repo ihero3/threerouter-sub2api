@@ -189,12 +189,22 @@ export interface RegisterRequest {
   aff_code?: string
 }
 
+/** 返利类型：invite=邀请返利（注册奖励），recharge=充值返利（充值/兑换按比例计提） */
+export type AffiliateRebateType = 'invite' | 'recharge'
+
 export interface AffiliateInvitee {
   user_id: number
   email: string
   username: string
-  created_at?: string
-  total_rebate: number
+  /** 账本记录 ID，用于列表行 key（同一被邀请人可能有多条返利记录） */
+  ledger_id: number
+  rebate_type: AffiliateRebateType
+  /** 本条返利金额（始终 > 0，未产生返利的被邀请人不会返回） */
+  amount: number
+  /** 返利产生时间 */
+  created_at: string
+  /** 被邀请人注册时间 */
+  joined_at: string
 }
 
 export interface UserAffiliateDetail {

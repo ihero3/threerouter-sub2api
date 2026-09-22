@@ -5,7 +5,7 @@
  */
 
 import { apiClient } from '../client'
-import type { PaginatedResponse } from '@/types'
+import type { AffiliateRebateType, PaginatedResponse } from '@/types'
 
 export interface AffiliateAdminEntry {
   user_id: number
@@ -42,12 +42,19 @@ export interface AffiliateInviteRecord {
   invitee_email: string
   invitee_username: string
   aff_code: string
+  /** 邀请返利：注册奖励合计 */
+  invite_rebate: number
+  /** 充值返利：充值/兑换返利合计 */
+  recharge_rebate: number
+  /** 累计返利 = invite_rebate + recharge_rebate */
   total_rebate: number
   created_at: string
 }
 
 export interface AffiliateRebateRecord {
-  order_id: number
+  /** 邀请返利（注册奖励）无关联订单，order_id 为 null */
+  order_id: number | null
+  /** 无关联订单时为空串 */
   out_trade_no: string
   inviter_id: number
   inviter_email: string
@@ -55,8 +62,10 @@ export interface AffiliateRebateRecord {
   invitee_id: number
   invitee_email: string
   invitee_username: string
-  order_amount: number
-  pay_amount: number
+  /** invite=邀请返利，recharge=充值返利 */
+  rebate_type: AffiliateRebateType
+  order_amount: number | null
+  pay_amount: number | null
   rebate_amount: number
   payment_type: string
   order_status: string
@@ -215,6 +224,68 @@ export async function getUserOverview(
   return data
 }
 
+export interface AffiliateRelationUser {
+  user_id: number
+  email: string
+  username: string
+  created_at: string
+}
+
+export interface AffiliateRelationNode {
+  user_id: number
+  email: string
+  username: string
+  created_at: string
+  /** 距查询用户的层数：1 = 直接上级 / 直接下级 */
+  depth: number
+  /** 该用户为其**直接上级**贡献的返利合计（返利只向上走一级） */
+  rebate_amount: number
+}
+
+export interface AffiliateInviteRelation {
+  user: AffiliateRelationUser
+  /** null 表示来路不明（无邀请来源） */
+  inviter: AffiliateRelationUser | null
+  /** 从链路顶端到直接邀请人，不含查询用户 */
+  ancestors: AffiliateRelationNode[]
+  descendants: AffiliateRelationNode[]
+  descendant_count: number
+  /** true 表示达到深度/行数上限，结果不完整 */
+  chain_truncated: boolean
+  bound_at?: string | null
+}
+
+export interface AffiliateUnsourcedUser {
+  user_id: number
+  email: string
+  username: string
+  created_at: string
+  balance: number
+  total_recharged: number
+  /** false = 连邀请档案都没有（多为功能上线前注册的老账号） */
+  has_affiliate_profile: boolean
+}
+
+export async function getInviteRelations(
+  userId: number,
+): Promise<AffiliateInviteRelation> {
+  const { data } = await apiClient.get<AffiliateInviteRelation>(
+    '/admin/affiliates/relations',
+    { params: { user_id: userId } },
+  )
+  return data
+}
+
+export async function listUnsourcedUsers(
+  params: ListAffiliateRecordsParams = {},
+): Promise<PaginatedResponse<AffiliateUnsourcedUser>> {
+  const { data } = await apiClient.get<PaginatedResponse<AffiliateUnsourcedUser>>(
+    '/admin/affiliates/relations/unsourced',
+    { params: recordParams(params) },
+  )
+  return data
+}
+
 export const affiliatesAPI = {
   listUsers,
   lookupUsers,
@@ -225,6 +296,8 @@ export const affiliatesAPI = {
   listRebateRecords,
   listTransferRecords,
   getUserOverview,
+  getInviteRelations,
+  listUnsourcedUsers,
 }
 
 export default affiliatesAPI

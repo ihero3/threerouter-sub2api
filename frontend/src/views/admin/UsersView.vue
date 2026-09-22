@@ -730,6 +730,15 @@
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
+              <!-- Invite Relations -->
+              <button
+                @click="handleInviteRelations(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="users" size="sm" class="text-gray-400" :stroke-width="2" />
+                {{ t('admin.users.inviteRelations') }}
+              </button>
+
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Delete (not for admin) -->
@@ -779,8 +788,10 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
+import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
+const router = useRouter()
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
@@ -1805,6 +1816,12 @@ const closeBalanceModal = () => {
 const handleBalanceHistory = (user: AdminUser) => {
   balanceHistoryUser.value = user
   showBalanceHistoryModal.value = true
+}
+
+// 跳转到邀请关系页并带上该用户，省去复制 ID 再搜索的步骤
+const handleInviteRelations = (user: AdminUser) => {
+  closeActionMenu()
+  router.push({ path: '/admin/affiliates/relations', query: { user_id: String(user.id) } })
 }
 
 const closeBalanceHistoryModal = () => {

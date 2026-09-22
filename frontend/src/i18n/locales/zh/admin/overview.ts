@@ -392,6 +392,55 @@ export default {
       invitesDescription: '查看全站邀请关系和被邀请用户累计返利',
       rebatesDescription: '查看每一笔产生返利的充值订单',
       transfersDescription: '查看返利额度转入账户余额的提取流水',
+      relationsDescription: '追溯某个用户的邀请链路，并排查没有邀请来源的账号',
+      relations: {
+        tabs: {
+          relations: '关系查询',
+          unsourced: '无邀请来源'
+        },
+        searchPlaceholder: '用户 ID / 邮箱 / 用户名',
+        search: '查询',
+        searching: '查询中...',
+        notFound: '未找到匹配的用户',
+        pickUser: '找到多个用户，请选择一个',
+        invalidInput: '请输入用户 ID 或邮箱/用户名',
+        loadFailed: '加载邀请关系失败',
+        currentUser: '当前',
+        inviter: '邀请来源',
+        noInviter: '无邀请来源（来路不明）',
+        boundAt: '关系建立于',
+        chainUp: '邀请链路（向上）',
+        chainTop: '链路顶端 · 无上级',
+        ancestorDirect: '直接邀请人',
+        ancestorLevel: '{n} 级上级',
+        chainEmpty: '该用户没有邀请来源，他自己就是链路顶端',
+        descendants: '他邀请的人（向下）',
+        descendantsEmpty: '还没有邀请任何人',
+        descendantCount: '共 {count} 人',
+        depthLevel: '{n} 级',
+        truncated: '结果已达到层数或行数上限，可能不完整',
+        rebateHint: '金额 = 该用户为其直接上级贡献的返利（邀请返利 + 充值返利）。返利只向上走一级，只有一级的金额属于当前用户。',
+        columns: {
+          depth: '层级',
+          user: '用户',
+          createdAt: '注册时间',
+          rebate: '贡献返利'
+        },
+        unsourced: {
+          description: '没有邀请来源的账号：连邀请档案都没有（多为邀请功能上线前注册的老账号），或有档案但没有邀请人。',
+          total: '无来源账号',
+          empty: '没有符合条件的账号',
+          hasProfile: '有档案',
+          noProfile: '无档案',
+          columns: {
+            user: '用户',
+            createdAt: '注册时间',
+            balance: '余额',
+            totalRecharged: '累计充值',
+            profile: '档案'
+          }
+        }
+      },
       errors: {
         loadFailed: '加载邀请返利记录失败'
       },
@@ -405,7 +454,14 @@ export default {
         user: '用户',
         affCode: '邀请码',
         order: '订单',
+        inviteRebate: '邀请返利',
+        rechargeRebate: '充值返利',
         totalRebate: '累计返利',
+        rebateType: '返利类型',
+        types: {
+          invite: '邀请返利',
+          recharge: '充值返利'
+        },
         orderAmount: '充值金额',
         payAmount: '支付金额',
         rebateAmount: '返利金额',
@@ -653,6 +709,8 @@ export default {
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
       // 余额变动记录
       balanceHistory: '充值记录',
+      // 邀请关系（跳转到邀请关系页查看该用户上下级）
+      inviteRelations: '邀请关系',
       balanceHistoryTip: '点击查看充值记录',
       columnAlwaysVisible: '该列固定显示，不可隐藏',
       // 平台用量明细（悬浮显示）

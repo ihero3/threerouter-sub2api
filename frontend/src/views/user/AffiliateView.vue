@@ -107,28 +107,40 @@
 
         <div class="card p-6">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') }}</h3>
+          <p v-if="hasHiddenInvitees" class="mt-2 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('affiliate.invitees.filteredHint', { shown: rebatedInviteeCount, total: detail.aff_count }) }}
+          </p>
           <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
             {{ t('affiliate.invitees.empty') }}
           </div>
           <div v-else class="mt-4 overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-sm">
+            <table class="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
+                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.rebateType') }}</th>
                   <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
-                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') }}</th>
+                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.rebatedAt') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
                   v-for="item in detail.invitees"
-                  :key="item.user_id"
+                  :key="item.ledger_id"
                   class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
                 >
                   <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' }}</td>
                   <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' }}</td>
-                  <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.total_rebate) }}</td>
+                  <td class="px-3 py-3">
+                    <span
+                      class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+                      :class="item.rebate_type === 'invite'
+                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'"
+                    >{{ rebateTypeLabel(item.rebate_type) }}</span>
+                  </td>
+                  <td class="px-3 py-3 text-right font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(item.amount) }}</td>
                   <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' }}</td>
                 </tr>
               </tbody>
@@ -178,6 +190,21 @@ const formattedRebateRate = computed(() => {
 
 function formatCount(value: number): string {
   return value.toLocaleString()
+}
+
+// 明细是按「每笔返利」一行返回的，同一个被邀请人可能有多行，
+// 这里统计真正产生过返利的去重人数，用于向用户解释列表为什么比已邀请人数少。
+const rebatedInviteeCount = computed(
+  () => new Set((detail.value?.invitees ?? []).map((item) => item.user_id)).size
+)
+const hasHiddenInvitees = computed(
+  () => (detail.value?.aff_count ?? 0) > rebatedInviteeCount.value
+)
+
+function rebateTypeLabel(type: string): string {
+  if (type === 'invite') return t('affiliate.invitees.types.invite')
+  if (type === 'recharge') return t('affiliate.invitees.types.recharge')
+  return '-'
 }
 
 async function loadAffiliateDetail(silent = false): Promise<void> {

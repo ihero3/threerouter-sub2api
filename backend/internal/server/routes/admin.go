@@ -907,6 +907,9 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		affiliates.GET("/invites", h.Admin.Affiliate.ListInviteRecords)
 		affiliates.GET("/rebates", h.Admin.Affiliate.ListRebateRecords)
 		affiliates.GET("/transfers", h.Admin.Affiliate.ListTransferRecords)
+		// 邀请关系追溯：谁邀请谁 + 来路不明账号
+		affiliates.GET("/relations", h.Admin.Affiliate.GetInviteRelations)
+		affiliates.GET("/relations/unsourced", h.Admin.Affiliate.ListUnsourcedUsers)
 
 		users := affiliates.Group("/users")
 		{

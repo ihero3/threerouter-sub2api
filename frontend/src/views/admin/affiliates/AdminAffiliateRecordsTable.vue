@@ -56,26 +56,43 @@
           <template #cell-aff_code="{ row }">
             <span class="font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.aff_code || '-' }}</span>
           </template>
+          <template #cell-rebate_type="{ row }">
+            <span
+              class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="row.rebate_type === 'invite'
+                ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'"
+            >{{ rebateTypeLabel(row.rebate_type) }}</span>
+          </template>
           <template #cell-order="{ row }">
-            <div class="space-y-0.5">
+            <div v-if="row.order_id" class="space-y-0.5">
               <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.order_id }}</div>
               <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-400">{{ row.out_trade_no }}</div>
             </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-payment_type="{ row }">
-            {{ t('payment.methods.' + row.payment_type, row.payment_type || '-') }}
+            <span v-if="row.payment_type">{{ t('payment.methods.' + row.payment_type, row.payment_type) }}</span>
+            <span v-else class="text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-order_status="{ row }">
-            <OrderStatusBadge :status="row.order_status" />
+            <OrderStatusBadge v-if="row.order_status" :status="row.order_status" />
+            <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+          </template>
+          <template #cell-invite_rebate="{ row }">
+            <AmountText :value="row.invite_rebate" />
+          </template>
+          <template #cell-recharge_rebate="{ row }">
+            <AmountText :value="row.recharge_rebate" />
           </template>
           <template #cell-total_rebate="{ row }">
-            <AmountText :value="row.total_rebate" />
+            <AmountText :value="row.total_rebate" strong />
           </template>
           <template #cell-order_amount="{ row }">
-            <AmountText :value="row.order_amount" />
+            <NullableAmountText :value="row.order_amount" />
           </template>
           <template #cell-pay_amount="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">¥{{ formatAmount(row.pay_amount) }}</span>
+            <NullableAmountText :value="row.pay_amount" />
           </template>
           <template #cell-rebate_amount="{ row }">
             <AmountText :value="row.rebate_amount" strong />
@@ -182,6 +199,8 @@ const columns = computed<Column[]>(() => {
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
       { key: 'aff_code', label: t('admin.affiliates.records.affCode'), sortable: true },
+      { key: 'invite_rebate', label: t('admin.affiliates.records.inviteRebate') },
+      { key: 'recharge_rebate', label: t('admin.affiliates.records.rechargeRebate') },
       { key: 'total_rebate', label: t('admin.affiliates.records.totalRebate'), sortable: true },
       { key: 'created_at', label: t('admin.affiliates.records.invitedAt'), sortable: true },
     ]
@@ -189,6 +208,7 @@ const columns = computed<Column[]>(() => {
   if (props.type === 'rebates') {
     return [
       { key: 'order', label: t('admin.affiliates.records.order'), sortable: true },
+      { key: 'rebate_type', label: t('admin.affiliates.records.rebateType') },
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
       { key: 'order_amount', label: t('admin.affiliates.records.orderAmount'), sortable: true },
@@ -314,6 +334,12 @@ function formatPercent(value: number | null | undefined): string {
 
 function formatDateTime(value: string | null | undefined): string {
   return value ? formatDisplayDateTime(value) : '-'
+}
+
+function rebateTypeLabel(type: string | null | undefined): string {
+  if (type === 'invite') return t('admin.affiliates.records.types.invite')
+  if (type === 'recharge') return t('admin.affiliates.records.types.recharge')
+  return '-'
 }
 
 async function openUserOverview(userId: number) {

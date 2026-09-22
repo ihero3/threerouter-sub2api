@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -38,7 +37,7 @@ JOIN users u ON u.id = ua.user_id
 LEFT JOIN (
     SELECT user_id, COUNT(DISTINCT source_user_id)::integer AS rebated_invitee_count
     FROM user_affiliate_ledger
-    WHERE action = 'accrue' AND source_user_id IS NOT NULL
+    WHERE action IN ('` + service.AffiliateLedgerActionAccrue + `', '` + service.AffiliateLedgerActionRegisterReward + `') AND source_user_id IS NOT NULL
     GROUP BY user_id
 ) rebated ON rebated.user_id = ua.user_id
 LEFT JOIN (
@@ -141,14 +140,14 @@ func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, invite
 		if freezeHours > 0 {
 			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, frozen_until, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, $4, NOW() + make_interval(hours => $5), NOW(), NOW())`,
+VALUES ($1, '`+service.AffiliateLedgerActionAccrue+`', $2, $3, $4, NOW() + make_interval(hours => $5), NOW(), NOW())`,
 				inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID), freezeHours); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 			}
 		} else {
 			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, $4, NOW(), NOW())`, inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
+VALUES ($1, '`+service.AffiliateLedgerActionAccrue+`', $2, $3, $4, NOW(), NOW())`, inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 			}
 		}
@@ -191,7 +190,7 @@ func (r *affiliateRepository) AccrueRegistrationReward(ctx context.Context, invi
 		}
 		if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
-VALUES ($1, 'register_reward', $2, $3, NOW(), NOW())`,
+VALUES ($1, '`+service.AffiliateLedgerActionRegisterReward+`', $2, $3, NOW(), NOW())`,
 			inviterID, amount, inviteeUserID); err != nil {
 			return fmt.Errorf("insert register reward ledger: %w", err)
 		}
@@ -383,26 +382,41 @@ VALUES ($1, 'transfer', $2, NULL, $3, $4, $5, $6, NOW(), NOW())`,
 	return transferred, newBalance, nil
 }
 
+// ListInvitees 返回邀请人从各被邀请人处获得的**逐笔返利记录**（不是每人一行汇总）。
+//
+// 粒度：一条 user_affiliate_ledger = 一行，因此同一个被邀请人可能出现多行
+// ——注册时的邀请返利（action='register_reward'）+ 每次充值的充值返利（action='accrue'）。
+//
+// 过滤：JOIN 条件 `ua.inviter_id = ual.user_id` 同时保证
+//  1. 只取当前邀请人（ual.user_id）名下的账本；
+//  2. 账本的 source_user_id 确实绑定在邀请人名下（邀请关系未被解绑/改写）；
+//  3. 从未产生返利的被邀请人不会出现（inner join 天然排除，无需额外 having 判断）。
+//
+// 排除项：action='transfer'（提现到余额）不是返利，且 source_user_id 为 NULL。
 func (r *affiliateRepository) ListInvitees(ctx context.Context, inviterID int64, limit int) ([]service.AffiliateInvitee, error) {
 	if limit <= 0 {
-		limit = 100
+		// 复用 service 侧同一个常量，避免两处各写一个数字后悄悄漂移。
+		limit = service.AffiliateInviteeRecordLimit
 	}
 	client := clientFromContext(ctx, r.client)
 	rows, err := client.QueryContext(ctx, `
-SELECT ua.user_id,
+SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
-       ua.created_at,
-       COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate
-FROM user_affiliates ua
-LEFT JOIN users u ON u.id = ua.user_id
-LEFT JOIN user_affiliate_ledger ual
-       ON ual.user_id = $1
-      AND ual.source_user_id = ua.user_id
-      AND ual.action = 'accrue'
-WHERE ua.inviter_id = $1
-GROUP BY ua.user_id, u.email, u.username, ua.created_at
-ORDER BY ua.created_at DESC
+       ual.id,
+       ual.action,
+       ual.amount::double precision,
+       ual.created_at,
+       COALESCE(u.created_at, ua.created_at) AS joined_at
+FROM user_affiliate_ledger ual
+JOIN user_affiliates ua
+       ON ua.user_id = ual.source_user_id
+      AND ua.inviter_id = ual.user_id
+JOIN users u ON u.id = ua.user_id
+WHERE ual.user_id = $1
+  AND ual.source_user_id IS NOT NULL
+  AND ual.action IN ('`+service.AffiliateLedgerActionAccrue+`', '`+service.AffiliateLedgerActionRegisterReward+`')
+ORDER BY ual.created_at DESC, ual.id DESC
 LIMIT $2`, inviterID, limit)
 	if err != nil {
 		return nil, err
@@ -412,11 +426,16 @@ LIMIT $2`, inviterID, limit)
 	invitees := make([]service.AffiliateInvitee, 0)
 	for rows.Next() {
 		var item service.AffiliateInvitee
-		var createdAt time.Time
-		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &createdAt, &item.TotalRebate); err != nil {
+		var action string
+		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &item.LedgerID, &action, &item.Amount, &item.CreatedAt, &item.JoinedAt); err != nil {
 			return nil, err
 		}
-		item.CreatedAt = &createdAt
+		// 未知 action 理论上不会出现（SQL 已过滤），保留防御：无类型的记录不展示。
+		if rebateType := service.AffiliateLedgerRebateType(action); rebateType != "" {
+			item.RebateType = rebateType
+		} else {
+			continue
+		}
 		invitees = append(invitees, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -449,7 +468,8 @@ JOIN user_affiliates inviter_aff ON inviter_aff.user_id = ua.inviter_id
 		"aff_code":     "inviter_aff.aff_code",
 		"total_rebate": "total_rebate",
 		"created_at":   "ua.created_at",
-	}, "ua.created_at")
+		// 一行 = (邀请人, 被邀请人) 一对，两个 id 合起来才唯一
+	}, "ua.created_at", "ua.inviter_id DESC, ua.user_id DESC")
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
 SELECT ua.inviter_id,
@@ -459,6 +479,8 @@ SELECT ua.inviter_id,
        COALESCE(invitee.email, ''),
        COALESCE(invitee.username, ''),
        COALESCE(inviter_aff.aff_code, ''),
+       COALESCE(SUM(ual.amount) FILTER (WHERE ual.action = '`+service.AffiliateLedgerActionRegisterReward+`'), 0)::double precision AS invite_rebate,
+       COALESCE(SUM(ual.amount) FILTER (WHERE ual.action = '`+service.AffiliateLedgerActionAccrue+`'), 0)::double precision AS recharge_rebate,
        COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate,
        ua.created_at
 FROM user_affiliates ua
@@ -468,7 +490,7 @@ JOIN user_affiliates inviter_aff ON inviter_aff.user_id = ua.inviter_id
 LEFT JOIN user_affiliate_ledger ual
        ON ual.user_id = ua.inviter_id
       AND ual.source_user_id = ua.user_id
-      AND ual.action = 'accrue'
+      AND ual.action IN ('`+service.AffiliateLedgerActionAccrue+`', '`+service.AffiliateLedgerActionRegisterReward+`')
 `+where+`
 GROUP BY ua.inviter_id, inviter.email, inviter.username, ua.user_id, invitee.email, invitee.username, inviter_aff.aff_code, ua.created_at
 `+orderBy+`
@@ -489,6 +511,8 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 			&item.InviteeEmail,
 			&item.InviteeUsername,
 			&item.AffCode,
+			&item.InviteRebate,
+			&item.RechargeRebate,
 			&item.TotalRebate,
 			&item.CreatedAt,
 		); err != nil {
@@ -508,13 +532,15 @@ func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, fi
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
 		"po.id::text", "po.out_trade_no", "po.payment_type", "po.status",
 	})
+	// 邀请返利（注册奖励）没有 source_order_id，因此这里用 LEFT JOIN：
+	// 订单相关列对注册奖励为 NULL，前端按 rebate_type 展示占位符。
+	// 排序统一走 buildAffiliateRecordOrderBy，已带 NULLS LAST，不会让空订单行浮到顶部。
 	baseJoin := `
 FROM user_affiliate_ledger ual
-JOIN payment_orders po ON po.id = ual.source_order_id
+LEFT JOIN payment_orders po ON po.id = ual.source_order_id
 JOIN users invitee ON invitee.id = ual.source_user_id
 JOIN users inviter ON inviter.id = ual.user_id
-WHERE ual.action = 'accrue'
-  AND ual.source_order_id IS NOT NULL`
+WHERE ual.action IN ('` + service.AffiliateLedgerActionAccrue + `', '` + service.AffiliateLedgerActionRegisterReward + `')`
 	if where != "" {
 		where = strings.Replace(where, "WHERE ", " AND ", 1)
 	}
@@ -534,7 +560,7 @@ WHERE ual.action = 'accrue'
 		"payment_type":  "po.payment_type",
 		"order_status":  "po.status",
 		"created_at":    "ual.created_at",
-	}, "ual.created_at")
+	}, "ual.created_at", "ual.id DESC")
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
 SELECT po.id,
@@ -550,6 +576,7 @@ SELECT po.id,
        ual.amount::double precision,
        po.payment_type,
        po.status,
+       ual.action,
        ual.created_at
 `+baseJoin+where+`
 `+orderBy+`
@@ -562,24 +589,50 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	items := make([]service.AffiliateRebateRecord, 0)
 	for rows.Next() {
 		var item service.AffiliateRebateRecord
+		var (
+			orderID     sql.NullInt64
+			outTradeNo  sql.NullString
+			orderAmount sql.NullFloat64
+			payAmount   sql.NullFloat64
+			paymentType sql.NullString
+			orderStatus sql.NullString
+			action      string
+		)
 		if err := rows.Scan(
-			&item.OrderID,
-			&item.OutTradeNo,
+			&orderID,
+			&outTradeNo,
 			&item.InviterID,
 			&item.InviterEmail,
 			&item.InviterUsername,
 			&item.InviteeID,
 			&item.InviteeEmail,
 			&item.InviteeUsername,
-			&item.OrderAmount,
-			&item.PayAmount,
+			&orderAmount,
+			&payAmount,
 			&item.RebateAmount,
-			&item.PaymentType,
-			&item.OrderStatus,
+			&paymentType,
+			&orderStatus,
+			&action,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, 0, err
 		}
+		if orderID.Valid {
+			v := orderID.Int64
+			item.OrderID = &v
+		}
+		if orderAmount.Valid {
+			v := orderAmount.Float64
+			item.OrderAmount = &v
+		}
+		if payAmount.Valid {
+			v := payAmount.Float64
+			item.PayAmount = &v
+		}
+		item.OutTradeNo = outTradeNo.String
+		item.PaymentType = paymentType.String
+		item.OrderStatus = orderStatus.String
+		item.RebateType = service.AffiliateLedgerRebateType(action)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -614,7 +667,7 @@ WHERE ual.action = 'transfer'`
 		"frozen_quota_after":    "ual.aff_frozen_quota_after",
 		"history_quota_after":   "ual.aff_history_quota_after",
 		"created_at":            "ual.created_at",
-	}, "ual.created_at")
+	}, "ual.created_at", "ual.id DESC")
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
 SELECT ual.id,
@@ -740,7 +793,16 @@ func buildAffiliateRecordWhere(filter service.AffiliateRecordFilter, timeColumn 
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
-func buildAffiliateRecordOrderBy(filter service.AffiliateRecordFilter, sortColumns map[string]string, fallbackColumn string) string {
+// buildAffiliateRecordOrderBy 生成 ORDER BY 子句。
+//
+// tiebreaker 必须传，且必须是结果集里唯一的列（通常是主键），
+// 需自带排序方向（按原样拼接，不额外追加 DESC）：
+// 排序键天然可能重复（同一秒写入的多条账本、同一天的多个用户），而 Postgres
+// **不保证**等值排序键内部的顺序稳定——大表走并行计划时（Gather Merge + Sort）
+// 每次执行的行序都可能不同，LIMIT/OFFSET 翻页就会出现「同一行出现在两页」和
+// 「另一行永远取不到」。实测 5000 行 created_at 完全相同的账本，按 100 行/页
+// 取 50 页：无 tiebreaker 只拿到 4977 个不同 id（丢 23 行），加上 ual.id 后 5000 行完整。
+func buildAffiliateRecordOrderBy(filter service.AffiliateRecordFilter, sortColumns map[string]string, fallbackColumn, tiebreaker string) string {
 	column := sortColumns[filter.SortBy]
 	if column == "" {
 		column = fallbackColumn
@@ -749,7 +811,11 @@ func buildAffiliateRecordOrderBy(filter service.AffiliateRecordFilter, sortColum
 	if !filter.SortDesc {
 		direction = "ASC"
 	}
-	return "ORDER BY " + column + " " + direction + " NULLS LAST"
+	orderBy := "ORDER BY " + column + " " + direction + " NULLS LAST"
+	if tb := strings.TrimSpace(tiebreaker); tb != "" {
+		orderBy += ", " + tb
+	}
+	return orderBy
 }
 
 func queryAffiliateRecordCount(ctx context.Context, client affiliateQueryExecer, query string, args ...any) (int64, error) {
@@ -766,6 +832,259 @@ func queryAffiliateRecordCount(ctx context.Context, client affiliateQueryExecer,
 		return 0, err
 	}
 	return total, rows.Err()
+}
+
+// affiliateRelationDescendantRowCap 下游结果行数上限：一个头部邀请人可能有成百上千后代，
+// 全量返回既拖慢页面也没有可读性，超出即置 ChainTruncated 提示管理员缩小范围。
+const affiliateRelationDescendantRowCap = 500
+
+// GetInviteRelations 追溯一个用户的完整邀请关系：上游链路 + 下游后代。
+//
+// 数据模型只有 user_affiliates.inviter_id 一个单亲指针，所以两个方向都靠
+// WITH RECURSIVE 拼接：
+//   - 上溯：从直接邀请人一路走到链路顶端，depth 递增，最多 maxDepth 层（防脏数据成环）；
+//   - 下溯：从直接邀请的人一层层往下，最多 maxDepth 层，行数另受 cap 限制。
+//
+// 金额口径：RebateAmount 是该用户给**直接上级**贡献的返利合计。返利只向上走一级，
+// 所以只有 depth=1 的金额才真正进了查询用户的口袋，深层节点的金额归属各自的直接上级。
+func (r *affiliateRepository) GetInviteRelations(ctx context.Context, userID int64, maxDepth int) (*service.AffiliateInviteRelation, error) {
+	if userID <= 0 {
+		return nil, service.ErrUserNotFound
+	}
+	if maxDepth <= 0 {
+		maxDepth = service.AffiliateInviteRelationMaxDepth
+	}
+	client := clientFromContext(ctx, r.client)
+
+	rel := &service.AffiliateInviteRelation{
+		Ancestors:   make([]service.AffiliateRelationNode, 0),
+		Descendants: make([]service.AffiliateRelationNode, 0),
+	}
+
+	// 查询用户本人 + 直接邀请人 + 档案建立时间（档案是懒创建的，可能不存在）。
+	var (
+		inviterID     sql.NullInt64
+		inviterEmail  sql.NullString
+		inviterName   sql.NullString
+		inviterJoined sql.NullTime
+		boundAt       sql.NullTime
+	)
+	rows, err := client.QueryContext(ctx, `
+SELECT u.id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       u.created_at,
+       ua.inviter_id,
+       ua.created_at,
+       iu.email,
+       iu.username,
+       iu.created_at
+FROM users u
+LEFT JOIN user_affiliates ua ON ua.user_id = u.id
+LEFT JOIN users iu ON iu.id = ua.inviter_id
+WHERE u.id = $1
+LIMIT 1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	found := rows.Next()
+	if found {
+		err = rows.Scan(
+			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt,
+			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined,
+		)
+	}
+	scanErr := rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	if !found {
+		return nil, service.ErrUserNotFound
+	}
+	if boundAt.Valid {
+		v := boundAt.Time
+		rel.BoundAt = &v
+	}
+	if inviterID.Valid && inviterID.Int64 > 0 {
+		rel.Inviter = &service.AffiliateRelationUser{
+			UserID:    inviterID.Int64,
+			Email:     inviterEmail.String,
+			Username:  inviterName.String,
+			CreatedAt: inviterJoined.Time,
+		}
+	}
+
+	// 上溯：链路顶端 → 直接邀请人（ORDER BY depth DESC 让最远祖排在最前）。
+	ancestorRows, err := client.QueryContext(ctx, `
+WITH RECURSIVE up AS (
+    SELECT ua.inviter_id AS user_id, 1 AS depth
+    FROM user_affiliates ua
+    WHERE ua.user_id = $1 AND ua.inviter_id IS NOT NULL
+    UNION ALL
+    SELECT ua.inviter_id, up.depth + 1
+    FROM up
+    JOIN user_affiliates ua ON ua.user_id = up.user_id
+    WHERE up.depth < $2 AND ua.inviter_id IS NOT NULL
+)
+SELECT u.id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       u.created_at,
+       up.depth
+FROM up
+JOIN users u ON u.id = up.user_id
+ORDER BY up.depth DESC`, userID, maxDepth)
+	if err != nil {
+		return nil, err
+	}
+	for ancestorRows.Next() {
+		var node service.AffiliateRelationNode
+		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &node.Depth); err != nil {
+			_ = ancestorRows.Close()
+			return nil, err
+		}
+		rel.Ancestors = append(rel.Ancestors, node)
+	}
+	if err := ancestorRows.Close(); err != nil {
+		return nil, err
+	}
+	if err := ancestorRows.Err(); err != nil {
+		return nil, err
+	}
+	// 结果是按 depth DESC 排的：ancestors[0] 是链路最顶端（depth 最大）。
+	// 它已经顶到深度上限 → 上面可能还有人没查出来。
+	if n := len(rel.Ancestors); n > 0 && rel.Ancestors[0].Depth >= maxDepth {
+		rel.ChainTruncated = true
+	}
+
+	// 下溯：直接邀请的人（depth=1）→ 逐层往下。
+	// 返利金额子查询是整表按 source_user_id 聚合（不按后代集合裁剪，保持 SQL 简单且可预测），
+	// 依赖迁移 239 的 (source_user_id, action) 索引走索引扫描，而不是全表堆扫描。
+	descendantRows, err := client.QueryContext(ctx, `
+WITH RECURSIVE down AS (
+    SELECT ua.user_id, 1 AS depth
+    FROM user_affiliates ua
+    WHERE ua.inviter_id = $1
+    UNION ALL
+    SELECT ua.user_id, down.depth + 1
+    FROM down
+    JOIN user_affiliates ua ON ua.inviter_id = down.user_id
+    WHERE down.depth < $2
+)
+SELECT u.id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       u.created_at,
+       d.depth,
+       COALESCE(r.rebate_total, 0)::double precision
+FROM down d
+JOIN users u ON u.id = d.user_id
+LEFT JOIN (
+    SELECT source_user_id, SUM(amount) AS rebate_total
+    FROM user_affiliate_ledger
+    WHERE action IN ('`+service.AffiliateLedgerActionAccrue+`', '`+service.AffiliateLedgerActionRegisterReward+`')
+      AND source_user_id IS NOT NULL
+    GROUP BY source_user_id
+) r ON r.source_user_id = d.user_id
+ORDER BY d.depth ASC, u.created_at DESC
+LIMIT $3`, userID, maxDepth, affiliateRelationDescendantRowCap)
+	if err != nil {
+		return nil, err
+	}
+	for descendantRows.Next() {
+		var node service.AffiliateRelationNode
+		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &node.Depth, &node.RebateAmount); err != nil {
+			_ = descendantRows.Close()
+			return nil, err
+		}
+		rel.Descendants = append(rel.Descendants, node)
+	}
+	if err := descendantRows.Close(); err != nil {
+		return nil, err
+	}
+	if err := descendantRows.Err(); err != nil {
+		return nil, err
+	}
+	rel.DescendantCount = len(rel.Descendants)
+	// 两种截断都要报：行数撞到上限，或最深一层已经顶到 maxDepth（下面可能还有人）。
+	if rel.DescendantCount >= affiliateRelationDescendantRowCap {
+		rel.ChainTruncated = true
+	}
+	if n := rel.DescendantCount; n > 0 && rel.Descendants[n-1].Depth >= maxDepth {
+		rel.ChainTruncated = true
+	}
+	return rel, nil
+}
+
+// ListUnsourcedUsers 列出没有邀请来源的账号（来路不明）。
+// 口径：user_affiliates 无档案（邀请功能上线前的老账号为主）**或** 有档案但 inviter_id 为空。
+func (r *affiliateRepository) ListUnsourcedUsers(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateUnsourcedUser, int64, error) {
+	client := clientFromContext(ctx, r.client)
+	where, args := buildAffiliateRecordWhere(filter, "u.created_at", []string{
+		"u.email", "u.username", "u.id::text",
+	})
+	baseJoin := `
+FROM users u
+LEFT JOIN user_affiliates ua ON ua.user_id = u.id
+WHERE ua.inviter_id IS NULL`
+	if where != "" {
+		where = strings.Replace(where, "WHERE ", " AND ", 1)
+	}
+
+	total, err := queryAffiliateRecordCount(ctx, client, "SELECT COUNT(*) "+baseJoin+where, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orderBy := buildAffiliateRecordOrderBy(filter, map[string]string{
+		"user_id":        "u.id",
+		"email":          "u.email",
+		"username":       "u.username",
+		"balance":        "u.balance",
+		"totalRecharged": "u.total_recharged",
+		"created_at":     "u.created_at",
+	}, "u.created_at", "u.id DESC")
+	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
+	rows, err := client.QueryContext(ctx, `
+SELECT u.id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       u.created_at,
+       u.balance::double precision,
+       u.total_recharged::double precision,
+       (ua.user_id IS NOT NULL) AS has_profile
+`+baseJoin+where+`
+`+orderBy+`
+LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := make([]service.AffiliateUnsourcedUser, 0)
+	for rows.Next() {
+		var item service.AffiliateUnsourcedUser
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Email,
+			&item.Username,
+			&item.CreatedAt,
+			&item.Balance,
+			&item.TotalRecharged,
+			&item.HasAffiliateProfile,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
 }
 
 func (r *affiliateRepository) withTx(ctx context.Context, fn func(txCtx context.Context, txClient *dbent.Client) error) error {

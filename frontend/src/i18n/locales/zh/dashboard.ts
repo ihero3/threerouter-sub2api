@@ -698,12 +698,18 @@ export default {
     },
     invitees: {
       title: '已邀请用户',
-      empty: '暂无邀请记录',
+      empty: '暂无返利记录',
+      filteredHint: '仅显示已产生返利的 {shown} 位用户：共邀请 {total} 位，其余尚未产生返利',
       columns: {
         email: '邮箱',
         username: '用户名',
+        rebateType: '返利类型',
         rebate: '返利明细',
-        joinedAt: '注册时间'
+        rebatedAt: '返利时间'
+      },
+      types: {
+        invite: '邀请返利',
+        recharge: '充值返利'
       }
     },
     tips: {
