@@ -230,7 +230,20 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	} else {
 		// Normal path: convert Chat Completions → Responses.
 		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
-		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		//
+		// DeepSeek/Kimi-style thinking providers reject follow-up turns with
+		// HTTP 400 ("The `reasoning_text` in the thinking mode must be passed
+		// back to the API") when the reasoning that produced a tool call is
+		// missing. Chat-only clients (e.g. TRAE) do not echo reasoning_content
+		// in history, so restore it from the gateway-side cache keyed by the
+		// tool call id, the only id that round-trips on the Chat wire.
+		var ccToResponsesOpts *apicompat.ChatCompletionsToResponsesOptions
+		if ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired {
+			ccToResponsesOpts = &apicompat.ChatCompletionsToResponsesOptions{
+				ReasoningContentByCallID: s.reasoningContentByCallID,
+			}
+		}
+		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, ccToResponsesOpts)
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
@@ -568,6 +581,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 
+	// Cache reasoning→tool_call correlations keyed by call_id so the next
+	// Chat Completions turn from a Chat-only client can replay reasoning_text
+	// to DeepSeek/Kimi-style thinking providers (avoids HTTP 400). Only
+	// providers with a passback contract need it.
+	if s.cache != nil && ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired {
+		s.cacheToolCallReasoningFromOutput(finalResponse.Output)
+	}
+
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
@@ -671,6 +692,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
+	// toolReasoningPending carries the plaintext reasoning of the most recent
+	// completed reasoning output item until the function_call item it produced
+	// arrives, so the reasoning can be cached by call_id for next-turn replay
+	// (DeepSeek/Kimi thinking-mode reasoning_text passback, HTTP 400 fix).
+	toolReasoningPending := ""
+	toolReasoningCaptureEnabled := s.cache != nil &&
+		ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
@@ -742,6 +770,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
+
+		// Best-effort reasoning→tool_call caching for next-turn
+		// reasoning_text passback (see toolReasoningPending).
+		if toolReasoningCaptureEnabled && event.Type == "response.output_item.done" && event.Item != nil {
+			toolReasoningPending = s.cacheToolCallReasoningFromItem(event.Item, toolReasoningPending)
+		}
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {

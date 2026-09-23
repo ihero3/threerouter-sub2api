@@ -25,7 +25,7 @@ func TestNormalizeOpenAIResponsesLegacyIngressMessagesOnly(t *testing.T) {
 }
 
 func TestNormalizeOpenAIResponsesLegacyIngressConvertsChatTopLevelFields(t *testing.T) {
-	body := []byte(`{"model":"gpt-4.1","messages":[{"role":"user","content":"weather?"}],"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup weather","parameters":{"type":"object"}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}},"max_tokens":64,"reasoning_effort":"high","service_tier":"flex","temperature":0.2,"top_p":0.7}`)
+	body := []byte(`{"model":"gpt-4.1","messages":[{"role":"user","content":"weather?"}],"tools":[{"type":"function","function":{"name":"lookup","description":"Lookup weather","parameters":{"type":"object"}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}},"max_tokens":600,"reasoning_effort":"high","service_tier":"flex","temperature":0.2,"top_p":0.7}`)
 
 	normalized, changed, err := normalizeOpenAIResponsesLegacyIngress(body)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestNormalizeOpenAIResponsesLegacyIngressConvertsChatTopLevelFields(t *test
 	require.Equal(t, "function", gjson.GetBytes(normalized, "tool_choice.type").String())
 	require.Equal(t, "lookup", gjson.GetBytes(normalized, "tool_choice.name").String())
 	require.False(t, gjson.GetBytes(normalized, "tool_choice.function").Exists())
-	require.Equal(t, int64(128), gjson.GetBytes(normalized, "max_output_tokens").Int())
+	require.Equal(t, int64(600), gjson.GetBytes(normalized, "max_output_tokens").Int())
 	require.Equal(t, "high", gjson.GetBytes(normalized, "reasoning.effort").String())
 	require.Equal(t, "auto", gjson.GetBytes(normalized, "reasoning.summary").String())
 	require.Equal(t, "flex", gjson.GetBytes(normalized, "service_tier").String())

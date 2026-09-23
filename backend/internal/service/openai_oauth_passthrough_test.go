@@ -270,6 +270,7 @@ type openAIPassthroughFailoverRepo struct {
 	stubOpenAIAccountRepo
 	rateLimitCalls []time.Time
 	overloadCalls  []time.Time
+	setErrorCalls  []string
 }
 
 func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -279,6 +280,14 @@ func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int6
 
 func (r *openAIPassthroughFailoverRepo) SetOverloaded(_ context.Context, _ int64, until time.Time) error {
 	r.overloadCalls = append(r.overloadCalls, until)
+	return nil
+}
+
+// SetError 显式实现：passthrough 认证/限流错误路径现在会经
+// RateLimitService.handleAuthError 熔断账号；嵌入的 nil AccountRepository
+// 提升方法会在调用时解引用 nil 而 panic。
+func (r *openAIPassthroughFailoverRepo) SetError(_ context.Context, _ int64, errorMsg string) error {
+	r.setErrorCalls = append(r.setErrorCalls, errorMsg)
 	return nil
 }
 
@@ -1539,10 +1548,14 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
 			expectFailover: true,
+			// 48d6c875d 起，非 shadow 账号的 429 走 handleAuthError 永久熔断
+			// （SetError），而非 handle429 的可恢复冷却（SetRateLimited）：
+			// 限流 source 直接禁用，故障转移到下一个可用账号，需管理员手动恢复。
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
-				require.Len(t, repo.rateLimitCalls, 1)
+				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
-				require.True(t, time.Until(repo.rateLimitCalls[0]) > 24*time.Hour)
+				require.Len(t, repo.setErrorCalls, 1)
+				require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
 			},
 		},
 		{
@@ -1599,10 +1612,13 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
 			expectFailover: true,
+			// 同 oauth_429_rate_limit：非 shadow 账号的 429 一律经
+			// handleAuthError 永久熔断（SetError）。
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
-				require.Len(t, repo.rateLimitCalls, 1)
+				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
-				require.True(t, time.Until(repo.rateLimitCalls[0]) > 24*time.Hour)
+				require.Len(t, repo.setErrorCalls, 1)
+				require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
 			},
 		},
 		{

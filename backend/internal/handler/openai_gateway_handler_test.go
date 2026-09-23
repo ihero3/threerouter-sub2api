@@ -2608,7 +2608,10 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 	case <-time.After(3 * time.Second):
 		t.Fatal("等待第二个上游收到重放首帧超时")
 	}
-	require.Equal(t, []int64{int64(9902)}, accountRepo.rateLimitedIDs)
+	// 48d6c875d 起非 shadow 429 走 handleAuthError 永久禁用（SetError），
+	// 不再落库 resets_at 冷却（SetRateLimited）。
+	require.Empty(t, accountRepo.rateLimitedIDs, "429 不再落库为 resets_at 冷却")
+	require.Equal(t, []int64{int64(9902)}, accountRepo.authErrorIDs)
 }
 
 func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClientForOneFailover(t *testing.T) {

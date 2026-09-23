@@ -265,17 +265,25 @@ func TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig(t *testi
 		SettingKeyRiskControlEnabled:      "true",
 		SettingKeyContentModerationConfig: runtimeCacheTestConfig(t, "blocked"),
 	}}
-	svc := runtimeCacheTestService(repo, time.Nanosecond)
+	svc := runtimeCacheTestService(repo, time.Minute)
 	input := runtimeCacheTestInput("blocked")
 
 	decision, err := svc.Check(context.Background(), input)
 	require.NoError(t, err)
 	require.True(t, decision.Blocked)
 
+	// 手动把快照的加载时间拨回过去，让过期判定不依赖两次 time.Now() 的
+	// 差值——Windows 粗粒度时钟下该差值可能为 0，会让刷新不被触发。
+	current := svc.runtimeSnapshot.Load()
+	require.NotNil(t, current)
+	expired := *current
+	expired.loadedAt = time.Now().Add(-2 * time.Minute)
+	svc.runtimeSnapshot.Store(&expired)
+
 	repo.failMultiple(errors.New("database unavailable"))
 	decision, err = svc.Check(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, decision.Blocked)
+	require.True(t, decision.Blocked, "刷新失败时必须继续沿用过期快照")
 	require.Eventually(t, func() bool {
 		_, calls := repo.calls()
 		return calls >= 2

@@ -460,6 +460,14 @@ func (r *oauthEmailAffiliateRepoStub) GetAffiliateUserOverview(context.Context, 
 	panic("unexpected GetAffiliateUserOverview call")
 }
 
+func (r *oauthEmailAffiliateRepoStub) GetInviteRelations(context.Context, int64, int) (*service.AffiliateInviteRelation, error) {
+	panic("unexpected GetInviteRelations call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) ListUnsourcedUsers(context.Context, service.AffiliateRecordFilter) ([]service.AffiliateUnsourcedUser, int64, error) {
+	panic("unexpected ListUnsourcedUsers call")
+}
+
 func findSetCookieValue(cookies []*http.Cookie, name string) string {
 	for _, cookie := range cookies {
 		if cookie != nil && strings.EqualFold(cookie.Name, name) && cookie.MaxAge >= 0 {

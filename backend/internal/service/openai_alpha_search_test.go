@@ -586,8 +586,10 @@ func TestForwardAlphaSearchAPIKeyEndpointNotFoundFailsOver(t *testing.T) {
 	require.Empty(t, recorder.Body.String())
 }
 
-// OAuth 账号的 chatgpt.com 端点固定存在，404 保持原有透传行为不变。
-func TestForwardAlphaSearchOAuthNotFoundPassesThrough(t *testing.T) {
+// OAuth 账号虽然固定指向 chatgpt.com，404 仍按通用 failover 处理：2f3c2d1cc
+// 起 404 已被 shouldFailoverUpstreamError 纳入可换号状态集，搜索请求不应把
+// 上游 404 透传给客户端。OAuth 账号本身健康，不写账号错误状态。
+func TestForwardAlphaSearchOAuthNotFoundFailsOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"news"}]}}`)
 	recorder := httptest.NewRecorder()
@@ -600,7 +602,14 @@ func TestForwardAlphaSearchOAuthNotFoundPassesThrough(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
 	}}
-	service := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	repo := &alphaSearchAccountStateRepo{}
+	cfg := &config.Config{}
+	service := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		accountRepo:      repo,
+		rateLimitService: NewRateLimitService(repo, nil, cfg, nil, nil),
+	}
 	account := &Account{
 		ID:          10,
 		Platform:    PlatformOpenAI,
@@ -614,10 +623,14 @@ func TestForwardAlphaSearchOAuthNotFoundPassesThrough(t *testing.T) {
 
 	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
 
-	require.NoError(t, err)
 	require.Nil(t, result)
-	require.Equal(t, http.StatusNotFound, recorder.Code)
-	require.JSONEq(t, upstreamBody, recorder.Body.String())
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusNotFound, failoverErr.StatusCode)
+	require.Zero(t, repo.setErrorCalls)
+	require.Empty(t, repo.lastError)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestShouldApplyOpenAIAlphaSearchAccountErrorSideEffects(t *testing.T) {

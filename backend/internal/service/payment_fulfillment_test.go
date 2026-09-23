@@ -96,6 +96,18 @@ func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateFromInvitee(contex
 	return 0, nil
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) AccrueRegistrationReward(context.Context, int64, int64, float64) (bool, error) {
+	panic("unexpected AccrueRegistrationReward call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) GetInviteRelations(context.Context, int64, int) (*AffiliateInviteRelation, error) {
+	panic("unexpected GetInviteRelations call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) ListUnsourcedUsers(context.Context, AffiliateRecordFilter) ([]AffiliateUnsourcedUser, int64, error) {
+	panic("unexpected ListUnsourcedUsers call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
 	panic("unexpected ThawFrozenQuota call")
 }

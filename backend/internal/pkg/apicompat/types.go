@@ -270,6 +270,11 @@ type ResponsesInputItem struct {
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
 
+	// type=reasoning (multi-turn replay of plaintext reasoning). DeepSeek/Kimi
+	// Responses endpoints require the reasoning_text that produced a tool call
+	// to be replayed on follow-up turns.
+	Summary []ResponsesSummary `json:"summary,omitempty"`
+
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`

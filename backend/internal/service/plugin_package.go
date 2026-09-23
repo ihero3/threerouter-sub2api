@@ -80,7 +80,9 @@ func (i *PluginPackageInstaller) Install(ctx context.Context, reader io.Reader, 
 	tempPath := tempFile.Name()
 	committed := false
 	defer func() {
-		_ = tempFile.Close()
+		if tempFile != nil {
+			_ = tempFile.Close()
+		}
 		if !committed {
 			_ = os.Remove(tempPath)
 		}
@@ -101,6 +103,7 @@ func (i *PluginPackageInstaller) Install(ctx context.Context, reader io.Reader, 
 	if err := tempFile.Close(); err != nil {
 		return nil, fmt.Errorf("关闭插件包: %w", err)
 	}
+	tempFile = nil
 	artifactSHA := hex.EncodeToString(hasher.Sum(nil))
 
 	archive, err := zip.OpenReader(tempPath)
@@ -141,6 +144,10 @@ func (i *PluginPackageInstaller) Install(ctx context.Context, reader io.Reader, 
 		return nil, fmt.Errorf("提交插件安装目录: %w", err)
 	}
 	extracted = true
+	if err := archive.Close(); err != nil {
+		_ = os.RemoveAll(installPath)
+		return nil, fmt.Errorf("关闭插件包读取器: %w", err)
+	}
 
 	artifactPath := filepath.Join(packagesDir, manifest.ID+"-"+manifest.Version+"-"+artifactSHA[:12]+"-"+installNonce+".s2plugin")
 	if err := os.Rename(tempPath, artifactPath); err != nil {

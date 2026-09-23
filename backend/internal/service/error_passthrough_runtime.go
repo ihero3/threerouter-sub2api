@@ -1,6 +1,10 @@
 package service
 
-import "github.com/gin-gonic/gin"
+import (
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
 
 const errorPassthroughServiceContextKey = "error_passthrough_service"
 
@@ -28,9 +32,13 @@ func getBoundErrorPassthroughService(c *gin.Context) *ErrorPassthroughService {
 }
 
 // applyErrorPassthroughRule 按规则决定是否对客户端响应使用透传状态码。
-// 仅保留状态码映射能力(部分客户端 SDK 需要特定 HTTP 状态码);
-// message 一律由调用方使用平台统一文案(MapUpstreamErrorToClient),不透传上游原始错误。
-// 上游完整错误通过 OpsUpstreamErrorEvent 记录给管理员。
+// 状态码：PassthroughCode=true 透传上游状态码，否则使用规则配置的 ResponseCode。
+// 消息（仅管理员显式配置的两种模式才改写默认平台文案）：
+//   - PassthroughBody=true：透传上游响应体中的错误消息（管理员主动选择放行原文）；
+//   - 否则 CustomMessage 非空：使用管理员配置的自定义文案；
+//   - 两者都没有时保持调用方传入的平台统一文案，绝不隐式回显上游原文。
+//
+// 上游完整错误始终通过 OpsUpstreamErrorEvent 记录给管理员。
 func applyErrorPassthroughRule(
 	c *gin.Context,
 	platform string,
@@ -64,7 +72,19 @@ func applyErrorPassthroughRule(
 		c.Set(OpsSkipPassthroughKey, true)
 	}
 
-	// 命中规则:状态码映射保留,但 message 不再从上游提取,统一由调用方使用平台文案。
 	errType = "upstream_error"
+
+	switch {
+	case rule.PassthroughBody:
+		// 管理员显式放行上游原始错误消息。
+		if upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody)); upstreamMsg != "" {
+			errMsg = upstreamMsg
+		}
+	case rule.CustomMessage != nil:
+		if custom := strings.TrimSpace(*rule.CustomMessage); custom != "" {
+			errMsg = custom
+		}
+	}
+
 	return status, errType, errMsg, true
 }

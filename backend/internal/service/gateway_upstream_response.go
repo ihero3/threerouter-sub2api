@@ -460,10 +460,10 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		)
 	}
 
-	// 错误透传规则：保留状态码映射(部分客户端 SDK 需要特定 HTTP 状态码),
-	// 但 message 一律使用平台统一文案,不透传上游原始错误信息给用户。
-	// 上游完整错误仍通过 OpsUpstreamErrorEvent 记录给管理员。
-	if status, _, _, matched := applyErrorPassthroughRule(
+	// 错误透传规则：按规则映射状态码；消息仅在管理员显式配置
+	// （PassthroughBody 放行原文 / CustomMessage 自定义文案）时改写，
+	// 否则使用平台统一文案。上游完整错误仍通过 OpsUpstreamErrorEvent 记录。
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c,
 		account.Platform,
 		resp.StatusCode,
@@ -472,15 +472,14 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		_, platformErrType, platformErrMsg := MapUpstreamErrorToClient(resp.StatusCode)
 		c.JSON(status, gin.H{
 			"type": "error",
 			"error": gin.H{
-				"type":    platformErrType,
-				"message": platformErrMsg,
+				"type":    errType,
+				"message": errMsg,
 			},
 		})
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched, client message masked)", resp.StatusCode)
+		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
 	}
 
 	// 根据状态码返回平台统一错误响应（不透传上游详细信息）
@@ -663,9 +662,9 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		)
 	}
 
-	// 故障转移耗尽后仍命中透传规则:保留状态码映射,但 message 用平台统一文案,
-	// 不透传上游原始错误给用户。上游完整错误已通过 OpsUpstreamErrorEvent 记录给管理员。
-	if status, _, _, matched := applyErrorPassthroughRule(
+	// 故障转移耗尽后仍命中透传规则：按规则映射状态码与消息（同非耗尽路径），
+	// 上游完整错误已通过 OpsUpstreamErrorEvent 记录给管理员。
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c,
 		account.Platform,
 		resp.StatusCode,
@@ -674,15 +673,14 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		"upstream_error",
 		"Upstream request failed after retries",
 	); matched {
-		_, platformErrType, platformErrMsg := MapUpstreamErrorToClient(resp.StatusCode)
 		c.JSON(status, gin.H{
 			"type": "error",
 			"error": gin.H{
-				"type":    platformErrType,
-				"message": platformErrMsg,
+				"type":    errType,
+				"message": errMsg,
 			},
 		})
-		return nil, fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched, client message masked)", resp.StatusCode)
+		return nil, fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched)", resp.StatusCode)
 	}
 
 	// 返回统一的重试耗尽错误响应

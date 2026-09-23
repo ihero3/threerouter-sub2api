@@ -399,3 +399,97 @@ func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
 		)
 	}
 }
+
+// reasoningContentCallIDPrefix 把 Chat 侧 tool call id 与 Responses reasoning
+// item id（rs_ 前缀）隔离在同一缓存命名空间内，避免客户端伪造的 call id
+// 与网关上一轮缓存的 reasoning item 相互覆盖。
+const reasoningContentCallIDPrefix = "cc_tool_call:"
+
+// reasoningContentByCallID 按 Chat 侧 tool_call id 回查产生该调用的 reasoning
+// 全文，供 Chat Completions→Responses 桥接在客户端（如 TRAE）不回传
+// reasoning_content 时回注 reasoning item。任何失败 fail-open 返回 ""。
+func (s *OpenAIGatewayService) reasoningContentByCallID(callID string) string {
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return ""
+	}
+	return s.reasoningContentByID(reasoningContentCallIDPrefix + callID)
+}
+
+// cacheToolCallReasoningFromOutput correlates plaintext reasoning items with
+// the function_call items they produced in a (non-streaming) Responses output
+// and persists each pair keyed by the call_id. The call_id is the only
+// identifier that round-trips in Chat Completions history, so it is what the
+// next-turn Chat→Responses conversion can look up. Best-effort: cache errors
+// are logged inside setReasoningContent and never fail the forward.
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromOutput(output []apicompat.ResponsesOutput) {
+	var pending string
+	for i := range output {
+		pending = s.cacheToolCallReasoningFromItem(&output[i], pending)
+	}
+}
+
+// cacheToolCallReasoningFromEvents is the streaming counterpart of
+// cacheToolCallReasoningFromOutput. The caller owns the pending reasoning
+// string and passes the value returned by the previous invocation.
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromEvents(events []apicompat.ResponsesStreamEvent, pending string) string {
+	for i := range events {
+		if events[i].Type != "response.output_item.done" || events[i].Item == nil {
+			continue
+		}
+		pending = s.cacheToolCallReasoningFromItem(events[i].Item, pending)
+	}
+	return pending
+}
+
+// cacheToolCallReasoningFromItem folds one completed output item into the
+// reasoning→tool_call correlation state. All items in one Responses output
+// belong to the same turn, so pending reasoning is never reset mid-output:
+//   - reasoning item: its plaintext becomes the pending reasoning;
+//   - function_call item: the pending reasoning is cached under its call_id
+//     (pending is kept so parallel tool calls — and synthesized accumulator
+//     outputs that place message before function_call — share it).
+//
+// Cross-turn isolation needs no explicit reset: every request owns its own
+// pending variable, so the next response starts empty.
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromItem(item *apicompat.ResponsesOutput, pending string) string {
+	if item == nil {
+		return pending
+	}
+	switch item.Type {
+	case "reasoning":
+		if text := extractToolCallReasoningText(item); text != "" {
+			return text
+		}
+	case "function_call":
+		if pending != "" {
+			if callID := strings.TrimSpace(item.CallID); callID != "" {
+				s.setReasoningContent(reasoningContentCallIDPrefix+callID, pending)
+			}
+		}
+	}
+	return pending
+}
+
+// extractToolCallReasoningText returns the plaintext reasoning of a reasoning
+// output item, preferring the portable summary and falling back to the raw
+// reasoning_text content parts.
+func extractToolCallReasoningText(item *apicompat.ResponsesOutput) string {
+	var parts []string
+	for _, sum := range item.Summary {
+		if t := strings.TrimSpace(sum.Text); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	for _, p := range item.Content {
+		if p.Type == "reasoning_text" {
+			if t := strings.TrimSpace(p.Text); t != "" {
+				parts = append(parts, t)
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}

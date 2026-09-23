@@ -23,12 +23,33 @@ type chatMessageContent struct {
 	Parts []ChatContentPart
 }
 
+// ChatCompletionsToResponsesOptions controls optional history restoration
+// when converting a Chat Completions request into Responses input items.
+type ChatCompletionsToResponsesOptions struct {
+	// ReasoningContentByCallID returns the plaintext reasoning that produced
+	// the tool call identified by callID. DeepSeek/Kimi-style thinking
+	// providers behind the Responses protocol require that reasoning to be
+	// replayed on every follow-up turn as a reasoning item
+	// (content[].reasoning_text) preceding the function_call item; clients
+	// that only store Chat Completions history do not round-trip any
+	// Responses reasoning item id, so the tool call id is the only stable
+	// correlation key. Omitting it yields HTTP 400 "The `reasoning_text` in
+	// the thinking mode must be passed back to the API".
+	ReasoningContentByCallID func(callID string) string
+}
+
 // ChatCompletionsToResponses converts a Chat Completions request into a
 // Responses API request. The upstream always streams, so Stream is forced to
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
+	return ChatCompletionsToResponsesWithOptions(req, nil)
+}
+
+// ChatCompletionsToResponsesWithOptions is ChatCompletionsToResponses with
+// optional history restoration (see ChatCompletionsToResponsesOptions).
+func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions) (*ResponsesRequest, error) {
+	input, err := convertChatMessagesToResponsesInput(req.Messages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -108,10 +129,10 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
 // array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+func convertChatMessagesToResponsesInput(msgs []ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 	for _, m := range msgs {
-		items, err := chatMessageToResponsesItems(m)
+		items, err := chatMessageToResponsesItems(m, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -122,14 +143,14 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 
 // chatMessageToResponsesItems converts a single ChatMessage into one or more
 // ResponsesInputItem values.
-func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
+func chatMessageToResponsesItems(m ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "system":
 		return chatSystemToResponses(m)
 	case "user":
 		return chatUserToResponses(m)
 	case "assistant":
-		return chatAssistantToResponses(m)
+		return chatAssistantToResponses(m, opts)
 	case "tool":
 		return chatToolToResponses(m)
 	case "function":
@@ -170,11 +191,46 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // text content and tool_calls, the text is emitted as an assistant message
 // first, then each tool_call becomes a function_call item. If the content is
 // empty/nil and there are tool_calls, only function_call items are emitted.
-func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+//
+// Tool-bearing turns carry special handling for DeepSeek/Kimi-style thinking
+// providers on the Responses protocol: the reasoning that produced the tool
+// calls must be replayed as a standalone reasoning item
+// (content[].reasoning_text) before the function_call items — wrapping it in
+// visible <thinking> text does not satisfy the upstream contract and yields
+// HTTP 400 ("The `reasoning_text` in the thinking mode must be passed back
+// to the API").
+func chatAssistantToResponses(m ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
+
+	// Resolve the reasoning that produced this turn: prefer what the client
+	// echoed, otherwise restore from the gateway-side cache keyed by tool
+	// call id — the only id that round-trips in Chat Completions history.
+	reasoning := strings.TrimSpace(m.ReasoningContent)
+	if len(m.ToolCalls) > 0 && reasoning == "" && opts != nil && opts.ReasoningContentByCallID != nil {
+		for _, tc := range m.ToolCalls {
+			if cached := strings.TrimSpace(opts.ReasoningContentByCallID(tc.ID)); cached != "" {
+				reasoning = cached
+				break
+			}
+		}
+	}
+
+	emittedReasoningItem := false
+	if len(m.ToolCalls) > 0 && reasoning != "" {
+		reasoningItem, err := makeReasoningReplayInputItem(reasoning)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, reasoningItem)
+		emittedReasoningItem = true
+	}
+
 	content := ""
 
-	if m.ReasoningContent != "" {
+	// Without a standalone reasoning item, keep the historical behavior of
+	// carrying reasoning as tagged visible text. When a reasoning item is
+	// emitted above, the same text must not also appear in the message.
+	if !emittedReasoningItem && m.ReasoningContent != "" {
 		content = "<thinking>" + m.ReasoningContent + "</thinking>"
 	}
 
@@ -216,6 +272,24 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	}
 
 	return items, nil
+}
+
+// makeReasoningReplayInputItem builds the reasoning input item that
+// DeepSeek/Kimi Responses endpoints require replaying before the
+// function_call items of a tool-bearing turn. Both the portable summary and
+// the reasoning_text content are populated: some providers validate
+// content[].reasoning_text while others only read summary.
+func makeReasoningReplayInputItem(reasoning string) (ResponsesInputItem, error) {
+	contentJSON, err := json.Marshal([]ResponsesContentPart{{Type: "reasoning_text", Text: reasoning}})
+	if err != nil {
+		return ResponsesInputItem{}, err
+	}
+	return ResponsesInputItem{
+		Type:    "reasoning",
+		ID:      generateItemID("rs"),
+		Summary: []ResponsesSummary{{Type: "summary_text", Text: reasoning}},
+		Content: contentJSON,
+	}, nil
 }
 
 // parseAssistantContent returns assistant content as plain text.

@@ -186,6 +186,10 @@ func cleanPageImageRelativePath(filename string) (string, bool) {
 		return "", false
 	}
 
+	if len(parts) >= 4 && parts[len(parts)-3] == "assets" && parts[len(parts)-2] == "icons" && parts[len(parts)-1] == "logo.webp" {
+		parts = append(parts[:len(parts)-4], "logo.png")
+	}
+
 	relPath := filepath.Join(parts...)
 	if filepath.IsAbs(relPath) || filepath.VolumeName(relPath) != "" {
 		return "", false
