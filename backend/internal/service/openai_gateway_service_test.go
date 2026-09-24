@@ -2108,9 +2108,12 @@ func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputAppliesPassthroug
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	body := rec.Body.String()
 	require.Equal(t, "upstream_error", gjson.Get(body, "error.type").String())
-	require.Equal(t, upstreamMessage, gjson.Get(body, "error.message").String())
+	// 策略：上游原文不下发给终端用户（见 48d6c875d「上游错误下游用户不可见」）。
+	// 规则虽勾了 PassthroughBody，客户端也只能拿到平台统一文案；上游完整错误
+	// 只进 OpsUpstreamErrorsKey。
+	require.Equal(t, "Upstream request failed", gjson.Get(body, "error.message").String())
+	require.NotContains(t, body, upstreamMessage)
 	require.NotContains(t, body, "response.failed")
-	require.NotContains(t, body, "Upstream request failed")
 	// 命中透传规则也应记录 ops 上游错误事件（对齐 CC/Messages 与 antigravity 先例）。
 	opsVal, opsRecorded := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, opsRecorded, "passthrough hit should record an ops upstream error event")
@@ -2541,9 +2544,12 @@ func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputApplie
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	body := rec.Body.String()
 	require.Equal(t, "upstream_error", gjson.Get(body, "error.type").String())
-	require.Equal(t, upstreamMessage, gjson.Get(body, "error.message").String())
+	// 策略：上游原文不下发给终端用户（见 48d6c875d「上游错误下游用户不可见」）。
+	// 规则虽勾了 PassthroughBody，客户端也只能拿到平台统一文案；上游完整错误
+	// 只进 OpsUpstreamErrorsKey。
+	require.Equal(t, "Upstream request failed", gjson.Get(body, "error.message").String())
+	require.NotContains(t, body, upstreamMessage)
 	require.NotContains(t, body, "response.failed")
-	require.NotContains(t, body, "Upstream request failed")
 	// 命中透传规则也应记录 ops 上游错误事件（对齐 CC/Messages 与 antigravity 先例）。
 	opsVal, opsRecorded := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, opsRecorded, "passthrough hit should record an ops upstream error event")

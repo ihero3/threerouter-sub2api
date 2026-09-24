@@ -380,3 +380,92 @@ func newNonFailoverPassthroughRule(statusCode int, keyword string, respCode int,
 		CustomMessage:   &customMessage,
 	}
 }
+
+// 上游原文绝不能进终端用户的响应体。即便管理员勾了「透传上游错误信息」
+// （迁移 048 与 ent schema 的默认值都是 true，新建规则的 UI 默认也是 true），
+// 客户端文案也只能来自管理员自定义文案或平台统一文案。
+// 对应策略：48d6c875d「上游错误下游用户不可见」；上游完整错误只进
+// OpsUpstreamErrorEvent，不进响应体。
+func TestApplyErrorPassthroughRule_NeverEchoesUpstreamMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const upstreamSecret = "upstream leaked: org quota exceeded, contact internal-admin@corp"
+	rule := &model.ErrorPassthroughRule{
+		ID:              1,
+		Name:            "passthrough-body-on",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{http.StatusBadRequest},
+		MatchMode:       model.MatchModeAny,
+		PassthroughCode: true,
+		PassthroughBody: true, // 管理员显式勾了透传原文
+		CustomMessage:   nil,  // 且没写自定义文案
+	}
+	// 注意：error_passthrough_service_test.go 带 //go:build unit，bare 层编不到，
+	// 这里直接构造服务并灌本地缓存，不复用那边的 newTestService。
+	svc := &ErrorPassthroughService{}
+	svc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Set(errorPassthroughServiceContextKey, svc)
+
+	body := []byte(`{"error":{"message":"` + upstreamSecret + `"}}`)
+	status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadRequest,
+		body,
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	require.True(t, matched, "规则应命中，才能验证命中后的文案")
+	require.NotContains(t, errMsg, "upstream leaked", "上游原文不得进入客户端文案")
+	require.NotContains(t, errMsg, upstreamSecret)
+	require.Equal(t, "Upstream request failed", errMsg, "无自定义文案时必须退回平台统一文案")
+	require.Equal(t, http.StatusBadRequest, status, "状态码映射不受影响")
+	require.Equal(t, "upstream_error", errType)
+}
+
+// 管理员自定义文案仍然生效（这是唯一允许的客户端文案改写来源）。
+func TestApplyErrorPassthroughRule_UsesCustomMessageOnly(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	custom := "服务暂时不可用，请稍后重试"
+	rule := &model.ErrorPassthroughRule{
+		ID:              1,
+		Name:            "custom-only",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{http.StatusBadRequest},
+		MatchMode:       model.MatchModeAny,
+		PassthroughCode: true,
+		PassthroughBody: true, // 即便透传开关打开，自定义文案优先且原文仍不外泄
+		CustomMessage:   &custom,
+	}
+	// 注意：error_passthrough_service_test.go 带 //go:build unit，bare 层编不到，
+	// 这里直接构造服务并灌本地缓存，不复用那边的 newTestService。
+	svc := &ErrorPassthroughService{}
+	svc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Set(errorPassthroughServiceContextKey, svc)
+
+	body := []byte(`{"error":{"message":"upstream leaked: db connection refused at 10.0.0.7"}}`)
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadRequest,
+		body,
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	require.True(t, matched)
+	require.Equal(t, custom, errMsg)
+	require.NotContains(t, errMsg, "10.0.0.7")
+}

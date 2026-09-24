@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -137,4 +139,69 @@ func TestReasoningContentByCallID_ReadThrough(t *testing.T) {
 	require.Equal(t, "stored thought", svc.reasoningContentByCallID("call_77"))
 	require.Equal(t, "", svc.reasoningContentByCallID("call_missing"))
 	require.Equal(t, "", svc.reasoningContentByCallID("   "))
+}
+
+// 租户隔离回归：call_id 完全由客户端决定，很多客户端用 call_0/call_1 这类
+// 自增短 id，不同用户会撞同一个 key。没有 scope 时用户 B 的下一轮会读到用户
+// A 的思考内容并被回注进 B 的上游请求（跨租户串扰）。有 scope 时必须互不可见。
+func TestToolCallReasoningCache_TenantScopeIsolation(t *testing.T) {
+	cache := &toolCallReasoningRecordingCache{}
+	svc := &OpenAIGatewayService{cache: cache}
+
+	// 用户 A 与用户 B 用完全相同的 call_id（真实客户端就是这样）。
+	svc.cacheToolCallReasoningFromOutputInScope("u7:", []apicompat.ResponsesOutput{
+		{Type: "reasoning", Summary: []apicompat.ResponsesSummary{{Type: "summary_text", Text: "A 的推理"}}},
+		{Type: "function_call", CallID: "call_1"},
+	})
+	svc.cacheToolCallReasoningFromOutputInScope("u8:", []apicompat.ResponsesOutput{
+		{Type: "reasoning", Summary: []apicompat.ResponsesSummary{{Type: "summary_text", Text: "B 的推理"}}},
+		{Type: "function_call", CallID: "call_1"},
+	})
+
+	sets := cache.snapshotSets()
+	require.Equal(t, "A 的推理", sets["cc_tool_call:u7:call_1"])
+	require.Equal(t, "B 的推理", sets["cc_tool_call:u8:call_1"])
+	// 未加 scope 的旧命名空间不得再被写入，否则又会退化成全局串扰。
+	require.NotContains(t, sets, "cc_tool_call:call_1")
+
+	// 回读同样按 scope 隔离。
+	cache.getResp = sets
+	require.Equal(t, "A 的推理", svc.reasoningContentByCallIDInScope("u7:", "call_1"))
+	require.Equal(t, "B 的推理", svc.reasoningContentByCallIDInScope("u8:", "call_1"))
+	require.Equal(t, "", svc.reasoningContentByCallIDInScope("u9:", "call_1"))
+}
+
+// scope 为空时必须与旧行为逐字节一致，保证不经过 HTTP 上下文的调用方不受影响。
+func TestToolCallReasoningCache_EmptyScopeMatchesLegacyKey(t *testing.T) {
+	cache := &toolCallReasoningRecordingCache{}
+	svc := &OpenAIGatewayService{cache: cache}
+
+	svc.cacheToolCallReasoningFromOutputInScope("", []apicompat.ResponsesOutput{
+		{Type: "reasoning", Summary: []apicompat.ResponsesSummary{{Type: "summary_text", Text: "legacy"}}},
+		{Type: "function_call", CallID: "call_legacy"},
+	})
+
+	require.Equal(t, "legacy", cache.snapshotSets()["cc_tool_call:call_legacy"])
+
+	cache.getResp = cache.snapshotSets()
+	require.Equal(t, "legacy", svc.reasoningContentByCallIDInScope("", "call_legacy"))
+	require.Equal(t, "legacy", svc.reasoningContentByCallID("call_legacy"))
+}
+
+// reasoningContentTenantScope 从 gin 上下文取租户维度：优先 user，其次 api key，
+// 都没有时退化为空（保留旧行为而不是拒绝服务）。
+func TestReasoningContentTenantScope(t *testing.T) {
+	require.Equal(t, "", reasoningContentTenantScope(nil))
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.Equal(t, "", reasoningContentTenantScope(c), "无 api_key 时退化为全局")
+
+	c.Set("api_key", &APIKey{ID: 99, UserID: 42})
+	require.Equal(t, "u42:", reasoningContentTenantScope(c), "优先按 user 隔离")
+
+	c.Set("api_key", &APIKey{ID: 99})
+	require.Equal(t, "k99:", reasoningContentTenantScope(c), "无 user 时退回 api key")
+
+	c.Set("api_key", "not-an-api-key")
+	require.Equal(t, "", reasoningContentTenantScope(c), "类型异常时安全退化")
 }

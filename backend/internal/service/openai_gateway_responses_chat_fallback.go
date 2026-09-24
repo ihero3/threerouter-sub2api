@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -405,15 +406,56 @@ func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
 // 与网关上一轮缓存的 reasoning item 相互覆盖。
 const reasoningContentCallIDPrefix = "cc_tool_call:"
 
+// reasoningContentTenantScope 返回 reasoning 缓存的租户维度前缀。
+//
+// call_id 完全由客户端决定，大量客户端用的是 call_0 / call_1 / toolu_1 这类
+// 自增短 id——不同用户会反复撞到同一个 key。若不按租户隔离，用户 B 的下一轮
+// 请求会读到用户 A 缓存的思考内容，并被回注进 B 的上游请求里（跨租户串扰）。
+// 缓存 TTL 是 7 天，撞车窗口很长。
+//
+// 返回形如 "u42:" 的前缀；取不到身份时返回 ""，退化为原来的全局命名空间，
+// 不引入新的失败模式。
+func reasoningContentTenantScope(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	v, exists := c.Get("api_key")
+	if !exists {
+		return ""
+	}
+	apiKey, ok := v.(*APIKey)
+	if !ok || apiKey == nil {
+		return ""
+	}
+	// 优先按 user 隔离：同一用户换 API Key 重放历史时仍要能命中缓存，
+	// 否则会退化成「回注失败 → 上游 400 复现」。
+	if apiKey.UserID > 0 {
+		return "u" + strconv.FormatInt(apiKey.UserID, 10) + ":"
+	}
+	if apiKey.ID > 0 {
+		return "k" + strconv.FormatInt(apiKey.ID, 10) + ":"
+	}
+	return ""
+}
+
 // reasoningContentByCallID 按 Chat 侧 tool_call id 回查产生该调用的 reasoning
 // 全文，供 Chat Completions→Responses 桥接在客户端（如 TRAE）不回传
 // reasoning_content 时回注 reasoning item。任何失败 fail-open 返回 ""。
+//
+// 无租户维度的版本仅用于不经过 HTTP 上下文的调用（单测等）。生产路径一律走
+// reasoningContentByCallIDInScope。
 func (s *OpenAIGatewayService) reasoningContentByCallID(callID string) string {
+	return s.reasoningContentByCallIDInScope("", callID)
+}
+
+// reasoningContentByCallIDInScope 同 reasoningContentByCallID，但把缓存 key
+// 限制在 scope 租户内。scope 为空时与前者完全等价。
+func (s *OpenAIGatewayService) reasoningContentByCallIDInScope(scope, callID string) string {
 	callID = strings.TrimSpace(callID)
 	if callID == "" {
 		return ""
 	}
-	return s.reasoningContentByID(reasoningContentCallIDPrefix + callID)
+	return s.reasoningContentByID(reasoningContentCallIDPrefix + scope + callID)
 }
 
 // cacheToolCallReasoningFromOutput correlates plaintext reasoning items with
@@ -423,9 +465,15 @@ func (s *OpenAIGatewayService) reasoningContentByCallID(callID string) string {
 // next-turn Chat→Responses conversion can look up. Best-effort: cache errors
 // are logged inside setReasoningContent and never fail the forward.
 func (s *OpenAIGatewayService) cacheToolCallReasoningFromOutput(output []apicompat.ResponsesOutput) {
+	s.cacheToolCallReasoningFromOutputInScope("", output)
+}
+
+// cacheToolCallReasoningFromOutputInScope 同 cacheToolCallReasoningFromOutput，
+// 但把结果写入 scope 租户的命名空间。scope 为空时与前者完全等价。
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromOutputInScope(scope string, output []apicompat.ResponsesOutput) {
 	var pending string
 	for i := range output {
-		pending = s.cacheToolCallReasoningFromItem(&output[i], pending)
+		pending = s.cacheToolCallReasoningFromItemInScope(scope, &output[i], pending)
 	}
 }
 
@@ -433,11 +481,17 @@ func (s *OpenAIGatewayService) cacheToolCallReasoningFromOutput(output []apicomp
 // cacheToolCallReasoningFromOutput. The caller owns the pending reasoning
 // string and passes the value returned by the previous invocation.
 func (s *OpenAIGatewayService) cacheToolCallReasoningFromEvents(events []apicompat.ResponsesStreamEvent, pending string) string {
+	return s.cacheToolCallReasoningFromEventsInScope("", events, pending)
+}
+
+// cacheToolCallReasoningFromEventsInScope 同 cacheToolCallReasoningFromEvents，
+// 但把结果写入 scope 租户的命名空间。scope 为空时与前者完全等价。
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromEventsInScope(scope string, events []apicompat.ResponsesStreamEvent, pending string) string {
 	for i := range events {
 		if events[i].Type != "response.output_item.done" || events[i].Item == nil {
 			continue
 		}
-		pending = s.cacheToolCallReasoningFromItem(events[i].Item, pending)
+		pending = s.cacheToolCallReasoningFromItemInScope(scope, events[i].Item, pending)
 	}
 	return pending
 }
@@ -453,6 +507,12 @@ func (s *OpenAIGatewayService) cacheToolCallReasoningFromEvents(events []apicomp
 // Cross-turn isolation needs no explicit reset: every request owns its own
 // pending variable, so the next response starts empty.
 func (s *OpenAIGatewayService) cacheToolCallReasoningFromItem(item *apicompat.ResponsesOutput, pending string) string {
+	return s.cacheToolCallReasoningFromItemInScope("", item, pending)
+}
+
+// cacheToolCallReasoningFromItemInScope 同 cacheToolCallReasoningFromItem，
+// 但把结果写入 scope 租户的命名空间。scope 为空时与前者完全等价。
+func (s *OpenAIGatewayService) cacheToolCallReasoningFromItemInScope(scope string, item *apicompat.ResponsesOutput, pending string) string {
 	if item == nil {
 		return pending
 	}
@@ -464,7 +524,7 @@ func (s *OpenAIGatewayService) cacheToolCallReasoningFromItem(item *apicompat.Re
 	case "function_call":
 		if pending != "" {
 			if callID := strings.TrimSpace(item.CallID); callID != "" {
-				s.setReasoningContent(reasoningContentCallIDPrefix+callID, pending)
+				s.setReasoningContent(reasoningContentCallIDPrefix+scope+callID, pending)
 			}
 		}
 	}
