@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
 
 // itemIDCounter is a monotonic counter for generating unique item IDs.
+// 必须是原子自增：网关并发转换多个请求时，普通 ++ 会 data race 并让两个
+// 请求拿到同一个 ID，上游可能因重复 item id 拒绝整个 input 数组。
 var itemIDCounter uint64
 
 // generateItemID produces a Responses protocol-compliant item ID.
@@ -14,8 +17,7 @@ var itemIDCounter uint64
 // "fc" for function/custom/tool_search calls. Upstream providers reject
 // IDs that do not follow this convention.
 func generateItemID(prefix string) string {
-	itemIDCounter++
-	return fmt.Sprintf("%s_%d", prefix, itemIDCounter)
+	return fmt.Sprintf("%s_%d", prefix, atomic.AddUint64(&itemIDCounter, 1))
 }
 
 type chatMessageContent struct {

@@ -1298,8 +1298,10 @@ export default {
         passthroughCode: '透传上游状态码',
         responseCode: '自定义状态码',
         passthroughBody: '透传上游错误信息',
+        passthroughBodyDisabledHint: '该开关已停用：出于安全策略，上游原始错误不再对终端用户展示，仅管理员可见。',
         customMessage: '自定义错误信息',
         customMessagePlaceholder: '返回给客户端的错误信息...',
+        customMessageHint: '留空则使用平台统一文案。这是唯一能改写客户端错误文案的方式。',
         skipMonitoring: '跳过运维监控记录',
         skipMonitoringHint: '开启后，匹配此规则的错误不会被记录到运维监控中',
         enabled: '启用此规则'

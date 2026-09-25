@@ -95,6 +95,26 @@ func ResolveThinkingProtocol(modelID string) ThinkingProtocol {
 	return ThinkingProtocolUnknown
 }
 
+// ShouldReplayToolCallReasoning 判断 Chat Completions→Responses 桥接是否应
+// 把「产生 tool call 的那段推理」回注成 reasoning item
+// （content[].reasoning_text + summary）。
+//
+// 这是 CC→Responses 桥接专用的判定，粒度比 ResolveThinkingProtocol 粗一层：
+// 只排除 Anthropic 官方语义（thinking block 必须带有效 signature，reasoning
+// item 回注不适用），其余一律启用——包括 ThinkingProtocolUnknown。
+//
+// 不能收窄成 `== ThinkingProtocolPassbackRequired`：ResolveThinkingProtocol
+// 靠硬编码厂商前缀匹配（deepseek- / kimi- / glm- ...），而运营后台添加的
+// 模型名不受控（glm4.6、deepseek_flash、自定义别名等），匹配不上就会静默
+// 退回旧行为——把推理塞进 <thinking> 明文，上游照样 400。
+//
+// 放宽是安全的：只有请求里确实存在推理内容（客户端回传 reasoning_content，
+// 或网关缓存里按 tool call id 命中）时才会生成 reasoning item；把推理作为
+// reasoning item 回传是 Responses 协议的标准契约，比塞进可见明文更正确。
+func ShouldReplayToolCallReasoning(modelID string) bool {
+	return ResolveThinkingProtocol(modelID) != ThinkingProtocolAnthropicStrict
+}
+
 // ShouldPreFilterThinkingBlocks 判断是否应在转发前剥离无效 thinking block。
 // 仅 anthropic-strict 协议族需要预过滤；passback-required/unknown 都跳过，
 // 因为「保留 thinking block」对 anthropic-strict 之外的上游一律更安全。

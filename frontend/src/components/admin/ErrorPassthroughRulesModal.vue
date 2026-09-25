@@ -363,7 +363,11 @@
                   {{ t('admin.errorPassthrough.form.passthroughBody') }}
                 </span>
               </label>
-              <div v-if="!form.passthrough_body" class="mt-2">
+              <p class="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                {{ t('admin.errorPassthrough.form.passthroughBodyDisabledHint') }}
+              </p>
+              <!-- 透传原文已停用，自定义文案是唯一能改写客户端文案的手段，故始终可填 -->
+              <div class="mt-2">
                 <label class="input-label text-xs">{{ t('admin.errorPassthrough.form.customMessage') }}</label>
                 <input
                   v-model="form.custom_message"
@@ -371,6 +375,9 @@
                   class="input text-sm"
                   :placeholder="t('admin.errorPassthrough.form.customMessagePlaceholder')"
                 />
+                <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  {{ t('admin.errorPassthrough.form.customMessageHint') }}
+                </p>
               </div>
             </div>
           </div>
@@ -596,7 +603,9 @@ const handleSubmit = async () => {
       passthrough_code: form.passthrough_code,
       response_code: form.passthrough_code ? null : form.response_code,
       passthrough_body: form.passthrough_body,
-      custom_message: form.passthrough_body ? null : form.custom_message,
+      // 透传原文已停用，自定义文案始终提交：它是唯一能改写客户端文案的字段，
+      // 不能因为 passthrough_body 勾选而被清成 null。
+      custom_message: form.custom_message?.trim() || null,
       skip_monitoring: form.skip_monitoring,
       description: form.description?.trim() || null
     }

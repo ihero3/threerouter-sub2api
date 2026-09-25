@@ -237,10 +237,17 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		// missing. Chat-only clients (e.g. TRAE) do not echo reasoning_content
 		// in history, so restore it from the gateway-side cache keyed by the
 		// tool call id, the only id that round-trips on the Chat wire.
+		//
+		// 读取侧与写入侧（下方 toolReasoningCaptureEnabled / 非流式
+		// cacheToolCallReasoningFromOutputInScope）必须共用同一个门控和同一个
+		// 租户 scope，否则会出现「只写不读」或「读别人的租户」。
+		reasoningScope := reasoningContentTenantScope(c)
 		var ccToResponsesOpts *apicompat.ChatCompletionsToResponsesOptions
-		if ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired {
+		if ShouldReplayToolCallReasoning(upstreamModel) {
 			ccToResponsesOpts = &apicompat.ChatCompletionsToResponsesOptions{
-				ReasoningContentByCallID: s.reasoningContentByCallID,
+				ReasoningContentByCallID: func(callID string) string {
+					return s.reasoningContentByCallIDInScope(reasoningScope, callID)
+				},
 			}
 		}
 		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, ccToResponsesOpts)
@@ -583,10 +590,10 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 
 	// Cache reasoning→tool_call correlations keyed by call_id so the next
 	// Chat Completions turn from a Chat-only client can replay reasoning_text
-	// to DeepSeek/Kimi-style thinking providers (avoids HTTP 400). Only
-	// providers with a passback contract need it.
-	if s.cache != nil && ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired {
-		s.cacheToolCallReasoningFromOutput(finalResponse.Output)
+	// to DeepSeek/Kimi-style thinking providers (avoids HTTP 400).
+	// 门控与 scope 必须和转换侧（forwardAsChatCompletions 里的读取）完全一致。
+	if s.cache != nil && ShouldReplayToolCallReasoning(upstreamModel) {
+		s.cacheToolCallReasoningFromOutputInScope(reasoningContentTenantScope(c), finalResponse.Output)
 	}
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
@@ -697,8 +704,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	// arrives, so the reasoning can be cached by call_id for next-turn replay
 	// (DeepSeek/Kimi thinking-mode reasoning_text passback, HTTP 400 fix).
 	toolReasoningPending := ""
+	// 门控与 scope 必须和转换侧（forwardAsChatCompletions 里的读取）完全一致。
+	toolReasoningScope := reasoningContentTenantScope(c)
 	toolReasoningCaptureEnabled := s.cache != nil &&
-		ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired
+		ShouldReplayToolCallReasoning(upstreamModel)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
@@ -774,7 +783,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		// Best-effort reasoning→tool_call caching for next-turn
 		// reasoning_text passback (see toolReasoningPending).
 		if toolReasoningCaptureEnabled && event.Type == "response.output_item.done" && event.Item != nil {
-			toolReasoningPending = s.cacheToolCallReasoningFromItem(event.Item, toolReasoningPending)
+			toolReasoningPending = s.cacheToolCallReasoningFromItemInScope(toolReasoningScope, event.Item, toolReasoningPending)
 		}
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)

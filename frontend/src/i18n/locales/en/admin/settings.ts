@@ -1304,8 +1304,10 @@ export default {
         passthroughCode: 'Passthrough upstream status code',
         responseCode: 'Custom status code',
         passthroughBody: 'Passthrough upstream error message',
+        passthroughBodyDisabledHint: 'This toggle is retired: for security, raw upstream errors are never shown to end users — admins only.',
         customMessage: 'Custom error message',
         customMessagePlaceholder: 'Error message to return to client...',
+        customMessageHint: 'Leave empty to use the platform default. This is the only way to customize the client-facing message.',
         skipMonitoring: 'Skip monitoring',
         skipMonitoringHint: 'When enabled, errors matching this rule will not be recorded in ops monitoring',
         enabled: 'Enable this rule'

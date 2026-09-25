@@ -123,3 +123,40 @@ func TestShouldApplyRetryFiltersMirrorsPreFilter(t *testing.T) {
 		})
 	}
 }
+
+// ShouldReplayToolCallReasoning 是 CC→Responses 桥接的回注门控。它不能收窄成
+// `== ThinkingProtocolPassbackRequired`：ResolveThinkingProtocol 靠硬编码厂商
+// 前缀匹配，而运营后台添加的模型名不受控（glm4.6、deepseek_flash、自定义别名），
+// 匹配不上就会静默退回「把推理塞进 <thinking> 明文」，上游照样 400。
+func TestShouldReplayToolCallReasoning(t *testing.T) {
+	// 标准厂商前缀：必须回注。
+	for _, id := range []string{"deepseek-flash", "deepseek-v4-pro", "kimi-k2", "glm-4.6", "minimax-m2", "qwen3-max-thinking", "k3"} {
+		if !ShouldReplayToolCallReasoning(id) {
+			t.Fatalf("ShouldReplayToolCallReasoning(%q) = false, want true", id)
+		}
+	}
+
+	// 运营后台自定义/不规范命名：ResolveThinkingProtocol 判不出来（Unknown），
+	// 但同样可能是要求回注的上游，必须放行——这正是门控收窄时漏掉的一类。
+	for _, id := range []string{
+		"glm4.6",                // 少了连字符，不匹配 glm-
+		"deepseek_flash",        // 下划线，不匹配 deepseek-
+		"DeepSeek-V4-Pro",       // 大小写不同但 ToLower 后命中，仍须放行
+		"ds-r1",                 // 中转别名
+		"deepseek-v4-pro-local", // 带后缀
+		"gpt-5-thinking",        // 未知厂商但确实在思考
+		"",                      // 未知：保守放行而非拒绝
+	} {
+		if !ShouldReplayToolCallReasoning(id) {
+			t.Fatalf("ShouldReplayToolCallReasoning(%q) = false, want true (unknown protocol must still replay)", id)
+		}
+	}
+
+	// Anthropic 官方语义：thinking block 必须带有效 signature，reasoning item
+	// 回注不适用，必须排除。
+	for _, id := range []string{"claude-sonnet-4-6", "claude-opus-4-5", "opus-4", "sonnet-4", "haiku-3"} {
+		if ShouldReplayToolCallReasoning(id) {
+			t.Fatalf("ShouldReplayToolCallReasoning(%q) = true, want false (anthropic-strict)", id)
+		}
+	}
+}
