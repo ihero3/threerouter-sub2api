@@ -102,7 +102,7 @@ body {
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; letter-spacing: 1px; color: var(--cyan); background: rgba(10,168,224,.08); border: 1px solid rgba(10,168,224,.25); padding: 6px 12px; border-radius: 999px; margin-bottom: 26px; }
 .eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: pulse 2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-.hero h1 { font-family: "Sora", sans-serif; font-size: clamp(38px, 5.4vw, 64px); line-height: 1.06; font-weight: 800; letter-spacing: -1px; }
+.hero h1 { font-family: "Sora", sans-serif; font-size: clamp(34px, 4.2vw, 48px); line-height: 1.12; font-weight: 800; letter-spacing: -1px; }
 .hero h1 .grad { background: linear-gradient(110deg, #1d4ed8 5%, #3b6bfd 40%, #0aa8e0 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero-sub { margin-top: 22px; font-size: 17px; color: var(--text-1); max-width: 560px; }
 .hero-sub b { color: var(--text-0); font-weight: 600; }
@@ -142,6 +142,7 @@ section { padding: 96px 0; position: relative; }
 
 /* 价值卡片 */
 .values { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.values-3 { grid-template-columns: repeat(3, 1fr); }
 .vcard { padding: 28px 24px; border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--panel); backdrop-filter: blur(10px); transition: .3s; position: relative; overflow: hidden; }
 .vcard::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(124,155,255,.5), transparent 40%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: .3s; }
 .vcard:hover { transform: translateY(-6px); border-color: var(--line-strong); }
@@ -191,18 +192,6 @@ section { padding: 96px 0; position: relative; }
 .shot-cap { padding: 0 20px 20px; color: var(--text-1); font-size: 14px; }
 .shot-cap code { font-family: var(--mono); font-size: 12px; color: var(--cyan); }
 
-/* ===== provider 表格 ===== */
-.tbl-wrap { border: 1px solid var(--line); border-radius: var(--radius-2); overflow-x: auto; background: var(--panel); }
-table { width: 100%; border-collapse: collapse; min-width: 720px; }
-th, td { text-align: left; padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 14px; }
-th { font-family: "Sora", sans-serif; font-size: 13px; color: var(--text-2); font-weight: 700; letter-spacing: .4px; background: rgba(30,90,180,.04); }
-td { color: var(--text-1); }
-td strong { color: var(--text-0); }
-.yes { color: var(--green); font-weight: 600; }
-.no { color: var(--text-2); }
-tr:last-child td { border-bottom: 0; }
-.dflt { font-size: 11px; color: var(--cyan); border: 1px solid rgba(57,208,255,.3); padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
-
 /* ===== 快速开始 ===== */
 .code-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .code { border: 1px solid var(--line); border-radius: var(--radius-2); background: #0a0f1d; overflow: hidden; }
@@ -236,14 +225,14 @@ tr:last-child td { border-bottom: 0; }
 /* ===== 响应式 ===== */
 @media (max-width: 980px) {
   .hero-grid { grid-template-columns: 1fr; gap: 44px; }
-  .values { grid-template-columns: repeat(2, 1fr); }
+  .values, .values-3 { grid-template-columns: repeat(2, 1fr); }
   .tools, .code-grid, .footer-grid, .gallery-wide { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .gallery { grid-template-columns: repeat(2, 1fr); }
   .nav-links { display: none; }
 }
 @media (max-width: 560px) {
-  .values, .gallery, .footer-grid { grid-template-columns: 1fr; }
+  .values, .values-3, .gallery, .footer-grid { grid-template-columns: 1fr; }
   .hero-stats { gap: 26px; flex-wrap: wrap; }
   .hero-ctas { flex-direction: column; }
   .btn { justify-content: center; }
@@ -270,7 +259,7 @@ tr:last-child td { border-bottom: 0; }
     <div class="nav-actions">
       <a href="/home" class="nav-link-btn" data-i18n="nav_home">首页</a>
       <a href="/admin/models" class="nav-link-btn" data-i18n="nav_models">模型</a>
-      <a class="btn" href="https://github.com/976905690/deepseek-harness-desktop/releases/download/v2.0.3/DSH-Desktop-2.0.3-x64-Setup.exe" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="nav_download">免费下载</span></a>
+      <a class="btn" href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-win-x64.exe" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="nav_download">免费下载</span></a>
     </div>
   </div>
 </nav>
@@ -281,15 +270,16 @@ tr:last-child td { border-bottom: 0; }
     <div>
       <span class="eyebrow" data-i18n="hero_tag">Deepseek Harness for Threerouter · AI 文生图 / 文生视频</span>
       <h1><span data-i18n="hero_title1">对话即创作</span><br><span class="grad" data-i18n="hero_title2">在对话中生成图片与视频</span></h1>
-      <p class="hero-sub" data-i18n="hero_sub"><b>Deepseek Harness for Threerouter</b> 为对话模型注册 <b>generate_image</b> / <b>generate_video</b> 两个工具。模型在对话中自主决策调用，生成结果自动落地本地 <b>outputs文件夹</b>，图片内嵌渲染——<b>无需离开终端，无需切换窗口</b>。</p>
+      <p class="hero-sub" data-i18n="hero_sub"><b>Deepseek Harness for Threerouter</b> 为对话模型注册 <b>文生图 / 文生视频</b> 两个工具。模型在对话中自主决策调用，生成结果自动落地本地 <b>outputs文件夹</b>，图片内嵌渲染——<b>无需离开终端，无需切换窗口</b>。</p>
       <div class="hero-ctas">
-        <a class="btn" href="https://github.com/976905690/deepseek-harness-desktop/releases/download/v2.0.3/DSH-Desktop-2.0.3-x64-Setup.exe" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="nav_download">免费下载</span></a>
-        <a class="btn" href="https://github.com/976905690/deepseek-harness-desktop/releases/download/v2.0.3/DSH.Desktop-2.0.3-universal.dmg" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="hero_cta_mac">下载 macOS 版</span></a>
+        <a class="btn" href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-win-x64.exe" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="hero_cta_win">下载 Windows 版</span></a>
+        <a class="btn" href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-mac-arm64.dmg" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="hero_cta_mac">下载 macOS 版</span></a>
+        <a class="btn" href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-linux-x64.AppImage" target="_blank" rel="noopener" title="Ubuntu / Debian / Mint / Deepin / UOS / Fedora"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="hero_cta_linux">下载 Linux 版</span></a>
         <a class="btn ghost" href="#start"><span data-i18n="hero_cta2">快速开始</span></a>
       </div>
       <div class="hero-stats">
         <div class="stat"><b>2<em>+</em></b><span data-i18n="stat1">个创作工具</span></div>
-        <div class="stat"><b>3</b><span data-i18n="stat2">家服务商热切换</span></div>
+        <div class="stat"><b>0</b><span data-i18n="stat2">项配置，登录即用</span></div>
         <div class="stat"><b>0<em>+</em></b><span data-i18n="stat3">外部运行时依赖</span></div>
       </div>
     </div>
@@ -311,7 +301,7 @@ tr:last-child td { border-bottom: 0; }
     <div class="sec-head reveal">
       <div class="tag">Why</div>
       <h2 data-i18n="feat_h">为什么是 dsh-image-video</h2>
-      <p data-i18n="feat_p">轻量、即装即用的文生图 / 文生视频入口。两个工具、三家服务商、零外部依赖，热插拔即用。</p>
+      <p data-i18n="feat_p">轻量、即装即用的文生图 / 文生视频入口。两个工具、登录即用、零外部依赖。</p>
     </div>
     <div class="values">
       <div class="vcard reveal">
@@ -320,9 +310,9 @@ tr:last-child td { border-bottom: 0; }
         <p data-i18n="v1_p">模型在对话中自主决策何时调用工具，无需手动指令。一句「帮我画…」即可创作。</p>
       </div>
       <div class="vcard reveal">
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3L4 7l4 4M16 21l4-4-4-4M7 7h10M17 17H7"/></svg></div>
-        <h3 data-i18n="v2_h">多服务商热切换</h3>
-        <p data-i18n="v2_p">万象 wanx、Seedance2.5、bxinle 一键切换 provider，HMR 即时生效，无需重启。</p>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg></div>
+        <h3 data-i18n="v2_h">登录 Threerouter 即用</h3>
+        <p data-i18n="v2_p">无需配置任何 Provider，登录 Threerouter 账号即可使用全部模型，渠道由平台统一调度。</p>
       </div>
       <div class="vcard reveal">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
@@ -353,7 +343,7 @@ tr:last-child td { border-bottom: 0; }
         </div>
         <div class="tool-body">
           <div class="trow"><dt data-i18n="row_cap">能力</dt><dd data-i18n="tool_img_cap">文本生成图片（文生图）</dd></div>
-          <div class="trow"><dt data-i18n="row_prov">服务商</dt><dd><span class="chip" data-i18n="prov_wanx">万象 wanx</span><span class="chip">Seedance2.5</span></dd></div>
+          <div class="trow"><dt data-i18n="row_prov">模型来源</dt><dd data-i18n="prov_unified">Threerouter 平台统一提供，登录即用</dd></div>
           <div class="trow"><dt data-i18n="row_exec">执行</dt><dd data-i18n="tool_img_ex">同步或异步（自动适配，纯文本模型照常工作）</dd></div>
           <div class="trow"><dt data-i18n="row_render">渲染</dt><dd data-i18n="tool_img_render">图片经 presentationMeta 内嵌渲染；模型只见文本摘要</dd></div>
         </div>
@@ -365,7 +355,7 @@ tr:last-child td { border-bottom: 0; }
         </div>
         <div class="tool-body">
           <div class="trow"><dt data-i18n="row_cap">能力</dt><dd data-i18n="tool_vid_cap">文本生成短视频（上限 10s）</dd></div>
-          <div class="trow"><dt data-i18n="row_prov">服务商</dt><dd><span class="chip">bxinle（默认）</span><span class="chip" data-i18n="prov_wanx">万象 wanx</span><span class="chip">Seedance2.5</span></dd></div>
+          <div class="trow"><dt data-i18n="row_prov">模型来源</dt><dd data-i18n="prov_unified">Threerouter 平台统一提供，登录即用</dd></div>
           <div class="trow"><dt data-i18n="row_exec">执行</dt><dd data-i18n="tool_vid_ex">始终异步轮询，不阻塞对话</dd></div>
           <div class="trow"><dt data-i18n="row_render">渲染</dt><dd data-i18n="tool_vid_render">本地文件路径 + 源地址；后台轮询任务状态</dd></div>
         </div>
@@ -393,29 +383,36 @@ tr:last-child td { border-bottom: 0; }
         <div class="shot-media">
           <video src="media/dsh.mp4" controls playsinline preload="metadata" loop poster="media/DSH3.png"></video>
         </div>
-        <div class="shot-cap"><span data-i18n="show_vid_cap">示例：</span> <code data-i18n="show_vid_prompt">"花瓣随风飘落，镜头缓缓推进"</code> · outputs/…​.mp4</div>
+        <div class="shot-cap"><span data-i18n="show_vid_cap">示例：</span> <code data-i18n="show_vid_prompt">"穿着裙子的美女，在冰上花样表演"</code> · outputs/…​.mp4</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ===== Provider 矩阵 ===== -->
+<!-- ===== 登录即用 ===== -->
 <section style="padding-top:0">
   <div class="wrap">
     <div class="sec-head reveal">
-      <div class="tag">Providers</div>
-      <h2 data-i18n="prov_h">服务商矩阵</h2>
-      <p data-i18n="prov_p">三家中立服务商，一个 provider 字段一键切换。</p>
+      <div class="tag">Setup</div>
+      <h2 data-i18n="prov_h">登录即用，无需配置</h2>
+      <p data-i18n="prov_p">无需申请或配置任何 Provider，登录 Threerouter 后即可使用全部模型能力。</p>
     </div>
-    <div class="tbl-wrap reveal">
-      <table>
-        <thead><tr><th data-i18n="th_prov">服务商</th><th data-i18n="th_channel">渠道</th><th data-i18n="th_img">文生图</th><th data-i18n="th_vid">文生视频</th><th data-i18n="th_note">备注</th></tr></thead>
-        <tbody>
-          <tr><td><strong>bxinle</strong><span class="dflt" data-i18n="tbl_dflt">默认</span></td><td>bxinle.com Bearer Key</td><td class="no">—</td><td class="yes">✓ <span data-i18n="tbl_adapter_ready">适配器已实现</span></td><td data-i18n="tbl_bxinle_notes">统一 /v1/videos 端点；provider=bxinle 时图片回退到 wanx</td></tr>
-          <tr><td><strong><span data-i18n="prov_wanx">万象 wanx</span></strong><span class="chip" style="margin-left:6px" data-i18n="tbl_bailian">阿里云百炼</span></td><td>DashScope sk- Key</td><td class="yes">✓ <span data-i18n="tbl_verified">已验证</span></td><td class="yes">✓ <span data-i18n="tbl_verified">已验证</span></td><td data-i18n="tbl_wanx_notes">wanx2.1-t2i-turbo / wan2.2-t2v-plus；视频始终异步</td></tr>
-          <tr><td><strong>Seedance2.5</strong><span class="chip" style="margin-left:6px" data-i18n="tbl_ark">火山引擎 Ark</span></td><td>ARK API Key</td><td class="yes">✓ <span data-i18n="tbl_adapter_ready">适配器已实现</span></td><td class="yes">✓ <span data-i18n="tbl_adapter_ready">适配器已实现</span></td><td data-i18n="tbl_seedance_notes">即梦 3.0；图片同步返回 URL，视频走异步任务</td></tr>
-        </tbody>
-      </table>
+    <div class="values values-3">
+      <div class="vcard reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg></div>
+        <h3 data-i18n="s1_h">1. 登录 Threerouter</h3>
+        <p data-i18n="s1_p">使用你的 Threerouter 账号登录客户端，一次认证即可。</p>
+      </div>
+      <div class="vcard reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg></div>
+        <h3 data-i18n="s2_h">2. 选择模型</h3>
+        <p data-i18n="s2_p">图像与视频模型由平台统一提供，无需单独申请各服务商 Key。</p>
+      </div>
+      <div class="vcard reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+        <h3 data-i18n="s3_h">3. 开始创作</h3>
+        <p data-i18n="s3_p">在对话中让模型生图 / 生视频，结果自动保存到本地。</p>
+      </div>
     </div>
   </div>
 </section>
@@ -436,7 +433,7 @@ tr:last-child td { border-bottom: 0; }
     </div>
     <div class="demo-actions" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:24px">
       <button class="btn ghost demo-trigger" data-sample="img" data-key="demo_p1">白兔在花海</button>
-      <button class="btn ghost demo-trigger" data-sample="vid" data-key="demo_p2">花瓣飘落视频</button>
+      <button class="btn ghost demo-trigger" data-sample="vid" data-key="demo_p2">美女滑冰视频</button>
       <button class="btn ghost demo-trigger" data-sample="img" data-key="demo_p3">星云中的宇航员</button>
     </div>
   </div>
@@ -451,7 +448,7 @@ tr:last-child td { border-bottom: 0; }
     </div>
       <div class="code reveal">
         <div class="code-head"><span>$ install</span><button class="copy" data-copy-target="code-install" data-i18n="copy">复制</button></div>
-        <pre id="code-install"><span data-i18n="gs_cm"><span class="cm"># 下载并安装 Deepseek Harness for Threerouter</span><br><span class="cm"># Windows: 运行 DSH-Desktop-2.0.3-x64-Setup.exe</span><br><span class="cm"># macOS:   运行 DSH.Desktop-2.0.3-universal.dmg</span></span>
+        <pre id="code-install"><span data-i18n="gs_cm"><span class="cm"># 下载并安装 Deepseek Harness for Threerouter</span><br><span class="cm"># Windows: 运行 dsh-threerouter-0.1.6-alpha.2-win-x64.exe</span><br><span class="cm"># macOS:   运行 dsh-threerouter-0.1.6-alpha.2-universal.dmg</span><br><span class="cm"># Linux:   运行 dsh-threerouter-0.1.6-alpha.2-linux-x64.AppImage（Ubuntu / Debian / Mint / Deepin / UOS / Fedora）</span></span>
  
       </div>
    
@@ -467,16 +464,13 @@ tr:last-child td { border-bottom: 0; }
     </div>
     <div class="faq">
       <details class="reveal" open><summary data-i18n="q1">API Key 安全吗？会上传我的数据吗</summary>
-        <div class="faq-body" data-i18n="a1">API Key 仅在本地使用，不上传任何远程服务，本插件不附属于任何云厂商。生成由你配置的服务商模型完成，调用前请确认各服务商的服务条款。</div>
+        <div class="faq-body" data-i18n="a1">API Key 仅在本地使用，不上传任何远程服务。生成通过你的 Threerouter 账号由平台统一调度完成。</div>
       </details>
       <details class="reveal"><summary data-i18n="q2">生成质量由谁决定？</summary>
-        <div class="faq-body" data-i18n="a2">模型输出质量由服务商模型决定。插件负责正确传参、可靠轮询和统一异常分类，不改变模型本身的能力。</div>
+        <div class="faq-body" data-i18n="a2">模型输出质量由平台提供的模型决定。插件负责正确传参、可靠轮询和统一异常分类，不改变模型本身的能力。</div>
       </details>
       <details class="reveal"><summary data-i18n="q3">需要先安装 Deepseek Harness for Threerouter 吗？</summary>
         <div class="faq-body" data-i18n="a3">dsh-image-video 是 Deepseek Harness for Threerouter 的插件，运行在 DSH 运行时中。使用桌面端可从 GUI 直接安装，也可通过 CLI 插件命令添加到任意 profile。</div>
-      </details>
-      <details class="reveal"><summary data-i18n="q4">图片为什么不用 image 内容块给模型？</summary>
-        <div class="faq-body" data-i18n="a4">纯文本模型或网关不支持图片输入时，把图片作为 image 内容块注入工具结果会让下一轮请求直接 400。插件只向模型返回文本摘要，图片经 presentationMeta 持久化交给 UI 内嵌渲染。</div>
       </details>
     </div>
   </div>
@@ -501,12 +495,13 @@ tr:last-child td { border-bottom: 0; }
       </div>
       <div>
         <h4 data-i18n="f_dl">下载</h4>
-        <a href="https://github.com/976905690/deepseek-harness-desktop/releases/download/v2.0.3/DSH-Desktop-2.0.3-x64-Setup.exe" target="_blank" rel="noopener" data-i18n="f_win">Windows x64</a>
-        <a href="https://github.com/976905690/deepseek-harness-desktop/releases/download/v2.0.3/DSH.Desktop-2.0.3-universal.dmg" target="_blank" rel="noopener" data-i18n="f_mac">macOS Universal</a>
-        <a href="https://github.com/976905690/deepseek-harness-desktop/releases/latest" target="_blank" rel="noopener" data-i18n="f_rel">GitHub Releases</a>
+        <a href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-win-x64.exe" target="_blank" rel="noopener" data-i18n="f_win">Windows x64</a>
+        <a href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-universal.dmg" target="_blank" rel="noopener" data-i18n="f_mac">macOS Universal</a>
+        <a href="https://github.com/ihero3/deepseek-harness/releases/download/v0.1.6-alpha.2/dsh-threerouter-0.1.6-alpha.2-linux-x64.AppImage" target="_blank" rel="noopener" data-i18n="f_linux">Linux x64 (AppImage)</a>
+        <a href="https://github.com/ihero3/deepseek-harness/releases/latest" target="_blank" rel="noopener" data-i18n="f_rel">GitHub Releases</a>
       </div>
     </div>
-    <div class="legal" data-i18n="legal">Deepseek Harness for Threerouter 是独立的社区开源项目，与深度求索不存在隶属、合作、授权或背书关系。dsh-image-video 为 MIT 协议开源，不附属于阿里云或火山引擎。使用各服务商 API 前请确认其服务条款。</div>
+    <div class="legal" data-i18n="legal">Deepseek Harness for Threerouter 是独立的社区开源项目，与深度求索不存在隶属、合作、授权或背书关系。dsh-image-video 为 MIT 协议开源，生成能力由 Threerouter 平台统一提供。</div>
     <div class="footer-lang">
       <div class="lang-switch" role="group" aria-label="Language">
         <button id="lang-zh" class="active">中</button>
