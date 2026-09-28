@@ -243,9 +243,10 @@ export function useSEO(options: SEOOptions) {
         upsertCanonical(canonicalUrl)
       }
 
-      // JSON-LD 结构化数据
-      if (jsonLd) {
-        upsertJsonLd(jsonLd)
+      // JSON-LD 结构化数据（空数组视为未提供，避免注入空 script）
+      const jsonLdValue = Array.isArray(jsonLd) ? (jsonLd.length > 0 ? jsonLd : null) : jsonLd
+      if (jsonLdValue) {
+        upsertJsonLd(jsonLdValue)
       }
 
       // robots 指令

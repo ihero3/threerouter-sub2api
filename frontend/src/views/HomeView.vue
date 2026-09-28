@@ -1029,7 +1029,7 @@ const homeJsonLd = computed(() => [
     '@type': 'WebSite',
     'name': 'ThreeRouter',
     'url': 'https://www.threerouter.com',
-    'description': '企业级 AI API 统一管理平台，一个密钥接入 DeepSeek、Claude、GPT、Kimi、GLM 等大模型。',
+    'description': 'Enterprise-grade AI API management platform. One API key to access DeepSeek, Claude, GPT, Kimi, GLM and more.',
     'inLanguage': ['zh-CN', 'en']
   },
   {
@@ -1038,13 +1038,13 @@ const homeJsonLd = computed(() => [
     'name': 'ThreeRouter',
     'applicationCategory': 'DeveloperApplication',
     'operatingSystem': 'Cloud',
-    'description': 'AI API 统一管理平台，兼容 OpenAI 格式，支持 DeepSeek、Claude、GPT 等多模型接入。',
+    'description': 'Unified AI API management platform, OpenAI-compatible, with access to DeepSeek, Claude, GPT and more.',
     'url': 'https://www.threerouter.com',
     'offers': {
       '@type': 'Offer',
       'price': '0',
       'priceCurrency': 'USD',
-      'description': '新用户获赠 $10 免费 Tokens'
+      'description': 'New users get $10 in free credits'
     }
   },
   // 防御：faqPageJsonLd 理论上始终返回对象，但过滤防空值以防 Safari 崩溃
@@ -1052,9 +1052,9 @@ const homeJsonLd = computed(() => [
 ].filter(Boolean))
 
 useSEO({
-  title: 'ThreeRouter - AI API 统一网关 | DeepSeek/Claude/GPT 多模型管理平台',
-  description: 'ThreeRouter 是企业级 AI API 统一管理平台，一个密钥接入 DeepSeek、Claude、GPT、Kimi、GLM 等大模型。美国本地部署，兼容 OpenAI 格式，成本降低 97%，P99 延迟低于 200ms。',
-  keywords: 'AI API,API网关,DeepSeek API,Claude API,GPT API,大模型API,OpenAI兼容,企业AI,Token管理,API中转,美国部署',
+  title: 'ThreeRouter - Unified AI API Gateway | DeepSeek/Claude/GPT Multi-Model Management Platform',
+  description: 'ThreeRouter is an enterprise-grade AI API management platform. One API key to access DeepSeek, Claude, GPT, Kimi, GLM and more. US-based deployment, OpenAI-compatible, up to 97% cost savings, P99 latency under 200ms.',
+  keywords: 'AI API,API gateway,DeepSeek API,Claude API,GPT API,LLM API,OpenAI compatible,enterprise AI,Token management,AI proxy,US deployment',
   ogType: 'website',
   ogImage: 'https://www.threerouter.com/src/assets/icons/logo.webp',
   ogUrl: 'https://www.threerouter.com/home',

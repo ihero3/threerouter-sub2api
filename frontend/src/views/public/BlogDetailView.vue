@@ -95,6 +95,7 @@ import type { UserBlog } from '@/types'
 import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
 import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 import { setLocale, getLocale } from '@/i18n'
+import { useSEO } from '@/composables/useSEO'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -173,4 +174,60 @@ watch(
     if (id > 0) loadBlog(id)
   }
 )
+
+// ---------- SEO：按文章动态生成（站点侧文案为英文，标题/摘要跟随文章内容） ----------
+const SITE_ORIGIN = 'https://www.threerouter.com'
+
+/** 从富文本/纯文本中提取纯文本摘要（用于 meta description） */
+function extractExcerpt(source: string, maxLen = 160): string {
+  if (!source) return ''
+  let text = source
+  if (/<(p|div|h[1-6]|ul|ol|img|blockquote|pre|table)\b/i.test(source)) {
+    const doc = new DOMParser().parseFromString(source, 'text/html')
+    text = doc.body.textContent || ''
+  }
+  text = text.replace(/\s+/g, ' ').trim()
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text
+}
+
+const blogDescription = computed(() => {
+  if (!blog.value) return ''
+  return blog.value.summary?.trim() || extractExcerpt(blog.value.content)
+})
+
+const blogCanonicalUrl = computed(() => `${SITE_ORIGIN}/blog/${currentId.value}`)
+
+// BlogPosting 结构化数据，文章加载成功后注入
+const blogJsonLd = computed(() => {
+  if (!blog.value) return []
+  const data: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    'headline': blog.value.title,
+    'description': blogDescription.value,
+    'url': blogCanonicalUrl.value,
+    'mainEntityOfPage': blogCanonicalUrl.value,
+    'datePublished': blog.value.published_at || blog.value.created_at,
+    'dateModified': blog.value.updated_at || blog.value.published_at || blog.value.created_at,
+    'publisher': {
+      '@type': 'Organization',
+      'name': 'ThreeRouter',
+      'url': SITE_ORIGIN
+    }
+  }
+  if (blog.value.cover_image) data['image'] = blog.value.cover_image
+  if (blog.value.tags?.trim()) data['keywords'] = blog.value.tags.trim()
+  return [data]
+})
+
+useSEO({
+  title: computed(() => (blog.value ? `${blog.value.title} - ThreeRouter` : '')),
+  description: blogDescription,
+  ogType: 'article',
+  ogUrl: blogCanonicalUrl,
+  ogImage: computed(() => blog.value?.cover_image || `${SITE_ORIGIN}/src/assets/icons/logo.webp`),
+  ogSiteName: 'ThreeRouter',
+  canonicalUrl: blogCanonicalUrl,
+  jsonLd: blogJsonLd
+})
 </script>

@@ -1,47 +1,45 @@
 # ThreeRouter
 
-> ThreeRouter 是企业级 AI API 统一管理平台，一个密钥接入 DeepSeek、Claude、GPT、Kimi、GLM、MiniMax 等大模型。兼容 OpenAI API 格式，支持 L1-L5 智能路由、Token 精细化管理、团队配额管控、安全合规审计。美国本地部署，成本降低 97%，P99 延迟低于 200ms。
+> ThreeRouter is an enterprise-grade AI API unified management platform. One API key to access DeepSeek, Claude, GPT, Kimi, GLM, MiniMax and more. Fully compatible with the OpenAI API format. Features include L1-L5 smart routing, fine-grained token management, team quota control, and security compliance audit. US-based deployment, up to 97% cost reduction, P99 latency under 200ms.
 
-ThreeRouter is an enterprise-grade AI API unified management platform. One API key to access DeepSeek, Claude, GPT, Kimi, GLM, MiniMax and more. Fully compatible with OpenAI API format. Features include L1-L5 smart routing, Token refined management, team quota control, security compliance audit. US-based deployment, 97% cost reduction, P99 latency under 200ms.
+## Core Capabilities
 
-## 核心能力 / Core Capabilities
+- **Unified API access**: Fully compatible with the OpenAI API format — just replace the base URL and API key
+- **Multi-model support**: DeepSeek, Qwen, Kimi, MiniMax, GLM, Seedance video generation, and more
+- **Smart routing**: L1-L5 routing engine that automatically matches the best value model based on task complexity
+- **Cost optimization**: Smart routing cuts average cost by 40-80%; standard pricing is 30%+ below official prices
+- **Enterprise token management**: Four-dimensional quota control by department / team / project / API key, with cost attribution and usage analytics
+- **Security & compliance**: TLS 1.3 encrypted transport, no request data stored, GDPR / EU AI Act compliant
+- **High availability**: 99.9% SLA with multi-provider routing and failover
 
-- **统一 API 接入**: 完全兼容 OpenAI API 格式，替换 base URL 和 API Key 即可使用
-- **多模型支持**: DeepSeek、Qwen、Kimi、MiniMax、GLM、Seedance 视频生成等
-- **智能路由**: L1-L5 智能路由引擎，根据任务复杂度自动匹配最优性价比模型
-- **成本优化**: 智能路由平均成本降低 40-80%，标准定价低于官方价 30%+
-- **企业 Token 管理**: 按部门/团队/项目/API Key 四维配额管控，成本归因与用量分析
-- **安全合规**: TLS 1.3 加密传输，不存储请求数据，GDPR/欧盟 AI 法案合规
-- **高可用**: 99.9% SLA，多供应商路由与故障转移
+## Key Pages
 
-## 关键页面 / Key Pages
-
-- [首页 / Homepage](https://www.threerouter.com/home): 产品总览、核心优势、价格对比、FAQ
-- [企业服务 / Enterprise](https://www.threerouter.com/enterprise): 企业级 Token 精细化管理、团队协作、安全合规
-- [模型广场 / Model Plaza](https://api.threerouter.com/models): 支持的 AI 模型列表与价格
-- [帮助文档 (中文)](https://www.threerouter.com/help-cn.html): 快速开始、模型说明、充值指南、FAQ
+- [Homepage](https://www.threerouter.com/home): Product overview, core advantages, pricing comparison, FAQ
+- [Enterprise](https://www.threerouter.com/enterprise): Enterprise token governance, team collaboration, security & compliance
+- [Model Plaza](https://api.threerouter.com/models): Supported AI models and pricing
 - [Help Documentation (English)](https://www.threerouter.com/help-en.html): Quick start, models, billing, FAQ
-- [服务状态 / Status](https://status.threerouter.com/): 实时服务可用性状态
+- [帮助文档 (中文)](https://www.threerouter.com/help-cn.html): 快速开始、模型说明、充值指南、FAQ
+- [Service Status](https://status.threerouter.com/): Real-time service availability
 
-## 技术信息 / Technical Information
+## Technical Information
 
-- **API 端点**: https://api.threerouter.com/v1
-- **兼容格式**: OpenAI API (Chat Completions, Embeddings, etc.)
-- **SDK 支持**: Python, Node.js, Go, Java
-- **Agent 框架**: LangChain, AutoGen, CrewAI, Dify
-- **认证方式**: Bearer Token (API Key)
-- **部署方式**: 云端 SaaS / 专属实例 / 私有化部署
+- **API endpoint**: https://api.threerouter.com/v1
+- **Compatible format**: OpenAI API (Chat Completions, Embeddings, etc.)
+- **SDK support**: Python, Node.js, Go, Java
+- **Agent frameworks**: LangChain, AutoGen, CrewAI, Dify
+- **Authentication**: Bearer Token (API Key)
+- **Deployment**: Cloud SaaS / dedicated instance / on-premise
 
-## 常见问题 / FAQ
+## FAQ
 
-- 企业接入流程：1 个工作日内完成（开通账号 → 配置团队 → 分发 Key → 开始调用）
-- 数据安全：端到端加密，不存储请求/响应数据，不用于模型训练
-- SLA 保障：企业客户 99.9% 可用性，未达标按协议补偿
-- 充值方式：微信支付、支付宝，1 CNY = 1 USD
-- 新用户福利：注册赠 $2，进群赠 $10，首充最高送 ¥160
+- Enterprise onboarding: completed within 1 business day (account setup → team configuration → key distribution → start calling)
+- Data security: end-to-end encryption, no request/response data stored, never used for model training
+- SLA: 99.9% availability for enterprise customers, with contractual compensation if not met
+- Payment: WeChat Pay and Alipay supported, 1 CNY = 1 USD
+- New user offers: $2 free credits on signup, $10 for joining the community, up to ¥160 bonus on first top-up
 
-## 联系方式 / Contact
+## Contact
 
-- 官网: https://www.threerouter.com
-- 邮箱: support@threerouter.com
-- 服务状态: https://status.threerouter.com/
+- Website: https://www.threerouter.com
+- Email: support@threerouter.com
+- Service status: https://status.threerouter.com/

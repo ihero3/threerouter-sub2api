@@ -689,8 +689,8 @@ const enterpriseJsonLd = computed(() => [
   {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    'name': 'ThreeRouter 企业 AI API 管理服务',
-    'description': '企业级 AI API 统一管理平台，提供 Token 精细化管理、团队配额管控、安全合规审计。',
+    'name': 'ThreeRouter Enterprise AI API Management',
+    'description': 'Enterprise-grade AI API management platform with fine-grained token governance, team quota control, and security compliance audit.',
     'url': 'https://www.threerouter.com/enterprise',
     'serviceType': 'AI API Gateway & Token Management',
     'provider': {
@@ -708,9 +708,9 @@ const enterpriseJsonLd = computed(() => [
 ])
 
 useSEO({
-  title: '企业服务 - ThreeRouter | 企业级 AI API 管理与 Token 精细化管控平台',
-  description: 'ThreeRouter 企业服务：统一团队管理、安全合规、Token 使用精细化管理。企业级 AI API 网关，支持部门配额、密钥管控、成本归因、合规审计，让每一个 Token 都被追踪。',
-  keywords: '企业AI,企业API管理,Token精细化管理,团队管理,API网关,企业合规,API密钥管理,成本管控,Token配额,用量监控',
+  title: 'Enterprise - ThreeRouter | Enterprise AI API Management & Fine-Grained Token Governance',
+  description: 'ThreeRouter for enterprises: unified team management, security and compliance, fine-grained token governance. Enterprise AI API gateway with department quotas, API key control, cost attribution, and compliance audit — track every token.',
+  keywords: 'enterprise AI,enterprise API management,token governance,team management,API gateway,enterprise compliance,API key management,cost control,token quota,usage monitoring',
   ogType: 'website',
   ogImage: 'https://www.threerouter.com/src/assets/icons/logo.webp',
   ogUrl: 'https://www.threerouter.com/enterprise',
