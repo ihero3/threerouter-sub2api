@@ -19,6 +19,7 @@ type VideoTaskRepository interface {
 	GetByLocalID(ctx context.Context, localID string) (*service.VideoTaskRecord, error)
 	GetByID(ctx context.Context, id int64) (*service.VideoTaskRecord, error)
 	UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error
+	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, videoURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*service.VideoTaskRecord, int, error)
@@ -98,6 +99,29 @@ func (r *videoTaskRepository) GetByID(ctx context.Context, id int64) (*service.V
 		return nil, fmt.Errorf("video_task_repo: get by id: %w", err)
 	}
 	return entToRecord(vt), nil
+}
+
+// UpdateStatusIfProcessing 条件更新：仅当任务仍处于 processing 时才改为终态，
+// 返回 affected>0（claimed），供调用方保证「同一任务只结算一次」。
+//
+// 背景：UpdateStatus 用 UpdateOneID 无条件覆盖，GetTask 轮询与 Worker PollTask
+// 并发命中同一个 failed/timeout 任务时会各自退一次预扣 → 重复退款（白送配额）。
+// 与 media_task_repo.UpdateStatusIfProcessing 保持同一范式。
+func (r *videoTaskRepository) UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error) {
+	b := r.client.VideoTask.Update().
+		Where(dbvideotask.IDEQ(id), dbvideotask.StatusEQ("processing")).
+		SetStatus(status)
+	if errorMsg != "" {
+		b.SetErrorMessage(errorMsg)
+	}
+	if status == "succeeded" || status == "failed" || status == "cancelled" {
+		b.SetFinishedAt(time.Now())
+	}
+	affected, err := b.Save(ctx)
+	if err != nil {
+		return false, fmt.Errorf("video_task_repo: conditional update status: %w", err)
+	}
+	return affected > 0, nil
 }
 
 func (r *videoTaskRepository) UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error {

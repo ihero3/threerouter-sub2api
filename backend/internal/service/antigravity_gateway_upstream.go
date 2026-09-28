@@ -95,14 +95,22 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", false)
 		}
 
-		// 透传上游错误
+		// 透传上游错误（上游透传账号的设计意图：保留状态码与响应体保真）
 		c.Header("Content-Type", resp.Header.Get("Content-Type"))
 		c.Status(resp.StatusCode)
 		_, _ = c.Writer.Write(respBody)
+		// 响应体已写完，必须显式标记，禁止 handler 再追加 fallback 响应
+		// （否则客户端会收到两个拼在一起的响应）。
+		MarkResponseCommitted(c)
 
+		// 必须返回 error：返回 nil 会让 handler 走成功路径，既不记
+		// gateway.forward_failed、不触发账号冷却/failover，也不上报上游错误。
+		// 这里保留 result，让 handler 仍按既有口径提交 usage 记录
+		// （handler 的 err 分支对非 nil result 照样 submitForwardUsage），
+		// 计费行为与改动前一致。
 		return &ForwardResult{
 			Model: originalModel,
-		}, nil
+		}, fmt.Errorf("antigravity upstream passthrough: upstream returned %d", resp.StatusCode)
 	}
 
 	// 处理成功响应（流式/非流式）

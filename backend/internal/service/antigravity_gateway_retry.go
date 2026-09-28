@@ -782,9 +782,12 @@ func logPrefix(sessionID, accountName string) string {
 	return fmt.Sprintf("[antigravity-Forward] account=%s", accountName)
 }
 
+// shouldFailoverUpstreamError 必须与 OpenAIGatewayService 上同名函数同口径：
+// 402/404/405 属账号或项目级问题（上游配额、模型不存在、端点不允许），换号可救。
+// 三者曾缺失，Antigravity 上这些状态码会直接回错给客户端而不换号重试。
 func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 402, 403, 404, 405, 429, 529:
 		return true
 	default:
 		return statusCode >= 500

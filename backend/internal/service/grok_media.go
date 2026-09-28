@@ -1340,7 +1340,10 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	MarkResponseCommitted(c)
-	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg)
+	// 客户端文案只用平台统一话术：同一函数里 1276/1290/1308 三条分支都是固定文案，
+	// 唯独这里曾把上游原文 upstreamMsg 直接回显，属横向不一致且违反「上游原文不下发」
+	// 的口径。上游原文已完整落 OpsUpstreamErrorEvent（上面 1316-1327），可诊断性不丢。
+	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), grokMediaClientErrorMessage(resp.StatusCode))
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
@@ -1357,10 +1360,32 @@ func grokMediaErrorType(statusCode int) string {
 	}
 }
 
+// grokMediaClientErrorMessage 与 writeSanitizedOpenAIPassthroughError 的文案口径对齐：
+// 只按状态码给出平台话术，绝不回显上游原文。
+func grokMediaClientErrorMessage(statusCode int) string {
+	switch {
+	case statusCode == http.StatusUnauthorized:
+		return "Upstream authentication failed"
+	case statusCode == http.StatusForbidden:
+		return "Upstream access denied"
+	case statusCode == http.StatusNotFound:
+		return "Upstream resource not found"
+	case statusCode == http.StatusTooManyRequests:
+		return "Upstream rate limit exceeded"
+	case statusCode >= http.StatusInternalServerError:
+		return "Upstream service temporarily unavailable"
+	default:
+		return "Upstream request failed"
+	}
+}
+
 func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string) {
 	if c == nil || c.Writer == nil || c.Writer.Written() {
 		return
 	}
+	// 与 grok_media.go 其余错误出口（内容流 1275/1289/1307/1342/1407）口径一致：
+	// 写完错误体必须标记已提交，handler 的兜底才不会再写一份。
+	MarkResponseCommitted(c)
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    strings.TrimSpace(errType),

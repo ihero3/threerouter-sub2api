@@ -502,6 +502,17 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, handleErr
 	}
 
+	// Grok「成功但 usage 全 0」守卫：与 Chat Completions 两条出口同口径
+	// （openai_gateway_chat_completions.go:582、openai_gateway_chat_completions_raw.go:512）。
+	// /v1/messages 曾漏掉这一条，Grok 在 Anthropic 兼容路径上出现 200 + 空 usage 时
+	// 会静默按 0 token 入账（给了货却收不到钱），而不是换号重试。
+	// 必须排在 cyber_policy 哨兵之后：那条路径是刻意记 0 费用、不 failover。
+	if handleErr == nil && result != nil &&
+		requiresBillableGrokChatUsage(account, billingModel, upstreamModel, result.UpstreamResponseModel) &&
+		!hasBillableGrokChatUsage(result.Usage) {
+		return nil, newGrokMissingUsageFailoverError(c, account, result.RequestID)
+	}
+
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
@@ -1321,6 +1332,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 // writeAnthropicError writes an error response in Anthropic Messages API format.
 func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
+	// 与 writeChatCompletionsError / writeResponsesError 口径一致：写完 JSON 错误体
+	// 必须标记已提交，否则 ensureForwardErrorResponse 会在同一条响应后追加 SSE 兜底帧，
+	// 客户端收到「JSON + data:」的畸形混合体。
+	MarkResponseCommitted(c)
 	c.JSON(statusCode, gin.H{
 		"type": "error",
 		"error": gin.H{

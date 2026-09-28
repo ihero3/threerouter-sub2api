@@ -855,6 +855,9 @@ func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, u
 	if c == nil {
 		return
 	}
+	// 与其余错误写出口径一致：标记已提交，避免 handler 的兜底再追加一份错误体
+	// （ensureForwardErrorResponse / ensureOpenAIStreamReadErrorResponse 都会查这个 key）。
+	MarkResponseCommitted(c)
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",

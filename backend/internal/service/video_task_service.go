@@ -29,6 +29,9 @@ type VideoTaskRepo interface {
 	GetByLocalID(ctx context.Context, localID string) (*VideoTaskRecord, error)
 	GetByID(ctx context.Context, id int64) (*VideoTaskRecord, error)
 	UpdateStatus(ctx context.Context, id int64, status, errorMsg string) error
+	// UpdateStatusIfProcessing 条件更新（仅 processing → 终态），返回 claimed。
+	// 结算路径必须用它，避免并发重复退预扣。
+	UpdateStatusIfProcessing(ctx context.Context, id int64, status, errorMsg string) (bool, error)
 	UpdateResult(ctx context.Context, id int64, status, videoURL, thumbnailURL string, durationSec int, costUSD float64) (bool, error)
 	UpdateUpstreamTaskID(ctx context.Context, id int64, upstreamTaskID string) error
 	ListByUserID(ctx context.Context, userID int64, limit, offset int) ([]*VideoTaskRecord, int, error)
@@ -316,7 +319,14 @@ func (s *VideoTaskService) GetTask(ctx context.Context, localID string, userID i
 
 	// 如果任务还在 processing，尝试刷新
 	if record.Status == "processing" && record.UpstreamTaskID != "" {
-		s.refreshTaskStatus(ctx, record)
+		if refreshErr := s.refreshTaskStatus(ctx, record); refreshErr == nil {
+			// refreshTaskStatus 只写库、不回写 record 内存态，直接返回会让调用方
+			// 看到「已 succeeded 并真实扣费、却仍显示 processing」的陈旧状态。
+			// 写库成功必须重读一次，保证状态与库内一致。
+			if fresh, getErr := s.videoTaskRepo.GetByLocalID(ctx, localID); getErr == nil && fresh != nil {
+				return fresh, nil
+			}
+		}
 	}
 
 	return record, nil
@@ -324,17 +334,26 @@ func (s *VideoTaskService) GetTask(ctx context.Context, localID string, userID i
 
 // PollTask 供 Worker 调用：轮询单个 processing 任务的上游状态。
 func (s *VideoTaskService) PollTask(ctx context.Context, record *VideoTaskRecord) error {
-	if record.Status != "processing" || record.UpstreamTaskID == "" {
+	if record.Status != "processing" {
 		return nil
 	}
+	// 超时兜底必须排在 UpstreamTaskID 判空之前：没有上游任务号的任务永远拿不到
+	// 结果，若先 return 就永久停在 processing——既不交付也不退预扣
+	// （video_task_service 的预扣挂账是已知老问题），超时分支是它唯一的出口。
 	if !record.CreatedAt.IsZero() && time.Since(record.CreatedAt) > maxVideoTaskDurationBeforeFail {
 		s.logger.Warn("video_task_service: task timed out, marking failed",
 			zap.Int64("task_id", record.ID),
 			zap.String("local_id", record.LocalID),
 			zap.Time("created_at", record.CreatedAt),
 		)
-		if err := s.videoTaskRepo.UpdateStatus(ctx, record.ID, "failed", "upstream task timed out"); err != nil {
+		// claimed 守卫：超时路径与 refreshTaskStatus 的 failed 分支可能并发命中
+		// 同一任务，无条件 UpdateStatus 会让两者各退一次预扣（重复退款）。
+		claimed, err := s.videoTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, "failed", "upstream task timed out")
+		if err != nil {
 			return fmt.Errorf("video_task_service: timeout update status: %w", err)
+		}
+		if !claimed {
+			return nil
 		}
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
 			LocalID:              record.LocalID,
@@ -348,6 +367,10 @@ func (s *VideoTaskService) PollTask(ctx context.Context, record *VideoTaskRecord
 			RequestedDurationSec: record.DurationSec,
 			ReservedCost:         record.ReservedCost,
 		})
+		return nil
+	}
+	// 有任务号才值得问上游；无任务号的任务只能靠上面的超时兜底落终态。
+	if record.UpstreamTaskID == "" {
 		return nil
 	}
 	return s.refreshTaskStatus(ctx, record)
@@ -372,6 +395,20 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 
 	switch result.Status {
 	case "succeeded":
+		// 上游报 succeeded 却没给 URL 时绝不能结算：调用方
+		// （video_gateway_handler.go 要求 status==succeeded 且 VideoURL 非空）
+		// 随后只能报错，钱扣了、货没有、也不退。保留 processing，由
+		// maxVideoTaskDurationBeforeFail 超时兜底判 failed 并退预扣。
+		// 对照 grok_media.go:IsGrokVideoStatusBillable 的既有正确范式。
+		if strings.TrimSpace(result.VideoURL) == "" {
+			s.logger.Warn("video_task_service: upstream reported succeeded without video url, refusing to settle",
+				zap.Int64("task_id", record.ID),
+				zap.String("local_id", record.LocalID),
+				zap.String("upstream_task_id", record.UpstreamTaskID),
+				zap.String("platform", account.Platform),
+			)
+			return nil
+		}
 		actual := 0.0
 		if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); estErr == nil {
 			actual = est
@@ -403,8 +440,14 @@ func (s *VideoTaskService) refreshTaskStatus(ctx context.Context, record *VideoT
 			})
 		}
 	case "failed", "cancelled":
-		if err := s.videoTaskRepo.UpdateStatus(ctx, record.ID, result.Status, result.ErrorMessage); err != nil {
+		// claimed 守卫：GetTask 轮询与 Worker PollTask 可能并发命中同一任务，
+		// 无条件 UpdateStatus 会让两者各退一次预扣（重复退款）。
+		claimed, err := s.videoTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, result.Status, result.ErrorMessage)
+		if err != nil {
 			return fmt.Errorf("video_task_service: update status: %w", err)
+		}
+		if !claimed {
+			return nil
 		}
 		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
 			LocalID:              record.LocalID,

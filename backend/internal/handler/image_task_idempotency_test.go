@@ -152,8 +152,9 @@ func TestAsyncImageSubmitSameKeyDifferentPayloadConflicts(t *testing.T) {
 	require.Equal(t, 1, store.count())
 }
 
-// 不带幂等键时保持原有行为：每次提交都是独立任务，不做任何强制。
-func TestAsyncImageSubmitWithoutKeyKeepsLegacyBehavior(t *testing.T) {
+// #2 回归：未带显式幂等键时按 (用户+端点+请求体) 派生兜底键自动去重。
+// 同一请求因超时重试（内容相同）→ 派生键相同 → 只建一个任务（不双创建/双扣费）。
+func TestAsyncImageSubmitWithoutKeySamePayloadDeduplicates(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	useMemoryIdempotency(t)
 	h, store, _ := newAsyncImageTestHandler(t)
@@ -170,7 +171,28 @@ func TestAsyncImageSubmitWithoutKeyKeepsLegacyBehavior(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.Equal(t, http.StatusAccepted, w.Code)
 	}
-	require.Equal(t, 2, store.count())
+	require.Equal(t, 1, store.count(), "无键但内容相同的重试必须去重，不得双创建/双扣费")
+}
+
+// 无键时不同请求体（不同内容）必须各自独立建任务，不能误合并成一次。
+func TestAsyncImageSubmitWithoutKeyDifferentPayloadCreatesSeparate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	useMemoryIdempotency(t)
+	h, store, _ := newAsyncImageTestHandler(t)
+
+	router := gin.New()
+	router.Use(withAsyncImageAPIKey(7, 9))
+	router.POST("/v1/images/generations/async", h.Submit)
+
+	for _, prompt := range []string{"cat", "dog"} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async",
+			strings.NewReader(`{"model":"gpt-image-1","prompt":"`+prompt+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusAccepted, w.Code)
+	}
+	require.Equal(t, 2, store.count(), "无键但内容不同的提交必须各自建任务")
 }
 
 // 提交响应丢失后，客户端只能凭 request_id 找回原任务。这条路径是"不重复提交"

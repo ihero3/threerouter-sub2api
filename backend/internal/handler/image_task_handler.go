@@ -127,9 +127,18 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 // 生成。此时若调用方重试，就会真的重复生成、重复扣费。
 func (h *AsyncImageHandler) submitTask(c *gin.Context, platform string, body []byte, requestID string) {
 	coordinator := service.DefaultIdempotencyCoordinator()
+	// #2 无幂等键重复扣费：调用方未提供显式幂等键时，按 (用户+端点+请求体) 派生稳定
+	// 兜底键，自动套上幂等保护，防网络超时重试造成的双创建/双扣费。带键客户端受影响；
+	// 派生失败（极少见）则 key 仍为空，退化为原 legacy 行为，不中断调用方。
+	// 派生键与 Execute 内部指纹算法一致，故同内容重试会去重、不同内容不会误合并。
+	actorScope := imageTaskActorScope(c)
+	if requestID == "" {
+		if fp, ferr := service.BuildIdempotencyFingerprint(c.Request.Method, c.FullPath(), actorScope, body); ferr == nil {
+			requestID = "auto:" + fp
+		}
+	}
 	if coordinator == nil || requestID == "" {
-		// 未装配幂等基建、或调用方未提供幂等键：保持原有行为，不做强制，
-		// 避免打断已经上线、尚未携带幂等键的调用方。
+		// 未装配幂等基建、或既无显式键又派生失败：保持原有行为，不做强制。
 		data, err := h.createImageTask(c, platform, body, requestID)
 		if err != nil {
 			imageTaskError(c, err)
@@ -141,7 +150,6 @@ func (h *AsyncImageHandler) submitTask(c *gin.Context, platform string, body []b
 
 	// scope 里带上 owner：否则 A 能用猜到的 request_id 读到 B 的提交响应，
 	// 且不同用户写同一个 request_id 时会互相撞 409。
-	actorScope := imageTaskActorScope(c)
 	result, err := coordinator.Execute(c.Request.Context(), service.IdempotencyExecuteOptions{
 		Scope:          service.ImageTaskIdempotencyScope(actorScope),
 		ActorScope:     actorScope,

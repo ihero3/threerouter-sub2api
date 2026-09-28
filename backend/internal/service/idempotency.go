@@ -59,9 +59,19 @@ type IdempotencyRepository interface {
 }
 
 type IdempotencyConfig struct {
-	DefaultTTL           time.Duration
-	SystemOperationTTL   time.Duration
-	ProcessingTimeout    time.Duration
+	DefaultTTL         time.Duration
+	SystemOperationTTL time.Duration
+	ProcessingTimeout  time.Duration
+	// ProcessingHardCap 是 processing 记录被视为"已死"、允许回收重跑的额外宽限。
+	//
+	// 为什么需要它：进程在 execute 期间崩溃（或上游 create 卡死）会让一条
+	// processing 记录永远占住幂等键，直到 ExpiresAt（默认 24h）才过期——调用方
+	// 拿同一个键重试会被持续挡在 ErrIdempotencyInProgress，等于"键被锁死 24h"。
+	// 但也不能在处理锁（ProcessingTimeout）一过期就回收重跑：那样正卡在慢请求
+	// （如媒体 create 上限约 5min）的并发请求会被误判死亡，导致双创建/双扣费。
+	// 因此只在「处理锁过期 + ProcessingHardCap」之后才回收——这个时长远长于任何
+	// 正常 execute，能确信原请求已死，不存在并发双跑。
+	ProcessingHardCap    time.Duration
 	FailedRetryBackoff   time.Duration
 	MaxStoredResponseLen int
 	ObserveOnly          bool
@@ -72,6 +82,7 @@ func DefaultIdempotencyConfig() IdempotencyConfig {
 		DefaultTTL:           24 * time.Hour,
 		SystemOperationTTL:   1 * time.Hour,
 		ProcessingTimeout:    30 * time.Second,
+		ProcessingHardCap:    10 * time.Minute,
 		FailedRetryBackoff:   5 * time.Second,
 		MaxStoredResponseLen: 64 * 1024,
 		ObserveOnly:          true, // 默认先观察再强制，避免老客户端立刻中断
@@ -344,6 +355,33 @@ func (c *IdempotencyCoordinator) Execute(
 				logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "succeeded->replayed", true, nil)
 				return &IdempotencyExecuteResult{Data: data, Replayed: true}, nil
 			case IdempotencyStatusProcessing:
+				// 超过「处理锁 + ProcessingHardCap」即判定原请求进程已死（崩溃/上游
+				// 卡死），processing 记录成了死锁会一直占住幂等键到 24h（#6）。此时回收
+				// 重跑：该时长远长于任何正常 execute，不存在并发双跑，不会双创建/双扣费。
+				// 未超过宽限的仍按"进行中"处理，挡住并发重试以防双跑。
+				if existing.LockedUntil != nil && c.cfg.ProcessingHardCap > 0 && now.After(existing.LockedUntil.Add(c.cfg.ProcessingHardCap)) {
+					taken, reclaimErr := c.repo.TryReclaim(ctx, existing.ID, IdempotencyStatusProcessing, now, lockedUntil, expiresAt)
+					if reclaimErr != nil {
+						RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "try_reclaim_processing_error")
+						logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
+							"operation": "try_reclaim_processing",
+						})
+						return nil, ErrIdempotencyStoreUnavail.WithCause(reclaimErr)
+					}
+					if !taken {
+						recordIdempotencyConflict(opts.Route, opts.Scope, map[string]string{"reason": "reclaim_race"})
+						logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->conflict", false, map[string]string{
+							"conflict": "reclaim_race",
+						})
+						return nil, c.conflictWithRetryAfter(ErrIdempotencyInProgress, existing.LockedUntil, now)
+					}
+					recordIdempotencyClaim(opts.Route, opts.Scope, map[string]string{"mode": "reclaim_processing"})
+					logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->processing", false, map[string]string{
+						"claim_mode": "reclaim_processing",
+					})
+					record.ID = existing.ID
+					break
+				}
 				recordIdempotencyConflict(opts.Route, opts.Scope, map[string]string{"reason": "in_progress"})
 				logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->conflict", false, nil)
 				return nil, c.conflictWithRetryAfter(ErrIdempotencyInProgress, existing.LockedUntil, now)

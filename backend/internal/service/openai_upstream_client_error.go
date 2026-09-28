@@ -37,6 +37,10 @@ func isOpenAIDeterministicClientError(statusCode int) bool {
 // redactAgentIdentitySensitiveBody；这里不重复清洗，也不回落读取原始 body 的
 // message，避免绕开那两道脱敏。
 func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
+	// 写出完整错误体后必须标记已提交：handler 侧
+	// （ensureForwardErrorResponse / ensureOpenAIStreamReadErrorResponse）据此跳过
+	// 兜底写入，否则同一条响应会被追加第二份错误。
+	MarkResponseCommitted(c)
 	errorPayload := gin.H{"type": openAIUpstreamClientErrorFallbackType}
 	if errType := strings.TrimSpace(gjson.GetBytes(body, "error.type").String()); errType != "" {
 		errorPayload["type"] = errType

@@ -870,6 +870,39 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
-	writeError(c, resp.StatusCode, errType, upstreamMsg)
+	// 与 handleErrorResponse 原生路径同口径：
+	//   - 确定性 400（客户端请求错误）与 context window 超限属于客户端可自助修复的错误，
+	//     回显上游 message 帮助定位字段/缩内容；
+	//   - 其余（5xx / 401 / 402 / 403 / 429 等）一律用平台统一文案，
+	//     绝不下发上游模型服务商的内部错误日志（用户拍板：上游原文不向客户端透传）。
+	// 与 handleErrorResponse 原生路径同口径：
+	//   - 确定性 400（客户端请求错误）与 context window 超限属于客户端可自助修复的错误，
+	//     回显上游 message 帮助定位字段/缩内容；
+	//   - 其余（5xx / 401 / 402 / 403 / 429 等）一律用平台统一文案，
+	//     绝不下发上游模型服务商的内部错误日志（用户拍板：上游原文不向客户端透传）。
+	clientMsg := upstreamMsg
+	if !isOpenAIDeterministicClientError(resp.StatusCode) &&
+		!(isOpenAIContextWindowError(upstreamMsg, body) && upstreamMsg != "") {
+		clientMsg = openAIUpstreamClientMessage(resp.StatusCode)
+	}
+	writeError(c, resp.StatusCode, errType, clientMsg)
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+}
+
+// openAIUpstreamClientMessage 与 handleErrorResponse 原生路径的兜底文案一致：
+// 按状态码给出平台话术，绝不回显上游原文。确定性 400 / context-window 不在此处处理
+// （由调用方透传 upstreamMsg）。
+func openAIUpstreamClientMessage(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return "Upstream authentication failed, please contact administrator"
+	case http.StatusPaymentRequired:
+		return "Upstream payment required: insufficient balance or billing issue"
+	case http.StatusForbidden:
+		return "Upstream access forbidden, please contact administrator"
+	case http.StatusTooManyRequests:
+		return "Upstream rate limit exceeded, please retry later"
+	default:
+		return "Upstream request failed"
+	}
 }

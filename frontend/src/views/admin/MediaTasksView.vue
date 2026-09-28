@@ -12,8 +12,11 @@ import { adminAPI } from '@/api/admin'
 import type { MediaTask, MediaTaskStatus } from '@/api/admin/mediaTasks'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
+import { useAppStore } from '@/stores/app'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const tasks = ref<MediaTask[]>([])
 const loading = ref(false)
@@ -97,6 +100,7 @@ const loadTasks = async () => {
   } catch (err: any) {
     if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
     console.error('Failed to load media tasks:', err)
+    appStore.showError(extractApiErrorMessage(err, t('admin.mediaTasks.loadFailed')))
   } finally {
     loading.value = false
   }
@@ -126,15 +130,18 @@ const handleCancel = (task: MediaTask) => {
 
 const confirmCancel = async () => {
   confirmDialog.loading = true
+  const taskId = confirmDialog.taskId
   try {
-    cancelingIds.value.add(confirmDialog.taskId)
-    await adminAPI.mediaTasks.cancel(confirmDialog.taskId)
+    cancelingIds.value.add(taskId)
+    await adminAPI.mediaTasks.cancel(taskId)
     confirmDialog.visible = false
+    appStore.showSuccess(t('admin.mediaTasks.cancelSuccess'))
     await loadTasks()
   } catch (err: any) {
-    console.error('Failed to cancel task:', err)
+    // 失败仍保留对话框以便重试，但必须给出可见的错误提示（原先静默吞掉，用户体验像卡死）。
+    appStore.showError(extractApiErrorMessage(err, t('admin.mediaTasks.cancelFailed')))
   } finally {
-    cancelingIds.value.delete(confirmDialog.taskId)
+    cancelingIds.value.delete(taskId)
     confirmDialog.loading = false
   }
 }
@@ -218,7 +225,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template #pagination>
-        <Pagination :page="pagination.page" :page-size="pagination.page_size" :total="pagination.total" :pages="pagination.pages" @change="handlePageChange" @page-size-change="handlePageSizeChange" />
+        <Pagination :page="pagination.page" :page-size="pagination.page_size" :total="pagination.total" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
       </template>
 
       <template #empty>

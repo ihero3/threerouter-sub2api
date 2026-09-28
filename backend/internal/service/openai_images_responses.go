@@ -1109,6 +1109,9 @@ func writeOpenAIImagesUpstreamErrorResponse(c *gin.Context, err *OpenAIImagesUps
 		return false
 	}
 	StopOpenAIImagesJSONKeepaliveCommitted(c)
+	// 写出完整错误体后标记已提交：ensureOpenAIStreamReadErrorResponse 据此跳过兜底，
+	// 否则这条响应会被再追加一份流内错误帧。
+	MarkResponseCommitted(c)
 	errorObj := gin.H{
 		"type":    err.clientErrorType(),
 		"message": err.clientMessage(),

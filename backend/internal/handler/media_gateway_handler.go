@@ -190,6 +190,12 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 
 	actorScope := "user:" + strconv.FormatInt(subject.UserID, 10)
 	key := resolveMediaIdempotencyKey(c.GetHeader("Idempotency-Key"), body)
+	if key == "" {
+		// #2 无幂等键重复扣费：调用方未显式提供键时，按 (用户+端点+请求体) 派生稳定
+		// 兜底键，自动套上幂等保护，防网络超时重试造成的双创建/双扣费。带显式键的
+		// 客户端走原路径，行为完全不变；派生键含 actorScope（用户维度）故不同用户不串键。
+		key = deriveMediaAutoIdempotencyKey(actorScope, c.Request.Method, c.FullPath(), body)
+	}
 	var record *service.MediaTaskRecord
 	result, err := coordinator.Execute(c.Request.Context(), service.IdempotencyExecuteOptions{
 		Scope:          "media_create",
@@ -227,7 +233,8 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 // mediaCreateIdempotent，因此两条链路一起获益。request_id 只是本网关的标识，
 // adapter 侧已把它从上游请求体中剔除。
 //
-// 两者都为空时返回空串：调用方（含协调器）按"未提供幂等键"处理，保持历史行为。
+// 两者都为空时返回空串：由调用方决定是否派生兜底键（见 deriveMediaAutoIdempotencyKey），
+// 保持"未提供键"语义不变。
 func resolveMediaIdempotencyKey(headerKey string, body map[string]any) string {
 	if key := strings.TrimSpace(headerKey); key != "" {
 		return key
@@ -240,6 +247,27 @@ func resolveMediaIdempotencyKey(headerKey string, body map[string]any) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// deriveMediaAutoIdempotencyKey 在调用方未显式提供幂等键时，按 (用户+端点+请求体)
+// 派生一个稳定键，自动套上幂等保护，防网络超时重试造成的双创建/双扣费（#2）。
+//
+// 关键点：派生键 = "auto:" + BuildIdempotencyFingerprint(method, route, actorScope, body)，
+// 与 IdempotencyCoordinator.Execute 内部计算指纹所用的 method/route/actorScope/payload
+// 完全一致——因此同一次请求（内容相同）重试时，Execute 会算出同一个指纹、同一个键，
+// 命中既有 processing/succeeded 记录完成去重；而内容不同的两次请求指纹不同、键不同，
+// 不会误合并。actorScope 含用户维度，跨用户不串键。
+func deriveMediaAutoIdempotencyKey(actorScope, method, route string, body map[string]any) string {
+	if strings.TrimSpace(actorScope) == "" {
+		actorScope = "anonymous"
+	}
+	fp, err := service.BuildIdempotencyFingerprint(method, route, actorScope, body)
+	if err != nil {
+		// 派生失败极少见（仅请求体无法 JSON 化）；返回空串退化为无幂等保护的
+		// legacy 行为，不中断调用方，也不改变"未提供键"的语义。
+		return ""
+	}
+	return "auto:" + fp
 }
 
 // decodeMediaTaskRecord 在幂等重放时把存储的 JSON 数据（map)还原为 MediaTaskRecord。

@@ -413,16 +413,28 @@ func (s *MediaTaskService) GetTask(ctx context.Context, localID string, userID i
 		return nil, fmt.Errorf("media_task_service: task not found for user")
 	}
 	if record.Status == "processing" && record.UpstreamTaskID != "" {
-		_ = s.refreshTaskStatus(ctx, record)
+		if refreshErr := s.refreshTaskStatus(ctx, record); refreshErr == nil {
+			// refreshTaskStatus 只写库、不回写 record 内存态，直接返回会让调用方
+			// 看到一个「已经 succeeded 并真实扣费、却仍显示 processing」的陈旧状态：
+			// 等待循环会因此多绕一轮轮询，客户端拿到 processing 后下一轮才看到结果。
+			// 写库成功必须重新读一次，保证状态与库内一致。
+			if fresh, getErr := s.mediaTaskRepo.GetByLocalID(ctx, localID); getErr == nil && fresh != nil {
+				return fresh, nil
+			}
+		}
 	}
 	return record, nil
 }
 
 // PollTask 供 Worker 调用：轮询单个 processing 任务的上游状态。
 func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord) error {
-	if record.Status != "processing" || record.UpstreamTaskID == "" {
+	if record.Status != "processing" {
 		return nil
 	}
+	// 超时兜底必须排在 UpstreamTaskID 判空之前：没有上游任务号的任务
+	// （老数据、或适配器创建响应既无 task_id 又无 URL 的历史行）永远拿不到结果，
+	// 若在这里先 return，它就永久停在 processing——既不交付也不退预扣，
+	// 而 PollTask 的超时分支（下面）才是唯一能让它落终态、补 usage_logs 的路径。
 	if !record.CreatedAt.IsZero() && time.Since(record.CreatedAt) > maxMediaTaskDurationBeforeFail {
 		s.logger.Warn("media_task_service: task timed out, marking failed",
 			zap.Int64("task_id", record.ID),
@@ -471,6 +483,10 @@ func (s *MediaTaskService) PollTask(ctx context.Context, record *MediaTaskRecord
 		}
 		return nil
 	}
+	// 有任务号才值得问上游；无任务号的任务只能靠上面的超时兜底落终态。
+	if record.UpstreamTaskID == "" {
+		return nil
+	}
 	return s.refreshTaskStatus(ctx, record)
 }
 
@@ -491,6 +507,34 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 
 	switch result.Status {
 	case "succeeded":
+		// 先解析产物 URL：没有产物就绝不能结算。
+		// 上游报 succeeded 却不给 URL 时若照常扣费，调用方随后只能回 502
+		// （media_gateway_images.go / video_gateway_handler.go 都要求
+		// status==succeeded 且 URL 非空），形成"扣了钱、不给货、也不退"。
+		// 对照 grok_media.go:IsGrokVideoStatusBillable 的既有正确范式：
+		// 成功判定必须同时满足「状态成功」+「产物非空」。
+		mediaURL := result.URL
+		if storedURL, ok := s.maybeStoreMedia(ctx, record, mediaURL); ok {
+			mediaURL = storedURL
+		}
+		if strings.TrimSpace(mediaURL) == "" {
+			s.logger.Warn("media_task_service: upstream reported succeeded without media url, refusing to settle",
+				zap.Int64("task_id", record.ID),
+				zap.String("local_id", record.LocalID),
+				zap.String("media_kind", string(record.MediaKind)),
+				zap.String("upstream_task_id", record.UpstreamTaskID),
+				zap.String("platform", account.Platform),
+			)
+			if record.MediaKind == MediaKindVideo {
+				// 视频：上游 URL 可能延迟就绪，保留 processing，由 30min
+				// 超时（maxMediaTaskDurationBeforeFail）兜底判 failed 并退预扣。
+				return nil
+			}
+			// 图片/音频：产物不会"迟到"，立即判 failed 并退预扣，让用户能马上重试。
+			return s.settleMediaTaskFailure(ctx, record, account, "failed",
+				"upstream reported succeeded without media url", result.DurationSec)
+		}
+
 		actual := 0.0
 		if record.MediaKind == MediaKindVideo {
 			if est, estErr := estimateVideoTaskCost(ctx, s.billingDeps(), record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec); estErr == nil {
@@ -508,10 +552,6 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 				zap.Int64("task_id", record.ID),
 				zap.Error(costErr),
 			)
-		}
-		mediaURL := result.URL
-		if storedURL, ok := s.maybeStoreMedia(ctx, record, mediaURL); ok {
-			mediaURL = storedURL
 		}
 		claimed, err := s.mediaTaskRepo.UpdateResult(ctx, record.ID, "succeeded", mediaURL, result.ThumbnailURL, result.DurationSec, actual)
 		if err != nil {
@@ -556,44 +596,59 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 			}
 		}
 	case "failed", "cancelled":
-		claimed, err := s.mediaTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, result.Status, result.ErrorMessage)
-		if err != nil {
-			return fmt.Errorf("media_task_service: update status: %w", err)
-		}
-		if !claimed {
-			return nil
-		}
-		if record.MediaKind == MediaKindVideo {
-			settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
-				LocalID:              record.LocalID,
-				UserID:               record.UserID,
-				APIKeyID:             record.APIKeyID,
-				AccountID:            record.AccountID,
-				Account:              account,
-				Model:                record.PublicModel,
-				UpstreamModel:        record.UpstreamModel,
-				Resolution:           record.Resolution,
-				DurationSec:          result.DurationSec,
-				RequestedDurationSec: record.DurationSec,
-				ReservedCost:         record.ReservedCost,
-			})
-		} else if record.MediaKind == MediaKindImage {
-			imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
-			imgInput.Account = account
-			settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
-		} else if record.MediaKind == MediaKindAudio {
-			audioInput := mediaAudioBillingInputFromRecord(record)
-			audioInput.Account = account
-			settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
-		} else {
-			var reserved float64
-			if record.ReservedCost != nil {
-				reserved = *record.ReservedCost
-			}
-			releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
-		}
+		return s.settleMediaTaskFailure(ctx, record, account, result.Status, result.ErrorMessage, result.DurationSec)
 	default:
 		// still processing
+	}
+	return nil
+}
+
+// settleMediaTaskFailure 把任务置为失败终态并退预扣/记失败账。
+// UpdateStatusIfProcessing 的 claimed 守卫保证同一任务只结算一次——旧视频链路
+// （video_task_service）曾因缺少该守卫出现重复退款，新链路一律走这里。
+func (s *MediaTaskService) settleMediaTaskFailure(
+	ctx context.Context,
+	record *MediaTaskRecord,
+	account *Account,
+	status string,
+	errMsg string,
+	durationSec int,
+) error {
+	claimed, err := s.mediaTaskRepo.UpdateStatusIfProcessing(ctx, record.ID, status, errMsg)
+	if err != nil {
+		return fmt.Errorf("media_task_service: update status: %w", err)
+	}
+	if !claimed {
+		return nil
+	}
+	if record.MediaKind == MediaKindVideo {
+		settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
+			LocalID:              record.LocalID,
+			UserID:               record.UserID,
+			APIKeyID:             record.APIKeyID,
+			AccountID:            record.AccountID,
+			Account:              account,
+			Model:                record.PublicModel,
+			UpstreamModel:        record.UpstreamModel,
+			Resolution:           record.Resolution,
+			DurationSec:          durationSec,
+			RequestedDurationSec: record.DurationSec,
+			ReservedCost:         record.ReservedCost,
+		})
+	} else if record.MediaKind == MediaKindImage {
+		imgInput := mediaImageBillingInputFromRecord(record, parseMediaImageCount(record.RequestBody))
+		imgInput.Account = account
+		settleMediaImageTaskFailure(ctx, s.billingDeps(), imgInput)
+	} else if record.MediaKind == MediaKindAudio {
+		audioInput := mediaAudioBillingInputFromRecord(record)
+		audioInput.Account = account
+		settleMediaAudioTaskFailure(ctx, s.billingDeps(), audioInput)
+	} else {
+		var reserved float64
+		if record.ReservedCost != nil {
+			reserved = *record.ReservedCost
+		}
+		releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
 	}
 	return nil
 }

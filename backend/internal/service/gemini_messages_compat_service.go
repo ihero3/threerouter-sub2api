@@ -1680,9 +1680,13 @@ func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *Ac
 	}
 }
 
+// shouldFailoverGeminiUpstreamError 必须与 OpenAI/Anthropic/Bedrock 共用的
+// OpenAIGatewayService.shouldFailoverUpstreamError 同口径：402（上游配额/付费问题）、
+// 404（该账号下模型或端点不存在）、405（端点不允许）都是账号/项目级问题，
+// 换号可以救回来。三者曾缺失，导致这些状态码直接回错给客户端而不换号重试。
 func (s *GeminiMessagesCompatService) shouldFailoverGeminiUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 402, 403, 404, 405, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
