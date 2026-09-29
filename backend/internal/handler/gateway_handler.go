@@ -475,8 +475,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if err != nil {
 					reqLog.Warn("gateway.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 					releaseWait()
-					h.handleConcurrencyError(c, err, "account", streamStarted)
-					return
+					// 本账号并发槽位已满（等待超时）：视为该账号暂时不可用，交给
+					// failover 引擎切换到下一个上游账号（受 MaxSwitches 约束）；
+					// 全池饱和才回退并发超限响应，不在此直接把错误抛给用户。
+					action := fs.HandleAccountConcurrencyExhausted(c.Request.Context(), h.gatewayService, account.ID, account.Platform)
+					switch action {
+					case FailoverContinue:
+						continue
+					case FailoverCanceled:
+						failoverClientGone(c)
+						return
+					default:
+						h.handleConcurrencyError(c, err, "account", streamStarted)
+						return
+					}
 				}
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
@@ -800,8 +812,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if err != nil {
 					reqLog.Warn("gateway.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 					releaseWait()
-					h.handleConcurrencyError(c, err, "account", streamStarted)
-					return
+					// 本账号并发槽位已满（等待超时）：视为该账号暂时不可用，交给
+					// failover 引擎切换到下一个上游账号（受 MaxSwitches 约束）；
+					// 全池饱和才回退并发超限响应，不在此直接把错误抛给用户。
+					action := fs.HandleAccountConcurrencyExhausted(c.Request.Context(), h.gatewayService, account.ID, account.Platform)
+					switch action {
+					case FailoverContinue:
+						continue
+					case FailoverCanceled:
+						failoverClientGone(c)
+						return
+					default:
+						h.handleConcurrencyError(c, err, "account", streamStarted)
+						return
+					}
 				}
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()

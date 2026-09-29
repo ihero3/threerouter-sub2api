@@ -176,7 +176,7 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 				zap.Int("upstream_status", createResult.UpstreamStatusCode),
 				zap.String("error", createResult.ErrorMessage),
 			)
-			failureBody := []byte(createResult.ErrorMessage)
+			failureBody := createResult.UpstreamRaw
 			decision := classifyMediaUpstreamFailure(createResult.UpstreamStatusCode, failureBody)
 			s.recordMediaUpstreamFailure(c, ctx, account, createResult.UpstreamStatusCode, failureBody, publicModel)
 			if decision.ShouldFailover {

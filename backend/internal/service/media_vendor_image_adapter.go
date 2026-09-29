@@ -174,7 +174,7 @@ func (a mediaVendorImageAdapter) GetResult(ctx context.Context, account *Account
 	result := &MediaTaskResult{StatusCode: resp.StatusCode, UpstreamRaw: respBody}
 	if resp.StatusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(resp.StatusCode, respBody)
 		return result, nil
 	}
 	var respData struct {
@@ -285,7 +285,7 @@ func parseSeedanceImageCreateResult(respBody []byte, statusCode int) (*MediaCrea
 	if statusCode >= 400 {
 		return &MediaCreateResult{
 			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
+			ErrorMessage: sanitizeMediaUpstreamErrorMessage(statusCode, respBody),
 		}, nil
 	}
 	// 这里只做 JSON 合法性校验（沿用历史错误语义），产物统一由
@@ -450,7 +450,7 @@ func parseWanImageCreateResult(respBody []byte, statusCode int) (*MediaCreateRes
 		}
 	}
 	if statusCode >= 400 {
-		return failed(fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))), nil
+		return failed(sanitizeMediaUpstreamErrorMessage(statusCode, respBody)), nil
 	}
 	var resp dashScopeImageResponse
 	if err := json.Unmarshal(respBody, &resp); err != nil {
@@ -652,7 +652,7 @@ func parseMiniMaxImageCreateResult(respBody []byte, statusCode int) (*MediaCreat
 		}
 	}
 	if statusCode >= 400 {
-		return failed(fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))), nil
+		return failed(sanitizeMediaUpstreamErrorMessage(statusCode, respBody)), nil
 	}
 	var resp miniMaxImageResponse
 	if err := json.Unmarshal(respBody, &resp); err != nil {

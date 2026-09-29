@@ -729,7 +729,21 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			continue
 		}
-		if slotResult != openAISlotAcquireOK {
+		switch slotResult {
+		case openAISlotAcquireConcurrencyExhausted:
+			// 本账号并发槽位已满：排除该账号并切换到下一个上游账号，
+			// 受 maxAccountSwitches 约束；全池饱和才回退并发超限响应。
+			failedAccountIDs[account.ID] = struct{}{}
+			switchCount++
+			if switchCount >= maxAccountSwitches {
+				status, errType, message := concurrencyErrorResponse(&ConcurrencyError{SlotType: "account", IsTimeout: true}, "account")
+				h.handleStreamingAwareError(c, status, errType, message, streamStarted)
+				return
+			}
+			continue
+		case openAISlotAcquireOK:
+			// 继续转发
+		default:
 			return
 		}
 
@@ -1297,7 +1311,21 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 			continue
 		}
-		if slotResult != openAISlotAcquireOK {
+		switch slotResult {
+		case openAISlotAcquireConcurrencyExhausted:
+			// 本账号并发槽位已满：排除该账号并切换到下一个上游账号，
+			// 受 maxAccountSwitches 约束；全池饱和才回退并发超限响应。
+			failedAccountIDs[account.ID] = struct{}{}
+			switchCount++
+			if switchCount >= maxAccountSwitches {
+				status, errType, message := concurrencyErrorResponse(&ConcurrencyError{SlotType: "account", IsTimeout: true}, "account")
+				h.anthropicStreamingAwareError(c, status, errType, message, streamStarted)
+				return
+			}
+			continue
+		case openAISlotAcquireOK:
+			// 继续转发
+		default:
 			return
 		}
 
@@ -1937,6 +1965,10 @@ const (
 	// 未写任何响应；调用方应经 recordOpenAIProfitVeto 把该账号加入本请求排除集
 	// 后重新选号，全池耗尽由下一轮选号返回标准 no available accounts。
 	openAISlotAcquireProfitVetoed
+	// openAISlotAcquireConcurrencyExhausted：本账号并发槽位等待超时（ConcurrencyError）。
+	// 未写任何响应；调用方应把该账号加入本请求排除集并切换到下一个上游账号，
+	// 受 maxAccountSwitches 约束；全池饱和由调用方回退并发超限响应。
+	openAISlotAcquireConcurrencyExhausted
 )
 
 // openAIWSTurnPricing 持有 WebSocket 连接内「当前 turn」的计费定价时刻。
@@ -2124,6 +2156,11 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	)
 	if err != nil {
 		reqLog.Warn("openai.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		var concErr *ConcurrencyError
+		if errors.As(err, &concErr) {
+			// 本账号并发槽位已满（等待超时）：不在此写响应，交由调用方换号或回退。
+			return nil, openAISlotAcquireConcurrencyExhausted
+		}
 		status, errType, message := concurrencyErrorResponse(err, "account")
 		writeError(status, errType, message)
 		return nil, openAISlotAcquireFailed

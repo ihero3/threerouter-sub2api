@@ -29,14 +29,11 @@ func isOpenAIDeterministicClientError(statusCode int) bool {
 
 // writeOpenAIUpstreamClientError 以 OpenAI 错误体形状回写确定性客户端错误。
 //
-// 保留上游的 type/code/param：客户端靠 param 定位是哪个字段非法（上游会给出形如
-// input[8].tools[1].tools[2].parameters 的路径），靠 code 判断是否值得重试。归一成
-// {type:"upstream_error", message:"Upstream request failed"} 会把这些信息全部抹掉。
-//
-// upstreamMsg 由调用方传入，调用方已做过 sanitizeUpstreamErrorMessage 与
-// redactAgentIdentitySensitiveBody；这里不重复清洗，也不回落读取原始 body 的
-// message，避免绕开那两道脱敏。
-func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
+// 拍板（2026-09-24，本次落实）：上游原文一律不下发客户端。message 改用平台统一话术
+// （openAIUpstreamClientMessage），不再回显上游文本。type/code/param 是结构化字段，
+// 由 body 透传，帮助客户端定位非法字段（如 input[8].tools[...].parameters），不属于
+// 上游内部错误日志，予以保留。
+func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte) {
 	// 写出完整错误体后必须标记已提交：handler 侧
 	// （ensureForwardErrorResponse / ensureOpenAIStreamReadErrorResponse）据此跳过
 	// 兜底写入，否则同一条响应会被追加第二份错误。
@@ -51,11 +48,8 @@ func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte,
 	if param := strings.TrimSpace(gjson.GetBytes(body, "error.param").String()); param != "" {
 		errorPayload["param"] = param
 	}
-	message := strings.TrimSpace(upstreamMsg)
-	if message == "" {
-		message = openAIUpstreamClientErrorFallbackMessage
-	}
-	errorPayload["message"] = message
+	// 拍板：message 一律平台统一文案，绝不下发上游原文。
+	errorPayload["message"] = openAIUpstreamClientMessage(statusCode)
 
 	c.JSON(statusCode, gin.H{"error": errorPayload})
 }

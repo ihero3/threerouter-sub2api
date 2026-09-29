@@ -655,7 +655,7 @@ func parseGenericVideoCreateResult(respBody []byte, statusCode int) (*VideoCreat
 			Mode:               VideoCompletionFailed,
 			UpstreamStatusCode: statusCode,
 			UpstreamRaw:        respBody,
-			ErrorMessage:       fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
+			ErrorMessage:       sanitizeMediaUpstreamErrorMessage(statusCode, respBody),
 		}, nil
 	}
 	var resp struct {
@@ -714,7 +714,7 @@ func parseSeedanceVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskR
 	result := &VideoTaskResult{StatusCode: statusCode, UpstreamRaw: respBody}
 	if statusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(statusCode, respBody)
 		return result, nil
 	}
 	var data map[string]any
@@ -777,7 +777,7 @@ func parseGenericVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskRe
 	result := &VideoTaskResult{StatusCode: statusCode, UpstreamRaw: respBody}
 	if statusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(statusCode, respBody)
 		return result, nil
 	}
 	var resp struct {
@@ -805,7 +805,7 @@ func parseMiniMaxVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskRe
 	result := &VideoTaskResult{StatusCode: statusCode, UpstreamRaw: respBody}
 	if statusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(statusCode, respBody)
 		return result, nil
 	}
 	var data map[string]any
@@ -830,7 +830,7 @@ func parseWanVideoQueryResult(respBody []byte, statusCode int) (*VideoTaskResult
 	result := &VideoTaskResult{StatusCode: statusCode, UpstreamRaw: respBody}
 	if statusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(statusCode, respBody)
 		return result, nil
 	}
 	var data map[string]any

@@ -146,6 +146,11 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	if err != nil {
 		return nil, fmt.Errorf("media_task_service: parse request: %w", err)
 	}
+	// prompt 必填校验：在选号与打上游之前拦截。用户的失败截图里全是空 prompt 打到上游
+	// 又落一条 $0 失败记录，这类请求必然 400，没必要消耗上游配额。
+	if vErr := validateMediaPromptRequired(kind, req); vErr != nil {
+		return nil, fmt.Errorf("media_task_service: validate prompt: %w", vErr)
+	}
 	// 视频模型 resolution 档位校验：在选号与调上游之前拦截，直接 400。
 	if kind == MediaKindVideo {
 		if vErr := validateVideoResolution(publicModel, req.Resolution); vErr != nil {
@@ -222,7 +227,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				zap.Int("upstream_status", createResult.UpstreamStatusCode),
 				zap.String("error", createResult.ErrorMessage),
 			)
-			failureBody := []byte(createResult.ErrorMessage)
+			failureBody := createResult.UpstreamRaw
 			decision := classifyMediaUpstreamFailure(createResult.UpstreamStatusCode, failureBody)
 			s.recordMediaUpstreamFailure(c, ctx, account, createResult.UpstreamStatusCode, failureBody, publicModel)
 			if decision.ShouldFailover {
@@ -975,6 +980,12 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 
 	if v, ok := body["prompt"].(string); ok {
 		req.Prompt = v
+	} else if input, ok := body["input"].(map[string]any); ok {
+		// 阿里 DashScope 原生异步协议把 prompt 放在 input.prompt。
+		// 顶层无 prompt 时回落到这里，避免"Field required: input.prompt"被我们漏掉。
+		if p, ok := input["prompt"].(string); ok {
+			req.Prompt = p
+		}
 	}
 	if v, ok := body["negative_prompt"].(string); ok {
 		req.NegativePrompt = v
@@ -1068,6 +1079,24 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 		delete(req.Extra, "ratio")
 	}
 	return req, nil
+}
+
+// validateMediaPromptRequired 校验 prompt 必填。图片 / 视频生成 prompt 恒为必填；
+// 音频默认是 TTS 文本必填，但带参考音频（声音克隆 / 语音转换）时可省略。
+// 返回 *MediaInvalidRequestError 以便 handler 映射为 400 invalid_request_error。
+func validateMediaPromptRequired(kind MediaKind, req *MediaCreateRequest) error {
+	switch kind {
+	case MediaKindImage, MediaKindVideo:
+		if strings.TrimSpace(req.Prompt) == "" {
+			return &MediaInvalidRequestError{Reason: "prompt is required for " + string(kind) + " generation"}
+		}
+	case MediaKindAudio:
+		hasRef := len(req.Media) > 0 || len(req.AudioRefURLs) > 0
+		if strings.TrimSpace(req.Prompt) == "" && !hasRef {
+			return &MediaInvalidRequestError{Reason: "prompt is required for audio generation"}
+		}
+	}
+	return nil
 }
 
 // firstMediaStringValue 返回第一个非空字符串字段值。
@@ -1234,7 +1263,7 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 			continue
 		}
 		if createResult.Status == "failed" && createResult.Mode == MediaCompletionFailed {
-			failureBody := []byte(createResult.ErrorMessage)
+			failureBody := createResult.UpstreamRaw
 			decision := classifyMediaUpstreamFailure(createResult.UpstreamStatusCode, failureBody)
 			s.recordMediaUpstreamFailure(c, ctx, account, createResult.UpstreamStatusCode, failureBody, publicModel)
 			if decision.ShouldFailover {

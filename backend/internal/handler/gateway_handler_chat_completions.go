@@ -240,8 +240,20 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			)
 			if err != nil {
 				reqLog.Warn("gateway.cc.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				h.handleConcurrencyError(c, err, "account", streamStarted)
-				return
+				// 本账号并发槽位已满（等待超时）：视为该账号暂时不可用，交给
+				// failover 引擎切换到下一个上游账号（受 MaxSwitches 约束）；
+				// 全池饱和才回退并发超限响应，不在此直接把错误抛给用户。
+				action := fs.HandleAccountConcurrencyExhausted(c.Request.Context(), h.gatewayService, account.ID, account.Platform)
+				switch action {
+				case FailoverContinue:
+					continue
+				case FailoverCanceled:
+					failoverClientGone(c)
+					return
+				default:
+					h.handleConcurrencyError(c, err, "account", streamStarted)
+					return
+				}
 			}
 		}
 		// 终检与准入后绑定使用选号结果携带的门（见 responses 同名注释）。

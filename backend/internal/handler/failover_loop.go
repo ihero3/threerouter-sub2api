@@ -277,6 +277,26 @@ func (s *FailoverState) HandleFailoverError(
 	return FailoverContinue
 }
 
+// HandleAccountConcurrencyExhausted 把「网关本账号并发槽位已满」当作一次可换号的
+// 瞬时不可用处理：记入失败集并切换到下一个上游账号（受 MaxSwitches 约束）。
+// 当切换预算用尽时返回 FailoverExhausted，由调用方回退到并发超限响应。
+//
+// 刻意只设置 NextAccountAction=NextAccountRetry，不设置 RetryableOnSameAccount /
+// RequestScopedTransient：账号饱和是本网关的并发闸门而非上游故障，不应触发同账号
+// 退避重试或临时封禁，否则会把一个健康账号因本地限流而误封。
+func (s *FailoverState) HandleAccountConcurrencyExhausted(
+	ctx context.Context,
+	gatewayService TempUnscheduler,
+	accountID int64,
+	platform string,
+) FailoverAction {
+	if ctx != nil && ctx.Err() != nil {
+		return FailoverCanceled
+	}
+	return s.HandleFailoverError(ctx, gatewayService, accountID, platform, 0,
+		&service.UpstreamFailoverError{NextAccountAction: service.NextAccountRetry})
+}
+
 // HandleSelectionExhausted 处理选号失败（所有候选账号都在排除列表中）时的退避重试决策。
 // 针对 Antigravity 单账号分组的 503 (MODEL_CAPACITY_EXHAUSTED) 场景：
 // 清除排除列表、等待退避后重新选号。

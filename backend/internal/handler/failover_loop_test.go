@@ -65,6 +65,37 @@ func TestSameAccountRetryDelayFor(t *testing.T) {
 	})
 }
 
+// TestHandleAccountConcurrencyExhausted_RoutesToNextAccount 回归测试：
+// 「网关本账号并发槽位已满」必须被当作一次可换号的瞬时不可用——记入失败集并
+// 切换到下一个上游账号（受 MaxSwitches 约束），而不是直接耗尽把并发超限抛给用户。
+// 回退此方法的实现（改为立即 FailoverExhausted）会使本测试变红。
+func TestHandleAccountConcurrencyExhausted_RoutesToNextAccount(t *testing.T) {
+	fs := NewFailoverState(3, false)
+	mock := &mockTempUnscheduler{}
+
+	for i := int64(1); i <= 3; i++ {
+		action := fs.HandleAccountConcurrencyExhausted(context.Background(), mock, i, service.PlatformOpenAI)
+		require.Equal(t, FailoverContinue, action, "account %d should continue to next account", i)
+		require.Contains(t, fs.FailedAccountIDs, i, "account %d should be recorded as failed", i)
+	}
+	// 账号饱和是本网关并发闸门，不是上游故障：不得据此临时封禁账号。
+	require.Empty(t, mock.calls, "concurrency saturation must not temp-unschedule the account")
+	require.Equal(t, 3, fs.SwitchCount, "three continues must advance switch count to MaxSwitches")
+
+	// 切换预算用尽后，应返回 FailoverExhausted，由调用方回退并发超限响应。
+	action := fs.HandleAccountConcurrencyExhausted(context.Background(), mock, 99, service.PlatformOpenAI)
+	require.Equal(t, FailoverExhausted, action)
+	require.Equal(t, 3, fs.SwitchCount, "switch count must stay capped at MaxSwitches")
+}
+
+func TestHandleAccountConcurrencyExhausted_ClientGoneCancels(t *testing.T) {
+	fs := NewFailoverState(3, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.Equal(t, FailoverCanceled,
+		fs.HandleAccountConcurrencyExhausted(ctx, &mockTempUnscheduler{}, 1, service.PlatformOpenAI))
+}
+
 func TestSameAccountRetryAllowedUsesDeadlineInsteadOfPoolCount(t *testing.T) {
 	err := &service.UpstreamFailoverError{
 		RetryableOnSameAccount:   true,

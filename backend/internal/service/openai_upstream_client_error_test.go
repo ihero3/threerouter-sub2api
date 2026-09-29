@@ -45,7 +45,8 @@ func newOpenAIUpstreamErrorTestAccount() *Account {
 	return &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acct"}
 }
 
-// 主复现：原生 Responses 路径必须回真实的 400 与上游诊断信息，而不是可重试的 502。
+// 主复现：原生 Responses 路径必须回真实的 400（而非可重试的 502），并保留结构化
+// type/code/param；但 message 按拍板用平台统一文案，不再回显上游原文。
 //
 // 归一成 502 时下游网关（CCH 等）会把确定性的 Schema 错误当成临时上游故障重试，
 // issue #5479 实测 30 个失败请求被放大成 60 次上游调用。
@@ -67,7 +68,9 @@ func TestHandleErrorResponse_Deterministic400IsNotRewrappedAs502(t *testing.T) {
 	require.Equal(t, "invalid_function_parameters", gjson.Get(body, "error.code").String())
 	require.Equal(t, "input[8].tools[1].tools[2].parameters", gjson.Get(body, "error.param").String(),
 		"param 是客户端定位哪个字段非法的唯一线索")
-	require.Contains(t, gjson.Get(body, "error.message").String(), "Invalid schema for function 'automation_update'")
+	// 拍板：400 message 必须是平台统一文案，不得回显上游原文（type/code/param 仍保留）。
+	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String())
+	require.NotContains(t, body, "Invalid schema for function 'automation_update'", "不得下发上游原文")
 	require.NotContains(t, body, "Upstream request failed")
 
 	// 确定性请求错误不该换号重试——换任何账号都是同样的结果。
@@ -108,8 +111,8 @@ func TestHandleErrorResponse_MatchesCompatSiblingForDeterministic400(t *testing.
 		"两条路径的 message 必须一致")
 }
 
-// 上游只给 message、没有 type/code/param 时，仍要回 400 + 真实 message，
-// 缺失字段用 OpenAI 惯例兜底，不得凭空编造 code/param。
+// 上游只给 message、没有 type/code/param 时，仍要回 400 + 平台统一文案（拍板：不回显
+// 上游 message），缺失字段用 OpenAI 惯例兜底，不得凭空编造 code/param。
 func TestHandleErrorResponse_Deterministic400WithoutUpstreamMetadata(t *testing.T) {
 	c, rec := newOpenAIUpstreamErrorTestContext(t)
 	svc := &OpenAIGatewayService{cfg: &config.Config{}}
@@ -124,7 +127,8 @@ func TestHandleErrorResponse_Deterministic400WithoutUpstreamMetadata(t *testing.
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	body := rec.Body.String()
 	require.Equal(t, "invalid_request_error", gjson.Get(body, "error.type").String())
-	require.Equal(t, "Invalid 'input': expected an array.", gjson.Get(body, "error.message").String())
+	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String(),
+		"拍板：message 必须是平台统一文案，不得回显上游原文 Invalid 'input': expected an array.")
 	require.False(t, gjson.Get(body, "error.code").Exists(), "上游没给 code 就不要编一个")
 	require.False(t, gjson.Get(body, "error.param").Exists(), "上游没给 param 就不要编一个")
 }
@@ -231,44 +235,35 @@ func TestIsOpenAIDeterministicClientError(t *testing.T) {
 
 func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 	cases := []struct {
-		name        string
-		body        string
-		upstreamMsg string
-		wantType    string
-		wantCode    string
-		wantParam   string
-		wantMessage string
+		name      string
+		body      string
+		wantType  string
+		wantCode  string
+		wantParam string
 	}{
 		{
-			name:        "full_metadata",
-			body:        openAIInvalidFunctionParametersBody,
-			upstreamMsg: "Invalid schema for function 'automation_update'",
-			wantType:    "invalid_request_error",
-			wantCode:    "invalid_function_parameters",
-			wantParam:   "input[8].tools[1].tools[2].parameters",
-			wantMessage: "Invalid schema for function 'automation_update'",
+			name:      "full_metadata",
+			body:      openAIInvalidFunctionParametersBody,
+			wantType:  "invalid_request_error",
+			wantCode:  "invalid_function_parameters",
+			wantParam: "input[8].tools[1].tools[2].parameters",
 		},
 		{
-			name:        "upstream_type_preserved",
-			body:        `{"error":{"type":"invalid_prompt","message":"blocked"}}`,
-			upstreamMsg: "blocked",
-			wantType:    "invalid_prompt",
-			wantMessage: "blocked",
+			name:     "upstream_type_preserved",
+			body:     `{"error":{"type":"invalid_prompt","message":"blocked"}}`,
+			wantType: "invalid_prompt",
 		},
 		{
-			name:        "empty_body_falls_back",
-			body:        ``,
-			upstreamMsg: "",
-			wantType:    "invalid_request_error",
-			wantMessage: openAIUpstreamClientErrorFallbackMessage,
+			name:     "empty_body_falls_back",
+			body:     ``,
+			wantType: "invalid_request_error",
 		},
 		{
-			// 调用方传入的 message 已脱敏，必须原样使用，不得回落读取原始 body。
-			name:        "sanitized_message_wins_over_raw_body",
-			body:        `{"error":{"message":"failed for key=secret123"}}`,
-			upstreamMsg: "failed for key=***",
-			wantType:    "invalid_request_error",
-			wantMessage: "failed for key=***",
+			// 拍板：上游 message 不得下发客户端；原始 body 里的敏感串不得泄漏，
+			// 只有结构化 type/code/param 透传。
+			name:     "raw_body_text_not_echoed",
+			body:     `{"error":{"message":"failed for key=secret123"}}`,
+			wantType: "invalid_request_error",
 		},
 	}
 
@@ -276,12 +271,13 @@ func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, rec := newOpenAIUpstreamErrorTestContext(t)
 
-			writeOpenAIUpstreamClientError(c, http.StatusBadRequest, []byte(tc.body), tc.upstreamMsg)
+			writeOpenAIUpstreamClientError(c, http.StatusBadRequest, []byte(tc.body))
 
 			require.Equal(t, http.StatusBadRequest, rec.Code)
 			body := rec.Body.String()
 			require.Equal(t, tc.wantType, gjson.Get(body, "error.type").String())
-			require.Equal(t, tc.wantMessage, gjson.Get(body, "error.message").String())
+			// 拍板：400 message 必须是平台统一文案，不得回显上游原文。
+			require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String())
 			if tc.wantCode == "" {
 				require.False(t, gjson.Get(body, "error.code").Exists())
 			} else {
@@ -293,6 +289,7 @@ func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 				require.Equal(t, tc.wantParam, gjson.Get(body, "error.param").String())
 			}
 			require.NotContains(t, body, "secret123", "原始 body 里的敏感串不得泄漏")
+			require.NotContains(t, body, "blocked", "上游 message 不得下发客户端")
 		})
 	}
 }

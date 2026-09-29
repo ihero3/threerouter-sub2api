@@ -152,7 +152,7 @@ func (a mediaVendorAudioAdapter) GetResult(ctx context.Context, account *Account
 	result := &MediaTaskResult{StatusCode: resp.StatusCode, UpstreamRaw: respBody}
 	if resp.StatusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(resp.StatusCode, respBody)
 		return result, nil
 	}
 	// 同步音频直接返回；无 URL 时标 processing。
@@ -225,7 +225,7 @@ func parseMiniMaxTTSResult(respBody []byte, statusCode int) (*MediaCreateResult,
 	if statusCode >= 400 {
 		return &MediaCreateResult{
 			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
+			ErrorMessage: sanitizeMediaUpstreamErrorMessage(statusCode, respBody),
 		}, nil
 	}
 	var data map[string]any
@@ -308,7 +308,7 @@ func parseVolcanoTTSResult(respBody []byte, statusCode int) (*MediaCreateResult,
 	if statusCode >= 400 {
 		return &MediaCreateResult{
 			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
+			ErrorMessage: sanitizeMediaUpstreamErrorMessage(statusCode, respBody),
 		}, nil
 	}
 	var data map[string]any
@@ -391,7 +391,7 @@ func parseAliyunTTSResult(respBody []byte, statusCode int) (*MediaCreateResult, 
 	if statusCode >= 400 {
 		return &MediaCreateResult{
 			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: fmt.Sprintf("upstream returned %d: %s", statusCode, string(respBody)),
+			ErrorMessage: sanitizeMediaUpstreamErrorMessage(statusCode, respBody),
 		}, nil
 	}
 	var data map[string]any

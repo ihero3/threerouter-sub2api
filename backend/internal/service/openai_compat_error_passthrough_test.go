@@ -13,10 +13,10 @@ import (
 
 // 本文件锁住「兼容路径（ChatCompletions / Anthropic）错误兜底不得下发上游原文」这一拍板。
 //
-// 缺陷原型：handleCompatErrorResponse 的通用兜底（openai_gateway_upstream_errors.go:873）
-// 直接把 upstreamMsg 回显给客户端，而原生 Responses 路径（handleErrorResponse）对
-// 5xx / 401 / 402 / 403 / 429 早已改用平台统一文案。两者不一致，且违反
-// 「上游模型服务商的错误日志不得下发客户端」。
+// 历史缺陷：handleCompatErrorResponse 的通用兜底曾直接把 upstreamMsg 回显给客户端，
+// 且与原生 Responses 路径（handleErrorResponse）不一致。2026-09-24 拍板后两侧均已改为
+// 平台统一文案（openAIUpstreamClientMessage），确定性 400 只透传结构化 type/code/param，
+// 不再下发上游模型服务商的错误日志原文。
 
 func newCompatErrorTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
@@ -75,11 +75,12 @@ func TestHandleCompatErrorResponse_GenericErrorDoesNotLeakUpstream(t *testing.T)
 	require.Equal(t, "Upstream request failed", gotMsg, "通用错误应回平台统一文案")
 }
 
-func TestHandleCompatErrorResponse_Deterministic400StillEchoed(t *testing.T) {
+func TestHandleCompatErrorResponse_Deterministic400DoesNotLeakUpstream(t *testing.T) {
 	t.Parallel()
 
-	// 确定性 400 是客户端请求错误（含 code/param 帮助定位字段），属刻意保留的回显，
-	// 不算「上游服务商内部日志」。回归：这条路径的 message 必须仍是上游原文。
+	// 拍板（2026-09-24，本次落实）：确定性 400 的 message 不再回显上游原文，
+	// 统一用平台文案（openAIUpstreamClientErrorFallbackMessage）。type/code/param 等
+	// 结构化字段仍由调用方自行处理，本处只校验 message 不含上游文本。
 	body := `{"error":{"type":"invalid_request_error","message":"Invalid schema for function 'foo': got None"}}`
 
 	c, _ := newCompatErrorTestContext()
@@ -94,7 +95,8 @@ func TestHandleCompatErrorResponse_Deterministic400StillEchoed(t *testing.T) {
 	}
 	_, err := (&OpenAIGatewayService{}).handleCompatErrorResponse(resp, c, newCompatErrorAccount(), writeError)
 	require.Error(t, err)
-	require.Contains(t, gotMsg, "Invalid schema for function 'foo'")
+	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gotMsg, "400 message 必须是平台统一文案")
+	require.NotContains(t, gotMsg, "Invalid schema for function 'foo'", "不得下发上游原文")
 }
 
 func TestHandleCompatErrorResponse_UnhandledCodeUsesPlatformMessage(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -120,7 +121,9 @@ func newMediaUsageMeta(c *gin.Context, upstreamEndpoint, requestedSize, outputSi
 	meta.InboundEndpoint = inboundEndpointFromGinContext(c)
 	if c.Request != nil {
 		meta.UserAgent = c.Request.UserAgent()
-		meta.IPAddress = c.ClientIP()
+		// 与聊天/会话绑定/IP 限制链路同口径：走自研转发头解析（默认信任 X-Real-IP /
+		// X-Forwarded-For），避免反代部署下 gin ClientIP() 恒等于本机 127.0.0.1。
+		meta.IPAddress = ip.GetClientIP(c)
 	}
 	return meta
 }

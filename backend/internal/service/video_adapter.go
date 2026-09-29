@@ -215,7 +215,7 @@ func (a *OpenAIVideoAdapter) Create(ctx context.Context, account *Account, req V
 			Mode:               VideoCompletionFailed,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRaw:        respBody,
-			ErrorMessage:       fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, string(respBody)),
+			ErrorMessage:       sanitizeMediaUpstreamErrorMessage(resp.StatusCode, respBody),
 		}, nil
 	}
 
@@ -326,7 +326,7 @@ func (a *OpenAIVideoAdapter) GetResult(ctx context.Context, account *Account, up
 
 	if resp.StatusCode >= 400 {
 		result.Status = "failed"
-		result.ErrorMessage = fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, string(respBody))
+		result.ErrorMessage = sanitizeMediaUpstreamErrorMessage(resp.StatusCode, respBody)
 		return result, nil
 	}
 

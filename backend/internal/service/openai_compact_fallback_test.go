@@ -460,7 +460,10 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 	var compactSignal *openAICompactFallbackSignal
 	require.False(t, errors.As(err, &compactSignal))
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "model not found")
+	// 拍板（2026-09-24，本次落实）：400 message 必须是平台统一文案，不得回显上游原文
+	// "model not found"（code/type 仍保留，仅 message 统一化）。
+	require.Contains(t, recorder.Body.String(), "Upstream rejected the request")
+	require.NotContains(t, recorder.Body.String(), "model not found", "不得下发上游原文")
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)
 	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
