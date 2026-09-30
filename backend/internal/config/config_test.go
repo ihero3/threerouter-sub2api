@@ -599,12 +599,14 @@ func TestLoadDefaultGrokFreeQuotaSoftGate(t *testing.T) {
 	require.Equal(t, 60, cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds)
 }
 
-func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
+func TestLoadDefaultOpenAIHTTP2Disabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.True(t, cfg.Gateway.OpenAIHTTP2.Enabled)
+	// 默认关闭 HTTP/2：火山方舟（ark）等直连上游的 H2 连接易被服务端掐断，
+	// 复用死连接会频发 `http2: client connection lost`；直连账号不触发 H2→H1 回退。
+	require.False(t, cfg.Gateway.OpenAIHTTP2.Enabled)
 	require.True(t, cfg.Gateway.OpenAIHTTP2.AllowProxyFallbackToHTTP1)
 	require.False(t, cfg.Gateway.OpenAIProxyStreamCircuit.Disabled)
 	require.Equal(t, 2, cfg.Gateway.OpenAIProxyStreamCircuit.FailureThreshold)
