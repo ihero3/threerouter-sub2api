@@ -53,21 +53,36 @@ func TestParseMediaCreateRequest_NestedInputPrompt(t *testing.T) {
 	require.Equal(t, "a red apple", req.Prompt)
 }
 
-// TestSanitizeMediaUpstreamErrorMessage 锁定 fix C：从上游错误体抽取结构化
-// code/message，而非把整段原始 JSON 直接甩给调用方。
+// TestSanitizeMediaUpstreamErrorMessage 锁定 fix C：媒体链路对调用方的错误文案只按
+// 状态码给出平台统一话术，绝不回显上游原文（code/message/原始体都可能泄露上游实现
+// 细节与请求回显）。上游原文仍保留在 UpstreamRaw 供分类与运营排查。
 func TestSanitizeMediaUpstreamErrorMessage(t *testing.T) {
-	// OpenAI 风格 error 对象
+	// OpenAI 风格 error 对象：不得回显上游 message / code
 	openaiBody := []byte(`{"error":{"message":"Invalid prompt","code":"invalid_request_error","type":"invalid_request_error"}}`)
-	require.Equal(t, "invalid_request_error: Invalid prompt", sanitizeMediaUpstreamErrorMessage(400, openaiBody))
+	got := sanitizeMediaUpstreamErrorMessage(400, openaiBody)
+	require.Equal(t, "Upstream request failed", got)
+	require.NotContains(t, got, "Invalid prompt")
+	require.NotContains(t, got, "invalid_request_error")
 
-	// DashScope / MiniMax 顶层 code + message
+	// DashScope / MiniMax 顶层 code + message：同样不得回显
 	dashBody := []byte(`{"code":"InvalidParameter","message":"Field required: input.prompt"}`)
-	require.Equal(t, "InvalidParameter: Field required: input.prompt", sanitizeMediaUpstreamErrorMessage(400, dashBody))
+	got = sanitizeMediaUpstreamErrorMessage(400, dashBody)
+	require.Equal(t, "Upstream request failed", got)
+	require.NotContains(t, got, "Field required")
+	require.NotContains(t, got, "InvalidParameter")
 
-	// 非 JSON 空体：回退到状态码文案
-	require.Contains(t, sanitizeMediaUpstreamErrorMessage(400, []byte("")), "400")
+	// 空体：仍按状态码给话术
+	require.Equal(t, "Upstream request failed", sanitizeMediaUpstreamErrorMessage(400, []byte("")))
 
-	// 非 JSON 长体：截断回退
+	// 非 JSON 长体：不得回显原文
 	long := []byte("some raw text longer than two hundred fifty six characters xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-	require.Contains(t, sanitizeMediaUpstreamErrorMessage(500, long), "upstream 500")
+	got = sanitizeMediaUpstreamErrorMessage(500, long)
+	require.Equal(t, "Upstream service temporarily unavailable", got)
+	require.NotContains(t, got, "some raw text")
+
+	// 其他状态码映射
+	require.Equal(t, "Upstream authentication failed", sanitizeMediaUpstreamErrorMessage(401, openaiBody))
+	require.Equal(t, "Upstream access denied", sanitizeMediaUpstreamErrorMessage(403, openaiBody))
+	require.Equal(t, "Upstream resource not found", sanitizeMediaUpstreamErrorMessage(404, openaiBody))
+	require.Equal(t, "Upstream rate limit exceeded", sanitizeMediaUpstreamErrorMessage(429, openaiBody))
 }

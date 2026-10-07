@@ -100,6 +100,27 @@ var mediaValidationMarkers = []string{
 	"不支持",
 }
 
+// mediaUpstreamClientErrorMessage 把上游状态码映射成平台统一话术，绝不回显上游原文。
+// 媒体链路（生图/生视频/音频）对调用方的错误文案一律走这里，保证任何上游实现细节、
+// 内部错误码、请求回显都不会泄露给用户；上游原文仍通过 UpstreamRaw / ops 事件留档。
+// 文案口径与 grokMediaClientErrorMessage / writeSanitizedOpenAIPassthroughError 对齐。
+func mediaUpstreamClientErrorMessage(statusCode int) string {
+	switch {
+	case statusCode == http.StatusUnauthorized:
+		return "Upstream authentication failed"
+	case statusCode == http.StatusForbidden:
+		return "Upstream access denied"
+	case statusCode == http.StatusNotFound:
+		return "Upstream resource not found"
+	case statusCode == http.StatusTooManyRequests:
+		return "Upstream rate limit exceeded"
+	case statusCode >= http.StatusInternalServerError:
+		return "Upstream service temporarily unavailable"
+	default:
+		return "Upstream request failed"
+	}
+}
+
 // classifyMediaUpstreamFailure 使用 body-first 分类，兼容各厂商用 400/403
 // 包装余额、限流或内容审核错误的场景。
 func classifyMediaUpstreamFailure(statusCode int, responseBody []byte) MediaUpstreamFailureDecision {

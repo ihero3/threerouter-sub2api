@@ -1361,22 +1361,10 @@ func grokMediaErrorType(statusCode int) string {
 }
 
 // grokMediaClientErrorMessage 与 writeSanitizedOpenAIPassthroughError 的文案口径对齐：
-// 只按状态码给出平台话术，绝不回显上游原文。
+// 只按状态码给出平台话术，绝不回显上游原文。统一委托 mediaUpstreamClientErrorMessage，
+// 保证所有媒体出口共用同一套映射。
 func grokMediaClientErrorMessage(statusCode int) string {
-	switch {
-	case statusCode == http.StatusUnauthorized:
-		return "Upstream authentication failed"
-	case statusCode == http.StatusForbidden:
-		return "Upstream access denied"
-	case statusCode == http.StatusNotFound:
-		return "Upstream resource not found"
-	case statusCode == http.StatusTooManyRequests:
-		return "Upstream rate limit exceeded"
-	case statusCode >= http.StatusInternalServerError:
-		return "Upstream service temporarily unavailable"
-	default:
-		return "Upstream request failed"
-	}
+	return mediaUpstreamClientErrorMessage(statusCode)
 }
 
 func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string) {

@@ -287,59 +287,10 @@ func NewAudioMediaAdapter() *openAICompatMediaAdapter {
 	})
 }
 
-// sanitizeMediaUpstreamErrorMessage 从上游错误响应体里抽取结构化 code/message，
-// 避免把整段原始 JSON（可能内含请求回显）直接甩给调用方。结构化的 error/message
-// 是上游面向调用方的内容，确定性且不含内部日志，可安全透传；完整原始体保留在
-// UpstreamRaw 供运营排查。
+// sanitizeMediaUpstreamErrorMessage 生成媒体链路对调用方的错误文案。
+// 只按状态码给出平台统一话术，绝不回显上游原始 JSON / code / message（避免泄露上游
+// 实现细节与请求回显）；完整原始体仍保留在 UpstreamRaw，由媒体失败分类与 ops 事件留档。
 func sanitizeMediaUpstreamErrorMessage(statusCode int, raw []byte) string {
-	var doc struct {
-		Code      string `json:"code"`
-		ErrorCode string `json:"error_code"`
-		Message   string `json:"message"`
-		Msg       string `json:"msg"`
-		Error     struct {
-			Message string `json:"message"`
-			Code    string `json:"code"`
-			Type    string `json:"type"`
-		} `json:"error"`
-	}
-	_ = json.Unmarshal(raw, &doc)
-
-	code := doc.Code
-	msg := doc.Message
-	if msg == "" {
-		msg = doc.Msg
-	}
-	if msg == "" {
-		msg = doc.Error.Message
-	}
-	if code == "" {
-		code = doc.Error.Code
-	}
-	if code == "" {
-		code = doc.ErrorCode
-	}
-
-	if msg == "" {
-		// 非 JSON 或无可解析字段：回退到截断的原始体。
-		s := strings.TrimSpace(string(raw))
-		const maxRaw = 256
-		if len(s) > maxRaw {
-			s = s[:maxRaw] + "..."
-		}
-		if s == "" {
-			s = http.StatusText(statusCode)
-		}
-		return fmt.Sprintf("upstream %d: %s", statusCode, s)
-	}
-
-	msg = strings.TrimSpace(msg)
-	const maxMsg = 300
-	if len(msg) > maxMsg {
-		msg = msg[:maxMsg] + "..."
-	}
-	if code != "" {
-		return fmt.Sprintf("%s: %s", code, msg)
-	}
-	return msg
+	_ = raw // 刻意不回显：上游原文仅用于分类与运营排查，不进入面向用户的文案。
+	return mediaUpstreamClientErrorMessage(statusCode)
 }

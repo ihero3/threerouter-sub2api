@@ -168,6 +168,11 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 			lastUpstreamErr = fmt.Errorf("video_task_service: upstream create: %w", createErr)
 			continue
 		}
+		if createResult == nil {
+			lastUpstreamErr = fmt.Errorf("video_task_service: upstream create returned empty result")
+			excluded[account.ID] = struct{}{}
+			continue
+		}
 
 		if createResult.Status == "failed" && createResult.Mode == VideoCompletionFailed {
 			s.logger.Warn("video_task_service: upstream returned failure",
