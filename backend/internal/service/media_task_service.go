@@ -176,11 +176,11 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				return nil, lastUpstreamErr
 			}
 			if selectErr == nil {
-				selectErr = fmt.Errorf("media_task_service: no available account for model %s", publicModel)
+				selectErr = fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
 			}
 			if errors.Is(selectErr, ErrNoAvailableAccounts) {
 				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
-				return nil, fmt.Errorf("media_task_service: no available account for model %s", publicModel)
+				return nil, fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
 			}
 			return nil, fmt.Errorf("media_task_service: select account: %w", selectErr)
 		}
@@ -1147,6 +1147,13 @@ func parseMediaImageCount(body map[string]any) int {
 	}
 	return clampImageCount(n)
 }
+
+// ErrNoAvailableMediaAccount 标记"选号失败"：调用方所在分组没有任何账号挂载该模型。
+//
+// 与"上游故障"区分开，handler 才能返回 503 容量提示（提示运营挂账号/换分组）
+// 而不是笼统的 502 上游错误。判定必须走 errors.Is：不要依赖错误文案，否则
+// 调整消息时会静默失效（历史上 handler 用 strings.Contains 兜底）。
+var ErrNoAvailableMediaAccount = errors.New("media_task_service: no available account")
 
 // MediaInvalidRequestError 表示请求参数不满足媒体生成契约（如 resolution 档位
 // 非法）。handler 应将其映射为 400 invalid_request_error，而非上游故障。

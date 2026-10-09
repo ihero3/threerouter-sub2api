@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -184,8 +185,10 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 ) (*service.MediaTaskRecord, bool, error) {
 	coordinator := service.DefaultIdempotencyCoordinator()
 	if coordinator == nil {
+		// 协调器不可用（退化路径）同样走结果收敛：任务已落库就按成功返回，
+		// 保证"有 local_id 就有产物"这条不变量在两条路径上完全一致。
 		record, err := h.mediaTaskService.CreateTask(c, kind, apiKey.GroupID, subject.UserID, apiKey.ID, publicModel, body)
-		return record, false, err
+		return resolveMediaCreateOutcome(record, false, err)
 	}
 
 	actorScope := "user:" + strconv.FormatInt(subject.UserID, 10)
@@ -213,9 +216,7 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 		record = rec
 		return rec, nil
 	})
-	if err != nil {
-		return nil, false, err
-	}
+	replayed := result != nil && result.Replayed
 	if result != nil {
 		if rec, ok := result.Data.(*service.MediaTaskRecord); ok {
 			record = rec
@@ -223,7 +224,39 @@ func (h *MediaGatewayHandler) mediaCreateIdempotent(
 			record = rec
 		}
 	}
-	return record, result != nil && result.Replayed, nil
+	if err != nil && record != nil {
+		// 任务已经落库（同步图片甚至已经扣费），之后的幂等落库/回读失败只降级：
+		// 本次调用失去重放保护，但 local_id 必须交给客户端 —— 否则用户为一条
+		// succeeded 的任务付费，却永远拿不到产物（历史事故：客户端收到 502）。
+		h.logger.Warn("media_gateway.idempotency_degraded_after_create",
+			zap.String("local_id", record.LocalID),
+			zap.String("status", record.Status),
+			zap.String("model", record.PublicModel),
+			zap.Error(err),
+		)
+	}
+	return resolveMediaCreateOutcome(record, replayed, err)
+}
+
+// errMediaCreateRecordMissing 表示幂等协调器报告成功，却没能给出任务记录。
+//
+// 这是内部不一致（存储里的响应体无法还原为任务记录）。必须显式报错：调用方
+// 依赖非 nil 的 *MediaTaskRecord 渲染响应，静默返回 nil 会在下一行解引用时 panic。
+var errMediaCreateRecordMissing = errors.New("media gateway: media create result missing task record")
+
+// resolveMediaCreateOutcome 收敛"幂等协调器 + 任务创建"的结果。
+//
+// 不变量：任务一旦落库就不再被后续步骤的失败推翻 —— record 非空时一律按成功
+// 返回（无论幂等协调器是否报错），因为任务可能已经计费，客户端只有拿到
+// local_id 才能查询/下载产物。record 为空时才把错误向上冒泡。
+func resolveMediaCreateOutcome(record *service.MediaTaskRecord, replayed bool, err error) (*service.MediaTaskRecord, bool, error) {
+	if record != nil {
+		return record, replayed, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return nil, false, errMediaCreateRecordMissing
 }
 
 // resolveMediaIdempotencyKey 决定本次创建用哪个幂等键。
@@ -376,12 +409,7 @@ func (h *MediaGatewayHandler) createMediaTask(c *gin.Context) mediaCreateOutcome
 	record, replayed, err := h.mediaCreateIdempotent(c, kind, apiKey, subject, publicModel, body)
 	if err != nil {
 		reqLog.Error("media_gateway.create_task_failed", zap.Error(err))
-		// 参数契约类错误（如 resolution 档位非法）应返回 400 而非上游故障。
-		var invalidReq *service.MediaInvalidRequestError
-		if errors.As(err, &invalidReq) {
-			return fail(http.StatusBadRequest, "invalid_request_error", invalidReq.Reason)
-		}
-		if strings.Contains(err.Error(), "no available account") {
+		if errors.Is(err, service.ErrNoAvailableMediaAccount) || strings.Contains(err.Error(), "no available account") {
 			// 选号失败发生在计费之前：任务表与用量明细都不会有记录，
 			// 这条日志是运营侧唯一的排障线索（哪个分组缺哪个模型）。
 			reqLog.Warn("media_gateway.no_available_account",
@@ -390,9 +418,12 @@ func (h *MediaGatewayHandler) createMediaTask(c *gin.Context) mediaCreateOutcome
 				zap.String("model", publicModel),
 				zap.String("kind", string(kind)),
 			)
-			return fail(http.StatusServiceUnavailable, "capacity_error", mediaNoAvailableAccountMessage(publicModel))
 		}
-		return fail(http.StatusBadGateway, "api_error", "Media generation request failed")
+		status, errType, message, retryAfter := mediaCreateErrorDetail(err, publicModel)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		return fail(status, errType, message)
 	}
 
 	reqLog.Info("media_gateway.create_task_succeeded",
@@ -417,6 +448,38 @@ func mediaNoAvailableAccountMessage(model string) string {
 		"当前分组没有可服务模型 %s 的可用账号：请在该分组内添加支持此模型的账号并挂上该模型，或改用 composite 分组由平台按模型自动选择通道",
 		trimmed,
 	)
+}
+
+// mediaCreateErrorDetail 把"创建媒体任务失败"的错误映射为 HTTP 状态、错误类型、
+// 用户可读消息与 Retry-After 秒数。
+//
+// 分级原则（避免历史上"一切创建失败都 502"的误导）：
+//   - 参数契约错误（如 resolution 档位非法）→ 400，客户端改参数才有意义；
+//   - 选号失败（分组里没有账号挂该模型）→ 503 + 容量提示，运营据此挂账号；
+//   - 带 HTTP 语义的基础设施错误（幂等键冲突 409、幂等存储不可用 503 等）原样
+//     透出并附带 Retry-After，客户端才不会把"该重试/该换键"误判为上游故障；
+//   - 其余才是真正的上游/未知故障 → 502。
+//
+// 注意：任务已落库的情形不会走到这里（见 resolveMediaCreateOutcome），
+// 因此本函数只负责"确实没创建出任务"的错误。
+func mediaCreateErrorDetail(err error, publicModel string) (status int, errType, message string, retryAfter int) {
+	var invalidReq *service.MediaInvalidRequestError
+	if errors.As(err, &invalidReq) {
+		return http.StatusBadRequest, "invalid_request_error", invalidReq.Reason, 0
+	}
+	// errors.Is 判定哨兵错误；文案兜底保留，兼容旧版 service 返回的裸字符串错误。
+	if errors.Is(err, service.ErrNoAvailableMediaAccount) || strings.Contains(err.Error(), "no available account") {
+		return http.StatusServiceUnavailable, "capacity_error", mediaNoAvailableAccountMessage(publicModel), 0
+	}
+	var appErr *infraerrors.ApplicationError
+	if errors.As(err, &appErr) && appErr.Code >= 400 && appErr.Code <= 599 {
+		errType = "api_error"
+		if appErr.Code < 500 {
+			errType = "invalid_request_error"
+		}
+		return int(appErr.Code), errType, appErr.Message, service.RetryAfterSecondsFromError(err)
+	}
+	return http.StatusBadGateway, "api_error", "Media generation request failed", 0
 }
 
 // mediaGroupPlatform 取分组平台名，仅用于日志字段（分组可能未预加载）。
