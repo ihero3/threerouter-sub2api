@@ -407,8 +407,8 @@ const providerDescriptions: Record<string, { en: string; zh: string }> = {
     zh: 'GLM-5.3 是智谱 AI 的开源 MoE 旗舰模型，拥有 200K 上下文，擅长 8 小时自主智能体编码，在 SWE-Bench Pro 复杂软件工程任务中排名第一。'
   },
   'seedance-2.0': {
-    en: 'Contact support via ticket after recharge. Premium video models require dedicated service.',
-    zh: '充值后通过工单联系使用，好的视频模型就要专人服务。'
+    en: 'Seedance 2.0 accepts image, video, audio and text inputs, and generates, edits and extends videos with high-fidelity detail reproduction and stable character consistency — giving users director-level control.',
+    zh: 'Seedance 2.0 支持图像、视频、音频、文本等多模态输入，具备视频生成、编辑与延长能力，可高精度还原物品细节、音色、风格与运镜，保持稳定角色特征，赋予使用者如同导演般的掌控权。'
   },
   'gpt-image-2': {
     en: 'GPT-Image-2 (ChatGPT Images 2.0), launched by OpenAI in April 2026, is a flagship image model with reasoning, accurate Chinese rendering, high-res output and batch generation.',
