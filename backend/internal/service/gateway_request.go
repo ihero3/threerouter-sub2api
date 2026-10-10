@@ -1369,6 +1369,38 @@ func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel strin
 	return DefaultEffortForThinkingEnabled(mappedModel)
 }
 
+// isCCThinkingTypeUnsupportedError 判断 CC 上游 400 是否因为模型不支持
+// thinking 参数（或其取值）。火山方舟等托管 GLM 的部分模型（如 glm-5.3-flash）
+// 只能思考：客户端为"关闭思考"发的 `thinking: {"type": "disabled"}` 会被以
+// 400 InvalidParameter 拒绝——"thinking.type `disabled` is not supported by
+// this model"（线上工单 ae3c1bc8，账号「火山国内-顾-glm-5.3-flash」）。
+func isCCThinkingTypeUnsupportedError(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "error.message").String()))
+	if message == "" {
+		// 少数上游把原因放在顶层或 error 不是对象，退化到整包匹配。
+		message = strings.ToLower(string(body))
+	}
+	return strings.Contains(message, "thinking.type") && strings.Contains(message, "not supported")
+}
+
+// stripThinkingFromBody 删除 CC 请求体里的 thinking 参数。
+//
+// 删除整个对象而不是猜测改写取值：上游既已明确拒绝该参数，最稳妥的自愈是回退到
+// "不带 thinking"的缺省形态（模型默认行为），而不是赌上游支持哪个取值。
+func stripThinkingFromBody(body []byte) ([]byte, bool) {
+	if !gjson.GetBytes(body, "thinking").Exists() {
+		return body, false
+	}
+	stripped, err := sjson.DeleteBytes(body, "thinking")
+	if err != nil {
+		return body, false
+	}
+	return stripped, true
+}
+
 // NormalizeGLMOpenAIReasoningEffort rewrites OpenAI Chat Completions
 // reasoning_effort values to the GLM native scale used by z.ai: high/max.
 // It only applies to glm-* mapped models and leaves all other providers untouched.

@@ -249,6 +249,46 @@ func TestCCUpstreamSelfHealBodyReasonSelection(t *testing.T) {
 	require.False(t, changed)
 }
 
+// ---------------------------------------------------------------------------
+// 线上工单 ae3c1bc8 的回归：火山方舟 GLM-5.3-flash 不接受客户端"关闭思考"
+// 发的 thinking.type=disabled，400 InvalidParameter 拒绝。自愈做法：剥离整个
+// thinking 字段（回退到模型默认行为）后重发一次，不维护厂商表。
+// ---------------------------------------------------------------------------
+
+// ccSelfHealThinkingRejectionBody 是线上真实报文（火山方舟）。
+const ccSelfHealThinkingRejectionBody = `{"error":{"code":"InvalidParameter","message":"thinking.type ` + "`disabled`" + ` is not supported by this model Request id: 021791594035475c5962d2ff0c11c118c6b5d934e5fbaa16c2d31","param":"","type":"BadRequest"}}`
+
+// 端到端：上游明确拒绝 thinking 参数且请求体带 thinking → 剥离后自愈。
+func TestCCUpstreamSelfHealBodyStripsThinkingOnUnsupported(t *testing.T) {
+	body := []byte(`{"model":"glm-5-3-flash","messages":[],"thinking":{"type":"disabled"}}`)
+
+	// 1) thinking.type=disabled 被拒 → 删除整个 thinking 字段。
+	adjusted, reason, changed := ccUpstreamSelfHealBody(body, []byte(ccSelfHealThinkingRejectionBody))
+	require.True(t, changed)
+	require.Equal(t, "thinking parameter not supported", reason)
+	require.False(t, gjson.GetBytes(adjusted, "thinking").Exists())
+	require.Equal(t, "glm-5-3-flash", gjson.GetBytes(adjusted, "model").String())
+
+	// 2) thinking.type=enabled 被拒（模型完全不支持该参数）→ 同样剥离。
+	enabledBody := []byte(`{"model":"glm-5-3-flash","messages":[],"thinking":{"type":"enabled"}}`)
+	adjusted, reason, changed = ccUpstreamSelfHealBody(enabledBody, []byte(ccSelfHealThinkingRejectionBody))
+	require.True(t, changed)
+	require.Equal(t, "thinking parameter not supported", reason)
+	require.False(t, gjson.GetBytes(adjusted, "thinking").Exists())
+
+	// 3) 请求体里没有 thinking 字段 → 不改（无关 400 保持原样）。
+	_, _, changed = ccUpstreamSelfHealBody([]byte(ccSelfHealPlainBody), []byte(ccSelfHealThinkingRejectionBody))
+	require.False(t, changed)
+
+	// 4) 其他不相关错误 → 不得触发剥离。
+	_, _, changed = ccUpstreamSelfHealBody(body, []byte(ccSelfHealPlainBadRequestBody))
+	require.False(t, changed)
+
+	// 5) effort 被拒的报文（含 "not supported" 但无 thinking.type）→ 不误触发。
+	_, _, changed = ccUpstreamSelfHealBody(body, []byte(`{"error":{"message":"'reasoning_effort' is not supported on this model"}}`))
+	require.False(t, changed)
+}
+
 // 端到端 HTTP 级：客户端发 minimal，上游 400 → 自愈重发一次并带上 low，交回成功响应。
 func TestCCSelfHealRetriesOnceOnReasoningEffortValueRejection(t *testing.T) {
 	gin.SetMode(gin.TestMode)

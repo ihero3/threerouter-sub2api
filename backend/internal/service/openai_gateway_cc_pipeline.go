@@ -198,10 +198,12 @@ func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body 
 // userAgent 为空时保留默认 UA；Grok 的默认 UA 兜底由调用方解析后传入。
 //
 // 另含一层错误驱动自愈：上游以 400 明确说明"这次请求哪里不接受"时，按其说明改写
-// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前两类：
+// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前三类：
 //   - 不支持 json_schema 结构化输出 → 降级为 json_object（isCCJSONSchemaUnsupportedError）
 //   - 不接受客户端给的 reasoning_effort 取值 → 按上游自己给的可接受档位就近对齐
 //     （upstreamReasoningEffortAllowedValuesFromErrorBody）
+//   - 模型不支持 thinking 参数（或其取值，如火山 GLM-5.3-flash 收到
+//     thinking.type=disabled）→ 剥离整个 thinking 字段（isCCThinkingTypeUnsupportedError）
 //
 // 自愈的变更范围被刻意压到最小——**只有重发拿到 <400 才改变结果**：
 //   - 重发成功：交回成功的响应（原本必然 400 的请求被救活，纯收益）；
@@ -310,6 +312,11 @@ func ccUpstreamSelfHealBody(body, errorBody []byte) ([]byte, string, bool) {
 	if allowed, ok := upstreamReasoningEffortAllowedValuesFromErrorBody(errorBody); ok {
 		if adjusted, changed := clampReasoningEffortToAllowedValues(body, allowed); changed {
 			return adjusted, "reasoning_effort value rejected", true
+		}
+	}
+	if isCCThinkingTypeUnsupportedError(errorBody) {
+		if stripped, changed := stripThinkingFromBody(body); changed {
+			return stripped, "thinking parameter not supported", true
 		}
 	}
 	return body, "", false
