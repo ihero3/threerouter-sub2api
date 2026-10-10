@@ -437,6 +437,8 @@ export default {
       description: '管理和配置可用的AI模型',
       copy: '复制模型名称',
       hint: '更多模型通过 API Key 获取',
+      loginHint: '登录后查看优惠价格',
+      loginAction: '立即登录',
       status: {
         available: '可用'
       },

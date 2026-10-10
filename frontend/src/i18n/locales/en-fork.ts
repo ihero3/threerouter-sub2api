@@ -433,6 +433,8 @@ export default {
       description: 'Manage and configure available AI models',
       copy: 'Copy model name',
       hint: 'Access More Models via API Key',
+      loginHint: 'Log in to view discounted prices',
+      loginAction: 'Log In',
       status: {
         available: 'Available'
       },

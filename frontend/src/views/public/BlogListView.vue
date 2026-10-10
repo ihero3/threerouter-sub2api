@@ -40,7 +40,7 @@
           <RouterLink :to="`/blog/${b.id}`" class="group flex flex-col sm:flex-row">
             <div
               v-if="b.cover_image"
-              class="h-44 w-full shrink-0 overflow-hidden bg-gray-100 dark:bg-dark-800 sm:h-auto sm:w-48"
+              class="h-44 w-full shrink-0 overflow-hidden bg-gray-100 dark:bg-dark-800 sm:h-40 sm:w-64"
             >
               <img
                 :src="b.cover_image"

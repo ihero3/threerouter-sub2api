@@ -8,6 +8,24 @@
         </div>
       </div>
 
+      <div
+        v-if="!authStore.isAuthenticated"
+        class="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center"
+      >
+        <div class="flex items-center gap-2 text-sm text-amber-800">
+          <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <span>{{ t('admin.models.loginHint') }}</span>
+        </div>
+        <RouterLink
+          to="/login"
+          class="shrink-0 rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-amber-600"
+        >
+          {{ t('admin.models.loginAction') }}
+        </RouterLink>
+      </div>
+
       <div class="card">
         <div class="p-6">
           <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -29,7 +47,13 @@
               <template v-else>
                 <div class="flex items-start gap-3">
                   <div :class="['flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', getProviderStyle(model.vendor).gradient]">
-                    <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <PlatformIcon
+                      v-if="vendorIconPlatforms[model.vendor]"
+                      :platform="vendorIconPlatforms[model.vendor]"
+                      size="lg"
+                      class="text-white"
+                    />
+                    <svg v-else class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" :d="getProviderStyle(model.vendor).icon" />
                     </svg>
                   </div>
@@ -49,7 +73,7 @@
                         </svg>
                       </button>
                     </div>
-                    <p class="mt-1 text-sm text-gray-500">{{ getProviderDescription(model.provider) }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ getProviderDescription(model) }}</p>
                   </div>
                 </div>
                 <div class="mt-4 flex items-center gap-2 text-xs text-gray-400">
@@ -57,7 +81,29 @@
                   <span class="rounded-full bg-green-100 px-2 py-1 text-green-600">{{ t('admin.models.status.available') }}</span>
                 </div>
                 <div v-if="model.category !== 'hint'" class="mt-3 flex flex-wrap gap-3 text-xs">
-                  <template v-if="model.category === 'image'">
+                  <!-- Channel pricing (from /admin/channels/pricing), lowest price across channels -->
+                  <template v-if="model.price">
+                    <template v-if="model.price.kind === 'token'">
+                      <div class="flex items-center gap-1">
+                        <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
+                        <span class="font-medium text-gray-700">{{ formatPrice(model.price.input) }}</span>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <span class="text-gray-500">{{ t('admin.models.pricing.output') }}:</span>
+                        <span class="font-medium text-gray-700">{{ formatPrice(model.price.output) }}</span>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
+                        <span class="font-medium text-gray-700">1$≈{{ model.price.rate || '-' }}Tokens</span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
+                      <span class="font-medium text-gray-700">{{ formatUnitPrice(model.price.price) }}$ {{ unitLabel(model.price.kind) }}</span>
+                    </template>
+                  </template>
+                  <!-- Fallback: reference pricing -->
+                  <template v-else-if="model.category === 'image'">
                     <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
                     <span class="font-medium text-gray-700">0.3$ per image</span>
                   </template>
@@ -121,9 +167,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import PlatformIcon, { type VendorIconPlatform } from '@/components/common/PlatformIcon.vue'
 import { perTokenToMTok } from '@/components/admin/channel/types'
 import { useAuthStore } from '@/stores/auth'
 import { apiClient } from '@/api/client'
+import channelsAPI from '@/api/admin/channels'
+import type { BillingMode, ChannelModelPricing } from '@/api/admin/channels'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -137,6 +186,23 @@ interface Model {
   vendor: string
   category: string
   icon: string
+  price?: ChannelPriceView
+}
+
+/** Price view resolved from channel pricing (/admin/channels/pricing). */
+type ChannelPriceView =
+  | { kind: 'token'; input: number | null; output: number | null; rate: string | null }
+  | { kind: 'per_request'; price: number | null }
+  | { kind: 'image'; price: number | null }
+  | { kind: 'video'; price: number | null }
+
+/** Aggregated channel pricing for one model (lowest across all channels). */
+interface ChannelAgg {
+  mode: BillingMode
+  platform: string
+  input: number | null      // USD per MTokens
+  output: number | null     // USD per MTokens
+  perRequest: number | null // USD per request / image / second
 }
 
 interface ModelPricing {
@@ -171,7 +237,112 @@ const fetchModelPricing = async (modelName: string) => {
   }
 }
 
+// Channel pricing state: exact model name → aggregated price, plus wildcard patterns
+const channelExactPrices = ref<Record<string, ChannelAgg>>({})
+const channelWildcardPrices = ref<{ prefix: string; agg: ChannelAgg }[]>([])
+
+const minNum = (a: number | null, b: number | null): number | null => {
+  if (b === null) return a
+  if (a === null) return b
+  return Math.min(a, b)
+}
+
+// Fetch all channels and aggregate model pricing (lowest price wins across channels)
+const fetchChannelPrices = async () => {
+  if (!authStore.isAuthenticated) return
+  try {
+    const { items } = await channelsAPI.list(1, 1000)
+    const exact: Record<string, ChannelAgg> = {}
+    const wild: { prefix: string; agg: ChannelAgg }[] = []
+
+    const entryAgg = (entry: ChannelModelPricing): ChannelAgg | null => {
+      if (entry.billing_mode === 'token') {
+        const input = entry.input_price != null ? perTokenToMTok(entry.input_price) : null
+        const output = entry.output_price != null ? perTokenToMTok(entry.output_price) : null
+        if (input === null && output === null) return null
+        return { mode: 'token', platform: entry.platform, input, output, perRequest: null }
+      }
+      // per_request / image / video: unit price stored in per_request_price
+      let perRequest = entry.per_request_price
+      if (perRequest == null && entry.intervals && entry.intervals.length > 0) {
+        const vals = entry.intervals
+          .map(iv => iv.per_request_price)
+          .filter((v): v is number => v != null && v > 0)
+        if (vals.length > 0) perRequest = Math.min(...vals)
+      }
+      if (perRequest == null) return null
+      return { mode: entry.billing_mode, platform: entry.platform, input: null, output: null, perRequest }
+    }
+
+    const mergeAgg = (cur: ChannelAgg, next: ChannelAgg): ChannelAgg => ({
+      mode: cur.mode,
+      platform: cur.platform,
+      input: minNum(cur.input, next.input),
+      output: minNum(cur.output, next.output),
+      perRequest: minNum(cur.perRequest, next.perRequest),
+    })
+
+    for (const ch of items) {
+      for (const entry of ch.model_pricing || []) {
+        const agg = entryAgg(entry)
+        if (!agg) continue
+        for (const rawName of entry.models || []) {
+          let name = String(rawName).trim().toLowerCase()
+          // Normalize vendor-prefixed names, e.g. "deepseek-ai/deepseek-v4-pro" -> "deepseek-v4-pro",
+          // so they match the same card instead of creating duplicates
+          const slash = name.lastIndexOf('/')
+          if (slash >= 0) name = name.slice(slash + 1)
+          if (!name) continue
+          if (name.endsWith('*')) {
+            const prefix = name.slice(0, -1)
+            if (!prefix) continue // bare '*' is a platform-level default, skip
+            const found = wild.find(w => w.prefix === prefix)
+            if (found) found.agg = mergeAgg(found.agg, agg)
+            else wild.push({ prefix, agg })
+          } else {
+            exact[name] = exact[name] ? mergeAgg(exact[name], agg) : agg
+          }
+        }
+      }
+    }
+    channelExactPrices.value = exact
+    channelWildcardPrices.value = wild
+  } catch (error) {
+    // Silently ignore channel pricing fetch errors
+  }
+}
+
+const getChannelAgg = (modelName: string): ChannelAgg | null => {
+  const key = modelName.toLowerCase()
+  const matches: ChannelAgg[] = []
+  const exact = channelExactPrices.value[key]
+  if (exact) matches.push(exact)
+  for (const w of channelWildcardPrices.value) {
+    if (key.startsWith(w.prefix)) matches.push(w.agg)
+  }
+  if (matches.length === 0) return null
+  return matches.reduce((acc, cur) => ({
+    mode: acc.mode,
+    platform: acc.platform,
+    input: minNum(acc.input, cur.input),
+    output: minNum(acc.output, cur.output),
+    perRequest: minNum(acc.perRequest, cur.perRequest),
+  }))
+}
+
+const buildPriceView = (agg: ChannelAgg): ChannelPriceView => {
+  if (agg.mode === 'token') {
+    const p = agg.input ?? agg.output
+    const rate = p !== null && p > 0 ? `${(1 / p).toFixed(2)}M` : null
+    return { kind: 'token', input: agg.input, output: agg.output, rate }
+  }
+  if (agg.mode === 'image') return { kind: 'image', price: agg.perRequest }
+  if (agg.mode === 'video') return { kind: 'video', price: agg.perRequest }
+  return { kind: 'per_request', price: agg.perRequest }
+}
+
 onMounted(() => {
+  fetchChannelPrices()
   models.value.forEach(model => {
     if (model.name && model.category !== 'hint') {
       fetchModelPricing(model.name)
@@ -182,6 +353,17 @@ onMounted(() => {
 const formatPrice = (price: number | null | undefined): string => {
   if (price === null || price === undefined) return '-'
   return `$${price.toFixed(2)}/MTokens`
+}
+
+const formatUnitPrice = (price: number | null | undefined): string => {
+  if (price === null || price === undefined) return '-'
+  return String(parseFloat(price.toPrecision(4)))
+}
+
+const unitLabel = (kind: 'per_request' | 'image' | 'video'): string => {
+  if (kind === 'image') return 'per image'
+  if (kind === 'video') return 'per second'
+  return 'per request'
 }
 
 const fallbackPriceFromRate = (rate: string | undefined): number | undefined => {
@@ -290,6 +472,43 @@ const providerDescriptions: Record<string, { en: string; zh: string }> = {
   }
 }
 
+// Per-vendor fallback descriptions for channel models without a dedicated entry.
+// Sourced from each vendor's official website (about/mission statements).
+const vendorDescriptions: Record<string, { en: string; zh: string }> = {
+  deepseek: {
+    en: 'DeepSeek focuses on breakthroughs in large language models and reasoning, making world-class AGI affordable for everyone through efficient architectures and an open ecosystem.',
+    zh: '深度求索（DeepSeek）专注于大语言模型与推理能力的底层突破，以更高效的架构和开放的生态，让每个人都能低成本使用世界一流的通用人工智能。'
+  },
+  zhipu: {
+    en: 'Z.ai (Zhipu), spun off from Tsinghua University KEG, pursues the vision of "letting machines think like humans". GLM models are built for complex software engineering and long-horizon agent tasks with up to 1M context.',
+    zh: '智谱（Z.ai）源自清华大学技术成果转化，以“让机器像人一样思考”为愿景。GLM 系列面向复杂软件工程与长程智能体任务，支持 1M 上下文。'
+  },
+  moonshot: {
+    en: 'Moonshot AI seeks the optimal way to convert energy into intelligence. Kimi models are natively multimodal with 1M-token context, built for long-horizon coding, knowledge work, and deep reasoning.',
+    zh: '月之暗面（Moonshot AI）以“寻求将能源转化为智能的最优解”为愿景。Kimi 系列原生多模态、支持 1M 上下文，面向长程编码、知识工作与深度推理。'
+  },
+  alibaba: {
+    en: 'Qwen is Alibaba Tongyi Lab\'s model family spanning language, coding, reasoning and multimodal models — full-size, multimodal, and widely open-sourced.',
+    zh: '通义千问（Qwen）是阿里巴巴通义实验室的大模型家族，覆盖大语言、编程、推理与多模态模型，全尺寸、多模态、广开源。'
+  },
+  minimax: {
+    en: 'MiniMax is a global AI foundation model company with the mission "Intelligence with Everyone", building multimodal models with strong coding, agentic and ultra-long-context capabilities.',
+    zh: 'MiniMax 是全球领先的通用人工智能科技公司，以“与所有人共创智能”为使命，自研多模态大模型具备强大的代码与 Agent 能力及超长上下文处理能力。'
+  },
+  bytedance: {
+    en: 'Doubao is ByteDance\'s model family — flagship agent-grade general models for production tasks, with upgraded coding, agent and multimodal capabilities.',
+    zh: '豆包（Doubao）是字节跳动的大模型家族，旗舰级 Agent 通用模型面向生产级任务，全面升级编程、智能体与多模态能力。'
+  },
+  anthropic: {
+    en: 'Anthropic is an AI safety and research company building reliable, interpretable, and steerable AI systems (the Claude family).',
+    zh: 'Anthropic 是一家专注 AI 安全的研究公司，致力于构建可靠、可解释、可操控的 AI 系统（Claude 系列）。'
+  },
+  openai: {
+    en: 'OpenAI\'s mission is to ensure that artificial general intelligence (AGI) benefits all of humanity; GPT is its flagship general-purpose model family.',
+    zh: 'OpenAI 的使命是确保通用人工智能（AGI）造福全人类；GPT 系列是其面向通用任务的旗舰模型家族。'
+  }
+}
+
 // Dual pricing: 1.5折 (15%) and 9折 (90%) of official price
 // Official prices sourced from https://api.huanxing.ai/pricing
 interface DualPricing {
@@ -322,6 +541,51 @@ const getDualPricing = (modelName: string): { tier15: { input: number; output: n
     tier15: { input: pricing.officialInput * 0.15, output: pricing.officialOutput * 0.15 },
     tier90: { input: pricing.officialInput * 0.90, output: pricing.officialOutput * 0.90 },
   }
+}
+
+// Platform (from channel pricing) → vendor key used by providerStyles
+const platformVendors: Record<string, string> = {
+  anthropic: 'anthropic',
+  openai: 'openai',
+  gemini: 'default',
+  antigravity: 'default',
+  grok: 'default',
+  kimi: 'moonshot',
+  zhipu: 'zhipu',
+  deepseek: 'deepseek',
+  moonshot: 'moonshot',
+  minimax: 'minimax',
+  bytedance: 'bytedance',
+  alibaba: 'alibaba',
+  qwen: 'alibaba',
+}
+
+const billingModeCategory = (mode: BillingMode): string => {
+  if (mode === 'image') return 'image'
+  if (mode === 'video') return 'multimodal'
+  return 'text'
+}
+
+// Infer the real vendor from the model name itself, e.g. "glm-5.2" served via
+// an OpenAI-compatible channel should still show the Zhipu logo.
+const modelNameVendorRules: Array<[RegExp, string]> = [
+  [/deepseek/, 'deepseek'],
+  [/glm/, 'zhipu'],
+  [/(kimi|moonshot)/, 'moonshot'],
+  [/(qwen|tongyi)/, 'alibaba'],
+  [/(minimax|abab)/, 'minimax'],
+  [/(doubao|seedance)/, 'bytedance'],
+  [/claude/, 'anthropic'],
+  [/(gemini|gemma)/, 'gemini'],
+  [/^(gpt|chatgpt|o\d(-|$)|dall-e|whisper|sora)/, 'openai'],
+]
+
+const inferVendorFromModelName = (name: string): string | null => {
+  const n = name.trim().toLowerCase()
+  for (const [pattern, vendor] of modelNameVendorRules) {
+    if (pattern.test(n)) return vendor
+  }
+  return null
 }
 
 const models = computed<Model[]>(() => {
@@ -357,12 +621,45 @@ const models = computed<Model[]>(() => {
     )
   }
 
+  // Attach channel pricing (lowest across channels) to known models
+  for (const m of base) {
+    if (m.category === 'hint') continue
+    const agg = getChannelAgg(m.name)
+    if (agg) m.price = buildPriceView(agg)
+  }
+
+  // Append models configured in channel pricing that are not listed yet (keep all existing cards)
+  const known = new Set(base.map(m => m.name.toLowerCase()))
+  const channelOnly: Model[] = Object.entries(channelExactPrices.value)
+    .filter(([name]) => name && !known.has(name))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, agg]) => ({
+      id: `ch:${name}`,
+      name,
+      provider: name,
+      // Prefer the vendor inferred from the model name itself — channel models
+      // are often served via OpenAI-compatible platforms, which would otherwise
+      // show the same OpenAI logo for every card.
+      vendor: inferVendorFromModelName(name) || platformVendors[agg.platform] || 'default',
+      category: billingModeCategory(agg.mode),
+      icon: '',
+      price: buildPriceView(agg),
+    }))
+  base.push(...channelOnly)
+
+  // Domestic (CN) vendors first, then the rest; sorted by model name within each group
+  const cnVendors = new Set(['alibaba', 'bytedance', 'deepseek', 'minimax', 'moonshot', 'zhipu'])
+  base.sort((a, b) => {
+    const group = (v: string) => (cnVendors.has(v) ? 0 : 1)
+    return group(a.vendor) - group(b.vendor) || a.name.localeCompare(b.name)
+  })
+
   base.push({ id: '9', name: '', provider: '', vendor: 'hint', category: 'hint', icon: '' })
   return base
 })
 
-const getProviderDescription = (providerKey: string) => {
-  const desc = providerDescriptions[providerKey]
+const getProviderDescription = (model: Pick<Model, 'provider' | 'vendor'>) => {
+  const desc = providerDescriptions[model.provider] || vendorDescriptions[model.vendor]
   if (!desc) return ''
   return locale.value === 'zh' ? desc.zh : desc.en
 }
@@ -412,6 +709,22 @@ const providerStyles: Record<string, { gradient: string; icon: string }> = {
 
 const getProviderStyle = (vendor: string) => {
   return providerStyles[vendor] || providerStyles.default
+}
+
+// Vendor key -> official logo platform rendered by PlatformIcon.
+// Vendors without an official logo keep the generic heroicon fallback.
+const vendorIconPlatforms: Record<string, VendorIconPlatform> = {
+  anthropic: 'anthropic',
+  openai: 'openai',
+  deepseek: 'deepseek',
+  zhipu: 'zhipu',
+  moonshot: 'kimi',
+  minimax: 'minimax',
+  alibaba: 'qwen',
+  bytedance: 'bytedance',
+  gemini: 'gemini',
+  grok: 'grok',
+  antigravity: 'antigravity',
 }
 
 const categoryLabels: Record<string, string> = {
