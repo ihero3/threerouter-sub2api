@@ -176,6 +176,7 @@ func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey
 //
 // 注意顺序：先 GLM effort 归一化，再 DeepSeek response_format 归一化——后者会改
 // response_format 并可能注入 system 提示，放在最后可确保它看到的是最终形态。
+// reasoning_content 回填与两者互不干扰，放最后（只增字段、不动既有内容）。
 func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body []byte) ([]byte, bool) {
 	if len(body) == 0 {
 		return body, false
@@ -185,6 +186,11 @@ func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body 
 		body, changed = normalized, true
 	}
 	if normalized, ok := NormalizeDeepSeekResponseFormat(account, upstreamModel, body); ok {
+		body, changed = normalized, true
+	}
+	// DeepSeek 思考模式：携带 tools 的会话必须完整回传 assistant 的
+	// reasoning_content，否则 400（线上工单 e975d24c）。
+	if normalized, ok := applyCCReasoningPassback(account, upstreamModel, body); ok {
 		body, changed = normalized, true
 	}
 	return body, changed
@@ -198,12 +204,14 @@ func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body 
 // userAgent 为空时保留默认 UA；Grok 的默认 UA 兜底由调用方解析后传入。
 //
 // 另含一层错误驱动自愈：上游以 400 明确说明"这次请求哪里不接受"时，按其说明改写
-// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前三类：
+// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前四类：
 //   - 不支持 json_schema 结构化输出 → 降级为 json_object（isCCJSONSchemaUnsupportedError）
 //   - 不接受客户端给的 reasoning_effort 取值 → 按上游自己给的可接受档位就近对齐
 //     （upstreamReasoningEffortAllowedValuesFromErrorBody）
 //   - 模型不支持 thinking 参数（或其取值，如火山 GLM-5.3-flash 收到
 //     thinking.type=disabled）→ 剥离整个 thinking 字段（isCCThinkingTypeUnsupportedError）
+//   - 思考模式要求回传 assistant 的 reasoning_content（DeepSeek 系）→ 补字段
+//     （isCCReasoningContentPassbackError）
 //
 // 自愈的变更范围被刻意压到最小——**只有重发拿到 <400 才改变结果**：
 //   - 重发成功：交回成功的响应（原本必然 400 的请求被救活，纯收益）；
@@ -317,6 +325,14 @@ func ccUpstreamSelfHealBody(body, errorBody []byte) ([]byte, string, bool) {
 	if isCCThinkingTypeUnsupportedError(errorBody) {
 		if stripped, changed := stripThinkingFromBody(body); changed {
 			return stripped, "thinking parameter not supported", true
+		}
+	}
+	// DeepSeek 思考模式：上游明确报 assistant 历史缺少 reasoning_content 时补齐并重发。
+	// 预判回填（applyCCReasoningPassback）正常已挡住，这里是模型名被映射成无法识别的
+	// 别名等漏判情形的兜底。
+	if isCCReasoningContentPassbackError(errorBody) {
+		if filled, _, changed := backfillCCReasoningContent(body); changed {
+			return filled, "reasoning_content passback required", true
 		}
 	}
 	return body, "", false
