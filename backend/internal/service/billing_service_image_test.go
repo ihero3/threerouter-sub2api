@@ -129,7 +129,13 @@ func TestGetImageUnitPrice_GroupPriorityOverDefault(t *testing.T) {
 	require.InDelta(t, 0.20, cost.TotalCost, 0.0001)
 }
 
-// TestGetImageUnitPrice_PartialGroupConfig 测试分组部分配置时回退默认
+// TestGetImageUnitPrice_PartialGroupConfig 测试分组部分配置时沿降档链回退。
+//
+// 设计（见 getImageUnitPrice 注释与 image_billing_size_test.go 的
+// ImageBillingSizeFallbacksDescends）：分组没配请求档位时向「已配的低档」回退，
+// 而不是直接掉到平台默认价，避免默认价与本分组价格尺度脱节造成静默错价。
+// 注意这会让 2K/4K 也按分组 1K 价计费 —— 运营若期望「缺档回退默认价」，
+// 需要改的是 getImageUnitPrice，而不是本测试。
 func TestGetImageUnitPrice_PartialGroupConfig(t *testing.T) {
 	svc := &BillingService{}
 
@@ -143,13 +149,13 @@ func TestGetImageUnitPrice_PartialGroupConfig(t *testing.T) {
 	cost := svc.CalculateImageCost("gemini-3-pro-image", "1K", 1, groupConfig, 1.0)
 	require.InDelta(t, 0.10, cost.TotalCost, 0.0001)
 
-	// 2K 回退默认价格 $0.201 (1.5倍)
+	// 2K：分组未配 2K 价 → 降档链 [2K,1K] 命中 1K 分组价 $0.10
 	cost = svc.CalculateImageCost("gemini-3-pro-image", "2K", 1, groupConfig, 1.0)
-	require.InDelta(t, 0.201, cost.TotalCost, 0.0001)
+	require.InDelta(t, 0.10, cost.TotalCost, 0.0001)
 
-	// 4K 回退默认价格 $0.268 (翻倍)
+	// 4K：分组未配 4K/2K 价 → 降档链 [4K,2K,1K] 命中 1K 分组价 $0.10
 	cost = svc.CalculateImageCost("gemini-3-pro-image", "4K", 1, groupConfig, 1.0)
-	require.InDelta(t, 0.268, cost.TotalCost, 0.0001)
+	require.InDelta(t, 0.10, cost.TotalCost, 0.0001)
 }
 
 // TestGetDefaultImagePrice_FallbackHardcoded 测试 PricingService 无数据时使用硬编码默认值

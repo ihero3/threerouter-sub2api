@@ -362,7 +362,7 @@ func TestAuthService_Register_EmailVerifyInvalid(t *testing.T) {
 
 	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "", "", "", "")
 	require.ErrorIs(t, err, ErrInvalidVerifyCode)
-	require.ErrorContains(t, err, "verify code")
+	require.ErrorContains(t, err, "verification code")
 }
 
 func TestAuthService_Register_EmailExists(t *testing.T) {

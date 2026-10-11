@@ -541,20 +541,20 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		)
 		shouldDisable = s.handle403(ctx, account, upstreamMsg, responseBody)
 	case 429:
-		// Spark 影子：限流状态 100% 由 QueryUsage 驱动，保持原有冷却逻辑，不在此处永久禁用。
-		if account.IsShadow() {
-			s.handle429(ctx, account, headers, responseBody)
-			shouldDisable = false
-			break
-		}
-		// 429 限流：直接禁用 channel，触发故障转移切换到可用源，让用户无感知。
-		// 需管理员在后台核实限流已解除后手动恢复。
-		msg := "Rate limit exceeded (429): auto-disabled, requires manual recovery"
-		if upstreamMsg != "" {
-			msg = "Rate limit exceeded (429): " + upstreamMsg
-		}
-		s.handleAuthError(ctx, account, msg)
-		shouldDisable = true
+		// 429 是「可恢复」信号，绝不在此处永久禁用账号（曾一度直接 handleAuthError 置
+		// status=error，需人工恢复，会把瞬时限流放大成账号批量下线）。统一交给 handle429
+		// 按平台分流，全部 shouldDisable=false：
+		//   - OpenAI OAuth：同账号重试窗口内不落盘，窗口耗尽才冷却到 reset（fastpath）；
+		//   - Spark 影子：限流状态 100% 由 QueryUsage 驱动，仅走内存冷却、不落盘；
+		//   - 国产供应商（Kimi/Zhipu/DeepSeek）：余额不足→临时停调，Coding Plan 窗口
+		//     耗尽→冷却到快照重置点（applyCNProviderReactive429）；
+		//   - 其余平台：按响应头 reset 落盘限流，或退化为可配置秒级兜底冷却。
+		// 当前请求的可用性由 failover（429 在 failover 名单内）保证，不依赖永久禁用。
+		// 回归锁：openai_account_runtime_block_fastpath_test.go、
+		// ratelimit_service_anthropic_window_limit_test.go、
+		// openai_gateway_grok_test.go(TestOpenAIWSHTTPBridgeSSEErrorSideEffectsRunOncePerPlatform)。
+		s.handle429(ctx, account, headers, responseBody)
+		shouldDisable = false
 	case 529:
 		// Handled after pool/custom-code policy gates above.
 		shouldDisable = false

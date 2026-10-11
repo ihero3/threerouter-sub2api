@@ -1548,14 +1548,13 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
 			expectFailover: true,
-			// 48d6c875d 起，非 shadow 账号的 429 走 handleAuthError 永久熔断
-			// （SetError），而非 handle429 的可恢复冷却（SetRateLimited）：
-			// 限流 source 直接禁用，故障转移到下一个可用账号，需管理员手动恢复。
+			// 429 走 handle429 可恢复冷却：按 resets_at 落库 SetRateLimited，
+			// 到期自动恢复调度，不永久禁用账号（SetError）。
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
-				require.Empty(t, repo.rateLimitCalls)
+				require.Len(t, repo.rateLimitCalls, 1)
 				require.Empty(t, repo.overloadCalls)
-				require.Len(t, repo.setErrorCalls, 1)
-				require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
+				require.True(t, time.Until(repo.rateLimitCalls[0]) > 24*time.Hour)
+				require.Empty(t, repo.setErrorCalls, "429 必须走可恢复冷却，不得永久禁用账号")
 			},
 		},
 		{
@@ -1612,13 +1611,12 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 				return fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%d}}`, resetAt)
 			}(),
 			expectFailover: true,
-			// 同 oauth_429_rate_limit：非 shadow 账号的 429 一律经
-			// handleAuthError 永久熔断（SetError）。
+			// 同 oauth_429_rate_limit：429 一律走 handle429 可恢复冷却（SetRateLimited）。
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
-				require.Empty(t, repo.rateLimitCalls)
+				require.Len(t, repo.rateLimitCalls, 1)
 				require.Empty(t, repo.overloadCalls)
-				require.Len(t, repo.setErrorCalls, 1)
-				require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
+				require.True(t, time.Until(repo.rateLimitCalls[0]) > 24*time.Hour)
+				require.Empty(t, repo.setErrorCalls, "429 必须走可恢复冷却，不得永久禁用账号")
 			},
 		},
 		{
