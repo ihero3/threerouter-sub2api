@@ -850,3 +850,65 @@ func TestIdempotencyCoordinator_HelperBranches(t *testing.T) {
 	_, err = c.decodeStoredResponse(&invalid)
 	require.Error(t, err)
 }
+
+// ctxObservingIdempotencyRepo 记录终态写入时 context 的取消状态。
+//
+// 用途：锁死「幂等终态写入必须脱离客户端请求 ctx」这条不变量。若把
+// MarkSucceeded / MarkFailedRetryable 改回使用请求 ctx，请求在 execute
+// 期间被取消（客户端断开）就会让写入失败、记录永远停在 processing，
+// 调用方拿同一个键重试最长被挡 30s + 10min。回退即变红。
+type ctxObservingIdempotencyRepo struct {
+	inMemoryIdempotencyRepo
+	markSucceededCtxErr error
+	markFailedCtxErr    error
+}
+
+func (r *ctxObservingIdempotencyRepo) MarkSucceeded(ctx context.Context, id int64, responseStatus int, responseBody string, expiresAt time.Time) error {
+	r.markSucceededCtxErr = ctx.Err()
+	return r.inMemoryIdempotencyRepo.MarkSucceeded(ctx, id, responseStatus, responseBody, expiresAt)
+}
+
+func (r *ctxObservingIdempotencyRepo) MarkFailedRetryable(ctx context.Context, id int64, errorReason string, lockedUntil, expiresAt time.Time) error {
+	r.markFailedCtxErr = ctx.Err()
+	return r.inMemoryIdempotencyRepo.MarkFailedRetryable(ctx, id, errorReason, lockedUntil, expiresAt)
+}
+
+func TestIdempotencyCoordinator_TerminalMarkDetachedFromCanceledRequestCtx(t *testing.T) {
+	repo := &ctxObservingIdempotencyRepo{inMemoryIdempotencyRepo: *newInMemoryIdempotencyRepo()}
+	coordinator := NewIdempotencyCoordinator(repo, DefaultIdempotencyConfig())
+
+	// 成功侧：客户端在 execute 期间断开，请求 ctx 已取消。
+	// 终态写入必须跑在未取消的 context 上，否则记录卡在 processing。
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := coordinator.Execute(canceledCtx, IdempotencyExecuteOptions{
+		Scope:          "scope-detached-success",
+		IdempotencyKey: "k-detached-success",
+		Method:         "POST",
+		Route:          "/detached/success",
+		ActorScope:     "u:1",
+		Payload:        map[string]any{"a": 1},
+	}, func(context.Context) (any, error) {
+		return map[string]any{"ok": true}, nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, repo.markSucceededCtxErr,
+		"MarkSucceeded 必须脱离已取消的请求 ctx，否则幂等键会被锁死到 ProcessingHardCap")
+
+	// 失败侧：同样必须脱离。否则失败记录既不进 failed_retryable 退避窗口，
+	// 也永远留在 processing，两条路都会挡住后续重试。
+	_, err = coordinator.Execute(canceledCtx, IdempotencyExecuteOptions{
+		Scope:          "scope-detached-failure",
+		IdempotencyKey: "k-detached-failure",
+		Method:         "POST",
+		Route:          "/detached/failure",
+		ActorScope:     "u:1",
+		Payload:        map[string]any{"a": 2},
+	}, func(context.Context) (any, error) {
+		return nil, errors.New("boom")
+	})
+	require.Error(t, err)
+	require.NoError(t, repo.markFailedCtxErr,
+		"MarkFailedRetryable 必须脱离已取消的请求 ctx")
+}

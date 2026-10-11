@@ -302,6 +302,27 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			}
 			record.MediaURLs = urls
 		}
+		// 硬不变量：succeeded 必须有可交付产物。
+		// 音频 adapter 走 OpenAI 兼容 /audio/speech 时返回的是原始字节
+		// （InlineBytes），若在这里丢掉，任务会被记成 succeeded 且 MediaURL
+		// 为空 —— 用户被扣费却在轮询接口查不到任何产物（扣钱不给货）。
+		// 有对象存储就落存储换成稳定 URL；没有存储则无法按 URL 交付。
+		if kind == MediaKindAudio && record.Status == "succeeded" &&
+			record.MediaURL == "" && len(createResult.InlineBytes) > 0 {
+			if stored, ok := s.StoreMediaBytes(persistCtx, MediaKindAudio, "audio/mpeg", createResult.InlineBytes); ok {
+				record.MediaURL = stored
+			}
+		}
+		// 兜底：任何模态报 succeeded 却既无产物也无上游任务号 = 上游给了空壳。
+		// 与 openAICompatMediaAdapter 的 taskID/URL 判空同口径：降级为 failed，
+		// 让下面的失败分支退预扣 + 写 0 费用日志，绝不按成功计费。
+		if record.Status == "succeeded" && record.MediaURL == "" &&
+			len(record.MediaURLs) == 0 && strings.TrimSpace(record.UpstreamTaskID) == "" {
+			record.Status = "failed"
+			if strings.TrimSpace(record.ErrorMessage) == "" {
+				record.ErrorMessage = "upstream reported success but returned no artifact"
+			}
+		}
 		if record.Status == "failed" && kind == MediaKindImage {
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
