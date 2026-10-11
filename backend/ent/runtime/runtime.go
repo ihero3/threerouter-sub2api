@@ -3040,6 +3040,18 @@ func init() {
 	userDescRestrictPublicGroups := userFields[21].Descriptor()
 	// user.DefaultRestrictPublicGroups holds the default value on creation for the restrict_public_groups field.
 	user.DefaultRestrictPublicGroups = userDescRestrictPublicGroups.Default.(bool)
+	// userDescRegisterIP is the schema descriptor for register_ip field.
+	userDescRegisterIP := userFields[22].Descriptor()
+	// user.DefaultRegisterIP holds the default value on creation for the register_ip field.
+	user.DefaultRegisterIP = userDescRegisterIP.Default.(string)
+	// user.RegisterIPValidator is a validator for the "register_ip" field. It is called by the builders before save.
+	user.RegisterIPValidator = userDescRegisterIP.Validators[0].(func(string) error)
+	// userDescRegisterCountry is the schema descriptor for register_country field.
+	userDescRegisterCountry := userFields[23].Descriptor()
+	// user.DefaultRegisterCountry holds the default value on creation for the register_country field.
+	user.DefaultRegisterCountry = userDescRegisterCountry.Default.(string)
+	// user.RegisterCountryValidator is a validator for the "register_country" field. It is called by the builders before save.
+	user.RegisterCountryValidator = userDescRegisterCountry.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

@@ -38,6 +38,24 @@ type ChatCompletionsToResponsesOptions struct {
 	// correlation key. Omitting it yields HTTP 400 "The `reasoning_text` in
 	// the thinking mode must be passed back to the API".
 	ReasoningContentByCallID func(callID string) string
+
+	// ReplayReasoningOnPlainTextTurns, when true, makes a pure-text assistant
+	// turn (no tool_calls) that carries reasoning_content emit a standalone
+	// reasoning input item (Responses content[].reasoning_text) instead of
+	// wrapping the reasoning in <thinking> visible text.
+	//
+	// This is REQUIRED by DeepSeek/Kimi/GLM-style thinking providers on the
+	// Responses protocol: they track the assistant's reasoning across every
+	// turn, and a follow-up turn that omits the reasoning item (even for a
+	// non-tool turn) is rejected with HTTP 400 "The `reasoning_content` in
+	// the thinking mode must be passed back to the API".
+	//
+	// The flag is gated to the passback-required protocol family
+	// (ResolveThinkingProtocol == ThinkingProtocolPassbackRequired) by the
+	// caller. It must NOT be enabled for gpt/o-series or unknown-protocol
+	// models: emitting a reasoning item there is unverified and may break
+	// those upstreams, so they keep the legacy <thinking> text behavior.
+	ReplayReasoningOnPlainTextTurns bool
 }
 
 // ChatCompletionsToResponses converts a Chat Completions request into a
@@ -218,7 +236,16 @@ func chatAssistantToResponses(m ChatMessage, opts *ChatCompletionsToResponsesOpt
 	}
 
 	emittedReasoningItem := false
-	if len(m.ToolCalls) > 0 && reasoning != "" {
+	// Emit a reasoning item when there is reasoning to replay. Two cases:
+	//   1. A tool-bearing turn (always allowed): the upstream needs the
+	//      reasoning that produced the tool call, replayed before the
+	//      function_call item.
+	//   2. A pure-text turn when the upstream requires reasoning round-trip
+	//      (ReplayReasoningOnPlainTextTurns): DeepSeek/Kimi/GLM track
+	//      reasoning across every turn, so a non-tool turn must also carry a
+	//      reasoning item, or the upstream rejects with HTTP 400. gpt/o-series
+	//      and unknown-protocol models keep the legacy <thinking> text path.
+	if reasoning != "" && (len(m.ToolCalls) > 0 || (opts != nil && opts.ReplayReasoningOnPlainTextTurns)) {
 		reasoningItem, err := makeReasoningReplayInputItem(reasoning)
 		if err != nil {
 			return nil, err

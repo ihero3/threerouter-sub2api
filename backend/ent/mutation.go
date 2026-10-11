@@ -65887,6 +65887,8 @@ type UserMutation struct {
 	rpm_limit                     *int
 	addrpm_limit                  *int
 	restrict_public_groups        *bool
+	register_ip                   *string
+	register_country              *string
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -67141,6 +67143,78 @@ func (m *UserMutation) ResetRestrictPublicGroups() {
 	m.restrict_public_groups = nil
 }
 
+// SetRegisterIP sets the "register_ip" field.
+func (m *UserMutation) SetRegisterIP(s string) {
+	m.register_ip = &s
+}
+
+// RegisterIP returns the value of the "register_ip" field in the mutation.
+func (m *UserMutation) RegisterIP() (r string, exists bool) {
+	v := m.register_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegisterIP returns the old "register_ip" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRegisterIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegisterIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegisterIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegisterIP: %w", err)
+	}
+	return oldValue.RegisterIP, nil
+}
+
+// ResetRegisterIP resets all changes to the "register_ip" field.
+func (m *UserMutation) ResetRegisterIP() {
+	m.register_ip = nil
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (m *UserMutation) SetRegisterCountry(s string) {
+	m.register_country = &s
+}
+
+// RegisterCountry returns the value of the "register_country" field in the mutation.
+func (m *UserMutation) RegisterCountry() (r string, exists bool) {
+	v := m.register_country
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegisterCountry returns the old "register_country" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRegisterCountry(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegisterCountry is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegisterCountry requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegisterCountry: %w", err)
+	}
+	return oldValue.RegisterCountry, nil
+}
+
+// ResetRegisterCountry resets all changes to the "register_country" field.
+func (m *UserMutation) ResetRegisterCountry() {
+	m.register_country = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -68093,7 +68167,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -68169,6 +68243,12 @@ func (m *UserMutation) Fields() []string {
 	if m.restrict_public_groups != nil {
 		fields = append(fields, user.FieldRestrictPublicGroups)
 	}
+	if m.register_ip != nil {
+		fields = append(fields, user.FieldRegisterIP)
+	}
+	if m.register_country != nil {
+		fields = append(fields, user.FieldRegisterCountry)
+	}
 	return fields
 }
 
@@ -68227,6 +68307,10 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.RpmLimit()
 	case user.FieldRestrictPublicGroups:
 		return m.RestrictPublicGroups()
+	case user.FieldRegisterIP:
+		return m.RegisterIP()
+	case user.FieldRegisterCountry:
+		return m.RegisterCountry()
 	}
 	return nil, false
 }
@@ -68286,6 +68370,10 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRpmLimit(ctx)
 	case user.FieldRestrictPublicGroups:
 		return m.OldRestrictPublicGroups(ctx)
+	case user.FieldRegisterIP:
+		return m.OldRegisterIP(ctx)
+	case user.FieldRegisterCountry:
+		return m.OldRegisterCountry(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -68469,6 +68557,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRestrictPublicGroups(v)
+		return nil
+	case user.FieldRegisterIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegisterIP(v)
+		return nil
+	case user.FieldRegisterCountry:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegisterCountry(v)
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
@@ -68707,6 +68809,12 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRestrictPublicGroups:
 		m.ResetRestrictPublicGroups()
+		return nil
+	case user.FieldRegisterIP:
+		m.ResetRegisterIP()
+		return nil
+	case user.FieldRegisterCountry:
+		m.ResetRegisterCountry()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

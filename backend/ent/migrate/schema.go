@@ -2531,6 +2531,8 @@ var (
 		{Name: "frozen_balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "restrict_public_groups", Type: field.TypeBool, Default: false},
+		{Name: "register_ip", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "register_country", Type: field.TypeString, Size: 8, Default: ""},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
