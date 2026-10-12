@@ -264,16 +264,42 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDis
 	}
 }
 
-// 汇率只作用于订阅订单，余额充值订单不受影响。
-func TestCalculateCreateOrderPayAmountForBalanceIgnoresSubscriptionRate(t *testing.T) {
+// 余额充值订单同样以 USD 计价，CNY 网关下与订阅一致按配置汇率换算为人民币收款。
+func TestCalculateCreateOrderPayAmountForBalanceConvertsCNYAmountWhenRateConfigured(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "CNY", payment.OrderTypeBalance, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if amountStr != "357.50" || amount != 357.5 {
+		t.Fatalf("balance CNY pay amount = (%q, %v), want (357.50, 357.5)", amountStr, amount)
+	}
+}
+
+// 余额充值 USD 网关（如 Stripe/Airwallex 配 USD）直付，不做换算。
+func TestCalculateCreateOrderPayAmountForBalanceKeepsUSDWhenGatewayIsUSD(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "USD", payment.OrderTypeBalance, 7.15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if amountStr != "50.00" || amount != 50 {
-		t.Fatalf("balance CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
+		t.Fatalf("balance USD pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
+	}
+}
+
+// 换算是 opt-in：未配置汇率（rate=0）时，CNY 余额充值保持直付的存量行为。
+func TestCalculateCreateOrderPayAmountForBalanceKeepsDirectAmountWhenRateDisabled(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "CNY", payment.OrderTypeBalance, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "50.00" || amount != 50 {
+		t.Fatalf("balance CNY pay amount without rate = (%q, %v), want (50.00, 50)", amountStr, amount)
 	}
 }
 

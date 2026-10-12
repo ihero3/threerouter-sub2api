@@ -9,6 +9,16 @@ import (
 
 const DefaultPaymentCurrency = "CNY"
 
+// IsCNY 判断网关结算币种是否为人民币。
+// 与 DefaultPaymentCurrency 语义区分：CNY 判定必须稳定，不随默认币种配置而改变。
+func IsCNY(currency string) bool {
+	normalized, err := NormalizePaymentCurrency(currency)
+	if err != nil {
+		return false
+	}
+	return normalized == DefaultPaymentCurrency
+}
+
 type paymentCurrencyAmountUnit struct {
 	apiMinorUnit      int
 	maxFractionDigits int

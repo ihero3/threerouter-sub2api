@@ -645,18 +645,20 @@ func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string
 
 func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToCnyRate float64) (string, float64, error) {
 	paymentAmount := limitAmount
-	if orderType == payment.OrderTypeSubscription {
-		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToCnyRate, currency)
+	switch orderType {
+	case payment.OrderTypeSubscription, payment.OrderTypeBalance:
+		// 订阅与余额充值均以 USD 计价，CNY 网关下需按配置汇率换算为人民币收款。
+		paymentAmount = calculateGatewayBaseAmountFromUSD(limitAmount, usdToCnyRate, currency)
 	}
 	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
 }
 
-// calculateSubscriptionGatewayBaseAmount 计算订阅订单的网关扣款基数。
-// 换算是显式 opt-in：仅当管理员配置了订阅汇率（rate > 0，1 USD = rate CNY）
-// 且网关币种为 CNY 时，按 price × rate 换算；未配置时保持 price 直付的存量行为。
-func calculateSubscriptionGatewayBaseAmount(amount, usdToCnyRate float64, currency string) float64 {
+// calculateGatewayBaseAmountFromUSD 计算以 USD 计价订单（订阅 / 余额充值）的网关扣款基数。
+// 换算是显式 opt-in：仅当管理员配置了 USD→CNY 汇率（rate > 0，1 USD = rate CNY）
+// 且网关币种为 CNY 时，按 amount × rate 换算；未配置或网关为 USD 时保持直付的存量行为。
+func calculateGatewayBaseAmountFromUSD(amount, usdToCnyRate float64, currency string) float64 {
 	rate := normalizeSubscriptionUSDToCNYRate(usdToCnyRate)
-	if rate <= 0 || currency != payment.DefaultPaymentCurrency {
+	if rate <= 0 || !payment.IsCNY(currency) {
 		return amount
 	}
 	return decimal.NewFromFloat(amount).

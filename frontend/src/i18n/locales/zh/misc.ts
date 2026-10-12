@@ -415,6 +415,8 @@ export default {
     amountTooHigh: '最高金额为 {max}',
     amountNoMethod: '该金额没有可用的支付方式',
     rechargeRatePreview: '当前倍率：1 {currency} = {usd} USD',
+    exchangeRate: '汇率',
+    exchangeRatePreview: '支付金额 = 充值金额 × 汇率：{usd} × {rate} = {cny}',
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
     stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
