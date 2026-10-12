@@ -32,6 +32,7 @@
     </header>
 
     <main class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:py-10">
+      <PromoBanner class="mb-8" />
       <div v-if="loading" class="flex min-h-[320px] items-center justify-center">
         <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
       </div>
@@ -102,6 +103,7 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import Icon from '@/components/icons/Icon.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { getLocale } from '@/i18n'
 import { sanitizeUrl } from '@/utils/url'
 import LogoSvg from '@/assets/icons/logo.svg'

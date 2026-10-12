@@ -2297,7 +2297,9 @@ export default {
           us: 'Market-reasonable pricing',
           them: 'Extremely low even 90% off'
         }
-      }
+      },
+      complianceCta: 'View Compliance & AI Governance',
+      complianceHint: 'EU AI Act · GDPR · ZDR · DPA reports and templates'
     },
     employeeApply: {
       label: 'Bottom-Up',

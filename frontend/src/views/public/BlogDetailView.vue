@@ -36,6 +36,8 @@
 
       <!-- 右侧正文 -->
       <main class="min-w-0 flex-1">
+        <PromoBanner class="mb-6" />
+
         <div v-if="loading" class="flex min-h-[320px] items-center justify-center">
           <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
         </div>
@@ -94,6 +96,7 @@ import { formatDateTime } from '@/utils/format'
 import type { UserBlog } from '@/types'
 import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
 import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { setLocale, getLocale } from '@/i18n'
 import { useSEO } from '@/composables/useSEO'
 

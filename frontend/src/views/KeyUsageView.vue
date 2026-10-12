@@ -35,6 +35,8 @@
 
     <!-- Main Content -->
     <main class="flex-1 w-full max-w-5xl mx-auto px-6 py-12">
+      <PromoBanner class="mb-10" />
+
       <!-- Hero -->
       <div class="text-center mb-12">
         <h1 class="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-gray-900 dark:text-white">
@@ -422,6 +424,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { buildGatewayUrl } from '@/api/client'
 import { formatDateLocalInput } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'

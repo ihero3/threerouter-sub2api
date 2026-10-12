@@ -8,8 +8,9 @@
         </div>
       </div>
 
-      <div
-        v-if="!authStore.isAuthenticated"
+      <PromoBanner />
+
+      <div v-if="!authStore.isAuthenticated"
         class="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center"
       >
         <div class="flex items-center gap-2 text-sm text-amber-800">
@@ -168,6 +169,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PlatformIcon, { type VendorIconPlatform } from '@/components/common/PlatformIcon.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { perTokenToMTok } from '@/components/admin/channel/types'
 import { useAuthStore } from '@/stores/auth'
 import { apiClient } from '@/api/client'

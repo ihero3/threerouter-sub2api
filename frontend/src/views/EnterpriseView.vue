@@ -45,6 +45,10 @@
 
     <!-- Main Content -->
     <main class="relative z-10 flex-1">
+      <div class="mx-auto max-w-7xl px-6 pt-10">
+        <PromoBanner />
+      </div>
+
       <!-- Hero -->
       <section id="hero" class="relative px-6 pt-12 pb-20">
         <div class="mx-auto max-w-7xl">
@@ -478,6 +482,18 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Compliance entry -->
+          <div class="mt-8 flex flex-col items-center gap-3">
+            <button
+              @click="router.push('/compliance')"
+              class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0757b8] to-[#20f5b4] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/10 transition-all hover:scale-105"
+            >
+              {{ t('enterprise.compare.complianceCta') }}
+              <span aria-hidden="true">→</span>
+            </button>
+            <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('enterprise.compare.complianceHint') }}</p>
+          </div>
         </div>
       </section>
 
@@ -662,6 +678,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { useSEO } from '@/composables/useSEO'
 
 const { t, tm, locale } = useI18n()

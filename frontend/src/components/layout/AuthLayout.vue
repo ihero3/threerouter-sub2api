@@ -25,7 +25,7 @@
     </div>
 
     <!-- Content Container -->
-    <div class="relative z-10 w-full max-w-md">
+    <div class="relative z-10 w-full" :class="maxWidth">
       <!-- Logo/Brand -->
       <div class="mb-8 text-center">
         <!-- Custom Logo or Default Logo -->
@@ -64,6 +64,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+
+// 允许调用方按需放宽卡片宽度（例如登录页需要容纳活动广告横幅）。
+withDefaults(defineProps<{ maxWidth?: string }>(), {
+  maxWidth: 'max-w-md'
+})
 
 const siteName = computed(() => 'Three Router')
 const siteLogo = computed(() => '/logo.svg')

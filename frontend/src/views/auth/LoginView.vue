@@ -1,5 +1,5 @@
 <template>
-  <AuthLayout>
+  <AuthLayout max-width="max-w-lg">
     <div class="space-y-6">
       <!-- Title -->
       <div class="text-center">
@@ -10,6 +10,7 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
+      <PromoBanner />
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
@@ -234,6 +235,7 @@ import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {

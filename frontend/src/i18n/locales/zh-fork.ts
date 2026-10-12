@@ -2373,7 +2373,9 @@ export default {
           us: '市场合理价位',
           them: '极低价甚至 1 折'
         }
-      }
+      },
+      complianceCta: '查看合规与 AI 治理能力',
+      complianceHint: 'EU AI Act · GDPR · ZDR · DPA 等合规报告与模板'
     },
     employeeApply: {
       label: '自下而上',

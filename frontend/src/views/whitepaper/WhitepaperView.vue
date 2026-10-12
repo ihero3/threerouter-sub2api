@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import LogoSvg from '@/assets/icons/logo.svg'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -97,6 +98,7 @@ const chapters = [
 
     <main class="relative z-10 flex-1 px-6 py-10">
       <div class="mx-auto max-w-5xl">
+        <PromoBanner class="mb-12" />
         <div :class="['mb-12 rounded-2xl p-10 text-center', isDark ? 'bg-gray-800/50' : 'bg-gradient-to-r from-blue-50 to-purple-50']">
           <div :class="['mb-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5', isDark ? 'bg-blue-900/30' : 'bg-blue-100']">
             <span :class="['h-2.5 w-2.5 rounded-full', isDark ? 'bg-blue-400' : 'bg-blue-500']"></span>

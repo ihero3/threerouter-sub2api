@@ -1,5 +1,20 @@
 export default {
 
+  // Promo / Campaign banner (home, blog, model plaza)
+  promo: {
+    badge: 'Limited-Time Offer',
+    title: 'More Credits, Less Spend',
+    cta: 'Top Up Now',
+    items: {
+      newUser: 'New users: $10 free',
+      refer: 'Refer a friend: $6',
+      topUp1: 'Top up $1 → get $10 free ($11)',
+      topUp10: 'Top up $10 → get $100 free ($110)',
+      deepseek: 'DeepSeek open model: $1 ≈ 30M tokens',
+      freedom: '~$3/month = token freedom'
+    }
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: 'My Subscriptions',

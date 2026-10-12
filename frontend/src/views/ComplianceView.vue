@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import LogoSvg from '@/assets/icons/logo.svg'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { setLocale } from '@/i18n'
 
 const { t, locale } = useI18n()
@@ -161,6 +162,7 @@ const industryTemplates = computed(() => [
 
     <main class="relative z-10 flex-1 px-6 pt-16">
       <div class="mx-auto flex max-w-7xl flex-col">
+        <PromoBanner class="mb-16" />
         <div class="mb-16 flex flex-col items-center text-center">
           <div :class="['mb-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5', isDark ? 'bg-blue-900/30' : 'bg-gradient-to-r from-blue-100/50 to-cyan-100/50']">
             <span :class="['h-2.5 w-2.5 animate-pulse rounded-full', isDark ? 'bg-blue-400' : 'bg-blue-500']"></span>

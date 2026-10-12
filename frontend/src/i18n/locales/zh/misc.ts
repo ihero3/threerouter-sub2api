@@ -1,5 +1,20 @@
 export default {
 
+  // Promo / Campaign banner (home, blog, model plaza)
+  promo: {
+    badge: '限时活动',
+    title: '充值越多，送得越多',
+    cta: '立即充值',
+    items: {
+      newUser: '新用户注册：送 $10',
+      refer: '邀请好友：送 $6',
+      topUp1: '充值 $1 → 送 $10（共 $11）',
+      topUp10: '充值 $10 → 送 $100（共 $110）',
+      deepseek: 'DeepSeek 开源模型：$1 ≈ 3000 万 tokens',
+      freedom: '每月约 $3 = 实现 Token 自由'
+    }
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: '我的订阅',

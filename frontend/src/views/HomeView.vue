@@ -277,6 +277,9 @@
           </div>
         </div>
 
+        <!-- Promo / Campaign Banner -->
+        <PromoBanner class="mb-16" />
+
         <!-- Supported AI Models -->
         <div class=" mb-16 rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
           <div class="mb-6 text-center">
@@ -930,6 +933,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { CustomMenuItem } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import LogoSvg from '@/assets/icons/logo.webp'
 import { useSEO } from '@/composables/useSEO'
 import { sanitizeUrl } from '@/utils/url'

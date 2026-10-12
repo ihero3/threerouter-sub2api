@@ -23,6 +23,8 @@
         </div>
       </div>
 
+      <PromoBanner class="mb-6" />
+
       <div v-if="loading && blogs.length === 0" class="flex min-h-[240px] items-center justify-center">
         <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
       </div>
@@ -106,6 +108,7 @@ import { publicBlogAPI } from '@/api'
 import { formatDateTime } from '@/utils/format'
 import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
 import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
+import PromoBanner from '@/components/common/PromoBanner.vue'
 import { setLocale, getLocale } from '@/i18n'
 
 const { t } = useI18n()
