@@ -331,6 +331,62 @@ describe('PaymentView recharge rate preview', () => {
     expect(en.payment.rechargeRatePreview).toBe('Current rate: 1 {currency} = {usd} USD')
     expect(zh.payment.rechargeRatePreview).toBe('当前倍率：1 {currency} = {usd} USD')
   })
+
+  it('converts a USD recharge amount into the CNY gateway currency using the configured rate', async () => {
+    routeState.path = '/purchase'
+    routeState.query = {}
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({
+      subscription_usd_to_cny_rate: 7.15,
+      methods: {
+        wxpay: { ...checkoutInfoFixture().data.methods.wxpay, currency: 'CNY' },
+      },
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 10)
+    await flushPromises()
+
+    const converted = formatPaymentAmount(71.5, 'CNY')
+    expect(wrapper.text()).toContain(converted)
+    expect(wrapper.text()).not.toContain(formatPaymentAmount(10, 'CNY'))
+    expect(wrapper.findAll('button').some(button => button.text().includes(converted))).toBe(true)
+  })
+
+  it('keeps the USD recharge amount on USD gateways', async () => {
+    routeState.path = '/purchase'
+    routeState.query = {}
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({
+      subscription_usd_to_cny_rate: 7.15,
+      methods: {
+        stripe: { ...checkoutInfoFixture().data.methods.wxpay, currency: 'USD' },
+      },
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 10)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(formatPaymentAmount(10, 'USD'))
+    expect(wrapper.text()).not.toContain(formatPaymentAmount(71.5, 'CNY'))
+  })
 })
 
 describe('PaymentView subscription confirmation amounts', () => {

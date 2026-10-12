@@ -65,8 +65,17 @@
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(validAmount) }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(rechargePaymentAmount) }}</span>
                 </div>
+                <template v-if="showExchangeRate">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.exchangeRate') }}</span>
+                    <span class="text-gray-900 dark:text-white">1 USD = {{ usdToCnyRate.toFixed(2) }} {{ selectedCurrency }}</span>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('payment.exchangeRatePreview', { rate: usdToCnyRate.toFixed(2), usd: formatPaymentAmount(validAmount, 'USD', localeCode), cny: formatSelectedPaymentAmount(rechargePaymentAmount) }) }}
+                  </p>
+                </template>
                 <div v-if="feeRate > 0" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
                   <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(feeAmount) }}</span>
@@ -80,7 +89,7 @@
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
                 </div>
                 <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { currency: selectedCurrency, usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                  {{ t('payment.rechargeRatePreview', { currency: 'USD', usd: balanceRechargeMultiplier.toFixed(2) }) }}
                 </p>
               </div>
             </div>
@@ -287,7 +296,7 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
@@ -519,8 +528,8 @@ const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
-// 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
-const subscriptionUsdToCnyRate = computed(() => {
+// USD→CNY 换算汇率（1 USD = X CNY）。0 = 未配置，此时所有订单保持按 USD 直付（与后端 opt-in 条件严格镜像）。
+const usdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
@@ -592,9 +601,11 @@ function ceilPaymentAmount(value: number, currency: string): number {
   return Math.ceil(value * factor) / factor
 }
 
-function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
-  const rate = subscriptionUsdToCnyRate.value
-  if (rate <= 0 || currency !== DEFAULT_PAYMENT_CURRENCY) return roundPaymentAmount(value, currency)
+// USD→网关币种换算：仅当配置了汇率（rate > 0）且网关币种为 CNY 时按汇率换算，
+// 其余情况（USD 直付 / 未配置汇率）保持原值，与后端 calculateGatewayBaseAmountFromUSD 严格镜像。
+function usdToGatewayAmount(value: number, currency: string): number {
+  const rate = usdToCnyRate.value
+  if (rate <= 0 || currency !== 'CNY') return roundPaymentAmount(value, currency)
   return roundPaymentAmount(value * rate, currency)
 }
 
@@ -603,7 +614,12 @@ function formatSelectedPaymentAmount(value: number): string {
 }
 
 function formatSelectedSubscriptionPaymentAmount(value: number): string {
-  return formatSelectedPaymentAmount(subscriptionPaymentAmountForCurrency(value, selectedCurrency.value))
+  return formatSelectedPaymentAmount(usdToGatewayAmount(value, selectedCurrency.value))
+}
+
+// 支付方式在网关侧的结算币种（限额、换算均以此币种为准）。
+function methodCurrency(methodType: string): string {
+  return normalizePaymentCurrency(visibleMethods.value[methodType]?.currency)
 }
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -613,47 +629,59 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
       type,
       display_name: ml?.display_name,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: ml?.available !== false && amountFitsMethod(rechargeTotalAmountForCurrency(validAmount.value, methodCurrency(type)), type),
     }
   })
 )
 
 const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
+const rechargePaymentAmount = computed(() => usdToGatewayAmount(validAmount.value, selectedCurrency.value))
+// 仅当充值订单确实按汇率换算为人民币时，展示汇率与换算公式（网关为 CNY 且已配置汇率）。
+const showExchangeRate = computed(() => usdToCnyRate.value > 0 && selectedCurrency.value === 'CNY')
 const feeAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
+  feeRate.value > 0 && rechargePaymentAmount.value > 0
+    ? ceilPaymentAmount((rechargePaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
     : 0
 )
 const totalAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.round((validAmount.value + feeAmount.value) * 100) / 100
-    : validAmount.value
+  feeRate.value > 0 && rechargePaymentAmount.value > 0
+    ? roundPaymentAmount(rechargePaymentAmount.value + feeAmount.value, selectedCurrency.value)
+    : rechargePaymentAmount.value
 )
+
+// 充值订单在指定网关币种下的应付总额（换算后金额 + 手续费），用于限额校验，与后端 pay_amount 口径一致。
+function rechargeTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = usdToGatewayAmount(value, currency)
+  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
+  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
+  return roundPaymentAmount(paymentAmount + fee, currency)
+}
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
+  if (!enabledMethods.value.some((m) => amountFitsMethod(rechargeTotalAmountForCurrency(validAmount.value, methodCurrency(m)), m))) {
     return t('payment.amountNoMethod')
   }
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    const selectedAmount = rechargeTotalAmountForCurrency(validAmount.value, selectedCurrency.value)
+    if (ml.single_min > 0 && selectedAmount < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && selectedAmount > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
 
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && amountFitsMethod(rechargeTotalAmountForCurrency(validAmount.value, selectedCurrency.value), selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 const subPaymentAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
-  return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
+  return usdToGatewayAmount(price, selectedCurrency.value)
 })
 
 const subFeeAmount = computed(() => {
@@ -667,7 +695,7 @@ const subTotalAmount = computed(() => {
 })
 
 function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
+  const paymentAmount = usdToGatewayAmount(value, currency)
   if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
   const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
   return roundPaymentAmount(paymentAmount + fee, currency)
@@ -696,8 +724,8 @@ const canSubmitSubscription = computed(() =>
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (amt <= 0 || amountFitsMethod(rechargeTotalAmountForCurrency(amt, methodCurrency(method)), method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(rechargeTotalAmountForCurrency(amt, methodCurrency(m)), m))
   if (available) selectedMethod.value = available
 })
 

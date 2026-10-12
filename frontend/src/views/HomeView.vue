@@ -876,7 +876,14 @@
           </div>
           <!-- Contact Info -->
           <div v-if="contactInfo" class="flex items-center gap-6">
-            <span class="text-gray-400">{{ contactInfo }}</span>
+            <a
+              v-if="contactHref"
+              :href="contactHref"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-gray-400 transition-colors hover:text-gray-700"
+            >{{ contactInfo }}</a>
+            <span v-else class="text-gray-400">{{ contactInfo }}</span>
           </div>
         </div>
         <div class="mt-4 flex items-center justify-center gap-6">
@@ -926,6 +933,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import LogoSvg from '@/assets/icons/logo.webp'
 import { useSEO } from '@/composables/useSEO'
 import { sanitizeUrl } from '@/utils/url'
+import { resolveContactHref } from '@/utils/contactLink'
 
 const { t, locale } = useI18n()
 
@@ -1077,6 +1085,7 @@ const costComparisonBars = [
 
 // Get public settings
 const contactInfo = computed(() => appStore.contactInfo)
+const contactHref = computed(() => resolveContactHref(contactInfo.value))
 const customMenuItems = computed<CustomMenuItem[]>(() => {
   const settings = appStore.cachedPublicSettings
   if (!settings || !settings.custom_menu_items) return []
