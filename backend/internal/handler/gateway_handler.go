@@ -136,13 +136,21 @@ func (h *GatewayHandler) checkRequiredConsents(c *gin.Context, userID int64) boo
 	for _, ct := range requiredConsentTypes {
 		consent, err := h.complianceService.GetUserConsent(c.Request.Context(), userID, ct)
 		if err != nil {
-			reqLog := c.MustGet("req_log").(*zap.Logger)
-			reqLog.Warn("compliance.consent.check.error", zap.Int64("user_id", userID), zap.String("consent_type", ct), zap.Error(err))
+			rl, _ := c.Get("req_log")
+			lg, _ := rl.(*zap.Logger)
+			if lg == nil {
+				lg = logger.L()
+			}
+			lg.Warn("compliance.consent.check.error", zap.Int64("user_id", userID), zap.String("consent_type", ct), zap.Error(err))
 			continue
 		}
 		if consent == nil || !consent.Granted {
-			reqLog := c.MustGet("req_log").(*zap.Logger)
-			reqLog.Info("compliance.consent.missing", zap.Int64("user_id", userID), zap.String("consent_type", ct))
+			rl, _ := c.Get("req_log")
+			lg, _ := rl.(*zap.Logger)
+			if lg == nil {
+				lg = logger.L()
+			}
+			lg.Info("compliance.consent.missing", zap.Int64("user_id", userID), zap.String("consent_type", ct))
 			missingConsents = append(missingConsents, ct)
 		}
 	}
@@ -1305,7 +1313,39 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		c.Writer.WriteHeaderNow()
 		return
 	}
+	// 目录端点交付指标（低基数）：这是非 OpenAI 分组与 OpenAI 分支 fail-open 兜底的
+	// 唯一出口，条目数直接取自即将写出的 body，因此与客户端所见一致。
+	service.RecordCodexCatalogServed(
+		service.CodexCatalogShapeModels,
+		service.CodexCatalogSourceLocal,
+		groupPlatformForCatalogMetrics(apiKey.Group, forcedPlatform),
+		countCodexCatalogEntries(body),
+	)
 	c.Data(http.StatusOK, "application/json", body)
+}
+
+// countCodexCatalogEntries 数出目录 body 的条目数，供低基数观测使用。
+// 解析失败返回 -1，由调用方按「未知」处理（不影响响应）。
+func countCodexCatalogEntries(body []byte) int {
+	var envelope struct {
+		Models []json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return -1
+	}
+	return len(envelope.Models)
+}
+
+// groupPlatformForCatalogMetrics 解析本次目录请求真正生效的平台：显式
+// platformOverride（composite 分组下发时）优先，否则回退分组平台。
+func groupPlatformForCatalogMetrics(group *service.Group, platformOverride string) string {
+	if platform := strings.TrimSpace(platformOverride); platform != "" {
+		return platform
+	}
+	if group == nil {
+		return ""
+	}
+	return group.Platform
 }
 
 func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {

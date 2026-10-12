@@ -4127,6 +4127,11 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		}
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.L().Error("openai_gateway: cyber policy event recorder panic recovered", zap.Any("panic", r))
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if cmSvc != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -280,6 +281,11 @@ func (s *SubscriptionService) maybeInvalidateAssignmentCaches(userID, groupID in
 	s.InvalidateSubCache(userID, groupID)
 	if s.billingCacheService != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("subscription_service: cache invalidate panic recovered", "panic", r)
+				}
+			}()
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
@@ -552,6 +558,11 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 	if s.billingCacheService != nil {
 		userID, groupID := input.UserID, input.GroupID
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("subscription_service: cache invalidate panic recovered", "panic", r)
+				}
+			}()
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
@@ -708,6 +719,11 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 	if s.billingCacheService != nil {
 		userID, groupID := sub.UserID, sub.GroupID
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("subscription_service: cache invalidate panic recovered", "panic", r)
+				}
+			}()
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)

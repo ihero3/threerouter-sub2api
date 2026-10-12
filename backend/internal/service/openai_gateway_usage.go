@@ -1124,6 +1124,11 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.L().Error("openai_gateway_usage: codex snapshot panic recovered", zap.Any("panic", r))
+			}
+		}()
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {

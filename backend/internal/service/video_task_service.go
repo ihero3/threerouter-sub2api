@@ -225,10 +225,13 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 			})
 			// 创建时上游真实时长未知（0），用用户请求时长预估，避免一律按默认 8 秒预扣。
 		} else if cost, costErr := estimateVideoTaskCost(ctx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
-			record.ReservedCost = &cost
-			if s.apiKeyService != nil {
-				_ = s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost)
+		record.ReservedCost = &cost
+		if s.apiKeyService != nil {
+			if qErr := s.apiKeyService.UpdateQuotaUsed(ctx, apiKeyID, cost); qErr != nil {
+				s.logger.Warn("video_task_service: reserve quota used failed",
+					zap.Int64("api_key_id", apiKeyID), zap.Float64("cost", cost), zap.Error(qErr))
 			}
+		}
 		}
 
 		saved, saveErr := s.videoTaskRepo.Create(ctx, record)

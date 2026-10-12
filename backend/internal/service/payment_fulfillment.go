@@ -392,6 +392,11 @@ func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.Payment
 		return
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("payment_fulfillment: notification dispatch panic recovered", "panic", r)
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
 		defer cancel()
 		var err error
