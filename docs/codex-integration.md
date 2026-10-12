@@ -29,35 +29,54 @@ python3 scripts/codex-setup.py --api-key sk-你的平台Key --apply
 
 | 参数 | 作用 |
 |---|---|
-| `--auth env`（默认） | 平台 API Key 放环境变量 `THREEROUTER_API_KEY`，Key 不落盘 |
-| `--auth openai` | 复用 Codex 的 ChatGPT 登录态（`requires_openai_auth = true`） |
+| `--auth bearer` | **平台 API Key 直接写进 provider 段**（`experimental_bearer_token`）；threerouter 这类只认 `sk-` Key 的网关用这个 |
+| `--auth env` | 平台 API Key 放环境变量 `THREEROUTER_API_KEY`，Key 不落盘（桌面端从 Dock 启动时读不到该变量，仅适合 CLI） |
+| `--auth openai` | 复用 Codex 的 ChatGPT 登录态（`requires_openai_auth = true`）；**仅当网关接受 ChatGPT 登录 token 时可用** |
 | `--auth none` | 凭证交给已有的 provider 段，只补目录相关配置 |
 | `--with-catalog-json` / `--no-catalog-json` | 用离线目录 / 纯自动发现（默认跟随是否已有目录文件） |
 | `--codex-home` | 指定 Codex home，便于先在临时目录预演 |
 
+> **认证方式要用实测结果决定，不要照抄文档。** 平台只认平台 API Key 时，`--auth openai`
+> 会让 Codex 发 ChatGPT 登录 token，服务端返回 `401 {"code":"INVALID_API_KEY"}`。
+> 自查一条命令即可判定：拿 `~/.codex/auth.json` 里的 `tokens.access_token` 去打一次
+> `/v1/responses`，401 就说明只能走 `--auth bearer`。
+
 ### 1.2 手写配置
+
+以下模板适用于**只认平台 API Key** 的网关（threerouter 实测属于这一类），
+特点是「目录走本地文件、鉴权走平台 Key」——两件事互不干扰：
 
 ```toml
 # ~/.codex/config.toml
-model = "deepseek-v4-pro"          # 你的默认模型，取目录里的 slug
+model = "deepseek-v4-pro"            # 目录里的 slug
 model_provider = "threerouter"
-model_reasoning_effort = "high"    # 可选；档位取决于所选模型
+model_reasoning_effort = "high"      # 该模型支持的档位
+model_catalog_json = "~/.codex/threerouter-models.json"   # ← 必须在顶层
 
 [model_providers.threerouter]
 name = "threerouter"
 base_url = "https://www.threerouter.com/v1"   # 只写到 /v1
 wire_api = "responses"
-requires_openai_auth = true        # 用 ChatGPT 登录态；平台 Key 改用 env_key
-# env_key = "THREEROUTER_API_KEY"  # 二选一：平台 sk- Key 放环境变量
+experimental_bearer_token = "<你的平台 API Key>"
 ```
 
-如果还想钉死离线目录（最稳、与服务端发现解耦），再加两行：
+`experimental_bearer_token` 会禁用服务端的自动发现，所以这份模板**必须**配
+`model_catalog_json`：目录由本地文件提供，实测服务端 0 次目录请求。
+这条路上两者不是矛盾，而是分工。
+
+如果网关接受 ChatGPT 登录态（换一台部署时先按 §1.1 的自查命令确认），
+才可以用下面这种「零配置自动发现」写法：
 
 ```toml
-model_catalog_json = "~/.codex/threerouter-models.json"   # ← 必须在顶层
+[model_providers.threerouter]
+name = "threerouter"
+base_url = "https://www.threerouter.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+# 不要写 experimental_bearer_token —— 实测这一行会让 0.162 完全跳过自动发现
 ```
 
-下载这份目录文件：
+下载目录文件：
 
 ```bash
 export KEY=sk-你的平台Key
@@ -84,13 +103,29 @@ codex debug models | jq -r '.models[].slug'   # 注意：该命令读的是官�
 
 ## 2. 三个必须知道的坑
 
-### 坑 1：`experimental_bearer_token` 会让 Codex 完全跳过目录发现
+### 坑 1：`experimental_bearer_token` 与「服务端自动发现」互斥
 
 实测（清空缓存、同一份目录、唯一变量是凭证行）：provider 段里存在
-`experimental_bearer_token` 时，Codex 0.162 **一个目录请求都不发**，选择器里只剩内置的官方模型；
-去掉它、或改用 `requires_openai_auth = true` / `env_key`，请求立刻恢复。
+`experimental_bearer_token` 时，Codex 0.162 **一个目录请求都不发**，选择器里只剩内置的官方模型。
 
-这是"升级后选不到模型"最可能的直接诱因。`scripts/codex-setup.py` 会自动把它注释掉。
+但**别急着删它**——它同时是鉴权凭证。服务端若只认平台 API Key（不接受 ChatGPT 登录
+token），删掉它换 `requires_openai_auth = true` 会连推理都打断：
+
+```
+ERROR: unexpected status 401 Unauthorized: {"code":"INVALID_API_KEY","message":"Invalid API key"}
+```
+
+正确组合取决于服务端接受哪种凭证：
+
+| 服务端接受 | provider 段 | 目录来源 |
+|---|---|---|
+| 平台 `sk-` Key（threerouter 实测） | `experimental_bearer_token` | **必须是**本地 `model_catalog_json`（自动发现被禁用） |
+| ChatGPT 登录 token | `requires_openai_auth = true`（不写 bearer token） | 服务端自动发现即可 |
+| 平台 Key，且不想让 Key 落盘 | `env_key`（CLI 场景） | 服务端自动发现 |
+
+即「坑 1」的完整表述是：**两个凭证类型不能混用**。`scripts/codex-setup.py` 的
+`--auth bearer` / `--auth openai` / `--auth env` 分别对应上表三行，并会自动注释掉
+与之冲突的键。
 
 ### 坑 2：`model_catalog_json` 只能写在顶层
 
@@ -202,6 +237,7 @@ PY
 | 条目字段缺失 | 目录被手工改坏 | 用 `scripts/codex-setup.py` 重新生成（会逐条校验） |
 | 请求根本没发出（服务端日志 0 请求） | provider 段里有 `experimental_bearer_token` | 删掉/注释该行，或改用 `requires_openai_auth` / `env_key` |
 | 只有官方内置模型 | 同上 | 同上 |
+| 推理报 `401 INVALID_API_KEY` | 用了 `requires_openai_auth`，但服务端不接受 ChatGPT 登录 token | 改用 `experimental_bearer_token`（`--auth bearer`），同时保留本地 `model_catalog_json` |
 | 配了 `model_catalog_json` 仍不生效 | 写在了 provider 段内（被静默忽略） | 移到文件顶层 |
 
 > **路径别写错**：平台的根路径 `/models` 是**公开的模型名单**（无需鉴权、返回裸 ID 数组，
@@ -220,7 +256,8 @@ PY
 | 模型来源 | 服务端按分组实时生成 | 本地文件，客户端自己读 |
 | 新增上游模型 | 客户端自动更新 | 需要重新下载目录 |
 | 与 ChatGPT 登录态共存 | ✅ | ✅（实测 bearer token 不影响本地目录读取） |
-| 适用场景 | 日常使用，永远最新 | 离线/内网、想钉死版本、想按分组裁剪 |
+| 前提 | 服务端接受 ChatGPT 登录 token，或用户用 `env_key`/`none` 提供凭证 | 无额外前提（鉴权与目录解耦，只认 `sk-` Key 的网关也能用） |
+| 适用场景 | 日常使用，永远最新 | 离线/内网、想钉死版本、想按分组裁剪、**网关只认平台 Key** |
 
 两条路互不冲突，且**本地目录优先**：实测配了顶层 `model_catalog_json` 后，Codex 不再请求服务端目录。
 
