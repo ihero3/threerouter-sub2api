@@ -89,10 +89,9 @@ func (r *openAICodexExtraListRepo) ListWithFilters(_ context.Context, params pag
 	return r.accounts, &pagination.PaginationResult{Total: int64(len(r.accounts)), Page: params.Page, PageSize: params.PageSize}, nil
 }
 
-// WS 流内 error event 的 usage_limit_reached（429）自 48d6c875d 起按通用
-// 429 策略永久禁用账号（SetError），不再把 event 里的 resets_at 落库为
-// 限流冷却（SetRateLimited）。
-func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitDisablesAccount(t *testing.T) {
+// WS 流内 error event 的 usage_limit_reached（429）走通用 429 策略：按 event 里的
+// resets_at 落库为可恢复的限流冷却（SetRateLimited），到期自动恢复，不永久禁用账号。
+func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	resetAt := time.Now().Add(2 * time.Hour).Unix()
@@ -173,15 +172,14 @@ func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitDisablesAccount(t 
 	require.Nil(t, result)
 	require.Equal(t, http.StatusTooManyRequests, rec.Code)
 	require.Nil(t, upstream.lastReq, "WS 限流 error event 不应回退到同账号 HTTP")
-	require.Empty(t, repo.rateLimitCalls, "429 不再落库为 resets_at 冷却")
-	require.Len(t, repo.setErrorCalls, 1)
-	require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
+	require.Len(t, repo.rateLimitCalls, 1)
+	require.WithinDuration(t, time.Unix(resetAt, 0), repo.rateLimitCalls[0], 2*time.Second)
+	require.Empty(t, repo.setErrorCalls, "429 必须走可恢复冷却，不得永久禁用账号")
 }
 
-// WS 握手 429 与流内 error event 同口径：48d6c875d 起非 shadow 429 不再走
-// handle429（SetRateLimited + 落库 x-codex 快照），而是 handleAuthError
-// 永久禁用账号（SetError），需管理员核实解除后手动恢复。
-func TestOpenAIGatewayService_Forward_WSv2Handshake429DisablesAccount(t *testing.T) {
+// WS 握手 429 与流内 error event 同口径：非 shadow 429 走 handle429
+// （SetRateLimited + 落库 x-codex 快照），到期自动恢复，不永久禁用账号。
+func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,10 +245,10 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429DisablesAccount(t *testing
 	require.Nil(t, result)
 	require.Equal(t, http.StatusTooManyRequests, rec.Code)
 	require.Nil(t, upstream.lastReq, "WS 握手 429 不应回退到同账号 HTTP")
-	require.Empty(t, repo.rateLimitCalls, "429 不再落库为 resets_at 冷却")
-	require.Len(t, repo.setErrorCalls, 1)
-	require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
-	require.Empty(t, repo.updateExtra, "非 shadow 429 不再经 handle429 落库 x-codex 快照")
+	require.Len(t, repo.rateLimitCalls, 1)
+	require.NotEmpty(t, repo.updateExtra, "握手 429 的 x-codex 头应立即落库")
+	require.Contains(t, repo.updateExtra[0], "codex_usage_updated_at")
+	require.Empty(t, repo.setErrorCalls, "429 必须走可恢复冷却，不得永久禁用账号")
 }
 
 func TestOpenAIGatewayService_Forward_WSv2Handshake502RecordsModelTransient(t *testing.T) {
@@ -299,9 +297,9 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake502RecordsModelTransient(t *t
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(&account, "gpt-5.5"))
 }
 
-// 与 Forward 路径同口径：ingress WS 收到 usage_limit_reached（429）后按通用
-// 429 策略永久禁用账号（SetError）。
-func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageLimitDisablesAccount(t *testing.T) {
+// 与 Forward 路径同口径：ingress WS 收到 usage_limit_reached（429）后按 resets_at
+// 落库可恢复的限流冷却，不永久禁用账号。
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := newOpenAIWSV2TestConfig()
@@ -403,9 +401,9 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageL
 		var failoverErr *UpstreamFailoverError
 		require.ErrorAs(t, serverErr, &failoverErr)
 		require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
-		require.Empty(t, repo.rateLimitCalls, "429 不再落库为 resets_at 冷却")
-		require.Len(t, repo.setErrorCalls, 1)
-		require.Contains(t, repo.setErrorCalls[0], "Rate limit exceeded (429)")
+		require.Len(t, repo.rateLimitCalls, 1)
+		require.WithinDuration(t, time.Unix(resetAt, 0), repo.rateLimitCalls[0], 2*time.Second)
+		require.Empty(t, repo.setErrorCalls, "429 必须走可恢复冷却，不得永久禁用账号")
 	case <-time.After(5 * time.Second):
 		t.Fatal("等待 ingress websocket 结束超时")
 	}

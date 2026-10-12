@@ -32,6 +32,10 @@ type User struct {
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
 	SignupSource         string
+	// RegisterIP/RegisterCountry 注册时的客户端 IP 与 GeoIP 国家 ISO 代码。
+	// 仅对采集启用后的新注册用户有值，存量用户为空（不回填）。
+	RegisterIP     string
+	RegisterCountry string
 	LastLoginAt          *time.Time
 	LastActiveAt         *time.Time
 	LastUsedAt           *time.Time

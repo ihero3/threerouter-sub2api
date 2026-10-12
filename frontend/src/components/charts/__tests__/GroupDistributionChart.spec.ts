@@ -127,6 +127,26 @@ describe('GroupDistributionChart', () => {
     })
 
     expect(wrapper.text()).not.toContain('Account Cost')
+    // enableBreakdown 默认 true：在「分组」后多一列「User ID」（分组行该格占位为空）
+    expect(wrapper.findAll('thead th')).toHaveLength(6)
+    expect(wrapper.findAll('tbody tr')[0].findAll('td')).toHaveLength(6)
+  })
+
+  it('hides the user id column when breakdown is disabled (user view)', () => {
+    const wrapper = mount(GroupDistributionChart, {
+      props: {
+        groupStats,
+        enableBreakdown: false,
+        showAccountCost: false,
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true,
+        },
+      },
+    })
+
+    // user 视图（enableBreakdown=false）不出现 ID 列，列数与旧行为一致
     expect(wrapper.findAll('thead th')).toHaveLength(5)
     expect(wrapper.findAll('tbody tr')[0].findAll('td')).toHaveLength(5)
   })

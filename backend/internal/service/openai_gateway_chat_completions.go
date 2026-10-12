@@ -249,6 +249,15 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 					return s.reasoningContentByCallIDInScope(reasoningScope, callID)
 				},
 			}
+			// DeepSeek/Kimi/GLM-style thinking providers track reasoning across
+			// EVERY turn, not only tool-bearing ones. Without replaying the
+			// reasoning item on plain-text follow-up turns they reject with
+			// HTTP 400 "The `reasoning_content` in the thinking mode must be
+			// passed back to the API". Gate to the passback-required protocol
+			// so gpt/o-series and unknown models keep <thinking> text.
+			if ResolveThinkingProtocol(upstreamModel) == ThinkingProtocolPassbackRequired {
+				ccToResponsesOpts.ReplayReasoningOnPlainTextTurns = true
+			}
 		}
 		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, ccToResponsesOpts)
 		if err != nil {

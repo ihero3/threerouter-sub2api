@@ -180,6 +180,16 @@ func RestrictPublicGroups(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRestrictPublicGroups, v))
 }
 
+// RegisterIP applies equality check predicate on the "register_ip" field. It's identical to RegisterIPEQ.
+func RegisterIP(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegisterIP, v))
+}
+
+// RegisterCountry applies equality check predicate on the "register_country" field. It's identical to RegisterCountryEQ.
+func RegisterCountry(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegisterCountry, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1398,6 +1408,136 @@ func RestrictPublicGroupsEQ(v bool) predicate.User {
 // RestrictPublicGroupsNEQ applies the NEQ predicate on the "restrict_public_groups" field.
 func RestrictPublicGroupsNEQ(v bool) predicate.User {
 	return predicate.User(sql.FieldNEQ(FieldRestrictPublicGroups, v))
+}
+
+// RegisterIPEQ applies the EQ predicate on the "register_ip" field.
+func RegisterIPEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegisterIP, v))
+}
+
+// RegisterIPNEQ applies the NEQ predicate on the "register_ip" field.
+func RegisterIPNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRegisterIP, v))
+}
+
+// RegisterIPIn applies the In predicate on the "register_ip" field.
+func RegisterIPIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRegisterIP, vs...))
+}
+
+// RegisterIPNotIn applies the NotIn predicate on the "register_ip" field.
+func RegisterIPNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRegisterIP, vs...))
+}
+
+// RegisterIPGT applies the GT predicate on the "register_ip" field.
+func RegisterIPGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRegisterIP, v))
+}
+
+// RegisterIPGTE applies the GTE predicate on the "register_ip" field.
+func RegisterIPGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRegisterIP, v))
+}
+
+// RegisterIPLT applies the LT predicate on the "register_ip" field.
+func RegisterIPLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRegisterIP, v))
+}
+
+// RegisterIPLTE applies the LTE predicate on the "register_ip" field.
+func RegisterIPLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRegisterIP, v))
+}
+
+// RegisterIPContains applies the Contains predicate on the "register_ip" field.
+func RegisterIPContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRegisterIP, v))
+}
+
+// RegisterIPHasPrefix applies the HasPrefix predicate on the "register_ip" field.
+func RegisterIPHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRegisterIP, v))
+}
+
+// RegisterIPHasSuffix applies the HasSuffix predicate on the "register_ip" field.
+func RegisterIPHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRegisterIP, v))
+}
+
+// RegisterIPEqualFold applies the EqualFold predicate on the "register_ip" field.
+func RegisterIPEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRegisterIP, v))
+}
+
+// RegisterIPContainsFold applies the ContainsFold predicate on the "register_ip" field.
+func RegisterIPContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRegisterIP, v))
+}
+
+// RegisterCountryEQ applies the EQ predicate on the "register_country" field.
+func RegisterCountryEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegisterCountry, v))
+}
+
+// RegisterCountryNEQ applies the NEQ predicate on the "register_country" field.
+func RegisterCountryNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRegisterCountry, v))
+}
+
+// RegisterCountryIn applies the In predicate on the "register_country" field.
+func RegisterCountryIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRegisterCountry, vs...))
+}
+
+// RegisterCountryNotIn applies the NotIn predicate on the "register_country" field.
+func RegisterCountryNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRegisterCountry, vs...))
+}
+
+// RegisterCountryGT applies the GT predicate on the "register_country" field.
+func RegisterCountryGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRegisterCountry, v))
+}
+
+// RegisterCountryGTE applies the GTE predicate on the "register_country" field.
+func RegisterCountryGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRegisterCountry, v))
+}
+
+// RegisterCountryLT applies the LT predicate on the "register_country" field.
+func RegisterCountryLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRegisterCountry, v))
+}
+
+// RegisterCountryLTE applies the LTE predicate on the "register_country" field.
+func RegisterCountryLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRegisterCountry, v))
+}
+
+// RegisterCountryContains applies the Contains predicate on the "register_country" field.
+func RegisterCountryContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRegisterCountry, v))
+}
+
+// RegisterCountryHasPrefix applies the HasPrefix predicate on the "register_country" field.
+func RegisterCountryHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRegisterCountry, v))
+}
+
+// RegisterCountryHasSuffix applies the HasSuffix predicate on the "register_country" field.
+func RegisterCountryHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRegisterCountry, v))
+}
+
+// RegisterCountryEqualFold applies the EqualFold predicate on the "register_country" field.
+func RegisterCountryEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRegisterCountry, v))
+}
+
+// RegisterCountryContainsFold applies the ContainsFold predicate on the "register_country" field.
+func RegisterCountryContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRegisterCountry, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

@@ -455,14 +455,14 @@ func TestCodexModelsDoesNotFailOverFromPermanentUpstreamStatus(t *testing.T) {
 	for _, status := range statuses {
 		t.Run(fmt.Sprintf("status_%d", status), func(t *testing.T) {
 			handler, upstream, groupID := newCodexModelsFailoverTestHandler(status)
-			recorder := performCodexModelsRequest(t, handler, groupID)
+			_, c := performCodexModelsRequestWithContext(t, handler, groupID)
 
 			if got, want := upstream.calls(), []int64{1}; !equalInt64Slices(got, want) {
 				t.Fatalf("upstream account calls: got %v, want %v", got, want)
 			}
-			if recorder.Code != http.StatusBadGateway {
-				t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
-			}
+			// 永久性上游错误本来就不换号；现在改为让路由层用本地生成目录兜底，
+			// 而不是把 5xx 透给 Codex（客户端会静默丢弃整份目录）。
+			requireCodexModelsLocalFallbackRequested(t, c)
 		})
 	}
 }
@@ -470,14 +470,12 @@ func TestCodexModelsDoesNotFailOverFromPermanentUpstreamStatus(t *testing.T) {
 func TestCodexModelsDoesNotFailOverFromUpstreamConfigurationError(t *testing.T) {
 	handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusServiceUnavailable)
 	upstream.firstErr = errors.New("invalid proxy URL")
-	recorder := performCodexModelsRequest(t, handler, groupID)
+	_, c := performCodexModelsRequestWithContext(t, handler, groupID)
 
 	if got, want := upstream.calls(), []int64{1}; !equalInt64Slices(got, want) {
 		t.Fatalf("upstream account calls: got %v, want %v", got, want)
 	}
-	if recorder.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
-	}
+	requireCodexModelsLocalFallbackRequested(t, c)
 }
 
 func TestCodexModelsReturnsLastUpstreamErrorWhenAccountsAreExhausted(t *testing.T) {
@@ -486,17 +484,13 @@ func TestCodexModelsReturnsLastUpstreamErrorWhenAccountsAreExhausted(t *testing.
 		1: http.StatusServiceUnavailable,
 		2: http.StatusGatewayTimeout,
 	}
-	recorder := performCodexModelsRequest(t, handler, groupID)
+	_, c := performCodexModelsRequestWithContext(t, handler, groupID)
 
 	if got, want := upstream.calls(), []int64{1, 2}; !equalInt64Slices(got, want) {
 		t.Fatalf("upstream account calls: got %v, want %v", got, want)
 	}
-	if recorder.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
-	}
-	if body := recorder.Body.String(); !strings.Contains(body, "upstream error 504") {
-		t.Fatalf("body does not preserve the last upstream error: %s", body)
-	}
+	// 换号已到上限：同样走本地兜底，并保留最后的错误诊断（由 ops 日志记录）。
+	requireCodexModelsLocalFallbackRequested(t, c)
 }
 
 func TestCodexModelsHonorsAccountSwitchLimit(t *testing.T) {
@@ -507,16 +501,50 @@ func TestCodexModelsHonorsAccountSwitchLimit(t *testing.T) {
 		3: http.StatusGatewayTimeout,
 		4: http.StatusInternalServerError,
 	}
-	recorder := performCodexModelsRequest(t, handler, groupID)
+	_, c := performCodexModelsRequestWithContext(t, handler, groupID)
 
 	if got, want := upstream.calls(), []int64{1, 2, 3}; !equalInt64Slices(got, want) {
 		t.Fatalf("upstream account calls: got %v, want %v", got, want)
 	}
-	if recorder.Code != http.StatusBadGateway {
-		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	requireCodexModelsLocalFallbackRequested(t, c)
+}
+
+// Scenario: a non-OpenAI platform reaching the OpenAI handler must hand the
+// request back to the locally generated catalog rather than answer 404, because
+// Codex treats any non-2xx catalog answer as "no custom models at all".
+// 目录端点不存在「分组不支持」的 404 契约：不支持的分组一律 fail-open 到本地目录。
+func TestCodexModelsNonOpenAIPlatformSignalsLocalFallback(t *testing.T) {
+	for _, platform := range []string{
+		service.PlatformDeepseek,
+		service.PlatformKimi,
+		service.PlatformZhipu,
+		service.PlatformGrok,
+		service.PlatformAnthropic,
+	} {
+		t.Run(platform, func(t *testing.T) {
+			handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusOK)
+			recorder, c := performCodexModelsRequestWithContextForPlatform(t, handler, groupID, platform)
+
+			requireCodexModelsLocalFallbackRequested(t, c)
+			if upstream.calls() != nil {
+				t.Fatalf("non-OpenAI platform must not touch OpenAI upstream accounts: %v", upstream.calls())
+			}
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want %d (no response is written before the fallback runs)", recorder.Code, http.StatusOK)
+			}
+		})
 	}
-	if body := recorder.Body.String(); !strings.Contains(body, "upstream error 504") {
-		t.Fatalf("body does not preserve the limit-ending upstream error: %s", body)
+}
+
+func requireCodexModelsLocalFallbackRequested(t *testing.T, c *gin.Context) {
+	t.Helper()
+	requested, exists := c.Get(service.CodexModelsLocalFallbackContextKey)
+	flag, ok := requested.(bool)
+	if !exists || !ok || !flag {
+		t.Fatalf("local catalog fallback was not signalled; context=%v", requested)
+	}
+	if c.Writer != nil && c.Writer.Written() {
+		t.Fatalf("fallback requested after the response was already written (status=%d)", c.Writer.Status())
 	}
 }
 
@@ -563,7 +591,25 @@ func performCodexModelsRequestForPlatform(t *testing.T, handler *OpenAIGatewayHa
 	return performCodexModelsRequestForGroup(t, handler, &service.Group{ID: groupID, Platform: platform}, "")
 }
 
+// performCodexModelsRequestWithContext 额外返回 gin 上下文，供断言「请求是否被
+// 交回路由层用本地生成目录兜底」。响应未写出时 fallback 标记才有效。
+func performCodexModelsRequestWithContext(t *testing.T, handler *OpenAIGatewayHandler, groupID int64) (*httptest.ResponseRecorder, *gin.Context) {
+	t.Helper()
+	return performCodexModelsRequestForGroupWithContext(t, handler, &service.Group{ID: groupID, Platform: service.PlatformOpenAI}, "")
+}
+
+func performCodexModelsRequestWithContextForPlatform(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, platform string) (*httptest.ResponseRecorder, *gin.Context) {
+	t.Helper()
+	return performCodexModelsRequestForGroupWithContext(t, handler, &service.Group{ID: groupID, Platform: platform}, "")
+}
+
 func performCodexModelsRequestForGroup(t *testing.T, handler *OpenAIGatewayHandler, group *service.Group, etag string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder, _ := performCodexModelsRequestForGroupWithContext(t, handler, group, etag)
+	return recorder
+}
+
+func performCodexModelsRequestForGroupWithContext(t *testing.T, handler *OpenAIGatewayHandler, group *service.Group, etag string) (*httptest.ResponseRecorder, *gin.Context) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -577,7 +623,7 @@ func performCodexModelsRequestForGroup(t *testing.T, handler *OpenAIGatewayHandl
 	})
 
 	handler.CodexModels(c)
-	return recorder
+	return recorder, c
 }
 
 func codexHandlerManifestSlugs(t *testing.T, recorder *httptest.ResponseRecorder) []string {

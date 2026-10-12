@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -15,9 +14,18 @@ import (
 // Codex CLI and the Codex desktop app refresh their model picker from
 // GET {base_url}/models?client_version=... (custom provider mode) or
 // GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
-// here. Groups with explicit account model mappings are generated locally;
-// otherwise ChatGPT manifests are proxied verbatim and custom API key manifests
-// receive provider-compatibility normalization plus short-lived caching.
+// here when the group platform is OpenAI; other platforms are served by
+// GatewayHandler.CodexModels with the same {"models":[…]} envelope.
+//
+// OpenAI groups prefer the live upstream ChatGPT manifest so real upstream
+// metadata is preserved; groups with explicit account model mappings are
+// generated locally. Anything this handler cannot serve — an unsupported
+// platform, a configured catalog that fails to build, a transient upstream
+// failure with no account left to switch to — falls back to the locally
+// generated catalog instead of an error status. Codex parses the catalog
+// without tolerance, so a 4xx/5xx silently removes every custom model from
+// the picker while the UI reports no error at all: a catalog must never be
+// answered with a non-2xx status.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	if c.Request.Context().Err() != nil {
 		return
@@ -28,7 +36,11 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI and Composite groups")
+		// 该分组不由 OpenAI 分支提供目录：交回本地生成目录（同形状、同 200）。
+		// 目录端点不得以 4xx/5xx 作答——Codex 对目录没有容错，会静默丢弃整份
+		// 目录并回退内置模型列表，用户看到的是「自定义模型整体消失」而界面
+		// 不报错。
+		signalCodexModelsLocalFallback(c)
 		return
 	}
 
@@ -42,7 +54,9 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+		// 分组已显式配置模型但本地构建失败：仍要给客户端一份可用目录，
+		// 交由路由层的本地生成目录兜底。
+		signalCodexModelsLocalFallback(c)
 		return
 	}
 	if configured {
@@ -65,9 +79,12 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				return
 			}
 			if lastUpstreamErr != nil {
-				h.errorResponse(c, infraerrors.Code(lastUpstreamErr), "upstream_error", infraerrors.Message(lastUpstreamErr))
+				// 所有可切换账号都试过了：回退本地生成目录，避免 5xx 让整份
+				// 目录在客户端静默失效。
+				signalCodexModelsLocalFallback(c)
 				return
 			}
+			// 从来没有可用账号属于分组配置问题，保持既有 503 语义（运维可见）。
 			h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available OpenAI accounts")
 			return
 		}
@@ -87,15 +104,16 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				lastUpstreamErr = err
 				continue
 			}
-			h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
+			// 上游目录不可用且无法再换号：同样 fail-open 到本地生成目录。
+			signalCodexModelsLocalFallback(c)
 			return
 		}
 		if err := h.gatewayService.CompleteAPIKeyCodexModelsManifestForClient(manifest, account); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to complete Codex models manifest")
+			signalCodexModelsLocalFallback(c)
 			return
 		}
 		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+			signalCodexModelsLocalFallback(c)
 			return
 		}
 		if c.Request.Context().Err() != nil {
@@ -105,6 +123,17 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		writeCodexModelsManifestResponse(c, manifest)
 		return
 	}
+}
+
+// signalCodexModelsLocalFallback 请求路由层改由本地生成目录提供本次响应。
+//
+// 只置位、不写响应体：这样 OpenAI 分支可以保留「先试配置目录、再试上游」的既有
+// 顺序，而由路由层决定是否继续，handler 无需反向依赖 routes 包。
+func signalCodexModelsLocalFallback(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(service.CodexModelsLocalFallbackContextKey, true)
 }
 
 func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.CodexModelsManifest) {

@@ -65,6 +65,10 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// FieldRestrictPublicGroups holds the string denoting the restrict_public_groups field in the database.
 	FieldRestrictPublicGroups = "restrict_public_groups"
+	// FieldRegisterIP holds the string denoting the register_ip field in the database.
+	FieldRegisterIP = "register_ip"
+	// FieldRegisterCountry holds the string denoting the register_country field in the database.
+	FieldRegisterCountry = "register_country"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -257,6 +261,8 @@ var Columns = []string{
 	FieldFrozenBalance,
 	FieldRpmLimit,
 	FieldRestrictPublicGroups,
+	FieldRegisterIP,
+	FieldRegisterCountry,
 }
 
 var (
@@ -331,6 +337,14 @@ var (
 	DefaultRpmLimit int
 	// DefaultRestrictPublicGroups holds the default value on creation for the "restrict_public_groups" field.
 	DefaultRestrictPublicGroups bool
+	// DefaultRegisterIP holds the default value on creation for the "register_ip" field.
+	DefaultRegisterIP string
+	// RegisterIPValidator is a validator for the "register_ip" field. It is called by the builders before save.
+	RegisterIPValidator func(string) error
+	// DefaultRegisterCountry holds the default value on creation for the "register_country" field.
+	DefaultRegisterCountry string
+	// RegisterCountryValidator is a validator for the "register_country" field. It is called by the builders before save.
+	RegisterCountryValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -464,6 +478,16 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 // ByRestrictPublicGroups orders the results by the restrict_public_groups field.
 func ByRestrictPublicGroups(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRestrictPublicGroups, opts...).ToFunc()
+}
+
+// ByRegisterIP orders the results by the register_ip field.
+func ByRegisterIP(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegisterIP, opts...).ToFunc()
+}
+
+// ByRegisterCountry orders the results by the register_country field.
+func ByRegisterCountry(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegisterCountry, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

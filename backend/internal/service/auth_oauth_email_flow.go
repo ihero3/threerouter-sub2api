@@ -102,6 +102,7 @@ func (s *AuthService) VerifyOAuthEmailCode(ctx context.Context, email, verifyCod
 
 // RegisterOAuthEmailAccount creates a local account from a third-party first
 // login after the user has verified a local email address.
+// registerIP 为注册请求的客户端 IP（可空），仅在非空时与 GeoIP 国家代码一并落库。
 func (s *AuthService) RegisterOAuthEmailAccount(
 	ctx context.Context,
 	email string,
@@ -109,6 +110,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	verifyCode string,
 	invitationCode string,
 	signupSource string,
+	registerIP string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
@@ -154,13 +156,15 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:           email,
+		PasswordHash:    hashedPassword,
+		Role:            RoleUser,
+		Balance:         grantPlan.Balance,
+		Concurrency:     grantPlan.Concurrency,
+		Status:          StatusActive,
+		SignupSource:    signupSource,
+		RegisterIP:      strings.TrimSpace(registerIP),
+		RegisterCountry: s.resolveRegisterCountry(registerIP),
 	}
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {
@@ -191,6 +195,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	password string,
 	invitationCode string,
 	signupSource string,
+	registerIP string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
@@ -240,14 +245,16 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		RPMLimit:     defaultRPMLimit,
-		Status:       StatusActive,
-		SignupSource: signupSource,
+		Email:           email,
+		PasswordHash:    hashedPassword,
+		Role:            RoleUser,
+		Balance:         grantPlan.Balance,
+		Concurrency:     grantPlan.Concurrency,
+		RPMLimit:        defaultRPMLimit,
+		Status:          StatusActive,
+		SignupSource:    signupSource,
+		RegisterIP:      strings.TrimSpace(registerIP),
+		RegisterCountry: s.resolveRegisterCountry(registerIP),
 	}
 
 	if err := s.createUserWithRegistrationEmailGuard(ctx, user); err != nil {

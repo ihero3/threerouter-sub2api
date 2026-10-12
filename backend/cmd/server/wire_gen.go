@@ -83,7 +83,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, billingCacheService, client, configConfig)
 	affiliateRepository := repository.NewAffiliateRepository(client, db)
 	affiliateService := service.NewAffiliateService(affiliateRepository, settingService, apiKeyAuthCacheInvalidator, billingCacheService)
-	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository)
+	// geoIPService 提前到此处构造：既供 complianceService 使用，也注入 AuthService 用于注册 IP 国家解析。
+	geoIPService := service.NewGeoIPService(configConfig)
+	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService)
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
@@ -291,7 +293,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	complianceAuditLogRepository := repository.NewComplianceAuditLogRepository(db)
 	dataErasureRequestRepository := repository.NewDataErasureRequestRepository(db)
 	userConsentRepository := repository.NewUserConsentRepository(db)
-	geoIPService := service.NewGeoIPService(configConfig)
 	complianceUserDataExporter := service.NewComplianceUserDataExporter(userRepository, apiKeyRepository, userConsentRepository)
 	complianceService := service.ProvideComplianceService(configConfig, complianceAuditLogRepository, dataErasureRequestRepository, userConsentRepository, geoIPService, complianceUserDataExporter)
 	compliancePolicyTemplateRepository := repository.NewCompliancePolicyTemplateRepository(db)

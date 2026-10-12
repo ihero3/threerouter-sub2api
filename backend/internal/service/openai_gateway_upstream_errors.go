@@ -260,6 +260,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
+	// max_completion_tokens 超过所选模型输出上限：换一个输出上限更高的上游账号即可
+	// 服务同一请求，故视为可 failover（不关账号，封禁判定走 shouldFailoverUpstreamError
+	// 只看状态码，400=false 已保证不误封）。
+	if isOpenAIMaxCompletionTokensExceeded(statusCode, upstreamMsg, upstreamBody) {
+		return true
+	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
@@ -278,8 +284,51 @@ const OpenAIRequestBodyTooLargeClientMessage = "Request payload is too large"
 
 const openAIRequestBodyTooLargeReason = GatewayFailureReason("openai_request_body_too_large")
 
+// openAIMaxCompletionTokensClientMessage 是所有候选账号都因 max_completion_tokens
+// 超过各自上游模型输出上限而拒绝后，回给客户端的统一文案。绝不含上游内部数字
+// （如客户端请求的 250000 或某模型的 131072 上限），上游原文一律不下发。
+const openAIMaxCompletionTokensClientMessage = "The requested output token limit exceeds the maximum supported by the available upstream models"
+
+const openAIMaxCompletionTokensReason = GatewayFailureReason("openai_max_completion_tokens_exceeded")
+
 func isOpenAIRequestBodyTooLargeError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	return statusCode == http.StatusRequestEntityTooLarge && !isOpenAIContextWindowError(upstreamMsg, upstreamBody)
+}
+
+// isOpenAIMaxCompletionTokensExceeded reports whether an upstream 400 rejects the
+// request specifically because max_completion_tokens exceeds the selected model's
+// output ceiling. Unlike a context-window (input) overflow — which no account can
+// ever serve — this is a per-model OUTPUT cap: another upstream account mapped to a
+// model with a higher ceiling can still serve the same request. It is therefore
+// failover-worthy (rotate to the next account) rather than a deterministic client error.
+//
+// 判定来源（只读取上游文本做分类，绝不下发客户端）：
+//   - 最精确：结构化 error.param == "max_completion_tokens"；
+//   - 兜底：报文同时含 "max_completion_tokens" 与超上限措辞（above maximum value /
+//     expected a value <= / exceeds the maximum / integer above maximum / must be less than）。
+//
+// 与 isOpenAIContextWindowError 正交：context_length_exceeded 不含 max_completion_tokens 字样，
+// 本函数也不会命中普通 400，避免误把无关 400 当成可换号请求放大成 N 次上游调用。
+func isOpenAIMaxCompletionTokensExceeded(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+	param := strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.param").String())
+	if strings.EqualFold(param, "max_completion_tokens") {
+		return true
+	}
+	lower := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if lower == "" && gjson.ValidBytes(upstreamBody) {
+		lower = strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.message").String()))
+	}
+	if !strings.Contains(lower, "max_completion_tokens") {
+		return false
+	}
+	return strings.Contains(lower, "above maximum") ||
+		strings.Contains(lower, "exceeds") ||
+		strings.Contains(lower, "expected a value <=") ||
+		strings.Contains(lower, "must be less than") ||
+		strings.Contains(lower, "integer above maximum")
 }
 
 func newOpenAIUpstreamFailoverError(
@@ -305,6 +354,15 @@ func newOpenAIUpstreamFailoverError(
 		failoverErr.NextAccountAction = NextAccountRetry
 		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
 		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
+	}
+	if isOpenAIMaxCompletionTokensExceeded(statusCode, upstreamMsg, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = openAIMaxCompletionTokensReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusBadRequest
+		failoverErr.ClientMessage = openAIMaxCompletionTokensClientMessage
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false

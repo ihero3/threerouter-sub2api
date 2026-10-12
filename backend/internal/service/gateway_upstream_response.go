@@ -279,30 +279,6 @@ func sanitizeStreamError(err error) string {
 	return "upstream connection error"
 }
 
-// isNetworkError 判断是否为应触发自动禁用的网络错误。
-// 包括：超时(context.DeadlineExceeded)、连接拒绝(ECONNREFUSED)、
-// 连接重置(ECONNRESET)、连接超时(ETIMEDOUT)、以及通用 *net.OpError。
-// 注意：context.Canceled（客户端主动取消）应在调用前排除，不在此函数判断。
-func isNetworkError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	if errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.ETIMEDOUT) ||
-		errors.Is(err, syscall.ECONNABORTED) {
-		return true
-	}
-	var netErr *net.OpError
-	if errors.As(err, &netErr) {
-		return true
-	}
-	return false
-}
-
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
 func ExtractUpstreamErrorMessage(body []byte) string {

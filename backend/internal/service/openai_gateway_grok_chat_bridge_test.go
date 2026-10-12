@@ -481,7 +481,12 @@ func TestForwardGrokChatViaResponsesTraeCompatibilityFieldsKeepCacheRoute(t *tes
 	require.Equal(t, "priority", gjson.GetBytes(upstream.lastBody, "service_tier").String())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stop").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning").Exists())
-	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content").String(), "<thinking>I should use lookup</thinking>")
+	// 推理回注已定型为结构化 reasoning item，不再把 reasoning_content 包成
+	// <thinking> 明文（CC→Responses 桥接定型；明文形式会被需要回传的上游判 400）。
+	reasoningContent := gjson.GetBytes(upstream.lastBody, "input.1.content")
+	require.Equal(t, "reasoning_text", reasoningContent.Get("0.type").String())
+	require.Equal(t, "I should use lookup", reasoningContent.Get("0.text").String())
+	require.NotContains(t, reasoningContent.String(), "<thinking>")
 	require.Equal(t, "function_call", gjson.GetBytes(upstream.lastBody, "input.2.type").String())
 	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.lastBody, "input.3.type").String())
 

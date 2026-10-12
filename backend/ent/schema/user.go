@@ -119,6 +119,16 @@ func (User) Fields() []ent.Field {
 		// restrict_public_groups: 限制用户访问公共分组（仅允许分配的分组）
 		field.Bool("restrict_public_groups").
 			Default(false),
+
+		// 注册 IP 采集：注册时的客户端 IP 与 GeoIP 国家 ISO 代码。
+		// 仅对采集启用后的新注册用户有值，存量用户为空串（不做回填）；
+		// GeoIP 未启用/解析失败时 register_country 留空（fail-open）。
+		field.String("register_ip").
+			MaxLen(64).
+			Default(""),
+		field.String("register_country").
+			MaxLen(8).
+			Default(""),
 	}
 }
 

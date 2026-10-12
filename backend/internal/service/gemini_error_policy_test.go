@@ -35,7 +35,9 @@ func TestShouldFailoverGeminiUpstreamError(t *testing.T) {
 		{"502_failover", 502, true},
 		{"503_failover", 503, true},
 		{"400_no_failover", 400, false},
-		{"404_no_failover", 404, false},
+		// 404 已纳入三家统一的 failover 状态码集合（403/404/405 那次补齐，
+		// 由 failover_status_parity_test.go 锁死），Gemini 与 OpenAI/Antigravity 同口径。
+		{"404_failover", 404, true},
 		{"422_no_failover", 422, false},
 	}
 

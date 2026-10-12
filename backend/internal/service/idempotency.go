@@ -23,6 +23,24 @@ const (
 	IdempotencyStatusFailedRetryable = "failed_retryable"
 )
 
+// idempotencyStoreWriteTimeout 是幂等终态写入（MarkSucceeded /
+// MarkFailedRetryable）的超时。
+//
+// 这类写入必须脱离客户端请求链：execute 一旦成功就已经产生了真实副作用
+// （建上游任务 / 扣费），此时客户端恰好断开会让请求 ctx 被取消，写入随之
+// 失败 —— 记录永远停在 processing，调用方拿同一个键重试被
+// ErrIdempotencyInProgress 挡住，最长要等 ProcessingTimeout +
+// ProcessingHardCap（默认 30s + 10min）才允许回收，等于"键被锁死十分钟"。
+// 反向同理：execute 失败也要把记录改成 failed_retryable，否则退避窗口
+// 形同虚设、重试反而被挡。因此两处终态写入都用脱离取消链的 context。
+const idempotencyStoreWriteTimeout = 10 * time.Second
+
+// idempotencyStoreWriteContext 返回脱离客户端取消链、但仍有界的 context，
+// 专供幂等终态写入使用（见 idempotencyStoreWriteTimeout 的说明）。
+func idempotencyStoreWriteContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), idempotencyStoreWriteTimeout)
+}
+
 var (
 	ErrIdempotencyKeyRequired    = infraerrors.BadRequest("IDEMPOTENCY_KEY_REQUIRED", "idempotency key is required")
 	ErrIdempotencyKeyInvalid     = infraerrors.BadRequest("IDEMPOTENCY_KEY_INVALID", "idempotency key is invalid")
@@ -446,7 +464,10 @@ func (c *IdempotencyCoordinator) Execute(
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->failed_retryable", false, map[string]string{
 			"reason": reason,
 		})
-		if markErr := c.repo.MarkFailedRetryable(ctx, record.ID, reason, backoffUntil, expiresAt); markErr != nil {
+		// 终态写入脱离请求 ctx：客户端断开不能把记录留在 processing。
+		idemWriteCtx, cancelWrite := idempotencyStoreWriteContext(ctx)
+		defer cancelWrite()
+		if markErr := c.repo.MarkFailedRetryable(idemWriteCtx, record.ID, reason, backoffUntil, expiresAt); markErr != nil {
 			RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_failed_retryable_error")
 			logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 				"operation": "mark_failed_retryable",
@@ -463,7 +484,11 @@ func (c *IdempotencyCoordinator) Execute(
 		})
 		return nil, ErrIdempotencyStoreUnavail.WithCause(marshalErr)
 	}
-	if markErr := c.repo.MarkSucceeded(ctx, record.ID, 200, storedBody, expiresAt); markErr != nil {
+	// 同上：成功侧终态写入同样脱离请求 ctx —— execute 已产生真实副作用
+	// （建任务/扣费），客户端此刻断开绝不能让记录停在 processing。
+	idemWriteCtx, cancelWrite := idempotencyStoreWriteContext(ctx)
+	defer cancelWrite()
+	if markErr := c.repo.MarkSucceeded(idemWriteCtx, record.ID, 200, storedBody, expiresAt); markErr != nil {
 		RecordIdempotencyStoreUnavailable(opts.Route, opts.Scope, "mark_succeeded_error")
 		logIdempotencyAudit(opts.Route, opts.Scope, keyHash, "processing->store_unavailable", false, map[string]string{
 			"operation": "mark_succeeded",

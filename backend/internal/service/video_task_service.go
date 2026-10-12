@@ -233,6 +233,16 @@ func (s *VideoTaskService) CreateTask(c *gin.Context, groupID *int64, userID int
 
 		saved, saveErr := s.videoTaskRepo.Create(ctx, record)
 		if saveErr != nil {
+			// 预扣在上一步已经落到 Key 配额上，而任务行没建成：必须原路退回，
+			// 否则用户为一条不存在的任务付费，用量记录里也没有对应行可对账。
+			// 退款必须另起 context：Create 失败最常见的成因就是 ctx 自身超时
+			// （DB 慢），沿用它会让退款在同一条已过期的链上失败，预扣照样
+			// 留在用户配额上，等于没修。与 media_task_service 同口径。
+			if record.ReservedCost != nil {
+				refundCtx, cancelRefund := context.WithTimeout(context.WithoutCancel(ctx), mediaPersistTimeout)
+				defer cancelRefund()
+				releaseMediaReservedQuota(s.apiKeyService, refundCtx, apiKeyID, *record.ReservedCost)
+			}
 			return nil, fmt.Errorf("video_task_service: save task: %w", saveErr)
 		}
 		return saved, nil
@@ -528,8 +538,15 @@ func (s *VideoTaskService) CancelTask(ctx context.Context, id int64) error {
 			}
 		}
 	}
-	if err := s.videoTaskRepo.UpdateStatus(ctx, id, "cancelled", "cancelled by admin"); err != nil {
+	// 必须用 Claimed 守卫的条件更新：任务可能已被 Worker 轮询到终态并结算，
+	// 无条件改状态再退一次预扣会重复退款（用户白拿回一份配额）。与
+	// media_task_service.CancelTask 同口径：没抢到就是别人已处理，直接返回。
+	claimed, err := s.videoTaskRepo.UpdateStatusIfProcessing(ctx, id, "cancelled", "cancelled by admin")
+	if err != nil {
 		return fmt.Errorf("video_task_service: cancel task: %w", err)
+	}
+	if !claimed {
+		return nil
 	}
 	settleVideoTaskFailure(ctx, s.billingDeps(), &videoTaskBillingInput{
 		LocalID:       record.LocalID,

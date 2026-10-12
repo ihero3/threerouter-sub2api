@@ -244,3 +244,28 @@ func TestImageTaskServiceCompleteOffloadFailureMarksFailed(t *testing.T) {
 	require.Contains(t, string(got.Error), "object storage")
 	require.NotContains(t, string(got.Result), "b64_json", "failed offload must not persist base64 to Redis")
 }
+
+// Rewrite（装配了对象存储的路径）与 rejectInlineImageResult（无存储的
+// URL 透传路径）必须保持同一契约：上游响应没有 data 数组、或 data 为空数组，
+// 都是"拿不到任何产物"。此前 Rewrite 对这两种情况直接透传返回，任务会以
+// succeeded 落库却没有图片 —— 调用方被扣费却查不到产物（扣钱不给货）。
+// 本用例把两条路径拉平，回退即变红。
+func TestImageResultUploaderRejectsMissingAndEmptyData(t *testing.T) {
+	cases := []struct {
+		name   string
+		result string
+	}{
+		{"missing data field", `{"created":1}`},
+		{"empty data array", `{"created":1,"data":[]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			storage := &fakeImageStorage{}
+			uploader := NewImageResultUploader(storage, "images/", 0, nil)
+
+			_, err := uploader.Rewrite(context.Background(), "imgtask_empty", json.RawMessage(tc.result))
+			require.Error(t, err, "没有产物必须报错，不能静默 succeeded")
+			require.Empty(t, storage.saved, "没有产物不应写入对象存储")
+		})
+	}
+}

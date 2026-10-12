@@ -583,6 +583,17 @@
             </div>
           </template>
 
+          <template #cell-register_ip="{ row }">
+            <span
+              v-if="row.register_ip"
+              class="text-sm text-gray-500 dark:text-dark-400"
+              :title="row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip"
+            >
+              {{ row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip }}
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
           </template>
@@ -890,6 +901,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
+  { key: 'register_ip', label: t('admin.users.columns.registerIp'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },
@@ -909,7 +921,7 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 const DEFAULT_HIDDEN_COLUMNS = [
   'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
   'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity',
-  'balance_platform_quota'
+  'balance_platform_quota', 'register_ip'
 ]
 const REMOVED_COLUMNS = new Set(['last_login_at'])
 // 强制可见列：加载时会被强制移出 hiddenColumns，并在列设置 UI 上 disabled。
@@ -922,10 +934,11 @@ const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
 // 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
 // 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
 const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
-const COLUMN_SETTINGS_VERSION = 3
+const COLUMN_SETTINGS_VERSION = 4
 const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
   2: ['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'],
-  3: ['balance_platform_quota']
+  3: ['balance_platform_quota'],
+  4: ['register_ip']
 }
 
 // Load saved column settings

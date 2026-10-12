@@ -67,6 +67,10 @@ type User struct {
 	RpmLimit int `json:"rpm_limit,omitempty"`
 	// RestrictPublicGroups holds the value of the "restrict_public_groups" field.
 	RestrictPublicGroups bool `json:"restrict_public_groups,omitempty"`
+	// RegisterIP holds the value of the "register_ip" field.
+	RegisterIP string `json:"register_ip,omitempty"`
+	// RegisterCountry holds the value of the "register_country" field.
+	RegisterCountry string `json:"register_country,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -289,7 +293,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldRegisterIP, user.FieldRegisterCountry:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
 			values[i] = new(sql.NullTime)
@@ -469,6 +473,18 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field restrict_public_groups", values[i])
 			} else if value.Valid {
 				_m.RestrictPublicGroups = value.Bool
+			}
+		case user.FieldRegisterIP:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field register_ip", values[i])
+			} else if value.Valid {
+				_m.RegisterIP = value.String
+			}
+		case user.FieldRegisterCountry:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field register_country", values[i])
+			} else if value.Valid {
+				_m.RegisterCountry = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -682,6 +698,12 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("restrict_public_groups=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RestrictPublicGroups))
+	builder.WriteString(", ")
+	builder.WriteString("register_ip=")
+	builder.WriteString(_m.RegisterIP)
+	builder.WriteString(", ")
+	builder.WriteString("register_country=")
+	builder.WriteString(_m.RegisterCountry)
 	builder.WriteByte(')')
 	return builder.String()
 }

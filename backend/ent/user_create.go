@@ -372,6 +372,34 @@ func (_c *UserCreate) SetNillableRestrictPublicGroups(v *bool) *UserCreate {
 	return _c
 }
 
+// SetRegisterIP sets the "register_ip" field.
+func (_c *UserCreate) SetRegisterIP(v string) *UserCreate {
+	_c.mutation.SetRegisterIP(v)
+	return _c
+}
+
+// SetNillableRegisterIP sets the "register_ip" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRegisterIP(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRegisterIP(*v)
+	}
+	return _c
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (_c *UserCreate) SetRegisterCountry(v string) *UserCreate {
+	_c.mutation.SetRegisterCountry(v)
+	return _c
+}
+
+// SetNillableRegisterCountry sets the "register_country" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRegisterCountry(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRegisterCountry(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -738,6 +766,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRestrictPublicGroups
 		_c.mutation.SetRestrictPublicGroups(v)
 	}
+	if _, ok := _c.mutation.RegisterIP(); !ok {
+		v := user.DefaultRegisterIP
+		_c.mutation.SetRegisterIP(v)
+	}
+	if _, ok := _c.mutation.RegisterCountry(); !ok {
+		v := user.DefaultRegisterCountry
+		_c.mutation.SetRegisterCountry(v)
+	}
 	return nil
 }
 
@@ -829,6 +865,22 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.RestrictPublicGroups(); !ok {
 		return &ValidationError{Name: "restrict_public_groups", err: errors.New(`ent: missing required field "User.restrict_public_groups"`)}
+	}
+	if _, ok := _c.mutation.RegisterIP(); !ok {
+		return &ValidationError{Name: "register_ip", err: errors.New(`ent: missing required field "User.register_ip"`)}
+	}
+	if v, ok := _c.mutation.RegisterIP(); ok {
+		if err := user.RegisterIPValidator(v); err != nil {
+			return &ValidationError{Name: "register_ip", err: fmt.Errorf(`ent: validator failed for field "User.register_ip": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RegisterCountry(); !ok {
+		return &ValidationError{Name: "register_country", err: errors.New(`ent: missing required field "User.register_country"`)}
+	}
+	if v, ok := _c.mutation.RegisterCountry(); ok {
+		if err := user.RegisterCountryValidator(v); err != nil {
+			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -956,6 +1008,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RestrictPublicGroups(); ok {
 		_spec.SetField(user.FieldRestrictPublicGroups, field.TypeBool, value)
 		_node.RestrictPublicGroups = value
+	}
+	if value, ok := _c.mutation.RegisterIP(); ok {
+		_spec.SetField(user.FieldRegisterIP, field.TypeString, value)
+		_node.RegisterIP = value
+	}
+	if value, ok := _c.mutation.RegisterCountry(); ok {
+		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
+		_node.RegisterCountry = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1645,6 +1705,30 @@ func (u *UserUpsert) UpdateRestrictPublicGroups() *UserUpsert {
 	return u
 }
 
+// SetRegisterIP sets the "register_ip" field.
+func (u *UserUpsert) SetRegisterIP(v string) *UserUpsert {
+	u.Set(user.FieldRegisterIP, v)
+	return u
+}
+
+// UpdateRegisterIP sets the "register_ip" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRegisterIP() *UserUpsert {
+	u.SetExcluded(user.FieldRegisterIP)
+	return u
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (u *UserUpsert) SetRegisterCountry(v string) *UserUpsert {
+	u.Set(user.FieldRegisterCountry, v)
+	return u
+}
+
+// UpdateRegisterCountry sets the "register_country" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRegisterCountry() *UserUpsert {
+	u.SetExcluded(user.FieldRegisterCountry)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2107,6 +2191,34 @@ func (u *UserUpsertOne) SetRestrictPublicGroups(v bool) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRestrictPublicGroups() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRestrictPublicGroups()
+	})
+}
+
+// SetRegisterIP sets the "register_ip" field.
+func (u *UserUpsertOne) SetRegisterIP(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegisterIP(v)
+	})
+}
+
+// UpdateRegisterIP sets the "register_ip" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRegisterIP() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegisterIP()
+	})
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (u *UserUpsertOne) SetRegisterCountry(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegisterCountry(v)
+	})
+}
+
+// UpdateRegisterCountry sets the "register_country" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRegisterCountry() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegisterCountry()
 	})
 }
 
@@ -2738,6 +2850,34 @@ func (u *UserUpsertBulk) SetRestrictPublicGroups(v bool) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRestrictPublicGroups() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRestrictPublicGroups()
+	})
+}
+
+// SetRegisterIP sets the "register_ip" field.
+func (u *UserUpsertBulk) SetRegisterIP(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegisterIP(v)
+	})
+}
+
+// UpdateRegisterIP sets the "register_ip" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRegisterIP() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegisterIP()
+	})
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (u *UserUpsertBulk) SetRegisterCountry(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegisterCountry(v)
+	})
+}
+
+// UpdateRegisterCountry sets the "register_country" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRegisterCountry() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegisterCountry()
 	})
 }
 

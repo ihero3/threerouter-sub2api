@@ -187,6 +187,7 @@ func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFai
 		"246810",
 		"INVITE123",
 		"oidc",
+		"",
 	)
 
 	require.Nil(t, tokenPair)
@@ -225,6 +226,7 @@ func TestRegisterOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T) {
 		"246810",
 		"",
 		"oidc",
+		"",
 	)
 
 	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
@@ -251,6 +253,7 @@ func TestRegisterVerifiedOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T)
 		"secret-123",
 		"",
 		"oidc",
+		"",
 	)
 
 	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
@@ -331,6 +334,7 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 		"246810",
 		"",
 		" OIDC ",
+		"",
 	)
 
 	require.NoError(t, err)
@@ -391,6 +395,7 @@ func TestRegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource(t *testing.T)
 				"246810",
 				"",
 				tt.signupSource,
+		"",
 			)
 
 			require.NoError(t, err)
@@ -431,6 +436,7 @@ func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing
 		"246810",
 		"",
 		"unknown-provider",
+		"",
 	)
 
 	require.NoError(t, err)

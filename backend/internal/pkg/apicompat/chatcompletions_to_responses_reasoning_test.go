@@ -193,3 +193,77 @@ func TestChatCompletionsToResponses_ToolCallReasoningItemKeepsMessageClean(t *te
 	require.Equal(t, "function_call", items[2].Get("type").String())
 	require.Equal(t, "call_2", items[2].Get("call_id").String())
 }
+
+// 纯文本多轮（无工具调用）且携带 reasoning_content：当上游属于 passback-required
+// 协议族（deepseek-/kimi-/glm- 等，由调用方设置 ReplayReasoningOnPlainTextTurns）
+// 时，必须把 reasoning 发成独立的 reasoning item，而不是包进 <thinking> 可见文本。
+// 否则 DeepSeek/Kimi Responses 端点返回 400
+// "The `reasoning_content` in the thinking mode must be passed back to the API"。
+// 这正是请求 078a1367 在生产环境反复触发的错误。
+func TestChatCompletionsToResponses_PlainTextReasoningReplaysItemWhenPassbackRequired(t *testing.T) {
+	opts := &ChatCompletionsToResponsesOptions{
+		ReplayReasoningOnPlainTextTurns: true,
+	}
+	req := &ChatCompletionsRequest{
+		Model: "deepseek-flash",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"hi"`)},
+			{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"the answer is 42"`),
+				ReasoningContent: "some thoughts",
+			},
+			{Role: "user", Content: json.RawMessage(`"why?"`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponsesWithOptions(req, opts)
+	require.NoError(t, err)
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	// input: [user, reasoning item, assistant message, user]
+	reasoning := gjson.GetBytes(body, "input.1")
+	require.Equal(t, "reasoning", reasoning.Get("type").String())
+	require.Equal(t, "some thoughts", reasoning.Get("content.0.text").String())
+	require.Equal(t, "some thoughts", reasoning.Get("summary.0.text").String())
+
+	assistant := gjson.GetBytes(body, "input.2")
+	require.Equal(t, "assistant", assistant.Get("role").String())
+	require.Equal(t, "the answer is 42", assistant.Get("content.0.text").String())
+	// reasoning must not also leak into visible text
+	require.NotContains(t, assistant.Raw, "thinking")
+	require.NotContains(t, string(body), "<thinking>")
+}
+
+// 纯文本轮携带 reasoning_content，但调用方未开启 ReplayReasoningOnPlainTextTurns
+// （gpt/o-series 或 unknown 协议，或 nil opts）：必须维持旧的 <thinking> 文本形态，
+// 不能发 reasoning item——避免在不支持的上游破坏契约。
+func TestChatCompletionsToResponses_PlainTextReasoningStaysThinkingTextWhenOptOut(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-5",
+		Messages: []ChatMessage{
+			{
+				Role:             "assistant",
+				Content:          json.RawMessage(`"the answer is 42"`),
+				ReasoningContent: "some thoughts",
+			},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req) // nil opts
+	require.NoError(t, err)
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	require.Equal(t, "assistant", gjson.GetBytes(body, "input.0.role").String())
+	text := gjson.GetBytes(body, "input.0.content.0.text").String()
+	require.Contains(t, text, "<thinking>some thoughts</thinking>")
+	require.Contains(t, text, "the answer is 42")
+	for _, item := range gjson.GetBytes(body, "input").Array() {
+		require.NotEqual(t, "reasoning", item.Get("type").String())
+	}
+}
+

@@ -450,6 +450,34 @@ func (_u *UserUpdate) SetNillableRestrictPublicGroups(v *bool) *UserUpdate {
 	return _u
 }
 
+// SetRegisterIP sets the "register_ip" field.
+func (_u *UserUpdate) SetRegisterIP(v string) *UserUpdate {
+	_u.mutation.SetRegisterIP(v)
+	return _u
+}
+
+// SetNillableRegisterIP sets the "register_ip" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRegisterIP(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetRegisterIP(*v)
+	}
+	return _u
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (_u *UserUpdate) SetRegisterCountry(v string) *UserUpdate {
+	_u.mutation.SetRegisterCountry(v)
+	return _u
+}
+
+// SetNillableRegisterCountry sets the "register_country" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRegisterCountry(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetRegisterCountry(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1141,6 +1169,16 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RegisterIP(); ok {
+		if err := user.RegisterIPValidator(v); err != nil {
+			return &ValidationError{Name: "register_ip", err: fmt.Errorf(`ent: validator failed for field "User.register_ip": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RegisterCountry(); ok {
+		if err := user.RegisterCountryValidator(v); err != nil {
+			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1263,6 +1301,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.RestrictPublicGroups(); ok {
 		_spec.SetField(user.FieldRestrictPublicGroups, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RegisterIP(); ok {
+		_spec.SetField(user.FieldRegisterIP, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RegisterCountry(); ok {
+		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2467,6 +2511,34 @@ func (_u *UserUpdateOne) SetNillableRestrictPublicGroups(v *bool) *UserUpdateOne
 	return _u
 }
 
+// SetRegisterIP sets the "register_ip" field.
+func (_u *UserUpdateOne) SetRegisterIP(v string) *UserUpdateOne {
+	_u.mutation.SetRegisterIP(v)
+	return _u
+}
+
+// SetNillableRegisterIP sets the "register_ip" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRegisterIP(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetRegisterIP(*v)
+	}
+	return _u
+}
+
+// SetRegisterCountry sets the "register_country" field.
+func (_u *UserUpdateOne) SetRegisterCountry(v string) *UserUpdateOne {
+	_u.mutation.SetRegisterCountry(v)
+	return _u
+}
+
+// SetNillableRegisterCountry sets the "register_country" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRegisterCountry(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetRegisterCountry(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3171,6 +3243,16 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RegisterIP(); ok {
+		if err := user.RegisterIPValidator(v); err != nil {
+			return &ValidationError{Name: "register_ip", err: fmt.Errorf(`ent: validator failed for field "User.register_ip": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RegisterCountry(); ok {
+		if err := user.RegisterCountryValidator(v); err != nil {
+			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -3310,6 +3392,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.RestrictPublicGroups(); ok {
 		_spec.SetField(user.FieldRestrictPublicGroups, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RegisterIP(); ok {
+		_spec.SetField(user.FieldRegisterIP, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RegisterCountry(); ok {
+		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

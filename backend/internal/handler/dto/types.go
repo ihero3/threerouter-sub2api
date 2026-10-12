@@ -34,6 +34,10 @@ type User struct {
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制），仅在所用分组未设置 rpm_limit 时作为兜底生效。
 	RPMLimit int `json:"rpm_limit"`
 
+	// 注册 IP 采集（仅新注册用户有值，存量用户为空串）。
+	RegisterIP      string `json:"register_ip"`
+	RegisterCountry string `json:"register_country"`
+
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 }

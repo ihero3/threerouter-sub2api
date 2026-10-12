@@ -227,6 +227,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.PromoCode,
 		req.InvitationCode,
 		req.AffCode,
+		ip.GetClientIP(c),
 	)
 	if err != nil {
 		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）

@@ -42,6 +42,7 @@
           <thead>
             <tr class="text-gray-500 dark:text-gray-400">
               <th class="pb-2 text-left">{{ t('admin.dashboard.group') }}</th>
+              <th v-if="enableBreakdown" class="pb-2 text-left">{{ t('admin.dashboard.userId') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.requests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.tokens') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.actual') }}</th>
@@ -67,6 +68,7 @@
                     {{ group.group_name || t('admin.dashboard.noGroup') }}
                   </span>
                 </td>
+                <td v-if="enableBreakdown" class="py-1.5 text-right text-gray-400 dark:text-gray-500"></td>
                 <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
                   {{ formatNumber(group.requests) }}
                 </td>
@@ -149,7 +151,7 @@ const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
 const showAccountCost = computed(() => props.showAccountCost)
-const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
+const distributionColspan = computed(() => (showAccountCost.value ? 6 : 5) + (props.enableBreakdown ? 1 : 0))
 
 const toggleBreakdown = async (type: string, id: number | string) => {
   const key = `${type}-${id}`

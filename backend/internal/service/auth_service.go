@@ -86,6 +86,7 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	geoIPService          *GeoIPService
 }
 
 type CaptchaProof struct {
@@ -154,13 +155,34 @@ func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptch
 	s.aliyunCaptchaService = aliyunCaptchaService
 }
 
+// SetGeoIPService 注入 GeoIP 服务，用于注册时解析注册 IP 的国家 ISO 代码。
+// 通过 setter 注入（而非构造器参数），保持 NewAuthService 与既有测试的兼容性。
+func (s *AuthService) SetGeoIPService(geoIPService *GeoIPService) {
+	s.geoIPService = geoIPService
+}
+
+// resolveRegisterCountry 解析注册 IP 的国家 ISO 代码。
+// fail-open：GeoIP 未注入/未启用/解析失败时返回空串，不阻断注册。
+func (s *AuthService) resolveRegisterCountry(registerIP string) string {
+	registerIP = strings.TrimSpace(registerIP)
+	if s == nil || s.geoIPService == nil || registerIP == "" {
+		return ""
+	}
+	code, err := s.geoIPService.Lookup(registerIP)
+	if err != nil {
+		return ""
+	}
+	return code
+}
+
 // Register 用户注册，返回token和用户
-func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
+func (s *AuthService) Register(ctx context.Context, email, password, registerIP string) (string, *User, error) {
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", registerIP)
 }
 
 // RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
+// registerIP 为注册请求的客户端 IP（可空），仅在非空时与 GeoIP 国家代码一并落库。
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode, registerIP string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -236,13 +258,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 
 	// 创建用户
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		RPMLimit:     defaultRPMLimit,
-		Status:       StatusActive,
+		Email:           email,
+		PasswordHash:    hashedPassword,
+		Role:            RoleUser,
+		Balance:         grantPlan.Balance,
+		Concurrency:     grantPlan.Concurrency,
+		RPMLimit:        defaultRPMLimit,
+		Status:          StatusActive,
+		RegisterIP:      strings.TrimSpace(registerIP),
+		RegisterCountry: s.resolveRegisterCountry(registerIP),
 	}
 
 	if err := s.createUserAndClaimInvitation(ctx, user, invitationRedeemCode); err != nil {

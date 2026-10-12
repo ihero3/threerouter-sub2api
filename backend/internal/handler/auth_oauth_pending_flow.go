@@ -1773,6 +1773,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		strings.TrimSpace(req.VerifyCode),
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
+		ip.GetClientIP(c),
 	)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {

@@ -83,8 +83,11 @@ func TestForwardAsChatCompletions_ResponseFailed_PassthroughRule(t *testing.T) {
 	errType := gjson.Get(respBody, "error.type").String()
 	require.Equal(t, "upstream_error", errType)
 	errMsg := gjson.Get(respBody, "error.message").String()
-	require.NotEmpty(t, errMsg, "passthrough should preserve error message")
-	require.Contains(t, errMsg, "context window")
+	// 策略：上游原文不下发给终端用户（见 48d6c875d「上游错误下游用户不可见」）。
+	// 规则虽勾了 PassthroughBody，客户端也只能拿到平台统一文案；上游完整错误
+	// 只进 OpsUpstreamErrorEvent。与 openai_gateway_service_test.go 姊妹用例同口径。
+	require.Equal(t, "Upstream request failed", errMsg)
+	require.NotContains(t, respBody, "context window")
 }
 
 func TestResponsesStreamAccessStateFailoverPrecedesPassthroughRule(t *testing.T) {
@@ -288,7 +291,10 @@ func TestForwardAsChatCompletions_ResponseFailed_ErrorCodeRuleMatchesViaSemantic
 	require.Equal(t, http.StatusBadRequest, rec.Code, "error-code-conditioned rule should match via semantic status inference")
 	respBody := rec.Body.String()
 	require.Equal(t, "upstream_error", gjson.Get(respBody, "error.type").String())
-	require.Contains(t, gjson.Get(respBody, "error.message").String(), "context window")
+	// 策略：上游原文不下发给终端用户（见 48d6c875d「上游错误下游用户不可见」）。
+	// 规则虽勾了 PassthroughBody，客户端也只能拿到平台统一文案。
+	require.Equal(t, "Upstream request failed", gjson.Get(respBody, "error.message").String())
+	require.NotContains(t, respBody, "context window")
 }
 
 func TestForwardAsAnthropic_ResponseFailed_ErrorCodeRuleMatchesViaSemanticStatus(t *testing.T) {

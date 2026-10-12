@@ -70,15 +70,19 @@ func (u *ImageResultUploader) Rewrite(ctx context.Context, taskID string, result
 	}
 	rawData, ok := top["data"]
 	if !ok {
-		// 没有 data 数组（结构不符合预期），保持原样返回，交由上层决定。
-		return result, nil
+		// 没有 data 数组 = 上游给了结构不符的空壳。此前直接透传会让任务
+		// 以 succeeded 落库却没有产物（扣钱不给货），与无存储路径的
+		// rejectInlineImageResult 同口径：显式报错，让任务带着原因失败。
+		return nil, errors.New("upstream image response has no data field")
 	}
 	var items []map[string]json.RawMessage
 	if err := json.Unmarshal(rawData, &items); err != nil {
 		return nil, fmt.Errorf("parse image response data: %w", err)
 	}
 	if len(items) == 0 {
-		return result, nil
+		// 一张图都没产出却让任务 succeeded，等于"扣了钱不给货"。
+		// 与无存储路径的 rejectInlineImageResult 保持同一契约。
+		return nil, errors.New("upstream image response contains no image")
 	}
 	for i, item := range items {
 		data, contentType, err := u.fetchImageBytes(ctx, item)
