@@ -223,3 +223,22 @@ func TestDispatchCodexModelsGatewayKeepsDeliveredOpenAIResponse(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"models":[]}`, rec.Body.String())
 }
+
+// 目录端点必须留下可观测痕迹：Codex 对非 2xx/坏 body 会静默丢弃整份目录，
+// 没有埋点时"我的模型全没了"只能靠用户报障。这里走真实路由断言本地生成分支
+// 确实上报了交付指标（测试路由没有账号数据，因此条目数为 0 → 必须计入 empty_total）。
+func TestGatewayRoutesCodexCatalogEmitsDeliveryMetric(t *testing.T) {
+	before := service.CodexCatalogMetricsSnapshotForTest()
+
+	router := newGatewayRoutesTestRouter(service.PlatformKimi)
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.162.0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"models"`, "kimi 分组必须拿到目录形状")
+
+	after := service.CodexCatalogMetricsSnapshotForTest()
+	require.Equal(t, before.Served+1, after.Served, "一次目录交付应当只计一次")
+	require.Greater(t, after.Empty, before.Empty, "空目录必须计入 empty_total（这是要报警的信号）")
+	require.Equal(t, before.Kimi+1, after.Kimi, "平台维度必须按分组平台记到 kimi")
+}

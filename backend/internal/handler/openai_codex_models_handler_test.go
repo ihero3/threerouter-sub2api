@@ -61,15 +61,19 @@ type codexModelsFailoverHTTPUpstream struct {
 	service.HTTPUpstream
 	mu          sync.Mutex
 	accountIDs  []int64
+	requestURLs []string
 	firstErr    error
 	firstStatus int
 	firstBody   string
 	statuses    map[int64]int
 }
 
-func (u *codexModelsFailoverHTTPUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+func (u *codexModelsFailoverHTTPUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
 	u.mu.Lock()
 	u.accountIDs = append(u.accountIDs, accountID)
+	if req != nil && req.URL != nil {
+		u.requestURLs = append(u.requestURLs, req.URL.String())
+	}
 	u.mu.Unlock()
 
 	status, hasStatus := u.statuses[accountID]
@@ -106,6 +110,12 @@ func (u *codexModelsFailoverHTTPUpstream) Do(_ *http.Request, _ string, accountI
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-5.6-sol"}]}`)),
 	}, nil
+}
+
+func (u *codexModelsFailoverHTTPUpstream) requestedURLs() []string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]string(nil), u.requestURLs...)
 }
 
 func (u *codexModelsFailoverHTTPUpstream) calls() []int64 {
@@ -685,4 +695,46 @@ func equalInt64Slices(got, want []int64) bool {
 		}
 	}
 	return true
+}
+
+// 版本信号必须全流程同源：路由层接受 client_version 查询参数或 Version 等请求头，
+// 上游请求也必须拿到同一个值。此前 OpenAI 分支只读 c.Query("client_version")，
+// 「只发 Version 头」的客户端会被路由按目录形状响应、但上游请求丢失版本
+// （上游可能返回陈旧或不匹配的清单）。
+func TestCodexModelsForwardsHeaderVersionSignalToUpstream(t *testing.T) {
+	handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusOK)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Request.Header.Set("Version", "0.162.0")
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+	})
+
+	handler.CodexModels(c)
+
+	urls := upstream.requestedURLs()
+	require.NotEmpty(t, urls, "upstream should have been called")
+	require.Contains(t, urls[0], "client_version=0.162.0",
+		"Version header must be forwarded upstream as client_version; got %q", urls[0])
+}
+
+// OpenAI 分组一个可调度账号都没有时，旧行为是硬 503。目录端点对客户端没有容错，
+// 503 会让整份自定义目录被静默丢弃、选择器回退内置模型列表且界面不报错——所以这条
+// 路径同样必须 fail-open 到本地生成目录，只把"账号不可用"留在 ops 上下文里。
+func TestCodexModelsWithNoSchedulableAccountFallsBackInsteadOf503(t *testing.T) {
+	handler, upstream, groupID := newCodexModelsFailoverTestHandlerWithAccountCount(http.StatusOK, 0, 3)
+	recorder, c := performCodexModelsRequestWithContext(t, handler, groupID)
+
+	requireCodexModelsLocalFallbackRequested(t, c)
+	require.Empty(t, upstream.calls(), "没有账号时不应访问上游")
+	require.NotEqual(t, http.StatusServiceUnavailable, recorder.Code,
+		"目录端点不得以 503 作答；body=%s", recorder.Body.String())
+	require.False(t, c.Writer.Written(), "必须把响应留给本地生成目录写出")
+
+	limited, exists := c.Get(service.OpsClientBusinessLimitedKey)
+	require.True(t, exists, "账号不可用必须留在 ops 上下文里可见")
+	require.Equal(t, true, limited)
 }

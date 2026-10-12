@@ -68,8 +68,10 @@ func RegisterGatewayRoutes(
 	codexModelsHandler := func(c *gin.Context) {
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
-	// modelsHandler 是 /v1/models 与 /models 的唯一注册点：是否按 Codex 目录形状
-	// 响应由「客户端是否自报版本」决定，而不是由分组平台或版本号阈值决定。
+	// modelsHandler 是 **/v1/models** 的注册点：是否按 Codex 目录形状响应由
+	// 「客户端是否自报版本」决定，而不是由分组平台或版本号阈值决定。
+	// 注意：根路径 /models 是另一条独立路由（公开模型名单，h.Gateway.PublicModels），
+	// 不做版本协商——Codex 目录契约只在 /v1/models 上，base_url 必须写到 /v1。
 	// 版本信号取第一个非空值，覆盖 client_version 查询参数与 Version 等请求头，
 	// 值本身（空串 / abc / 重复参数）不参与判定，因此永远不会因客户端自报值异常
 	// 而回落到错误的形状（自定义模型会从选择器整体消失且客户端不报错）。

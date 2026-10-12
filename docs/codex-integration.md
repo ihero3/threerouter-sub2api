@@ -29,11 +29,11 @@ python3 scripts/codex-setup.py --api-key sk-你的平台Key --apply
 
 | 参数 | 作用 |
 |---|---|
-| `--auth bearer` | **平台 API Key 直接写进 provider 段**（`experimental_bearer_token`）；threerouter 这类只认 `sk-` Key 的网关用这个 |
+| `--auth bearer`（**默认**） | **平台 API Key 直接写进 provider 段**（`experimental_bearer_token`）；threerouter 这类只认 `sk-` Key 的网关用这个 |
 | `--auth env` | 平台 API Key 放环境变量 `THREEROUTER_API_KEY`，Key 不落盘（桌面端从 Dock 启动时读不到该变量，仅适合 CLI） |
 | `--auth openai` | 复用 Codex 的 ChatGPT 登录态（`requires_openai_auth = true`）；**仅当网关接受 ChatGPT 登录 token 时可用** |
 | `--auth none` | 凭证交给已有的 provider 段，只补目录相关配置 |
-| `--with-catalog-json` / `--no-catalog-json` | 用离线目录 / 纯自动发现（默认跟随是否已有目录文件） |
+| `--with-catalog-json` / `--no-catalog-json` | 用离线目录 / 纯自动发现（默认：`bearer` 强制带目录，其余跟随是否已有目录文件） |
 | `--codex-home` | 指定 Codex home，便于先在临时目录预演 |
 
 > **认证方式要用实测结果决定，不要照抄文档。** 平台只认平台 API Key 时，`--auth openai`
@@ -48,7 +48,7 @@ python3 scripts/codex-setup.py --api-key sk-你的平台Key --apply
 
 ```toml
 # ~/.codex/config.toml
-model = "deepseek-v4-pro"            # 目录里的 slug
+model = "deepseek-v4-flash"          # 目录里的 slug，且要有推理档位（见下方提示）
 model_provider = "threerouter"
 model_reasoning_effort = "high"      # 该模型支持的档位
 model_catalog_json = "~/.codex/threerouter-models.json"   # ← 必须在顶层
@@ -63,6 +63,29 @@ experimental_bearer_token = "<你的平台 API Key>"
 `experimental_bearer_token` 会禁用服务端的自动发现，所以这份模板**必须**配
 `model_catalog_json`：目录由本地文件提供，实测服务端 0 次目录请求。
 这条路上两者不是矛盾，而是分工。
+
+> **选默认模型时确认两件事**（都会静默失败，不会报错）：
+> ① 该 `slug` 仍在上游可路由——上游会下线模型（实测 `deepseek-v4-1-flash` 就被下线过），
+> 本地目录文件因此会过期，重新跑一次脚本即可刷新；
+> ② 该模型在目录里**有推理档位**——`supported_reasoning_levels` 为空的模型没有档位可选，
+> 你在 `config.toml` 写的 `model_reasoning_effort` 对它完全不生效。
+> 一条命令同时查这两件事：
+>
+> ```bash
+> python3 - <<'PY'
+> import json, tomllib, pathlib
+> home = pathlib.Path.home()/'.codex'
+> d = tomllib.load((home/'config.toml').open('rb'))
+> c = json.load((home/'threerouter-models.json').open())
+> slugs = {m['slug'] for m in c['models']}
+> m = d['model']
+> levels = next(([l['effort'] for l in (x.get('supported_reasoning_levels') or [])]
+>                for x in c['models'] if x['slug'] == m), [])
+> print('默认模型', m, '| 仍在目录里:', m in slugs, '| 档位:', levels or '（无）',
+>       '| 配置的 effort:', d.get('model_reasoning_effort'),
+>       '| 生效:', d.get('model_reasoning_effort') in levels)
+> PY
+> ```
 
 如果网关接受 ChatGPT 登录态（换一台部署时先按 §1.1 的自查命令确认），
 才可以用下面这种「零配置自动发现」写法：
