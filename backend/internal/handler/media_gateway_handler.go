@@ -471,6 +471,18 @@ func mediaCreateErrorDetail(err error, publicModel string) (status int, errType,
 	if errors.Is(err, service.ErrNoAvailableMediaAccount) || strings.Contains(err.Error(), "no available account") {
 		return http.StatusServiceUnavailable, "capacity_error", mediaNoAvailableAccountMessage(publicModel), 0
 	}
+	// 幂等"进行中 / 退避中"属于"稍后重试"语义，必须映射成可重试类型并保留
+	// Retry-After；原样透出 409 + invalid_request_error 会让标准 SDK 当成请求格式
+	// 错误、永不自动重试，造成"参数明明对却一直失败"的稳定性质疑。429 + rate_limit_error
+	// 是这类退避的标准映射，客户端按 Retry-After 退避后重试即可成功（不会重复计费）。
+	if errors.Is(err, service.ErrIdempotencyRetryBackoff) || errors.Is(err, service.ErrIdempotencyInProgress) {
+		var appErr *infraerrors.ApplicationError
+		msg := "Request is throttled by the idempotency backoff window, retry after the Retry-After duration"
+		if errors.As(err, &appErr) {
+			msg = appErr.Message
+		}
+		return http.StatusTooManyRequests, "rate_limit_error", msg, service.RetryAfterSecondsFromError(err)
+	}
 	var appErr *infraerrors.ApplicationError
 	if errors.As(err, &appErr) && appErr.Code >= 400 && appErr.Code <= 599 {
 		errType = "api_error"

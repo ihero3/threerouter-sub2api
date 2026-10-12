@@ -85,12 +85,20 @@ func TestMediaCreateErrorDetail(t *testing.T) {
 			wantMessagePart: "wan2.1-image",
 		},
 		{
-			name:            "幂等冲突保留 409 与 Retry-After",
+			name:            "幂等进行中映射 429 可重试而非 409 硬错误",
 			err:             infraerrors.Conflict("IDEMPOTENCY_IN_PROGRESS", "idempotent request is still processing").WithMetadata(map[string]string{"retry_after": "7"}),
-			wantStatus:      http.StatusConflict,
-			wantType:        "invalid_request_error",
+			wantStatus:      http.StatusTooManyRequests,
+			wantType:        "rate_limit_error",
 			wantRetryAfter:  7,
 			wantMessagePart: "still processing",
+		},
+		{
+			name:            "幂等退避映射 429 可重试而非 409 硬错误",
+			err:             infraerrors.Conflict("IDEMPOTENCY_RETRY_BACKOFF", "idempotent request is in retry backoff window").WithMetadata(map[string]string{"retry_after": "4"}),
+			wantStatus:      http.StatusTooManyRequests,
+			wantType:        "rate_limit_error",
+			wantRetryAfter:  4,
+			wantMessagePart: "retry backoff window",
 		},
 		{
 			name:            "幂等存储不可用保留 503 而非 502",
