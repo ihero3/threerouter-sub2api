@@ -27,7 +27,14 @@
         </div>
         <!-- Contact Info -->
         <div v-if="contactInfo" class="flex items-center gap-6">
-          <span class="text-gray-400">{{ contactInfo }}</span>
+          <a
+            v-if="contactHref"
+            :href="contactHref"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-gray-400 transition-colors hover:text-gray-700"
+          >{{ contactInfo }}</a>
+          <span v-else class="text-gray-400">{{ contactInfo }}</span>
         </div>
       </div>
       <div class="mt-4 flex items-center justify-center gap-6">
@@ -70,6 +77,7 @@ import { useI18n } from 'vue-i18n'
 import { setLocale } from '@/i18n'
 import { useAppStore } from '@/stores'
 import type { CustomMenuItem } from '@/types'
+import { resolveContactHref } from '@/utils/contactLink'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -79,6 +87,7 @@ const currentYear = computed(() => new Date().getFullYear())
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 
 const contactInfo = computed(() => appStore.contactInfo)
+const contactHref = computed(() => resolveContactHref(contactInfo.value))
 const customMenuItems = computed<CustomMenuItem[]>(() => {
   const settings = appStore.cachedPublicSettings
   if (!settings || !settings.custom_menu_items) return []

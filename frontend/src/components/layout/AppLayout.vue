@@ -78,7 +78,14 @@
             </div>
             <!-- Contact Info -->
             <div v-if="contactInfo" class="flex items-center gap-6">
-              <span class="text-gray-400 dark:text-gray-500">{{ contactInfo }}</span>
+              <a
+                v-if="contactHref"
+                :href="contactHref"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-gray-400 transition-colors hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
+              >{{ contactInfo }}</a>
+              <span v-else class="text-gray-400 dark:text-gray-500">{{ contactInfo }}</span>
             </div>
           </div>
         </div>
@@ -97,6 +104,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import type { CustomMenuItem } from '@/types'
+import { resolveContactHref } from '@/utils/contactLink'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
@@ -112,6 +120,7 @@ const currentYear = computed(() => new Date().getFullYear())
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo || '')
 const contactInfo = computed(() => appStore.contactInfo)
+const contactHref = computed(() => resolveContactHref(contactInfo.value))
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 
 const toggleLanguage = () => {
