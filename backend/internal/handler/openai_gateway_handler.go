@@ -3590,16 +3590,19 @@ func (h *OpenAIGatewayHandler) checkRequiredConsents(c *gin.Context, userID int6
 		"gdpr_data_processing": "GDPR Data Processing Agreement",
 	}
 
+	reqLog, _ := c.Get("req_log")
+	lg, _ := reqLog.(*zap.Logger)
+	if lg == nil {
+		lg = logger.L()
+	}
 	for _, ct := range requiredConsentTypes {
 		consent, err := h.complianceService.GetUserConsent(c.Request.Context(), userID, ct)
 		if err != nil {
-			reqLog := c.MustGet("req_log").(*zap.Logger)
-			reqLog.Warn("compliance.consent.check.error", zap.Int64("user_id", userID), zap.String("consent_type", ct), zap.Error(err))
+			lg.Warn("compliance.consent.check.error", zap.Int64("user_id", userID), zap.String("consent_type", ct), zap.Error(err))
 			continue
 		}
 		if consent == nil || !consent.Granted {
-			reqLog := c.MustGet("req_log").(*zap.Logger)
-			reqLog.Info("compliance.consent.missing", zap.Int64("user_id", userID), zap.String("consent_type", ct))
+			lg.Info("compliance.consent.missing", zap.Int64("user_id", userID), zap.String("consent_type", ct))
 			missingConsents = append(missingConsents, ct)
 		}
 	}
