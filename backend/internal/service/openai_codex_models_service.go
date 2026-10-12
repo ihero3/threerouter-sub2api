@@ -38,6 +38,50 @@ const (
 	codexAutoModelPrefix               = "codex-auto-"
 )
 
+// CodexModelsLocalFallbackContextKey 是 gin.Context 上的内部信号键：当 OpenAI
+// 分组分支无法提供上游目录时置位，由路由层继续用本地生成目录补齐同一份
+// {"models":[…]} 响应。
+//
+// 键定义在 service 层是因为 handler 与 routes 互相不能导入（routes 依赖 handler），
+// 而两侧都要读写这一信号。它只表达「换成本地生成目录」，不承载任何业务语义，
+// 因此不放进任何一方，避免为它引入一条反向依赖。
+const CodexModelsLocalFallbackContextKey = "sub2api.codex_models.local_fallback"
+
+// CodexClientVersionHeaders 是「客户端自报版本」的候选请求头，按优先级排列。
+//
+// 官方实现目前把版本放在 `client_version` 查询参数里，出站请求（见
+// FetchCodexModelsManifest）同时会带一个 `Version` 头。把识别信号同时覆盖到
+// 请求头上，是为了在客户端未来改用 header 传版本时目录形状不会突然塌回
+// OpenAI 列表（形状塌陷的后果是选择器里自定义模型整体消失，且客户端不报错），
+// 这属于低概率但高代价的风险。
+var codexClientVersionHeaders = []string{"Version", "X-Client-Version", "X-Codex-Version"}
+
+// CodexClientVersionFromRequest 返回客户端自报的 Codex 版本，取第一个非空值。
+//
+// 查询参数排在请求头之前，保持既有 `?client_version=` 行为不变。签名刻意只取
+// url.Values 与 http.Header（而不是 *http.Request），方便在 handler、路由和单测
+// 中复用，也避免把 gin 上下文渗进 service 层。
+//
+// 返回值只用于「是否按 Codex 目录形状响应」的内容协商与观测：调用方不得按版本号
+// 阈值分桶决定响应形状，未来版本号只会继续变大，阈值判断必然被时间淘汰。
+func CodexClientVersionFromRequest(query url.Values, header http.Header) string {
+	if query != nil {
+		for _, value := range query["client_version"] {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+	if header != nil {
+		for _, name := range codexClientVersionHeaders {
+			if value := strings.TrimSpace(header.Get(name)); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
 // FilterCodexModelIDsForGroup removes dedicated media-generation models,
 // wildcard mapping keys, and Codex automatic modes from a client catalog.
 // Automatic modes are retained only when the group's enabled custom model list

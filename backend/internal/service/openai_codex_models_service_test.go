@@ -3255,3 +3255,38 @@ func TestFetchCodexModelsManifestAPIKeyUsesOfficialOpenAIModelsEndpoint(t *testi
 		})
 	}
 }
+
+// 目录形状只由「客户端是否自报版本」决定：版本值本身（空串 / 垃圾值 / 重复参数）
+// 不参与判定，版本号也绝不用于分桶决定形状——未来版本号只会继续变大。
+func TestCodexClientVersionFromRequestSignalMatrix(t *testing.T) {
+	cases := []struct {
+		name   string
+		query  url.Values
+		header http.Header
+		want   string
+	}{
+		{name: "no signal", want: ""},
+		{name: "query value", query: url.Values{"client_version": {"0.162.0"}}, want: "0.162.0"},
+		{name: "query blank falls through to nothing", query: url.Values{"client_version": {"  "}}, want: ""},
+		{
+			name:  "first non-empty query value wins",
+			query: url.Values{"client_version": {"", "  ", "0.162.0", "0.153.4"}},
+			want:  "0.162.0",
+		},
+		{name: "query wins over header", query: url.Values{"client_version": {"0.162.0"}}, header: http.Header{"Version": {"0.153.4"}}, want: "0.162.0"},
+		{name: "Version header", header: http.Header{"Version": {"0.162.0"}}, want: "0.162.0"},
+		{name: "X-Client-Version header", header: http.Header{"X-Client-Version": {"0.162.0"}}, want: "0.162.0"},
+		{name: "X-Codex-Version header", header: http.Header{"X-Codex-Version": {"0.162.0"}}, want: "0.162.0"},
+		{name: "Version header preferred over fallbacks", header: http.Header{"Version": {"0.162.0"}, "X-Client-Version": {"0.1.0"}}, want: "0.162.0"},
+		{name: "blank headers are ignored", header: http.Header{"Version": {"   "}, "X-Client-Version": {""}}, want: ""},
+		{name: "garbage version is still a signal", query: url.Values{"client_version": {"abc"}}, want: "abc"},
+		{name: "header is whitespace-trimmed", header: http.Header{"Version": {"  0.162.0  "}}, want: "0.162.0"},
+		{name: "nil query and header", query: nil, header: nil, want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, CodexClientVersionFromRequest(tc.query, tc.header))
+		})
+	}
+}

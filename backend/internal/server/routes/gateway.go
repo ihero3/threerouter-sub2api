@@ -68,8 +68,13 @@ func RegisterGatewayRoutes(
 	codexModelsHandler := func(c *gin.Context) {
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
+	// modelsHandler 是 /v1/models 与 /models 的唯一注册点：是否按 Codex 目录形状
+	// 响应由「客户端是否自报版本」决定，而不是由分组平台或版本号阈值决定。
+	// 版本信号取第一个非空值，覆盖 client_version 查询参数与 Version 等请求头，
+	// 值本身（空串 / abc / 重复参数）不参与判定，因此永远不会因客户端自报值异常
+	// 而回落到错误的形状（自定义模型会从选择器整体消失且客户端不报错）。
 	modelsHandler := func(c *gin.Context) {
-		if c.Query("client_version") != "" {
+		if service.CodexClientVersionFromRequest(c.Request.URL.Query(), c.Request.Header) != "" {
 			codexModelsHandler(c)
 			return
 		}
@@ -629,14 +634,6 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
-}
-
-func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler gin.HandlerFunc) {
-	if getGroupPlatform(c) == service.PlatformOpenAI {
-		openAIHandler(c)
-		return
-	}
-	generatedHandler(c)
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.
