@@ -286,6 +286,72 @@ export async function listUnsourcedUsers(
   return data
 }
 
+export type AffiliateGuardEventStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AffiliateGuardEvent {
+  id: number
+  inviter_id: number
+  inviter_email: string
+  inviter_username: string
+  invitee_id: number
+  invitee_email: string
+  invitee_username: string
+  /** 被邀请人注册时使用的 IP */
+  register_ip: string
+  /** 命中原因（同 IP 下的账号数说明） */
+  reason: string
+  status: AffiliateGuardEventStatus | string
+  /** 批准后补发的注册奖励金额；pending/rejected 时为 0 */
+  reward_amount: number
+  reviewed_by?: number
+  reviewed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ListGuardEventsParams {
+  page?: number
+  page_size?: number
+  /** 为空表示不限；否则按 pending/approved/rejected 过滤 */
+  status?: string
+  search?: string
+}
+
+export async function listGuardEvents(
+  params: ListGuardEventsParams = {},
+): Promise<PaginatedResponse<AffiliateGuardEvent>> {
+  const { data } = await apiClient.get<PaginatedResponse<AffiliateGuardEvent>>(
+    '/admin/affiliates/guard-events',
+    {
+      params: {
+        page: params.page ?? 1,
+        page_size: params.page_size ?? 20,
+        status: params.status || undefined,
+        search: params.search || undefined,
+      },
+    },
+  )
+  return data
+}
+
+export async function approveGuardEvent(
+  eventId: number,
+): Promise<AffiliateGuardEvent> {
+  const { data } = await apiClient.post<AffiliateGuardEvent>(
+    `/admin/affiliates/guard-events/${eventId}/approve`,
+  )
+  return data
+}
+
+export async function rejectGuardEvent(
+  eventId: number,
+): Promise<AffiliateGuardEvent> {
+  const { data } = await apiClient.post<AffiliateGuardEvent>(
+    `/admin/affiliates/guard-events/${eventId}/reject`,
+  )
+  return data
+}
+
 export const affiliatesAPI = {
   listUsers,
   lookupUsers,
@@ -298,6 +364,9 @@ export const affiliatesAPI = {
   getUserOverview,
   getInviteRelations,
   listUnsourcedUsers,
+  listGuardEvents,
+  approveGuardEvent,
+  rejectGuardEvent,
 }
 
 export default affiliatesAPI

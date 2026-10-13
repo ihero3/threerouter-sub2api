@@ -911,6 +911,11 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		affiliates.GET("/relations", h.Admin.Affiliate.GetInviteRelations)
 		affiliates.GET("/relations/unsourced", h.Admin.Affiliate.ListUnsourcedUsers)
 
+		// 注册 IP 关联风控：同 IP 多账号共用一个邀请人的待审核事件
+		affiliates.GET("/guard-events", h.Admin.Affiliate.ListGuardEvents)
+		affiliates.POST("/guard-events/:id/approve", h.Admin.Affiliate.ApproveGuardEvent)
+		affiliates.POST("/guard-events/:id/reject", h.Admin.Affiliate.RejectGuardEvent)
+
 		users := affiliates.Group("/users")
 		{
 			users.GET("", h.Admin.Affiliate.ListUsers)

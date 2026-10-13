@@ -16,6 +16,13 @@
             : 'btn-secondary text-gray-600 dark:text-dark-300'"
           @click="switchToUnsourced"
         >{{ t('admin.affiliates.relations.tabs.unsourced') }}</button>
+        <button
+          class="btn px-3 py-1.5 text-sm"
+          :class="activeTab === 'guard'
+            ? 'bg-primary-500 text-white'
+            : 'btn-secondary text-gray-600 dark:text-dark-300'"
+          @click="switchToGuard"
+        >{{ t('admin.affiliates.relations.tabs.guard') }}</button>
       </div>
 
       <template v-if="activeTab === 'relations'">
@@ -159,7 +166,7 @@
         </div>
       </template>
 
-      <template v-else>
+      <template v-else-if="activeTab === 'unsourced'">
         <div class="card p-4 md:p-6">
           <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('admin.affiliates.relations.unsourced.description') }}</p>
           <div class="mt-4 flex flex-wrap items-center gap-2">
@@ -228,6 +235,98 @@
           </div>
         </div>
       </template>
+
+      <template v-else-if="activeTab === 'guard'">
+        <div class="card p-4 md:p-6">
+          <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('admin.affiliates.relations.guard.description') }}</p>
+          <div class="mt-4 flex flex-wrap items-center gap-2">
+            <select v-model="guardStatus" class="input w-auto" @change="handleGuardStatusChange">
+              <option value="">{{ t('admin.affiliates.relations.guard.statusFilterAll') }}</option>
+              <option value="pending">{{ t('admin.affiliates.relations.guard.status.pending') }}</option>
+              <option value="approved">{{ t('admin.affiliates.relations.guard.status.approved') }}</option>
+              <option value="rejected">{{ t('admin.affiliates.relations.guard.status.rejected') }}</option>
+            </select>
+            <div class="relative min-w-[240px] flex-1">
+              <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input v-model="guardSearch" type="text" class="input pl-10" :placeholder="t('admin.affiliates.relations.guard.searchPlaceholder')" @input="debounceLoadGuardEvents" />
+            </div>
+            <button class="btn btn-secondary px-2 md:px-3" :disabled="guardLoading" :title="t('common.refresh')" @click="loadGuardEvents">
+              <Icon name="refresh" size="md" :class="guardLoading ? 'animate-spin' : ''" />
+            </button>
+          </div>
+
+          <div v-if="!guardLoading && guardEvents.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+            {{ t('admin.affiliates.relations.guard.empty') }}
+          </div>
+          <div v-else class="mt-4 overflow-x-auto">
+            <table class="w-full min-w-[840px] text-left text-sm">
+              <thead>
+                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.time') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.inviter') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.invitee') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.registerIp') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.reason') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.status') }}</th>
+                  <th class="px-2 py-2 text-right font-medium">{{ t('admin.affiliates.relations.guard.columns.reward') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.guard.columns.actions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in guardEvents" :key="item.id" class="border-b border-gray-100 last:border-b-0 dark:border-dark-800">
+                  <td class="px-2 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(item.created_at) }}</td>
+                  <td class="px-2 py-2">
+                    <button class="text-left hover:underline" @click="showRelationsOf(item.inviter_id)">
+                      <span class="font-mono text-xs text-gray-500 dark:text-dark-400">#{{ item.inviter_id }}</span>
+                      <span class="ml-1 text-gray-900 dark:text-white">{{ item.inviter_email || item.inviter_username || '-' }}</span>
+                    </button>
+                  </td>
+                  <td class="px-2 py-2">
+                    <button class="text-left hover:underline" @click="showRelationsOf(item.invitee_id)">
+                      <span class="font-mono text-xs text-gray-500 dark:text-dark-400">#{{ item.invitee_id }}</span>
+                      <span class="ml-1 text-gray-900 dark:text-white">{{ item.invitee_email || item.invitee_username || '-' }}</span>
+                    </button>
+                  </td>
+                  <td class="px-2 py-2 font-mono text-xs text-gray-600 dark:text-dark-300">{{ item.register_ip || '-' }}</td>
+                  <td class="px-2 py-2 text-xs text-gray-500 dark:text-dark-400">{{ item.reason || '-' }}</td>
+                  <td class="px-2 py-2">
+                    <span class="inline-flex rounded-full px-2 py-0.5 text-xs" :class="guardStatusClass(item.status)">
+                      {{ guardStatusLabel(item.status) }}
+                    </span>
+                  </td>
+                  <td class="px-2 py-2 text-right font-mono text-gray-900 dark:text-white">${{ formatAmount(item.reward_amount) }}</td>
+                  <td class="px-2 py-2">
+                    <div v-if="item.status === 'pending'" class="flex items-center gap-2">
+                      <button
+                        class="btn btn-primary btn-sm"
+                        :disabled="guardActionId === item.id"
+                        @click="reviewGuardEvent(item.id, true)"
+                      >{{ t('admin.affiliates.relations.guard.approve') }}</button>
+                      <button
+                        class="btn btn-secondary btn-sm"
+                        :disabled="guardActionId === item.id"
+                        @click="reviewGuardEvent(item.id, false)"
+                      >{{ t('admin.affiliates.relations.guard.reject') }}</button>
+                    </div>
+                    <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-4">
+            <Pagination
+              v-if="guardTotal > 0"
+              :page="guardPage"
+              :total="guardTotal"
+              :page-size="guardPageSize"
+              @update:page="handleGuardPageChange"
+              @update:pageSize="handleGuardPageSizeChange"
+            />
+          </div>
+        </div>
+      </template>
     </div>
   </AppLayout>
 </template>
@@ -239,7 +338,7 @@ import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import { affiliatesAPI, type AffiliateInviteRelation, type AffiliateRelationNode, type AffiliateUnsourcedUser, type SimpleUser } from '@/api/admin/affiliates'
+import { affiliatesAPI, type AffiliateGuardEvent, type AffiliateInviteRelation, type AffiliateRelationNode, type AffiliateUnsourcedUser, type SimpleUser } from '@/api/admin/affiliates'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -248,7 +347,7 @@ const { t } = useI18n()
 const route = useRoute()
 const appStore = useAppStore()
 
-type TabKey = 'relations' | 'unsourced'
+type TabKey = 'relations' | 'unsourced' | 'guard'
 
 const activeTab = ref<TabKey>('relations')
 const keyword = ref('')
@@ -263,6 +362,16 @@ const unsourcedPageSize = ref(20)
 const unsourcedSearch = ref('')
 const unsourcedLoading = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const guardEvents = ref<AffiliateGuardEvent[]>([])
+const guardTotal = ref(0)
+const guardPage = ref(1)
+const guardPageSize = ref(20)
+const guardStatus = ref('')
+const guardSearch = ref('')
+const guardLoading = ref(false)
+const guardActionId = ref<number | null>(null)
+let guardDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function formatAmount(value: number | null | undefined): string {
   return Number(value || 0).toFixed(2)
@@ -372,6 +481,103 @@ function switchToUnsourced() {
   activeTab.value = 'unsourced'
   if (unsourced.value.length === 0 && !unsourcedLoading.value) {
     void loadUnsourced()
+  }
+}
+
+function guardStatusLabel(status: string): string {
+  switch (status) {
+    case 'pending':
+      return t('admin.affiliates.relations.guard.status.pending')
+    case 'approved':
+      return t('admin.affiliates.relations.guard.status.approved')
+    case 'rejected':
+      return t('admin.affiliates.relations.guard.status.rejected')
+    default:
+      return status
+  }
+}
+
+function guardStatusClass(status: string): string {
+  switch (status) {
+    case 'approved':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    case 'rejected':
+      return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300'
+    default:
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+  }
+}
+
+async function loadGuardEvents() {
+  guardLoading.value = true
+  try {
+    const res = await affiliatesAPI.listGuardEvents({
+      page: guardPage.value,
+      page_size: guardPageSize.value,
+      status: guardStatus.value || undefined,
+      search: guardSearch.value || undefined,
+    })
+    guardEvents.value = res.items
+    guardTotal.value = res.total
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', t('admin.affiliates.relations.loadFailed')))
+  } finally {
+    guardLoading.value = false
+  }
+}
+
+function debounceLoadGuardEvents() {
+  if (guardDebounceTimer) clearTimeout(guardDebounceTimer)
+  guardDebounceTimer = setTimeout(() => {
+    guardPage.value = 1
+    void loadGuardEvents()
+  }, 300)
+}
+
+function handleGuardStatusChange() {
+  guardPage.value = 1
+  void loadGuardEvents()
+}
+
+function handleGuardPageChange(page: number) {
+  guardPage.value = page
+  void loadGuardEvents()
+}
+
+function handleGuardPageSizeChange(size: number) {
+  guardPageSize.value = size
+  guardPage.value = 1
+  void loadGuardEvents()
+}
+
+function switchToGuard() {
+  activeTab.value = 'guard'
+  if (guardEvents.value.length === 0 && !guardLoading.value) {
+    void loadGuardEvents()
+  }
+}
+
+// reviewGuardEvent 批准/拒绝一条风控事件；成功后重新拉取当前列表以同步状态与奖励金额。
+async function reviewGuardEvent(id: number, approve: boolean) {
+  if (guardActionId.value !== null) return
+  const confirmKey = approve
+    ? 'admin.affiliates.relations.guard.confirmApprove'
+    : 'admin.affiliates.relations.guard.confirmReject'
+  if (!window.confirm(t(confirmKey))) return
+  guardActionId.value = id
+  try {
+    if (approve) {
+      await affiliatesAPI.approveGuardEvent(id)
+      appStore.showSuccess(t('admin.affiliates.relations.guard.approvedToast'))
+    } else {
+      await affiliatesAPI.rejectGuardEvent(id)
+      appStore.showSuccess(t('admin.affiliates.relations.guard.rejectedToast'))
+    }
+    await loadGuardEvents()
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', t('admin.affiliates.relations.loadFailed')))
+  } finally {
+    guardActionId.value = null
   }
 }
 

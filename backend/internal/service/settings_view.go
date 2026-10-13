@@ -178,6 +178,8 @@ type SystemSettings struct {
 	AffiliateRebatePerInviteeCap float64
 	AffiliateRegisterReward      float64 // 邀请注册奖励金额（美元，0=不发放）
 	AdminRechargeRebateEnabled   bool
+	AffiliateIPGuardMode         string // 邀请注册 IP 关联风控模式：off/block/review
+	AffiliateIPGuardMaxAccounts  int    // 同一 IP 允许绑定到同一邀请人的最大账号数
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 

@@ -392,6 +392,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
 	updates[SettingKeyAffiliateAdminRechargeEnabled] = strconv.FormatBool(settings.AdminRechargeRebateEnabled)
+	settings.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings.AffiliateIPGuardMode)
+	updates[SettingKeyAffiliateIPGuardMode] = settings.AffiliateIPGuardMode
+	if settings.AffiliateIPGuardMaxAccounts < 1 {
+		settings.AffiliateIPGuardMaxAccounts = AffiliateIPGuardMaxAccountsDefault
+	}
+	if settings.AffiliateIPGuardMaxAccounts > AffiliateIPGuardMaxAccountsMax {
+		settings.AffiliateIPGuardMaxAccounts = AffiliateIPGuardMaxAccountsMax
+	}
+	updates[SettingKeyAffiliateIPGuardMaxAccounts] = strconv.Itoa(settings.AffiliateIPGuardMaxAccounts)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {

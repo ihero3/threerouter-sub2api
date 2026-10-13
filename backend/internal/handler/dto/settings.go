@@ -173,6 +173,8 @@ type SystemSettings struct {
 	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
 	AffiliateRegisterReward      float64                      `json:"affiliate_register_reward"`
 	AdminRechargeRebateEnabled   bool                         `json:"affiliate_admin_recharge_enabled"`
+	AffiliateIPGuardMode         string                       `json:"affiliate_ip_guard_mode"`
+	AffiliateIPGuardMaxAccounts  int                          `json:"affiliate_ip_guard_max_accounts"`
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 

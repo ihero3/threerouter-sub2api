@@ -156,6 +156,26 @@ func (r *paymentFulfillmentAffiliateRepoStub) GetAffiliateUserOverview(context.C
 	panic("unexpected GetAffiliateUserOverview call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) CountInviteesByInviterAndIP(context.Context, int64, string) (int, error) {
+	panic("unexpected CountInviteesByInviterAndIP call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) CreateAffiliateGuardEvent(context.Context, int64, int64, string, string) (bool, error) {
+	panic("unexpected CreateAffiliateGuardEvent call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) ListAffiliateGuardEvents(context.Context, AffiliateGuardEventFilter) ([]AffiliateGuardEvent, int64, error) {
+	panic("unexpected ListAffiliateGuardEvents call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) GetAffiliateGuardEvent(context.Context, int64) (*AffiliateGuardEvent, error) {
+	panic("unexpected GetAffiliateGuardEvent call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) MarkAffiliateGuardEventReviewed(context.Context, int64, string, int64, float64) (bool, error) {
+	panic("unexpected MarkAffiliateGuardEventReviewed call")
+}
+
 type paymentFulfillmentSettingRepoStub struct {
 	values map[string]string
 }

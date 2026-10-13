@@ -85,6 +85,17 @@ export default {
           perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。',
           registerReward: '注册奖励金额',
           registerRewardDesc: '新用户使用邀请码注册成功后，立即发放给邀请人的奖励金额（0-100）。0 = 不发放注册奖励。',
+          ipGuard: {
+            title: '邀请注册 IP 风控',
+            description: '限制同一 IP 下通过同一邀请人批量注册小号。命中后按所选模式拦截或转人工审核。',
+            mode: '风控模式',
+            modeOff: '关闭',
+            modeBlock: '直接拦截',
+            modeReview: '转人工审核',
+            modeHint: '关闭 = 不校验；直接拦截 = 拒绝本次注册；转人工审核 = 允许注册，但需管理员在「邀请返利 > 风控审核」中批准后才绑定邀请人并发奖。',
+            maxAccounts: '同 IP 最大账号数',
+            maxAccountsDesc: '同一邀请人在同一注册 IP 下允许注册的最大账号数，超出的注册将被风控。1 表示只允许一个账号。',
+          },
           customUsers: {
             title: '专属用户配置',
             description: '为指定用户设置专属邀请码或专属返利比例。仅展示已设置过专属配置的用户。',

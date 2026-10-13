@@ -292,7 +292,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", user.ID, err)
 		}
 		if code := strings.TrimSpace(affiliateCode); code != "" {
-			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, code); err != nil {
+			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, code, registerIP); err != nil {
 				// 邀请返利码绑定失败不影响注册，只记录日志
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
 			}
@@ -1005,7 +1005,8 @@ func (s *AuthService) bindOAuthAffiliate(ctx context.Context, userID int64, affi
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", userID, err)
 	}
 	if code := strings.TrimSpace(affiliateCode); code != "" {
-		if err := s.affiliateService.BindInviterByCode(ctx, userID, code); err != nil {
+		// OAuth 注册链路拿不到客户端 IP，传空串让 IP 关联风控自动跳过（fail-open）。
+		if err := s.affiliateService.BindInviterByCode(ctx, userID, code, ""); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", userID, err)
 		}
 	}

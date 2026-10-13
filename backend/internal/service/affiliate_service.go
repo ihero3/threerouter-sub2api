@@ -17,6 +17,10 @@ var (
 	ErrAffiliateCodeTaken       = infraerrors.Conflict("AFFILIATE_CODE_TAKEN", "affiliate code already in use")
 	ErrAffiliateAlreadyBound    = infraerrors.Conflict("AFFILIATE_ALREADY_BOUND", "affiliate inviter already bound")
 	ErrAffiliateQuotaEmpty      = infraerrors.BadRequest("AFFILIATE_QUOTA_EMPTY", "no affiliate quota available to transfer")
+	// ErrAffiliateIPGuardBlocked 注册 IP 关联风控（block 模式）命中：不绑定邀请人、不发注册奖励。
+	ErrAffiliateIPGuardBlocked = infraerrors.Forbidden("AFFILIATE_IP_GUARD_BLOCKED", "registration blocked by affiliate ip guard")
+	// ErrAffiliateIPGuardReview 注册 IP 关联风控（review 模式）命中：已记录待人工审核事件。
+	ErrAffiliateIPGuardReview = infraerrors.Forbidden("AFFILIATE_IP_GUARD_REVIEW", "registration flagged by affiliate ip guard for review")
 )
 
 const (
@@ -163,6 +167,16 @@ type AffiliateRepository interface {
 	// 管理端：邀请关系追溯（谁邀请谁 / 来路不明）
 	GetInviteRelations(ctx context.Context, userID int64, maxDepth int) (*AffiliateInviteRelation, error)
 	ListUnsourcedUsers(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateUnsourcedUser, int64, error)
+
+	// 管理端：邀请注册 IP 关联风控
+	// CountInviteesByInviterAndIP 统计某邀请人名下注册 IP 落在 registerIP 上的被邀请人数量（含已绑定）。
+	CountInviteesByInviterAndIP(ctx context.Context, inviterID int64, registerIP string) (int, error)
+	// CreateAffiliateGuardEvent 记录一条待审核风控事件；invitee_id 已存在时返回 false（幂等）。
+	CreateAffiliateGuardEvent(ctx context.Context, inviteeID, inviterID int64, registerIP, reason string) (bool, error)
+	ListAffiliateGuardEvents(ctx context.Context, filter AffiliateGuardEventFilter) ([]AffiliateGuardEvent, int64, error)
+	GetAffiliateGuardEvent(ctx context.Context, id int64) (*AffiliateGuardEvent, error)
+	// MarkAffiliateGuardEventReviewed 将 pending 事件置为 status；仅当仍为 pending 时生效，返回是否更新。
+	MarkAffiliateGuardEventReviewed(ctx context.Context, id int64, status string, reviewedBy int64, rewardAmount float64) (bool, error)
 }
 
 // AffiliateAdminFilter 列表筛选条件
@@ -311,6 +325,133 @@ type AffiliateUnsourcedUser struct {
 // AffiliateInviteRelationMaxDepth 上溯/下溯的最大层数，防止脏数据成环时递归打满。
 const AffiliateInviteRelationMaxDepth = 10
 
+// =========================
+// Admin: 邀请注册 IP 关联风控
+// =========================
+
+// AffiliateGuardEvent 一条「同 IP 多账号共用一个邀请人」的风控事件。
+// review 模式下命中即在注册时落一条 pending 事件，管理员可批准补发注册奖励或拒绝。
+type AffiliateGuardEvent struct {
+	ID              int64      `json:"id"`
+	InviterID       int64      `json:"inviter_id"`
+	InviterEmail    string     `json:"inviter_email"`
+	InviterUsername string     `json:"inviter_username"`
+	InviteeID       int64      `json:"invitee_id"`
+	InviteeEmail    string     `json:"invitee_email"`
+	InviteeUsername string     `json:"invitee_username"`
+	RegisterIP      string     `json:"register_ip"`
+	Reason          string     `json:"reason"`
+	Status          string     `json:"status"`
+	RewardAmount    float64    `json:"reward_amount"`
+	ReviewedBy      *int64     `json:"reviewed_by,omitempty"`
+	ReviewedAt      *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// AffiliateGuardEventFilter 风控事件列表筛选条件。
+type AffiliateGuardEventFilter struct {
+	// Status 为空表示不限；否则按 pending/approved/rejected 精确过滤。
+	Status   string
+	Search   string
+	Page     int
+	PageSize int
+}
+
+func normalizeAffiliateGuardEventFilter(filter AffiliateGuardEventFilter) AffiliateGuardEventFilter {
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.PageSize <= 0 {
+		filter.PageSize = 20
+	}
+	if filter.PageSize > 100 {
+		filter.PageSize = 100
+	}
+	filter.Search = strings.TrimSpace(filter.Search)
+	filter.Status = strings.ToLower(strings.TrimSpace(filter.Status))
+	switch filter.Status {
+	case AffiliateGuardEventStatusPending, AffiliateGuardEventStatusApproved, AffiliateGuardEventStatusRejected:
+		// 合法
+	default:
+		filter.Status = ""
+	}
+	return filter
+}
+
+// AdminListGuardEvents 列出邀请注册 IP 关联风控事件。
+func (s *AffiliateService) AdminListGuardEvents(ctx context.Context, filter AffiliateGuardEventFilter) ([]AffiliateGuardEvent, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	return s.repo.ListAffiliateGuardEvents(ctx, normalizeAffiliateGuardEventFilter(filter))
+}
+
+// AdminApproveGuardEvent 批准一条风控事件：绑定邀请人并补发注册奖励（幂等）。
+func (s *AffiliateService) AdminApproveGuardEvent(ctx context.Context, eventID, reviewerID int64) (*AffiliateGuardEvent, error) {
+	if eventID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_EVENT", "invalid guard event")
+	}
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	event, err := s.repo.GetAffiliateGuardEvent(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return nil, infraerrors.NotFound("GUARD_EVENT_NOT_FOUND", "guard event not found")
+	}
+	if event.Status != AffiliateGuardEventStatusPending {
+		return nil, infraerrors.Conflict("GUARD_EVENT_ALREADY_REVIEWED", "guard event already reviewed")
+	}
+
+	var rewardAmount float64
+	// 绑定邀请人（未绑定时才生效，避免管理员重复点击导致重复计数）。
+	bound, err := s.repo.BindInviter(ctx, event.InviteeID, event.InviterID)
+	if err != nil {
+		return nil, err
+	}
+	if bound {
+		if s.settingService != nil {
+			if reward := s.settingService.GetAffiliateRegisterReward(ctx); reward > 0 {
+				if _, accrueErr := s.repo.AccrueRegistrationReward(ctx, event.InviterID, event.InviteeID, reward); accrueErr != nil {
+					logger.LegacyPrintf("service.affiliate", "[Affiliate] Failed to accrue approved guard reward for inviter %d (invitee %d): %v", event.InviterID, event.InviteeID, accrueErr)
+				} else {
+					rewardAmount = reward
+				}
+			}
+		}
+	}
+
+	updated, err := s.repo.MarkAffiliateGuardEventReviewed(ctx, eventID, AffiliateGuardEventStatusApproved, reviewerID, rewardAmount)
+	if err != nil {
+		return nil, err
+	}
+	if !updated {
+		return nil, infraerrors.Conflict("GUARD_EVENT_ALREADY_REVIEWED", "guard event already reviewed")
+	}
+	return s.repo.GetAffiliateGuardEvent(ctx, eventID)
+}
+
+// AdminRejectGuardEvent 拒绝一条风控事件：仅标记为已拒绝，不绑定邀请人、不发放奖励。
+func (s *AffiliateService) AdminRejectGuardEvent(ctx context.Context, eventID, reviewerID int64) (*AffiliateGuardEvent, error) {
+	if eventID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_EVENT", "invalid guard event")
+	}
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	updated, err := s.repo.MarkAffiliateGuardEventReviewed(ctx, eventID, AffiliateGuardEventStatusRejected, reviewerID, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !updated {
+		return nil, infraerrors.Conflict("GUARD_EVENT_ALREADY_REVIEWED", "guard event already reviewed")
+	}
+	return s.repo.GetAffiliateGuardEvent(ctx, eventID)
+}
+
 // AdminGetInviteRelations 返回某个用户的完整邀请关系（上游链路 + 下游后代）。
 func (s *AffiliateService) AdminGetInviteRelations(ctx context.Context, userID int64) (*AffiliateInviteRelation, error) {
 	if userID <= 0 {
@@ -419,7 +560,15 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	}, nil
 }
 
-func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, rawCode string) error {
+// BindInviterByCode 将注册用户绑定到邀请码对应的邀请人。
+//
+// registerIP 为被邀请人注册时的客户端 IP，用于「同 IP 多账号共用一个邀请人」风控：
+//   - registerIP 为空（如 OAuth 注册无法取得 IP）时跳过校验（fail-open）；
+//   - 风控模式 off 时跳过校验；
+//   - 命中时：block 模式直接返回 ErrAffiliateIPGuardBlocked；review 模式记录
+//     一条待审核事件后返回 ErrAffiliateIPGuardReview。两种情况都**不**绑定邀请人、
+//     不发放注册奖励，避免通过批量注册套取奖励。
+func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, rawCode string, registerIP string) error {
 	code := strings.ToUpper(strings.TrimSpace(rawCode))
 	if code == "" {
 		return nil
@@ -454,6 +603,10 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 		return ErrAffiliateCodeInvalid
 	}
 
+	if err := s.enforceIPGuard(ctx, userID, inviterSummary.UserID, registerIP); err != nil {
+		return err
+	}
+
 	bound, err := s.repo.BindInviter(ctx, userID, inviterSummary.UserID)
 	if err != nil {
 		return err
@@ -473,6 +626,47 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 		}
 	}
 	return nil
+}
+
+// enforceIPGuard 执行「注册 IP 与邀请人关联」风控校验。
+//
+// 返回 nil 表示放行；否则返回 ErrAffiliateIPGuardBlocked / ErrAffiliateIPGuardReview。
+// 若风控关闭、registerIP 为空或查询失败，一律放行（fail-open），避免误伤正常注册。
+func (s *AffiliateService) enforceIPGuard(ctx context.Context, inviteeID, inviterID int64, registerIP string) error {
+	registerIP = strings.TrimSpace(registerIP)
+	if registerIP == "" {
+		return nil
+	}
+	if s == nil || s.settingService == nil || s.repo == nil {
+		return nil
+	}
+	mode := s.settingService.GetAffiliateIPGuardMode(ctx)
+	if mode == AffiliateIPGuardModeOff {
+		return nil
+	}
+	maxAccounts := s.settingService.GetAffiliateIPGuardMaxAccounts(ctx)
+	if maxAccounts < 1 {
+		maxAccounts = AffiliateIPGuardMaxAccountsDefault
+	}
+
+	count, err := s.repo.CountInviteesByInviterAndIP(ctx, inviterID, registerIP)
+	if err != nil {
+		// 查询失败不阻断注册，仅记录日志。
+		logger.LegacyPrintf("service.affiliate", "[Affiliate] IP guard count failed for inviter %d ip %s: %v", inviterID, registerIP, err)
+		return nil
+	}
+	if count < maxAccounts {
+		return nil
+	}
+
+	logger.LegacyPrintf("service.affiliate", "[Affiliate] IP guard hit: inviter %d already has %d invitee(s) from ip %s (max %d), mode=%s", inviterID, count, registerIP, maxAccounts, mode)
+	if mode == AffiliateIPGuardModeReview {
+		if _, evErr := s.repo.CreateAffiliateGuardEvent(ctx, inviteeID, inviterID, registerIP, AffiliateGuardReasonIPShare); evErr != nil {
+			logger.LegacyPrintf("service.affiliate", "[Affiliate] Failed to record guard event for invitee %d inviter %d: %v", inviteeID, inviterID, evErr)
+		}
+		return ErrAffiliateIPGuardReview
+	}
+	return ErrAffiliateIPGuardBlocked
 }
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {

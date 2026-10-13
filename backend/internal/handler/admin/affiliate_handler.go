@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -268,6 +269,70 @@ func (h *AffiliateHandler) ListTransferRecords(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
+}
+
+// ListGuardEvents 列出「同 IP 多账号共用一个邀请人」的风控事件。
+// GET /api/v1/admin/affiliates/guard-events
+func (h *AffiliateHandler) ListGuardEvents(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filter := service.AffiliateGuardEventFilter{
+		Status:   c.Query("status"),
+		Search:   c.Query("search"),
+		Page:     page,
+		PageSize: pageSize,
+	}
+	items, total, err := h.affiliateService.AdminListGuardEvents(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if items == nil {
+		items = []service.AffiliateGuardEvent{}
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+// ApproveGuardEvent 批准一条风控事件：绑定邀请人并补发注册奖励。
+// POST /api/v1/admin/affiliates/guard-events/:id/approve
+func (h *AffiliateHandler) ApproveGuardEvent(c *gin.Context) {
+	eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || eventID <= 0 {
+		response.BadRequest(c, "Invalid id")
+		return
+	}
+	reviewerID := currentAdminUserID(c)
+	event, err := h.affiliateService.AdminApproveGuardEvent(c.Request.Context(), eventID, reviewerID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, event)
+}
+
+// RejectGuardEvent 拒绝一条风控事件：不绑定邀请人、不发放奖励。
+// POST /api/v1/admin/affiliates/guard-events/:id/reject
+func (h *AffiliateHandler) RejectGuardEvent(c *gin.Context) {
+	eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || eventID <= 0 {
+		response.BadRequest(c, "Invalid id")
+		return
+	}
+	reviewerID := currentAdminUserID(c)
+	event, err := h.affiliateService.AdminRejectGuardEvent(c.Request.Context(), eventID, reviewerID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, event)
+}
+
+// currentAdminUserID 从鉴权上下文中取当前管理员的 user id；取不到时返回 0。
+func currentAdminUserID(c *gin.Context) int64 {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		return 0
+	}
+	return subject.UserID
 }
 
 func parseAffiliateRecordFilter(c *gin.Context, page, pageSize int) service.AffiliateRecordFilter {

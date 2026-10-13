@@ -7487,6 +7487,49 @@
                 </p>
               </div>
 
+              <!-- 邀请注册 IP 风控 -->
+              <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.settings.features.affiliate.ipGuard.title') }}
+                </h3>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.affiliate.ipGuard.description') }}
+                </p>
+
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.ipGuard.mode') }}
+                    </label>
+                    <select v-model="form.affiliate_ip_guard_mode" class="input">
+                      <option value="off">{{ t('admin.settings.features.affiliate.ipGuard.modeOff') }}</option>
+                      <option value="block">{{ t('admin.settings.features.affiliate.ipGuard.modeBlock') }}</option>
+                      <option value="review">{{ t('admin.settings.features.affiliate.ipGuard.modeReview') }}</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.ipGuard.modeHint') }}
+                    </p>
+                  </div>
+
+                  <div v-if="form.affiliate_ip_guard_mode !== 'off'">
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.ipGuard.maxAccounts') }}
+                    </label>
+                    <input
+                      v-model.number="form.affiliate_ip_guard_max_accounts"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="100"
+                      class="input"
+                    />
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.features.affiliate.ipGuard.maxAccountsDesc') }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <!-- 专属用户管理 -->
               <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
@@ -9895,6 +9938,10 @@ const form = reactive<SettingsForm>({
   plugin_management_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
+  // 邀请注册 IP 风控模式：off/block/review（默认 block）
+  affiliate_ip_guard_mode: 'block',
+  // 同一邀请人在同一注册 IP 下允许的最大账号数（默认 1）
+  affiliate_ip_guard_max_accounts: 1,
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
@@ -11277,6 +11324,13 @@ async function saveSettings() {
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
       affiliate_register_reward: Math.max(0, Math.min(100, Number(form.affiliate_register_reward) || 0)),
+      affiliate_ip_guard_mode: ['off', 'block', 'review'].includes(form.affiliate_ip_guard_mode)
+        ? form.affiliate_ip_guard_mode
+        : 'block',
+      affiliate_ip_guard_max_accounts: Math.max(
+        1,
+        Math.min(100, Math.floor(Number(form.affiliate_ip_guard_max_accounts) || 1)),
+      ),
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,

@@ -468,6 +468,26 @@ func (r *oauthEmailAffiliateRepoStub) ListUnsourcedUsers(context.Context, servic
 	panic("unexpected ListUnsourcedUsers call")
 }
 
+func (r *oauthEmailAffiliateRepoStub) CountInviteesByInviterAndIP(context.Context, int64, string) (int, error) {
+	panic("unexpected CountInviteesByInviterAndIP call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) CreateAffiliateGuardEvent(context.Context, int64, int64, string, string) (bool, error) {
+	panic("unexpected CreateAffiliateGuardEvent call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) ListAffiliateGuardEvents(context.Context, service.AffiliateGuardEventFilter) ([]service.AffiliateGuardEvent, int64, error) {
+	panic("unexpected ListAffiliateGuardEvents call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) GetAffiliateGuardEvent(context.Context, int64) (*service.AffiliateGuardEvent, error) {
+	panic("unexpected GetAffiliateGuardEvent call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) MarkAffiliateGuardEventReviewed(context.Context, int64, string, int64, float64) (bool, error) {
+	panic("unexpected MarkAffiliateGuardEventReviewed call")
+}
+
 func findSetCookieValue(cookies []*http.Cookie, name string) string {
 	for _, cookie := range cookies {
 		if cookie != nil && strings.EqualFold(cookie.Name, name) && cookie.MaxAge >= 0 {

@@ -189,6 +189,42 @@ func (s *SettingService) GetAffiliateRegisterReward(ctx context.Context) float64
 	return v
 }
 
+// GetAffiliateIPGuardMode 返回邀请注册 IP 关联风控模式：off / block / review。
+// 缺失或非法值一律回退到默认 AffiliateIPGuardModeDefault（block，拦截）。
+func (s *SettingService) GetAffiliateIPGuardMode(ctx context.Context) string {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateIPGuardMode)
+	if err != nil {
+		return AffiliateIPGuardModeDefault
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case AffiliateIPGuardModeOff:
+		return AffiliateIPGuardModeOff
+	case AffiliateIPGuardModeBlock:
+		return AffiliateIPGuardModeBlock
+	case AffiliateIPGuardModeReview:
+		return AffiliateIPGuardModeReview
+	default:
+		return AffiliateIPGuardModeDefault
+	}
+}
+
+// GetAffiliateIPGuardMaxAccounts 返回同一 IP 下允许绑定到同一邀请人的最大账号数。
+// 超过该值即触发风控。小于 1 或解析失败回退默认 1，上限 AffiliateIPGuardMaxAccountsMax。
+func (s *SettingService) GetAffiliateIPGuardMaxAccounts(ctx context.Context) int {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateIPGuardMaxAccounts)
+	if err != nil {
+		return AffiliateIPGuardMaxAccountsDefault
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || v < 1 {
+		return AffiliateIPGuardMaxAccountsDefault
+	}
+	if v > AffiliateIPGuardMaxAccountsMax {
+		return AffiliateIPGuardMaxAccountsMax
+	}
+	return v
+}
+
 // IsPasswordResetEnabled 检查是否启用密码重置功能
 // 要求：必须同时开启邮件验证
 func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {

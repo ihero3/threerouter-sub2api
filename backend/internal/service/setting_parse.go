@@ -131,6 +131,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
 		SettingKeyAffiliateRegisterReward:                   strconv.FormatFloat(AffiliateRegisterRewardDefault, 'f', 2, 64),
+		SettingKeyAffiliateIPGuardMode:                      AffiliateIPGuardModeDefault,
+		SettingKeyAffiliateIPGuardMaxAccounts:               strconv.Itoa(AffiliateIPGuardMaxAccountsDefault),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -427,6 +429,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
 	result.AdminRechargeRebateEnabled = settings[SettingKeyAffiliateAdminRechargeEnabled] == "true"
+	result.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings[SettingKeyAffiliateIPGuardMode])
+	if maxAccounts, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAffiliateIPGuardMaxAccounts])); err == nil && maxAccounts >= 1 {
+		if maxAccounts > AffiliateIPGuardMaxAccountsMax {
+			maxAccounts = AffiliateIPGuardMaxAccountsMax
+		}
+		result.AffiliateIPGuardMaxAccounts = maxAccounts
+	} else {
+		result.AffiliateIPGuardMaxAccounts = AffiliateIPGuardMaxAccountsDefault
+	}
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
 
 	// 敏感信息直接返回，方便测试连接时使用
@@ -1013,6 +1024,20 @@ func clampAffiliateRebateRate(value float64) float64 {
 		return AffiliateRebateRateMax
 	}
 	return value
+}
+
+// normalizeAffiliateIPGuardMode 归一化邀请注册 IP 关联风控模式，非法值回退默认 block。
+func normalizeAffiliateIPGuardMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case AffiliateIPGuardModeOff:
+		return AffiliateIPGuardModeOff
+	case AffiliateIPGuardModeBlock:
+		return AffiliateIPGuardModeBlock
+	case AffiliateIPGuardModeReview:
+		return AffiliateIPGuardModeReview
+	default:
+		return AffiliateIPGuardModeDefault
+	}
 }
 
 func isFalseSettingValue(value string) bool {

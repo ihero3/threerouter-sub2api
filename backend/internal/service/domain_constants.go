@@ -724,6 +724,31 @@ const (
 	AffiliateRegisterRewardMax        = 100.0
 )
 
+// 邀请注册 IP 关联风控：防止同一 IP 下多账号共用一个邀请人刷注册奖励。
+//   - off    : 关闭校验
+//   - block  : 命中即拦截（不绑定邀请人、不发注册奖励）
+//   - review : 命中即拦截并记录一条待人工审核事件，管理员可批准补发或拒绝
+const (
+	SettingKeyAffiliateIPGuardMode        = "affiliate_ip_guard_mode"
+	SettingKeyAffiliateIPGuardMaxAccounts = "affiliate_ip_guard_max_accounts"
+
+	AffiliateIPGuardModeOff    = "off"
+	AffiliateIPGuardModeBlock  = "block"
+	AffiliateIPGuardModeReview = "review"
+
+	AffiliateIPGuardModeDefault        = AffiliateIPGuardModeBlock
+	AffiliateIPGuardMaxAccountsDefault = 1   // 同一 IP 只允许 1 个账号绑定到同一邀请人
+	AffiliateIPGuardMaxAccountsMax     = 100 // 上限，避免误设为极大值而失效
+
+	// AffiliateGuardReasonIPShare 关联校验命中的原因（同 IP 多账号共用一个邀请人）。
+	AffiliateGuardReasonIPShare = "ip_share"
+
+	// 审核事件状态
+	AffiliateGuardEventStatusPending  = "pending"
+	AffiliateGuardEventStatusApproved = "approved"
+	AffiliateGuardEventStatusRejected = "rejected"
+)
+
 // SettingKeyDisableFailedAccountOnFailover 出错后是否在 failover 时禁用失败账号（默认 false）。
 // 置 true 后，账号触发可重试错误时会在 failover 阶段被自动禁用，避免反复失败。
 const SettingKeyDisableFailedAccountOnFailover = "disable_failed_account_on_failover"

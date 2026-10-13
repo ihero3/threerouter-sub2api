@@ -179,6 +179,8 @@ type UpdateSettingsRequest struct {
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
 	AffiliateRegisterReward                   *float64                          `json:"affiliate_register_reward"`
+	AffiliateIPGuardMode                      *string                           `json:"affiliate_ip_guard_mode"`
+	AffiliateIPGuardMaxAccounts               *int                              `json:"affiliate_ip_guard_max_accounts"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
@@ -612,6 +614,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRegisterReward > service.AffiliateRegisterRewardMax {
 		affiliateRegisterReward = service.AffiliateRegisterRewardMax
+	}
+	affiliateIPGuardMode := previousSettings.AffiliateIPGuardMode
+	if req.AffiliateIPGuardMode != nil {
+		affiliateIPGuardMode = strings.TrimSpace(*req.AffiliateIPGuardMode)
+	}
+	switch strings.ToLower(affiliateIPGuardMode) {
+	case service.AffiliateIPGuardModeOff:
+		affiliateIPGuardMode = service.AffiliateIPGuardModeOff
+	case service.AffiliateIPGuardModeReview:
+		affiliateIPGuardMode = service.AffiliateIPGuardModeReview
+	default:
+		affiliateIPGuardMode = service.AffiliateIPGuardModeBlock
+	}
+	affiliateIPGuardMaxAccounts := previousSettings.AffiliateIPGuardMaxAccounts
+	if req.AffiliateIPGuardMaxAccounts != nil {
+		affiliateIPGuardMaxAccounts = *req.AffiliateIPGuardMaxAccounts
+	}
+	if affiliateIPGuardMaxAccounts < 1 {
+		affiliateIPGuardMaxAccounts = service.AffiliateIPGuardMaxAccountsDefault
+	}
+	if affiliateIPGuardMaxAccounts > service.AffiliateIPGuardMaxAccountsMax {
+		affiliateIPGuardMaxAccounts = service.AffiliateIPGuardMaxAccountsMax
 	}
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -1651,6 +1675,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
 		AffiliateRegisterReward:                affiliateRegisterReward,
+		AffiliateIPGuardMode:                   affiliateIPGuardMode,
+		AffiliateIPGuardMaxAccounts:            affiliateIPGuardMaxAccounts,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    req.EnableModelFallback,
@@ -2293,6 +2319,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
 		AffiliateRegisterReward:                                updatedSettings.AffiliateRegisterReward,
+		AffiliateIPGuardMode:                                   updatedSettings.AffiliateIPGuardMode,
+		AffiliateIPGuardMaxAccounts:                            updatedSettings.AffiliateIPGuardMaxAccounts,
 		DefaultUserRPMLimit:                                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                                   updatedDefaultSubscriptions,
 		EnableModelFallback:                                    updatedSettings.EnableModelFallback,

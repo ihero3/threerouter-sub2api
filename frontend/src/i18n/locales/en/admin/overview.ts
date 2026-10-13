@@ -397,7 +397,8 @@ export default {
       relations: {
         tabs: {
           relations: 'Relations',
-          unsourced: 'No invite source'
+          unsourced: 'No invite source',
+          guard: 'Guard Review'
         },
         searchPlaceholder: 'User ID / email / username',
         search: 'Search',
@@ -439,6 +440,33 @@ export default {
             balance: 'Balance',
             totalRecharged: 'Total recharged',
             profile: 'Profile'
+          }
+        },
+        guard: {
+          description: 'Accounts registered in bulk from the same IP through the same inviter. They appear here when the guard mode is Manual Review: approving binds the inviter and pays the registration reward; rejecting binds nothing and pays nothing.',
+          statusFilterAll: 'All statuses',
+          searchPlaceholder: 'Inviter/invitee email, username, or register IP',
+          empty: 'No guard records match the filters',
+          approve: 'Approve',
+          reject: 'Reject',
+          confirmApprove: 'Approve this record? The inviter will be bound and the registration reward paid.',
+          confirmReject: 'Reject this record? The inviter will not be bound and no reward will be paid.',
+          approvedToast: 'Guard record approved',
+          rejectedToast: 'Guard record rejected',
+          columns: {
+            time: 'Triggered at',
+            inviter: 'Inviter',
+            invitee: 'Invitee',
+            registerIp: 'Register IP',
+            reason: 'Reason',
+            status: 'Status',
+            reward: 'Reward',
+            actions: 'Actions'
+          },
+          status: {
+            pending: 'Pending',
+            approved: 'Approved',
+            rejected: 'Rejected'
           }
         }
       },

@@ -1087,6 +1087,200 @@ LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	return items, total, nil
 }
 
+// =========================
+// 邀请注册 IP 关联风控
+// =========================
+
+// CountInviteesByInviterAndIP 统计某邀请人名下、注册 IP 等于 registerIP 的被邀请人数量。
+// 口径：user_affiliates.inviter_id = $1 且 users.register_ip = $2（仅统计已绑定到该邀请人者）。
+func (r *affiliateRepository) CountInviteesByInviterAndIP(ctx context.Context, inviterID int64, registerIP string) (int, error) {
+	registerIP = strings.TrimSpace(registerIP)
+	if inviterID <= 0 || registerIP == "" {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+SELECT COUNT(*)
+FROM user_affiliates ua
+JOIN users u ON u.id = ua.user_id
+WHERE ua.inviter_id = $1
+  AND u.register_ip = $2`, inviterID, registerIP)
+	if err != nil {
+		return 0, fmt.Errorf("count invitees by inviter and ip: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return 0, rows.Err()
+	}
+	var count int
+	if err := rows.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, rows.Err()
+}
+
+// CreateAffiliateGuardEvent 记录一条待审核风控事件。invitee_id 唯一，重复触发时返回 false（幂等）。
+func (r *affiliateRepository) CreateAffiliateGuardEvent(ctx context.Context, inviteeID, inviterID int64, registerIP, reason string) (bool, error) {
+	if inviteeID <= 0 || inviterID <= 0 {
+		return false, nil
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = service.AffiliateGuardReasonIPShare
+	}
+	client := clientFromContext(ctx, r.client)
+	res, err := client.ExecContext(ctx, `
+INSERT INTO affiliate_guard_events (inviter_id, invitee_id, register_ip, reason, status, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+ON CONFLICT (invitee_id) DO NOTHING`,
+		inviterID, inviteeID, strings.TrimSpace(registerIP), reason, service.AffiliateGuardEventStatusPending)
+	if err != nil {
+		return false, fmt.Errorf("create affiliate guard event: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
+}
+
+const affiliateGuardEventSelect = `
+SELECT e.id,
+       e.inviter_id,
+       COALESCE(inviter.email, ''),
+       COALESCE(inviter.username, ''),
+       e.invitee_id,
+       COALESCE(invitee.email, ''),
+       COALESCE(invitee.username, ''),
+       e.register_ip,
+       e.reason,
+       e.status,
+       e.reward_amount::double precision,
+       e.reviewed_by,
+       e.reviewed_at,
+       e.created_at,
+       e.updated_at
+FROM affiliate_guard_events e
+LEFT JOIN users inviter ON inviter.id = e.inviter_id
+LEFT JOIN users invitee ON invitee.id = e.invitee_id`
+
+func scanAffiliateGuardEvent(rows *sql.Rows, item *service.AffiliateGuardEvent) error {
+	return rows.Scan(
+		&item.ID,
+		&item.InviterID,
+		&item.InviterEmail,
+		&item.InviterUsername,
+		&item.InviteeID,
+		&item.InviteeEmail,
+		&item.InviteeUsername,
+		&item.RegisterIP,
+		&item.Reason,
+		&item.Status,
+		&item.RewardAmount,
+		&item.ReviewedBy,
+		&item.ReviewedAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+}
+
+// ListAffiliateGuardEvents 分页列出风控事件，支持按状态过滤与邮箱/用户名/IP 模糊搜索。
+func (r *affiliateRepository) ListAffiliateGuardEvents(ctx context.Context, filter service.AffiliateGuardEventFilter) ([]service.AffiliateGuardEvent, int64, error) {
+	client := clientFromContext(ctx, r.client)
+
+	baseJoin := `
+FROM affiliate_guard_events e
+LEFT JOIN users inviter ON inviter.id = e.inviter_id
+LEFT JOIN users invitee ON invitee.id = e.invitee_id`
+	clauses := make([]string, 0, 2)
+	args := make([]any, 0, 4)
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		clauses = append(clauses, fmt.Sprintf("e.status = $%d", len(args)))
+	}
+	if filter.Search != "" {
+		args = append(args, "%"+strings.ToLower(filter.Search)+"%")
+		p := len(args)
+		clauses = append(clauses, fmt.Sprintf("(LOWER(inviter.email) LIKE $%d OR LOWER(inviter.username) LIKE $%d OR LOWER(invitee.email) LIKE $%d OR LOWER(invitee.username) LIKE $%d OR LOWER(e.register_ip) LIKE $%d)", p, p, p, p, p))
+	}
+	where := ""
+	if len(clauses) > 0 {
+		where = "WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	total, err := queryAffiliateRecordCount(ctx, client, "SELECT COUNT(*) "+baseJoin+where, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
+	rows, err := client.QueryContext(ctx, affiliateGuardEventSelect+`
+`+where+`
+ORDER BY e.created_at DESC, e.id DESC
+LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := make([]service.AffiliateGuardEvent, 0)
+	for rows.Next() {
+		var item service.AffiliateGuardEvent
+		if err := scanAffiliateGuardEvent(rows, &item); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// GetAffiliateGuardEvent 按 id 读取单条风控事件；不存在返回 (nil, nil)。
+func (r *affiliateRepository) GetAffiliateGuardEvent(ctx context.Context, id int64) (*service.AffiliateGuardEvent, error) {
+	if id <= 0 {
+		return nil, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, affiliateGuardEventSelect+`
+WHERE e.id = $1
+LIMIT 1`, id)
+	if err != nil {
+		return nil, fmt.Errorf("get affiliate guard event: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+	var item service.AffiliateGuardEvent
+	if err := scanAffiliateGuardEvent(rows, &item); err != nil {
+		return nil, err
+	}
+	return &item, rows.Err()
+}
+
+// MarkAffiliateGuardEventReviewed 将 pending 事件置为终态；仅当仍为 pending 时生效。
+func (r *affiliateRepository) MarkAffiliateGuardEventReviewed(ctx context.Context, id int64, status string, reviewedBy int64, rewardAmount float64) (bool, error) {
+	if id <= 0 {
+		return false, nil
+	}
+	if rewardAmount < 0 {
+		rewardAmount = 0
+	}
+	client := clientFromContext(ctx, r.client)
+	res, err := client.ExecContext(ctx, `
+UPDATE affiliate_guard_events
+SET status = $1,
+    reward_amount = $2,
+    reviewed_by = $3,
+    reviewed_at = NOW(),
+    updated_at = NOW()
+WHERE id = $4 AND status = $5`,
+		status, rewardAmount, nullableInt64Arg(&reviewedBy), id, service.AffiliateGuardEventStatusPending)
+	if err != nil {
+		return false, fmt.Errorf("mark affiliate guard event reviewed: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
+}
+
 func (r *affiliateRepository) withTx(ctx context.Context, fn func(txCtx context.Context, txClient *dbent.Client) error) error {
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		return fn(ctx, tx.Client())

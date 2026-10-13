@@ -397,7 +397,8 @@ export default {
       relations: {
         tabs: {
           relations: '关系查询',
-          unsourced: '无邀请来源'
+          unsourced: '无邀请来源',
+          guard: '风控审核'
         },
         searchPlaceholder: '用户 ID / 邮箱 / 用户名',
         search: '查询',
@@ -439,6 +440,33 @@ export default {
             balance: '余额',
             totalRecharged: '累计充值',
             profile: '档案'
+          }
+        },
+        guard: {
+          description: '同一 IP 下通过同一邀请人批量注册的账号。风控模式为「转人工审核」时会出现在这里：批准将绑定邀请人并补发注册奖励，拒绝则不绑定、不发奖。',
+          statusFilterAll: '全部状态',
+          searchPlaceholder: '邀请人/被邀请人邮箱、用户名或注册 IP',
+          empty: '没有符合条件的风控记录',
+          approve: '批准',
+          reject: '拒绝',
+          confirmApprove: '确认批准该记录？将绑定邀请人并补发注册奖励。',
+          confirmReject: '确认拒绝该记录？不会绑定邀请人，也不会发放奖励。',
+          approvedToast: '已批准该风控记录',
+          rejectedToast: '已拒绝该风控记录',
+          columns: {
+            time: '触发时间',
+            inviter: '邀请人',
+            invitee: '被邀请人',
+            registerIp: '注册 IP',
+            reason: '原因',
+            status: '状态',
+            reward: '奖励',
+            actions: '操作'
+          },
+          status: {
+            pending: '待审核',
+            approved: '已批准',
+            rejected: '已拒绝'
           }
         }
       },

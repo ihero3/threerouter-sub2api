@@ -368,6 +368,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AdminRechargeRebateEnabled != after.AdminRechargeRebateEnabled {
 		changed = append(changed, "affiliate_admin_recharge_enabled")
 	}
+	if before.AffiliateIPGuardMode != after.AffiliateIPGuardMode {
+		changed = append(changed, "affiliate_ip_guard_mode")
+	}
+	if before.AffiliateIPGuardMaxAccounts != after.AffiliateIPGuardMaxAccounts {
+		changed = append(changed, "affiliate_ip_guard_max_accounts")
+	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
 	}

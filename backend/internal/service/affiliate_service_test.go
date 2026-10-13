@@ -4,9 +4,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,4 +130,138 @@ func TestIsValidAffiliateCodeFormat(t *testing.T) {
 			require.Equal(t, tc.want, isValidAffiliateCodeFormat(tc.in))
 		})
 	}
+}
+
+// ipGuardRepoStub 只覆写 enforceIPGuard 依赖的两个方法，
+// 其余 AffiliateRepository 方法沿用内嵌接口（未覆写即为 nil，调用会 panic）。
+type ipGuardRepoStub struct {
+	AffiliateRepository
+
+	count    int
+	countErr error
+
+	countCalls     int
+	lastInviterID  int64
+	lastIP         string
+	createCalls    int
+	createdInvitee int64
+	createdInviter int64
+	createdIP      string
+	createdReason  string
+	createErr      error
+}
+
+func (r *ipGuardRepoStub) CountInviteesByInviterAndIP(_ context.Context, inviterID int64, registerIP string) (int, error) {
+	r.countCalls++
+	r.lastInviterID = inviterID
+	r.lastIP = registerIP
+	return r.count, r.countErr
+}
+
+func (r *ipGuardRepoStub) CreateAffiliateGuardEvent(_ context.Context, inviteeID, inviterID int64, registerIP, reason string) (bool, error) {
+	r.createCalls++
+	r.createdInvitee = inviteeID
+	r.createdInviter = inviterID
+	r.createdIP = registerIP
+	r.createdReason = reason
+	return true, r.createErr
+}
+
+func newIPGuardService(values map[string]string, repo AffiliateRepository) *AffiliateService {
+	return NewAffiliateService(repo, NewSettingService(&settingRepoStub{values: values}, &config.Config{}), nil, nil)
+}
+
+// TestEnforceIPGuard 覆盖注册 IP 关联风控的各分支：
+// 关闭放行、空 IP 放行、未达阈值放行、block 拦截、review 落事件、
+// 查询失败 fail-open、repo 缺失 fail-open。
+func TestEnforceIPGuard(t *testing.T) {
+	t.Parallel()
+
+	const (
+		inviteeID = int64(200)
+		inviterID = int64(100)
+		ip        = "1.2.3.4"
+	)
+
+	t.Run("guard off allows", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 99}
+		svc := newIPGuardService(map[string]string{SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeOff}, repo)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip))
+		require.Equal(t, 0, repo.countCalls, "guard off should short-circuit before counting")
+	})
+
+	t.Run("empty register ip allows", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 99}
+		svc := newIPGuardService(map[string]string{SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeBlock}, repo)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, "   "))
+		require.Equal(t, 0, repo.countCalls, "empty IP should short-circuit before counting")
+	})
+
+	t.Run("below threshold allows", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 1}
+		svc := newIPGuardService(map[string]string{
+			SettingKeyAffiliateIPGuardMode:        AffiliateIPGuardModeBlock,
+			SettingKeyAffiliateIPGuardMaxAccounts: "2",
+		}, repo)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip))
+		require.Equal(t, 1, repo.countCalls)
+		require.Equal(t, 0, repo.createCalls)
+	})
+
+	t.Run("count error fails open", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{countErr: errors.New("boom")}
+		svc := newIPGuardService(map[string]string{SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeBlock}, repo)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip))
+		require.Equal(t, 0, repo.createCalls)
+	})
+
+	t.Run("block mode rejects at threshold", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 1}
+		svc := newIPGuardService(map[string]string{
+			SettingKeyAffiliateIPGuardMode:        AffiliateIPGuardModeBlock,
+			SettingKeyAffiliateIPGuardMaxAccounts: "1",
+		}, repo)
+		err := svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip)
+		require.ErrorIs(t, err, ErrAffiliateIPGuardBlocked)
+		require.Equal(t, 0, repo.createCalls, "block mode must not record a guard event")
+	})
+
+	t.Run("review mode records event and rejects", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 1}
+		svc := newIPGuardService(map[string]string{
+			SettingKeyAffiliateIPGuardMode:        AffiliateIPGuardModeReview,
+			SettingKeyAffiliateIPGuardMaxAccounts: "1",
+		}, repo)
+		err := svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip)
+		require.ErrorIs(t, err, ErrAffiliateIPGuardReview)
+		require.Equal(t, 1, repo.createCalls)
+		require.Equal(t, inviteeID, repo.createdInvitee)
+		require.Equal(t, inviterID, repo.createdInviter)
+		require.Equal(t, ip, repo.createdIP)
+		require.Equal(t, AffiliateGuardReasonIPShare, repo.createdReason)
+	})
+
+	t.Run("review event write error still rejects", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 1, createErr: errors.New("insert failed")}
+		svc := newIPGuardService(map[string]string{
+			SettingKeyAffiliateIPGuardMode:        AffiliateIPGuardModeReview,
+			SettingKeyAffiliateIPGuardMaxAccounts: "1",
+		}, repo)
+		require.ErrorIs(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip), ErrAffiliateIPGuardReview)
+	})
+
+	t.Run("nil repo fails open", func(t *testing.T) {
+		t.Parallel()
+		svc := NewAffiliateService(nil, NewSettingService(&settingRepoStub{values: map[string]string{
+			SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeBlock,
+		}}, &config.Config{}), nil, nil)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ip))
+	})
 }

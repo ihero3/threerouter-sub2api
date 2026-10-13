@@ -85,6 +85,17 @@ export default {
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
           registerReward: 'Registration Reward Amount',
           registerRewardDesc: 'Amount credited to the inviter immediately when a new user signs up with their invite code (0-100). 0 = no registration reward.',
+          ipGuard: {
+            title: 'Invite Registration IP Guard',
+            description: 'Limit bulk sign-ups from the same IP through the same inviter. Matches are blocked or flagged for manual review according to the selected mode.',
+            mode: 'Guard Mode',
+            modeOff: 'Off',
+            modeBlock: 'Block',
+            modeReview: 'Manual Review',
+            modeHint: 'Off = no check; Block = reject the sign-up; Manual Review = allow the sign-up but the inviter is only bound and the reward only paid after an admin approves it in Affiliate > Guard Review.',
+            maxAccounts: 'Max Accounts per IP',
+            maxAccountsDesc: 'Maximum accounts an inviter may register from the same IP. Sign-ups beyond this limit are sent to the guard. 1 means only one account is allowed.',
+          },
           customUsers: {
             title: 'Per-User Overrides',
             description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
