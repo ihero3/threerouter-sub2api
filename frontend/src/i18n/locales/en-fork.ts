@@ -310,6 +310,7 @@ export default {
       documentation: 'Documentation',
       advantage: 'Our Advantages',
       contact: 'Contact Us',
+      compliance: 'Compliance',
       legalNotice: 'For legal notices, please contact us via email first'
     }
   },

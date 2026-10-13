@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
+import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -61,6 +63,7 @@ const reportData = {
 
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <PublicSiteHeader />
     <div class="max-w-4xl mx-auto py-8 px-4">
       <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
         <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
@@ -186,5 +189,7 @@ const reportData = {
         </div>
       </div>
     </div>
+
+    <PublicSiteFooter />
   </div>
 </template>

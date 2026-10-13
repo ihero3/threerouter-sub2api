@@ -51,6 +51,18 @@
           {{ t('home.enterprise') }}
         </button>
         <button
+          @click="router.push('/whitepaper')"
+          class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+        >
+          {{ t('whitepaper.type') }}
+        </button>
+        <button
+          @click="router.push('/compliance')"
+          class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+        >
+          {{ t('home.footer.compliance') }}
+        </button>
+        <button
           @click="toggleLanguage"
           class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
         >

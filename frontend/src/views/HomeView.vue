@@ -22,7 +22,7 @@
       <nav class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 sm:gap-4">
         <router-link to="/" class="flex min-w-0 flex-1 items-center gap-3" :aria-label="siteName + ' Home'">
           <img
-            :src="siteLogo || '/logo.svg'"
+            :src="siteLogo || '/logo.webp'"
             alt="Logo"
             class="h-9 w-9 shrink-0 rounded-lg object-contain"
           />
@@ -54,7 +54,7 @@
     <main class="flex min-w-0 flex-1 items-center justify-center px-4 py-16 sm:px-6">
       <div class="min-w-0 max-w-2xl text-center">
         <img
-          :src="siteLogo || '/logo.svg'"
+          :src="siteLogo || '/logo.webp'"
           alt="Logo"
           class="mx-auto mb-6 h-20 w-20 rounded-2xl object-contain"
         />
@@ -108,12 +108,15 @@
         <!-- Nav Actions -->
         <div class="flex flex-wrap items-center gap-3">
           <!-- Limited Time Banner -->
-          <div class="hidden items-center gap-2 rounded-full bg-orange-100 px-4 py-2 sm:flex">
+          <router-link
+            to="/purchase"
+            class="hidden cursor-pointer items-center gap-2 rounded-full bg-orange-100 px-4 py-2 transition-colors hover:bg-orange-200 sm:flex"
+          >
             <svg class="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span class="text-sm font-medium text-orange-700">🎁LIMITED TIME: $10 Free Credits (≈ 330M DeepSeek Tokens)</span>
-          </div>
+          </router-link>
 
           <!-- Nav Links -->
           <!-- Deepseek Harness for Threerouter 详情页 -->
@@ -903,6 +906,18 @@
             {{ t('home.enterprise') }}
           </button>
           <button
+            @click="router.push('/whitepaper')"
+            class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+          >
+            {{ t('whitepaper.type') }}
+          </button>
+          <button
+            @click="router.push('/compliance')"
+            class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+          >
+            {{ t('home.footer.compliance') }}
+          </button>
+          <button
             @click="toggleLanguage"
             class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
           >
@@ -1068,7 +1083,7 @@ useSEO({
   description: 'ThreeRouter is an enterprise-grade AI API management platform. One API key to access DeepSeek, Claude, GPT, Kimi, GLM and more. US-based deployment, OpenAI-compatible, up to 97% cost savings, P99 latency under 200ms.',
   keywords: 'AI API,API gateway,DeepSeek API,Claude API,GPT API,LLM API,OpenAI compatible,enterprise AI,Token management,AI proxy,US deployment',
   ogType: 'website',
-  ogImage: 'https://www.threerouter.com/src/assets/icons/logo.webp',
+  ogImage: 'https://www.threerouter.com/logo.webp',
   ogUrl: 'https://www.threerouter.com/home',
   ogSiteName: 'ThreeRouter',
   canonicalUrl: 'https://www.threerouter.com/home',

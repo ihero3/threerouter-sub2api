@@ -2,26 +2,14 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import LogoSvg from '@/assets/icons/logo.svg'
 import PromoBanner from '@/components/common/PromoBanner.vue'
-import { setLocale } from '@/i18n'
+import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
+import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const router = useRouter()
 
 const isDark = ref(false)
-const currentLang = computed(() => {
-  return locale.value
-})
-
-const toggleLanguage = async () => {
-  const newLang = locale.value === 'zh' ? 'en' : 'zh'
-  await setLocale(newLang)
-}
-
-const toggleTheme = () => {
-  isDark.value = !isDark.value
-}
 
 const features = computed(() => [
   {
@@ -135,30 +123,7 @@ const industryTemplates = computed(() => [
       <div class="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
     </div>
 
-    <header class="relative z-20 px-6 py-4">
-      <nav class="mx-auto flex max-w-7xl items-center justify-between">
-        <router-link to="/" class="flex items-center gap-3" aria-label="Three Router Home">
-          <img :src="LogoSvg" alt="Three Router Logo" class="h-8 w-8 object-contain" />
-          <span :class="['text-lg font-semibold', isDark ? 'text-white' : 'text-[#021b4a]']">ThreeRouter</span>
-        </router-link>
-        <div class="flex items-center gap-4">
-          <button @click="toggleLanguage" :class="['rounded-lg px-4 py-2 text-sm font-medium transition-colors', isDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100']">
-            {{ currentLang === 'zh' ? 'EN' : '中文' }}
-          </button>
-          <button @click="toggleTheme" :class="['rounded-lg p-2 transition-colors', isDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100']">
-            <svg v-if="isDark" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          </button>
-          <button @click="router.push('/login')" :class="['rounded-lg px-5 py-2 text-sm font-semibold shadow-lg transition-colors', isDark ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/30' : 'bg-[#0757b8] text-white hover:bg-[#064ea8] shadow-blue-900/10']">
-            {{ t('compliance.login') }}
-          </button>
-        </div>
-      </nav>
-    </header>
+    <PublicSiteHeader />
 
     <main class="relative z-10 flex-1 px-6 pt-16">
       <div class="mx-auto flex max-w-7xl flex-col">
@@ -339,14 +304,9 @@ const industryTemplates = computed(() => [
           </div>
         </div>
 
-        <footer :class="['rounded-2xl p-8 text-center', isDark ? 'bg-gray-800/50' : 'bg-white/80']" :style="{ boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.3)' : '0 4px 24px rgba(59,130,246,0.08)' }">
-          <div class="mb-4 flex items-center justify-center gap-3">
-            <img :src="LogoSvg" alt="Three Router Logo" class="h-6 w-6 object-contain" />
-            <span :class="['text-lg font-semibold', isDark ? 'text-white' : 'text-[#021b4a]']">ThreeRouter</span>
-          </div>
-          <p :class="['text-sm', isDark ? 'text-gray-500' : 'text-gray-500']">{{ t('compliance.footer') }}</p>
-        </footer>
       </div>
     </main>
+
+    <PublicSiteFooter />
   </div>
 </template>

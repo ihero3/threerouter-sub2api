@@ -1,47 +1,7 @@
 <template>
   <div class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 dark:from-dark-950 dark:to-dark-900">
     <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
-      <nav class="mx-auto flex max-w-7xl items-center justify-between">
-        <router-link to="/home" class="flex items-center gap-[12px] pl-0">
-          <img :src="siteLogo || '/src/assets/icons/logo.webp'" alt="Three Router Logo" class="h-[32px] w-[32px] object-contain" />
-          <span class="text-[16px] font-semibold text-[#021b4a] dark:text-white" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">{{ siteName }}</span>
-        </router-link>
-
-        <div class="flex items-center gap-3">
-          <!-- Nav Links -->
-          <button
-            @click="router.push('/admin/models')"
-            class="hidden rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700 sm:inline"
-          >
-            {{ t('home.models') }}
-          </button>
-          <button
-            @click="router.push('/admin')"
-            class="hidden rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700 sm:inline"
-          >
-            {{ t('home.dashboard') }}
-          </button>
-
-          <LocaleSwitcher />
-
-          <button
-            @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-700 dark:hover:text-white"
-          >
-            <Icon v-if="isDark" name="sun" size="md" />
-            <Icon v-else name="moon" size="md" />
-          </button>
-
-          <button
-            @click="router.push('/login')"
-            class="rounded-lg bg-[#0757b8] px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/10 transition-colors hover:bg-[#064ea8]"
-          >
-            {{ t('home.login') }}
-          </button>
-        </div>
-      </nav>
-    </header>
+    <PublicSiteHeader />
 
     <!-- Main Content -->
     <main class="relative z-10 flex-1">
@@ -635,39 +595,7 @@
     </main>
 
     <!-- Footer -->
-    <footer class="relative z-10 border-t border-gray-100 bg-white px-6 py-12 dark:border-dark-700 dark:bg-dark-900">
-      <div class="mx-auto max-w-7xl">
-        <!-- Original enterprise footer content -->
-        <div class="flex flex-col items-center justify-between gap-6 text-center sm:flex-row sm:text-left">
-          <div>
-            <div class="mb-3 flex items-center justify-center gap-3 sm:justify-start">
-              <img :src="siteLogo || '/src/assets/icons/logo.webp'" alt="Logo" class="h-8 w-8 object-contain" />
-              <span class="text-lg font-semibold text-[#021b4a] dark:text-white">{{ siteName }}</span>
-            </div>
-            <p class="max-w-md text-sm text-gray-500 dark:text-gray-400">{{ t('enterprise.footer.brandDesc') }}</p>
-          </div>
-          <div class="text-sm text-gray-400">
-            <div>{{ t('enterprise.footer.slogan') }}</div>
-          </div>
-        </div>
-        <!-- Home-style footer links -->
-        <div class="mt-8 flex flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 sm:flex-row sm:text-left">
-          <p>&copy; {{ currentYear }} Three Router. {{ t('home.footer.allRightsReserved') }}</p>
-          <div class="flex items-center gap-6">
-            <a :href="currentLang === 'zh' ? 'readme-cn.html' : 'readme-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.advantage') }}</a>
-          </div>
-          <div class="flex items-center gap-6">
-            <a :href="currentLang === 'zh' ? 'help-cn.html' : 'help-en.html'" class="transition-colors hover:text-gray-700">{{ t('home.footer.documentation') }}</a>
-          </div>
-          <div class="flex items-center gap-6">
-            <a :href="currentLang === 'zh' ? 'help-cn.html#contact' : 'help-en.html#contact'" class="transition-colors hover:text-gray-700">{{ t('home.footer.contact') }}</a>
-          </div>
-        </div>
-        <div class="mt-4 text-center">
-          <p class="text-xs text-gray-400">{{ t('home.footer.legalNotice') }}</p>
-        </div>
-      </div>
-    </footer>
+    <PublicSiteFooter />
   </div>
 </template>
 
@@ -676,12 +604,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
-import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
-import Icon from '@/components/icons/Icon.vue'
 import PromoBanner from '@/components/common/PromoBanner.vue'
+import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
+import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 import { useSEO } from '@/composables/useSEO'
 
-const { t, tm, locale } = useI18n()
+const { t, tm } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
 
@@ -729,20 +657,14 @@ useSEO({
   description: 'ThreeRouter for enterprises: unified team management, security and compliance, fine-grained token governance. Enterprise AI API gateway with department quotas, API key control, cost attribution, and compliance audit — track every token.',
   keywords: 'enterprise AI,enterprise API management,token governance,team management,API gateway,enterprise compliance,API key management,cost control,token quota,usage monitoring',
   ogType: 'website',
-  ogImage: 'https://www.threerouter.com/src/assets/icons/logo.webp',
+  ogImage: 'https://www.threerouter.com/logo.webp',
   ogUrl: 'https://www.threerouter.com/enterprise',
   ogSiteName: 'ThreeRouter',
   canonicalUrl: 'https://www.threerouter.com/enterprise',
   jsonLd: enterpriseJsonLd
 })
 
-const currentYear = computed(() => new Date().getFullYear())
-const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
-
 const selectedRole = ref<'decision' | 'employee'>('decision')
-
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'ThreeRouter')
-const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 
 const solutionCard1Points = computed(() => tm('enterprise.solution.card1Points') as unknown as string[])
 const solutionCard2Points = computed(() => tm('enterprise.solution.card2Points') as unknown as string[])
@@ -763,17 +685,9 @@ const tokenMetrics = computed(() => tm('enterprise.tokenManagement.metrics') as 
 const tokenManagementFeatures = computed(() => tm('enterprise.tokenManagement.features') as unknown as Array<{ icon: string; iconBg: string; title: string; desc: string; points: string[] }>)
 const tokenProcessSteps = computed(() => tm('enterprise.tokenManagement.processSteps') as unknown as Array<{ title: string; desc: string }>)
 
-const isDark = ref(document.documentElement.classList.contains('dark'))
-
 onMounted(() => {
   appStore.fetchPublicSettings().catch(() => {})
 })
-
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
 
 function scrollTo(id: string) {
   const el = document.getElementById(id)

@@ -228,7 +228,7 @@ useSEO({
   description: blogDescription,
   ogType: 'article',
   ogUrl: blogCanonicalUrl,
-  ogImage: computed(() => blog.value?.cover_image || `${SITE_ORIGIN}/src/assets/icons/logo.webp`),
+  ogImage: computed(() => blog.value?.cover_image || `${SITE_ORIGIN}/logo.webp`),
   ogSiteName: 'ThreeRouter',
   canonicalUrl: blogCanonicalUrl,
   jsonLd: blogJsonLd

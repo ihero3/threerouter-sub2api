@@ -1,27 +1,14 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import LogoSvg from '@/assets/icons/logo.svg'
 import PromoBanner from '@/components/common/PromoBanner.vue'
+import PublicSiteHeader from '@/components/layout/PublicSiteHeader.vue'
+import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 
 const isDark = ref(false)
-const currentLang = computed(() => {
-  return localStorage.getItem('locale') || 'zh'
-})
 
-const toggleLanguage = () => {
-  const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
-  localStorage.setItem('locale', newLang)
-  location.reload()
-}
-
-const downloadPDF = () => {
-  alert(t('whitepaper.download'))
-}
 
 const chapters = [
   {
@@ -79,22 +66,7 @@ const chapters = [
 
 <template>
   <div :class="['relative flex min-h-screen flex-col overflow-hidden', isDark ? 'bg-gray-900' : 'bg-white']">
-    <header class="relative z-20 px-6 py-4 border-b" :class="isDark ? 'border-gray-800' : 'border-gray-100'">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between">
-        <router-link to="/" class="flex items-center gap-3" aria-label="Three Router Home">
-          <img :src="LogoSvg" alt="Three Router Logo" class="h-8 w-8 object-contain" />
-          <span :class="['text-lg font-semibold', isDark ? 'text-white' : 'text-[#021b4a]']">ThreeRouter</span>
-        </router-link>
-        <div class="flex items-center gap-4">
-          <button @click="toggleLanguage" :class="['rounded-lg px-4 py-2 text-sm font-medium transition-colors', isDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100']">
-            {{ currentLang === 'zh' ? 'EN' : '中文' }}
-          </button>
-          <button @click="router.push('/compliance')" :class="['rounded-lg px-5 py-2 text-sm font-semibold shadow-lg transition-colors', isDark ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-[#0757b8] text-white hover:bg-[#064ea8]']">
-            {{ t('whitepaper.back') }}
-          </button>
-        </div>
-      </nav>
-    </header>
+    <PublicSiteHeader />
 
     <main class="relative z-10 flex-1 px-6 py-10">
       <div class="mx-auto max-w-5xl">
@@ -110,11 +82,6 @@ const chapters = [
           <p :class="['mb-8 max-w-3xl mx-auto text-lg', isDark ? 'text-gray-400' : 'text-gray-600']">
             {{ t('whitepaper.subtitle') }}
           </p>
-          <div class="flex flex-col gap-4 sm:flex-row justify-center">
-            <button @click="downloadPDF" :class="['rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all', isDark ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-[#0757b8] text-white hover:bg-[#064ea8]']">
-              {{ t('whitepaper.downloadBtn') }}
-            </button>
-          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -146,14 +113,9 @@ const chapters = [
           </div>
         </div>
 
-        <footer :class="['mt-12 rounded-xl p-8 text-center', isDark ? 'bg-gray-800/30' : 'bg-gray-50']">
-          <div class="mb-4 flex items-center justify-center gap-3">
-            <img :src="LogoSvg" alt="Three Router Logo" class="h-6 w-6 object-contain" />
-            <span :class="['text-lg font-semibold', isDark ? 'text-white' : 'text-[#021b4a]']">ThreeRouter</span>
-          </div>
-          <p :class="['text-sm', isDark ? 'text-gray-500' : 'text-gray-500']">{{ t('whitepaper.footer') }}</p>
-        </footer>
       </div>
     </main>
+
+    <PublicSiteFooter />
   </div>
 </template>

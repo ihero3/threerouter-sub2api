@@ -310,6 +310,7 @@ export default {
       documentation: '帮助文档',
       advantage: '我们的优势',
       contact: '联系我们',
+      compliance: '合规',
       legalNotice: '法律通知请先通过邮箱联系我们'
     }
   },
