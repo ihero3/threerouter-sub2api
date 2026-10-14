@@ -8,9 +8,12 @@ package handler
 // 低耦合：仅依赖 service.VideoTaskService，不直接访问 repository 或 adapter。
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,8 +85,8 @@ func (h *VideoGatewayHandler) CreateTask(c *gin.Context) {
 		zap.String("model", publicModel),
 	)
 
-	// 调用 service 创建任务
-	record, err := h.videoTaskService.CreateTask(c, apiKey.GroupID, subject.UserID, apiKey.ID, publicModel, body)
+	// 调用 service 创建任务（套幂等协调器，防客户端网络超时重试造成双创建/双扣费）
+	record, err := h.createVideoTaskIdempotent(c, apiKey, subject, publicModel, body)
 	if err != nil {
 		reqLog.Error("video_gateway.create_task_failed", zap.Error(err))
 		// 不向上游用户暴露上游错误细节，只返回平台统一错误
@@ -115,6 +118,72 @@ func (h *VideoGatewayHandler) CreateTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, response)
+}
+
+// createVideoTaskIdempotent 包装视频任务创建，套用与 /v1/media 同口径的
+// 幂等协调器：客户端未显式提供 Idempotency-Key 时，按 (用户 + 端点 + 请求体)
+// 派生稳定兜底键，自动防网络超时重试造成的双创建/双扣费。带显式键的客户端
+// 走原路径，行为不变。
+func (h *VideoGatewayHandler) createVideoTaskIdempotent(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, publicModel string, body map[string]any) (*service.VideoTaskRecord, error) {
+	coordinator := service.DefaultIdempotencyCoordinator()
+	if coordinator == nil {
+		// 协调器不可用（退化路径）：直接创建，与未引入幂等前行为一致。
+		return h.videoTaskService.CreateTask(c, apiKey.GroupID, subject.UserID, apiKey.ID, publicModel, body)
+	}
+	actorScope := "user:" + strconv.FormatInt(subject.UserID, 10)
+	key := resolveMediaIdempotencyKey(c.GetHeader("Idempotency-Key"), body)
+	if key == "" {
+		key = deriveMediaAutoIdempotencyKey(actorScope, c.Request.Method, c.FullPath(), body)
+	}
+	var record *service.VideoTaskRecord
+	result, err := coordinator.Execute(c.Request.Context(), service.IdempotencyExecuteOptions{
+		Scope:          "video_create",
+		ActorScope:     actorScope,
+		Method:         c.Request.Method,
+		Route:          c.FullPath(),
+		IdempotencyKey: key,
+		Payload:        body,
+		RequireKey:     false,
+	}, func(ctx context.Context) (any, error) {
+		rec, e := h.videoTaskService.CreateTask(c, apiKey.GroupID, subject.UserID, apiKey.ID, publicModel, body)
+		if e != nil {
+			return nil, e
+		}
+		record = rec
+		return rec, nil
+	})
+	if result != nil {
+		if rec, ok := result.Data.(*service.VideoTaskRecord); ok {
+			record = rec
+		} else if rec := decodeVideoTaskRecord(result.Data); rec != nil {
+			record = rec
+		}
+	}
+	if record != nil {
+		// 任务一旦落库（可能已预扣）就必须返回 local_id，否则用户付费却拿不到产物。
+		return record, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("video gateway: create result missing task record")
+}
+
+// decodeVideoTaskRecord 在幂等重放时把存储的 JSON 数据（map)还原为 VideoTaskRecord，
+// 与 media_gateway_handler.go 的 decodeMediaTaskRecord 同职责。
+func decodeVideoTaskRecord(data any) *service.VideoTaskRecord {
+	if data == nil {
+		return nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil
+	}
+	var rec service.VideoTaskRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return nil
+	}
+	return &rec
 }
 
 // GetTask GET /v1/videos/:task_id

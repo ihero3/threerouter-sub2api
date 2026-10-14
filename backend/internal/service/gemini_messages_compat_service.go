@@ -2148,6 +2148,11 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	openToolName := ""
 	seenToolJSON := ""
 
+	// 截断识别辅助：sawContent 表示已向客户端下发过内容块；sawDone 表示收到上游
+	// 正常终止信号 [DONE]。二者配合 finishReason 判断流是否被截断。
+	sawContent := false
+	sawDone := false
+
 	reader := bufio.NewReader(resp.Body)
 	for {
 		line, err := reader.ReadString('\n')
@@ -2163,6 +2168,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		}
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "" || payload == "[DONE]" {
+			if payload == "[DONE]" {
+				sawDone = true
+			}
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -2221,18 +2229,19 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 							"index": openBlockIndex,
 						})
 					}
-					openBlockType = "text"
-					openBlockIndex = nextBlockIndex
-					nextBlockIndex++
-					writeSSE(c.Writer, "content_block_start", map[string]any{
-						"type":  "content_block_start",
-						"index": openBlockIndex,
-						"content_block": map[string]any{
-							"type": "text",
-							"text": "",
-						},
-					})
-				}
+				openBlockType = "text"
+				openBlockIndex = nextBlockIndex
+				nextBlockIndex++
+				writeSSE(c.Writer, "content_block_start", map[string]any{
+					"type":  "content_block_start",
+					"index": openBlockIndex,
+					"content_block": map[string]any{
+						"type": "text",
+						"text": "",
+					},
+				})
+				sawContent = true
+			}
 
 				if firstTokenMs == nil {
 					ms := int(time.Since(startTime).Milliseconds())
@@ -2295,6 +2304,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 							"input": map[string]any{},
 						},
 					})
+					sawContent = true
 				}
 
 				argsJSONText := "{}"
@@ -2335,6 +2345,24 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		if errors.Is(err, io.EOF) {
 			break
 		}
+	}
+
+	// 截断识别：上游连接在内容已下发、但未发送终止信号（无 finishReason、也无
+	// [DONE]）时中断，属于流被截断而非正常收尾。与 raw-CC 链路口径对齐：不下发
+	// 半截流当成功，而是补一帧类型化 error 事件，让客户端明确感知流被掐断。
+	// 已观测到的部分 usage 随返回值一并上交，handler 照常提交用量记录（至多少收，
+	// 不双扣）。条件保守：仅当确实下发过内容、且未见任何终止信号才判定为截断，
+	// 避免把正常空响应或合法无 finishReason 的流误判为错误。
+	if sawContent && finishReason == "" && !sawDone {
+		writeSSE(c.Writer, "error", map[string]any{
+			"type": "error",
+			"error": map[string]any{
+				"type":    "api_error",
+				"message": "upstream stream ended unexpectedly",
+			},
+		})
+		flusher.Flush()
+		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, fmt.Errorf("gemini compat stream truncated before termination")
 	}
 
 	if openBlockIndex >= 0 {

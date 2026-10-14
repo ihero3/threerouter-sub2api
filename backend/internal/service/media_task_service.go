@@ -1257,6 +1257,25 @@ func generateMediaLocalID(kind MediaKind) string {
 	return prefix + "_" + hex.EncodeToString(b)
 }
 
+// deriveAudioSpeechBillingLocalID 派生同步音频合成的计费幂等键。
+//
+// 同步 /v1/audio/speech 不写 media_tasks，仅靠一次性 localID 作 usage_logs 的
+// 去重键（ON CONFLICT (request_id, api_key_id)）。原先每次调用 generateMediaLocalID
+// 生成随机 localID，客户端网络超时重试会生成新键 → 同一次请求被扣两次（真实资损）。
+//
+// 改为按 (用户 + 端点 + 请求体) 派生稳定指纹：相同请求重试得到相同 localID → 命中
+// 既有 usage_log 行完成去重，单次合成只计一次费。派生失败极少见，退化为随机键
+// （仅失去重试幂等保护，不中断调用）。与 /v1/media 的派生兜底键同口径（含用户维度，
+// 跨用户不串键）。
+func deriveAudioSpeechBillingLocalID(userID int64, requestBody map[string]any) string {
+	actorScope := "user:" + strconv.FormatInt(userID, 10)
+	fp, err := BuildIdempotencyFingerprint("POST", "/v1/audio/speech", actorScope, requestBody)
+	if err != nil || fp == "" {
+		return generateMediaLocalID(MediaKindAudio)
+	}
+	return "aud_" + fp
+}
+
 // ResolveAudioSpeechBytes 同步处理 OpenAI 兼容 /v1/audio/speech。
 // 它选号 + 调 adapter，若上游返回原始音频字节则直接返回字节；
 // 若返回 URL 则返回 URL 让 handler 302。不写 media_tasks（同步端点）。
@@ -1316,7 +1335,7 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 			persistCtx, cancelPersist := context.WithTimeout(upstreamBase, mediaPersistTimeout)
 			defer cancelPersist()
 			audioInput := &mediaAudioBillingInput{
-				LocalID:       generateMediaLocalID(MediaKindAudio),
+				LocalID:       deriveAudioSpeechBillingLocalID(userID, requestBody),
 				UserID:        userID,
 				APIKeyID:      apiKeyID,
 				AccountID:     account.ID,

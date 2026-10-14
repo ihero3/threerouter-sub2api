@@ -703,14 +703,11 @@ func recordGrokMediaUsage(
 			SessionID:          sessionID,
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
-			if videoTaskID != "" {
-				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
-					reqLog.Warn("grok_media.video_billing_claim_release_failed",
-						zap.String("request_id", videoTaskID),
-						zap.Error(releaseErr),
-					)
-				}
-			}
+			// RecordUsage 失败：保留已占用的计费 claim，不释放。
+			// ReleaseGrokVideoBilling 会让 TTL 窗口内的后续轮询重新 claim 并重复扣费
+			// （真实资损）。与"成功 = processing 且产物非空 + claimed 守卫"不变量一致，
+			// 这里优先避免双扣：claim 保持占用，失败的用量交由对账处理（至多少收一次，
+			// 绝不重复扣）。
 			logger.L().With(
 				zap.String("component", "handler.openai_gateway.grok_media"),
 				zap.Int64("user_id", subject.UserID),
