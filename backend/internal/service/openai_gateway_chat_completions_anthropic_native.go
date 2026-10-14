@@ -393,6 +393,11 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		return false
 	}
 
+	// 截断识别辅助：sawContent=已向客户端下发过内容；sawMessageStop=收到上游
+	// Anthropic 终止事件 message_stop。二者配合判断流是否被截断（对齐 gemini 兼容链路）。
+	sawContent := false
+	sawMessageStop := false
+
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
 		if firstChunk {
 			firstChunk = false
@@ -412,6 +417,14 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		// 连接及时归还），不再提前 return。
 		if clientDisconnected {
 			return false
+		}
+
+		// 截断识别：记录"已下发内容"与"已收到上游终止事件"。
+		if event.Type == "message_stop" {
+			sawMessageStop = true
+		}
+		if event.Type == "content_block_start" || event.Type == "content_block_delta" {
+			sawContent = true
 		}
 
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
@@ -462,6 +475,17 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
 		}
+	}
+
+	// 截断识别：已向客户端下发过内容、但上游流在 message_stop 之前就中断
+	// （EOF/读错误），属流被截断而非正常收尾。与 gemini 兼容链路同口径：补一帧
+	// OpenAI 风格 error chunk + [DONE] 并带部分 usage 返回 error，绝不把半截流
+	// 当成功。条件保守：客户端已断开、未见内容、或已收 message_stop 均不误判。
+	if sawContent && !sawMessageStop && !clientDisconnected {
+		fmt.Fprint(c.Writer, "data: {\"error\":{\"type\":\"upstream_error\",\"message\":\"upstream stream ended unexpectedly\"}}\n\n") //nolint:errcheck
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n")                                                                                          //nolint:errcheck
+		c.Writer.Flush()
+		return resultWithUsage(), fmt.Errorf("openai cc via native anthropic stream truncated before termination")
 	}
 
 	// Finalize both state machines（客户端已断开时仍执行，保证 usage 汇总完整）。

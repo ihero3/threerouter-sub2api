@@ -351,7 +351,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				DurationSec:          record.DurationSec,
 				RequestedDurationSec: record.DurationSec,
 			})
-		} else if record.Status != "failed" {
+		} else if record.Status == "processing" || record.Status == "succeeded" {
 			if kind == MediaKindVideo {
 				// 创建时上游真实时长未知（0），用用户请求时长预估。
 				if cost, costErr := estimateVideoTaskCost(persistCtx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
@@ -973,11 +973,20 @@ func (s *MediaTaskService) CancelTask(ctx context.Context, id int64) error {
 		})
 		return nil
 	}
-	var reserved float64
-	if record.ReservedCost != nil {
-		reserved = *record.ReservedCost
+	// 图片/音频取消：与视频同口径走失败结算（退预扣 + 写 0 费用 usage_logs）。
+	// 此前只退预扣不写日志，被管理员取消的调用在用量明细里完全消失，对账看不见。
+	switch record.MediaKind {
+	case MediaKindImage:
+		settleMediaImageTaskFailure(ctx, s.billingDeps(), mediaImageBillingInputFromRecord(record, 0))
+	case MediaKindAudio:
+		settleMediaAudioTaskFailure(ctx, s.billingDeps(), mediaAudioBillingInputFromRecord(record))
+	default:
+		var reserved float64
+		if record.ReservedCost != nil {
+			reserved = *record.ReservedCost
+		}
+		releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
 	}
-	releaseMediaReservedQuota(s.apiKeyService, ctx, record.APIKeyID, reserved)
 	return nil
 }
 

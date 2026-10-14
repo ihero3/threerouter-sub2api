@@ -377,6 +377,11 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 	}
 
+	// 截断识别辅助：sawContent=已向客户端下发过内容；sawMessageStop=收到上游
+	// Anthropic 终止事件 message_stop。二者配合判断流是否被截断（对齐 gemini 兼容链路）。
+	sawContent := false
+	sawMessageStop := false
+
 	// 与 CC 姊妹路径（handleCCStreamingFromNativeAnthropic.writeChunk）同语义：
 	// 客户端断开后不再写出，但继续排水上游至流自然结束——Anthropic 的最终
 	// output_tokens 只在末尾 message_delta 携带，提前退出会把整段生成记成 ~1
@@ -398,6 +403,14 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
 		if clientDisconnected {
 			return
+		}
+
+		// 截断识别：记录"已下发内容"与"已收到上游终止事件"。
+		if event.Type == "message_stop" {
+			sawMessageStop = true
+		}
+		if event.Type == "content_block_start" || event.Type == "content_block_delta" {
+			sawContent = true
 		}
 		for _, evt := range events {
 			payload, err := json.Marshal(evt)
@@ -454,6 +467,34 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 
 		processAnthropicEvent(&event)
+	}
+
+	// 截断识别：已向客户端下发过内容、但上游流在 message_stop 之前就中断
+	// （EOF/读错误），属流被截断而非正常收尾。与 gemini 兼容链路同口径：补一帧
+	// 协议正确的 response.failed 并带部分 usage 返回 error，绝不合成假的
+	// response.completed。条件保守：客户端已断开、未见内容、或已收 message_stop
+	// 均不误判。
+	if sawContent && !sawMessageStop && !clientDisconnected {
+		failedEvt := map[string]any{
+			"type": "response.failed",
+			"response": map[string]any{
+				"id":         requestID,
+				"object":     "response",
+				"created_at": time.Now().Unix(),
+				"model":      originalModel,
+				"status":     "failed",
+				"output":     []any{},
+				"error": map[string]any{
+					"code":    "upstream_error",
+					"message": "upstream stream ended unexpectedly",
+				},
+			},
+		}
+		if payload, mErr := json.Marshal(failedEvt); mErr == nil {
+			fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", payload) //nolint:errcheck
+			c.Writer.Flush()
+		}
+		return resultWithUsage(), fmt.Errorf("openai responses via native anthropic stream truncated before termination")
 	}
 
 	// Finalize state machine（客户端已断开时仍推进，保证 usage 汇总完整；仅在
