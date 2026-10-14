@@ -584,13 +584,15 @@
           </template>
 
           <template #cell-register_ip="{ row }">
-            <span
-              v-if="row.register_ip"
-              class="text-sm text-gray-500 dark:text-dark-400"
-              :title="row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip"
-            >
-              {{ row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip }}
-            </span>
+            <div v-if="row.register_ip">
+              <span
+                class="text-sm text-gray-500 dark:text-dark-400"
+                :title="row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip"
+              >
+                {{ row.register_country ? `${row.register_ip} · ${row.register_country}` : row.register_ip }}
+              </span>
+              <IpGeoCell :ip="row.register_ip" />
+            </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
 
@@ -816,6 +818,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Select from '@/components/common/Select.vue'
 import { buildApiKeyGroupFilterOptions } from './apiKeyGroupFilterOptions'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
