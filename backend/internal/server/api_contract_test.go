@@ -1946,6 +1946,10 @@ func (s *stubAccountRepo) AutoPauseExpiredAccounts(ctx context.Context, now time
 	return 0, errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) AutoRecoverFailoverDisabledAccounts(ctx context.Context, now time.Time) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	return errors.New("not implemented")
 }

@@ -403,6 +403,14 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 	return svc
 }
 
+// ProvideAccountAutoRecoveryService creates and starts AccountAutoRecoveryService.
+// failover 429 自动禁用的账号在配额重置时间到达后由此任务自动恢复为 active。
+func ProvideAccountAutoRecoveryService(accountRepo AccountRepository) *AccountAutoRecoveryService {
+	svc := NewAccountAutoRecoveryService(accountRepo, time.Minute)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAICodexVersionSyncService creates and starts OpenAICodexVersionSyncService.
 // 出站 Codex 身份的版本号靠它跟随官方发布，无需为了跟版本而发新版本；面板可关闭。
 func ProvideOpenAICodexVersionSyncService(
@@ -921,6 +929,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
+	ProvideAccountAutoRecoveryService,
 	ProvideOpenAICodexVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,

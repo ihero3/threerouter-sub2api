@@ -123,6 +123,10 @@ func (s *accountRepoStub) AutoPauseExpiredAccounts(ctx context.Context, now time
 	panic("unexpected AutoPauseExpiredAccounts call")
 }
 
+func (s *accountRepoStub) AutoRecoverFailoverDisabledAccounts(ctx context.Context, now time.Time) (int64, error) {
+	panic("unexpected AutoRecoverFailoverDisabledAccounts call")
+}
+
 func (s *accountRepoStub) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	panic("unexpected BindGroups call")
 }

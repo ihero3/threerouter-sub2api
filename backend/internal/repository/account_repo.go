@@ -2552,6 +2552,56 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 	return int64(len(accountIDs)), nil
 }
 
+// AutoRecoverFailoverDisabledAccounts 把「failover 自动禁用且带恢复时间」的账号在配额
+// 重置时刻到达后重新置为 active。严格只命中同时满足以下条件的账号，绝不触碰人工禁用、
+// 认证失败等其他 error 账号：
+//   - status=error；
+//   - error_message 带自动恢复标记 failoverAutoRecoverTagPrefix；
+//   - rate_limit_reset_at 已到期（该字段在自动禁用时写入恢复时间）。
+func (r *accountRepository) AutoRecoverFailoverDisabledAccounts(ctx context.Context, now time.Time) (int64, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		UPDATE accounts
+		SET status = 'active',
+			schedulable = TRUE,
+			error_message = '',
+			rate_limited_at = NULL,
+			rate_limit_reset_at = NULL,
+			updated_at = NOW()
+		WHERE deleted_at IS NULL
+			AND status = $1
+			AND rate_limit_reset_at IS NOT NULL
+			AND rate_limit_reset_at <= $2
+			AND error_message LIKE $3
+		RETURNING id
+	`, service.StatusError, now, "%"+service.FailoverAutoRecoverMessageTag+"%")
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return 0, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(accountIDs) > 0 {
+		payload := map[string]any{"account_ids": accountIDs}
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto recover account changes failed: err=%v", err)
+		}
+	}
+	return int64(len(accountIDs)), nil
+}
+
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
 	if len(updates) == 0 {

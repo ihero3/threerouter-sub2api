@@ -81,6 +81,8 @@ type AccountRepository interface {
 	ClearError(ctx context.Context, id int64) error
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
 	AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error)
+	// AutoRecoverFailoverDisabledAccounts 把到期的 failover 429 自动禁用账号恢复为 active。
+	AutoRecoverFailoverDisabledAccounts(ctx context.Context, now time.Time) (int64, error)
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
 
 	ListSchedulable(ctx context.Context) ([]Account, error)
