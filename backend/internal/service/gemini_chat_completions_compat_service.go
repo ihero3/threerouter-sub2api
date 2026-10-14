@@ -595,6 +595,11 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	openToolName := ""
 	seenToolJSON := ""
 
+	// 截断识别辅助：sawContent 表示已向客户端下发过内容块；sawDone 表示收到上游
+	// 正常终止信号 [DONE]。二者配合 finishReason 判断流是否被截断（对齐 messages 版）。
+	sawContent := false
+	sawDone := false
+
 	closeOpenBlock := func() bool {
 		if openBlockIndex < 0 {
 			return false
@@ -622,7 +627,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-				if payload != "" && payload != "[DONE]" {
+				if payload == "[DONE]" {
+				sawDone = true
+			} else if payload != "" {
 					rawBytes := []byte(payload)
 					if isOAuth {
 						if innerBytes, uwErr := unwrapGeminiResponse(rawBytes); uwErr == nil {
@@ -662,18 +669,19 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 									}
 									idx := nextBlockIndex
 									nextBlockIndex++
-									openBlockIndex = idx
-									openBlockType = "text"
-									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-										Type:  "content_block_start",
-										Index: &idx,
-										ContentBlock: &apicompat.AnthropicContentBlock{
-											Type: "text",
-											Text: "",
-										},
-									}) {
-										return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
-									}
+								openBlockIndex = idx
+								openBlockType = "text"
+								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+									Type:  "content_block_start",
+									Index: &idx,
+									ContentBlock: &apicompat.AnthropicContentBlock{
+										Type: "text",
+										Text: "",
+									},
+								}) {
+									return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+								}
+								sawContent = true
 								}
 								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 									Type: "content_block_delta",
@@ -704,20 +712,21 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 									idx := nextBlockIndex
 									nextBlockIndex++
 									openToolIndex = idx
-									openToolName = name
-									sawToolUse = true
-									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-										Type:  "content_block_start",
-										Index: &idx,
-										ContentBlock: &apicompat.AnthropicContentBlock{
-											Type:  "tool_use",
-											ID:    "toolu_" + randomHex(8),
-											Name:  name,
-											Input: json.RawMessage(`{}`),
-										},
-									}) {
-										return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
-									}
+								openToolName = name
+								sawToolUse = true
+								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+									Type:  "content_block_start",
+									Index: &idx,
+									ContentBlock: &apicompat.AnthropicContentBlock{
+										Type:  "tool_use",
+										ID:    "toolu_" + randomHex(8),
+										Name:  name,
+										Input: json.RawMessage(`{}`),
+									},
+								}) {
+									return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+								}
+								sawContent = true
 								}
 
 								argsJSONText := "{}"
@@ -758,6 +767,17 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		if err != nil {
 			return nil, fmt.Errorf("stream read error: %w", err)
 		}
+	}
+
+	// 截断识别：已下发内容、但未见终止信号（finishReason 空且未收到 [DONE]）即 EOF，
+	// 属流被截断而非正常收尾。与 messages 版 handleStreamingResponse（同文件）对齐：
+	// 补一帧 OpenAI 风格 error chunk + [DONE]，并带部分 usage 返回 error，绝不把半截流
+	// 当成功。条件保守，正常完成（有 finishReason 或 [DONE]）不误判。
+	if sawContent && finishReason == "" && !sawDone {
+		_, _ = io.WriteString(c.Writer, "data: {\"error\":{\"type\":\"upstream_error\",\"message\":\"upstream stream ended unexpectedly\"}}\n\n")
+		_, _ = io.WriteString(c.Writer, "data: [DONE]\n\n")
+		flusher.Flush()
+		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, fmt.Errorf("gemini chat-completions compat stream truncated before termination")
 	}
 
 	if closeOpenBlock() {

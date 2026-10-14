@@ -313,16 +313,20 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 				record.MediaURL = stored
 			}
 		}
-		// 兜底：任何模态报 succeeded 却既无产物也无上游任务号 = 上游给了空壳。
-		// 与 openAICompatMediaAdapter 的 taskID/URL 判空同口径：降级为 failed，
-		// 让下面的失败分支退预扣 + 写 0 费用日志，绝不按成功计费。
-		if record.Status == "succeeded" && record.MediaURL == "" &&
-			len(record.MediaURLs) == 0 && strings.TrimSpace(record.UpstreamTaskID) == "" {
+	// 兜底：任何模态报 succeeded 却无产物 = 上游给了空壳（扣钱不给货）。
+	// 视频有上游任务号但 URL 未到时，改为 processing 交给轮询取 URL，取不到由
+	// 超时兜底退预扣；其余（图片/音频无产物、视频连任务号都没有）降级为 failed，
+	// 让下面的失败分支退预扣 + 写 0 费用日志，绝不按 succeeded 无产物落终态。
+	if record.Status == "succeeded" && record.MediaURL == "" && len(record.MediaURLs) == 0 {
+		if kind == MediaKindVideo && strings.TrimSpace(record.UpstreamTaskID) != "" {
+			record.Status = "processing"
+		} else {
 			record.Status = "failed"
 			if strings.TrimSpace(record.ErrorMessage) == "" {
 				record.ErrorMessage = "upstream reported success but returned no artifact"
 			}
 		}
+	}
 		if record.Status == "failed" && kind == MediaKindImage {
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
@@ -418,6 +422,32 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			actual := settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 			if err := s.mediaTaskRepo.UpdateCostUSD(persistCtx, saved.ID, actual); err != nil {
 				s.logger.Warn("media_task_service: sync audio cost writeback failed",
+					zap.String("local_id", saved.LocalID),
+					zap.Float64("actual_cost", actual),
+					zap.Error(err),
+				)
+			}
+		}
+		// 视频创建即终态（同步返回 URL 的厂商/通用视频适配器）：与图片/音频对称，立刻结算。
+		// 否则预扣的配额永不转实扣/退还，也无 usage_logs（用户与运营都看不到）。
+		if kind == MediaKindVideo && saved.Status == "succeeded" {
+			videoInput := &videoTaskBillingInput{
+				LocalID:              saved.LocalID,
+				UserID:               saved.UserID,
+				APIKeyID:              saved.APIKeyID,
+				AccountID:            saved.AccountID,
+				Account:              account,
+				Model:                saved.PublicModel,
+				UpstreamModel:        saved.UpstreamModel,
+				Resolution:           saved.Resolution,
+				DurationSec:          saved.DurationSec,
+				RequestedDurationSec: saved.DurationSec,
+				ReservedCost:         saved.ReservedCost,
+				Meta:                 usageMeta,
+			}
+			actual := settleVideoTaskSuccess(persistCtx, s.billingDeps(), videoInput)
+			if err := s.mediaTaskRepo.UpdateCostUSD(persistCtx, saved.ID, actual); err != nil {
+				s.logger.Warn("media_task_service: sync video cost writeback failed",
 					zap.String("local_id", saved.LocalID),
 					zap.Float64("actual_cost", actual),
 					zap.Error(err),
