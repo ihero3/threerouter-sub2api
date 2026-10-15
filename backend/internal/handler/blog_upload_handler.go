@@ -144,6 +144,17 @@ func (h *BlogUploadHandler) ServeImage(c *gin.Context) {
 	c.File(cleaned)
 }
 
+// UploadImageForBlogAPI exposes image upload under /v1/blog using the same
+// sk- API Key auth that blog create uses. Only admin-role keys are allowed.
+func (h *BlogUploadHandler) UploadImageForBlogAPI(c *gin.Context) {
+	role, ok := middleware2.GetUserRoleFromContext(c)
+	if !ok || role != service.RoleAdmin {
+		response.Error(c, http.StatusForbidden, "admin access required")
+		return
+	}
+	h.UploadImage(c)
+}
+
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

@@ -282,6 +282,18 @@ func RegisterGatewayRoutes(
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+
+	// 博客发布接口（OpenAI 兼容路径 /v1/blog）：仅需用户级 sk- API Key 鉴权，不依赖分组。
+	// 权限：仅管理员用户的密钥可创建/更新（发布），所有已鉴权调用方均可读取。
+	// 计费：由 API Key 中间件的 skipBilling 规则豁免，不参与额度/订阅校验。
+	blogAPI := r.Group("/v1/blog")
+	blogAPI.Use(bodyLimit)
+	blogAPI.Use(gin.HandlerFunc(apiKeyAuth))
+	blogAPI.GET("/posts", h.BlogAPI.List)
+	blogAPI.GET("/posts/:id", h.BlogAPI.GetByID)
+	blogAPI.POST("/posts", h.BlogAPI.Create)
+	blogAPI.POST("/uploads/image", h.BlogUpload.UploadImageForBlogAPI)
+
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
 	{

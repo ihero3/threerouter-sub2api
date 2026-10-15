@@ -61,6 +61,8 @@ type Handlers struct {
 	Subscription             *SubscriptionHandler
 	Announcement             *AnnouncementHandler
 	Blog                     *BlogHandler
+	BlogAPI                  *BlogAPIHandler
+	BlogUpload               *BlogUploadHandler
 	ChannelMonitor           *ChannelMonitorUserHandler
 	ChannelMonitorV2         *ChannelMonitorV2Handler
 	Admin                    *AdminHandlers

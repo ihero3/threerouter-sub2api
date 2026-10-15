@@ -175,7 +175,10 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 	return h
 }
 
-// ProvideAdminSettingHandler creates admin.SettingHandler with notification template APIs.
+func ProvideBlogUploadHandler(cfg *config.Config) *BlogUploadHandler {
+	return NewBlogUploadHandler(cfg.Pricing.DataDir)
+}
+
 func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService) *admin.SettingHandler {
 	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
@@ -194,7 +197,9 @@ func ProvideHandlers(
 	redeemHandler *RedeemHandler,
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
+	blogAPIHandler *BlogAPIHandler,
 	blogHandler *BlogHandler,
+	blogUploadHandler *BlogUploadHandler,
 	channelMonitorUserHandler *ChannelMonitorUserHandler,
 	channelMonitorV2Handler *ChannelMonitorV2Handler,
 	adminHandlers *AdminHandlers,
@@ -231,6 +236,8 @@ func ProvideHandlers(
 		Subscription:             subscriptionHandler,
 		Announcement:             announcementHandler,
 		Blog:                     blogHandler,
+		BlogAPI:                  blogAPIHandler,
+		BlogUpload:               blogUploadHandler,
 		ChannelMonitor:           channelMonitorUserHandler,
 		ChannelMonitorV2:         channelMonitorV2Handler,
 		Admin:                    adminHandlers,
@@ -268,6 +275,8 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
 	NewBlogHandler,
+	NewBlogAPIHandler,
+	ProvideBlogUploadHandler,
 	NewChannelMonitorUserHandler,
 	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,
