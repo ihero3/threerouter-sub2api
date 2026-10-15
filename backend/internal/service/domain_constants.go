@@ -24,7 +24,7 @@ const (
 
 // Affiliate rebate settings
 const (
-	AffiliateRebateRateDefault          = 20.0
+	AffiliateRebateRateDefault          = 10.0
 	AffiliateRebateRateMin              = 0.0
 	AffiliateRebateRateMax              = 100.0
 	AffiliateEnabledDefault             = false // 邀请返利总开关默认关闭
