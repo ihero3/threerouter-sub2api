@@ -247,3 +247,41 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.Equal(t, "medium", *result.ReasoningEffort)
 	require.Contains(t, rec.Body.String(), `[DONE]`)
 }
+
+// 截断识别：上游在 message_stop 之前断开（已下发内容但无终止事件），必须按截断
+// 处理——补一帧 OpenAI 风格 error chunk + [DONE] 并返回 error，绝不把半截流当成功。
+func TestHandleCCStreamingFromAnthropic_TruncatedBeforeTermination(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_cc_trunc"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: message_start`,
+			`data: {"type":"message_start","message":{"id":"msg_t","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":10}}}`,
+			``,
+			`event: content_block_start`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+			``,
+			`event: content_block_delta`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}`,
+			``,
+			`event: message_delta`,
+			`data: {"type":"message_delta","delta":{"stop_reason":""},"usage":{"output_tokens":3}}`,
+			``,
+		}, "\n"))),
+	}
+
+	svc := &GatewayService{}
+	result, err := svc.handleCCStreamingFromAnthropic(resp, c, "gpt-5", "claude-sonnet-4.5", nil, time.Now(), true)
+	require.Error(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.Contains(t, body, "upstream stream ended unexpectedly")
+	require.Contains(t, body, `[DONE]`)
+	// 截断流不应被当成正常完成：不应出现正常终态伪造。
+	require.NotContains(t, body, `"stop_reason":"end_turn"`)
+}

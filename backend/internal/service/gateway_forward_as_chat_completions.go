@@ -381,6 +381,12 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 
+	// 截断识别辅助：sawContent=已向客户端下发过内容；sawMessageStop=收到上游
+	// Anthropic 终止事件 message_stop。二者配合判断流是否被截断（对齐
+	// openai_gateway_chat_completions_anthropic_native.go 的 CC 姊妹路径）。
+	sawContent := false
+	sawMessageStop := false
+
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -431,6 +437,15 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
+		// 截断识别：记录"已下发内容"与"已收到上游终止事件"（客户端断开时
+		// 仍累计 usage，故无论是否断开都记录）。
+		if event.Type == "message_stop" {
+			sawMessageStop = true
+		}
+		if event.Type == "content_block_start" || event.Type == "content_block_delta" {
+			sawContent = true
+		}
+
 		// Chain: Anthropic event → Responses events → CC chunks
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {
@@ -477,6 +492,18 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
+	}
+
+	// 截断识别：已向客户端下发过内容、但上游流在 message_stop 之前就中断
+	// （EOF/读错误），属流被截断而非正常收尾。与 native-anthropic CC 姊妹路径
+	// 同口径：补一帧 OpenAI 风格 error chunk + [DONE] 并带部分 usage 返回 error，
+	// 绝不把半截流当成功。条件保守：未见内容或已收 message_stop 均不误判
+	// （客户端断开会提前 return，不会走到此处）。
+	if sawContent && !sawMessageStop {
+		fmt.Fprint(c.Writer, "data: {\"error\":{\"type\":\"upstream_error\",\"message\":\"upstream stream ended unexpectedly\"}}\n\n") //nolint:errcheck
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n")                                                                                          //nolint:errcheck
+		c.Writer.Flush()
+		return resultWithUsage(), fmt.Errorf("forward_as_cc stream truncated before termination")
 	}
 
 	// Finalize both state machines

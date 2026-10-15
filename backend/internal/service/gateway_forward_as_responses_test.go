@@ -402,3 +402,40 @@ func TestHandleResponsesStreamingResponse_CompactSSEFormat(t *testing.T) {
 	require.Equal(t, 6, result.Usage.OutputTokens)
 	require.Contains(t, rec.Body.String(), `response.completed`)
 }
+
+// 截断识别：上游在 message_stop 之前断开（已下发内容但无终止事件），必须按截断
+// 处理——补一帧协议正确的 response.failed 并返回 error，绝不合成假的
+// response.completed。
+func TestHandleResponsesStreamingResponse_TruncatedBeforeTermination(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_resp_trunc"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: message_start`,
+			`data: {"type":"message_start","message":{"id":"msg_rt","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":10}}}`,
+			``,
+			`event: content_block_start`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+			``,
+			`event: content_block_delta`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}`,
+			``,
+			`event: message_delta`,
+			`data: {"type":"message_delta","delta":{"stop_reason":""},"usage":{"output_tokens":3}}`,
+			``,
+		}, "\n"))),
+	}
+
+	svc := &GatewayService{}
+	_, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	require.Error(t, err)
+	body := rec.Body.String()
+	require.Contains(t, body, "response.failed")
+	require.Contains(t, body, "upstream stream ended unexpectedly")
+	require.NotContains(t, body, "response.completed")
+}

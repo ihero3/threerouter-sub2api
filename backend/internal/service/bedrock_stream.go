@@ -48,6 +48,12 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 	var firstTokenMs *int
 	clientDisconnected := false
 
+	// 截断识别辅助：sawContent=已向客户端下发过内容块；sawMessageStop=收到上游
+	// Anthropic 终止事件 message_stop（Bedrock Claude chunk 的 type 字段）。二者
+	// 配合判断流是否被截断（Bedrock EventStream 在 message_stop 前断开即截断）。
+	sawContent := false
+	sawMessageStop := false
+
 	// Bedrock EventStream 使用 application/vnd.amazon.eventstream 二进制格式。
 	// 每个帧结构：total_length(4) + headers_length(4) + prelude_crc(4) + headers + payload + message_crc(4)
 	// 但更实用的方式是使用行扫描找 JSON chunks，因为 Bedrock 的响应在二进制帧中。
@@ -111,6 +117,16 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 				if !clientDisconnected {
 					flusher.Flush()
 				}
+				// 截断识别：已向客户端下发过内容、但上游流在 message_stop 之前
+				// 就中断（EOF），属流被截断而非正常收尾。补一帧协议正确的
+				// Anthropic error 事件并带部分 usage 返回 error，绝不把半截流
+				// 当成功。条件保守：未见内容、已收 message_stop 或客户端已断开
+				// 均不误判。
+				if sawContent && !sawMessageStop && !clientDisconnected {
+					_, _ = fmt.Fprintf(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"upstream stream ended unexpectedly\"}}\n\n")
+					flusher.Flush()
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("bedrock stream truncated before termination")
+				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 			}
 			if ev.err != nil {
@@ -143,6 +159,14 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 
 			// 确定 SSE event type
 			eventType := gjson.GetBytes(sseData, "type").String()
+
+			// 截断识别：记录"已下发内容"与"已收到上游终止事件"。
+			if eventType == "message_stop" {
+				sawMessageStop = true
+			}
+			if eventType == "content_block_start" || eventType == "content_block_delta" {
+				sawContent = true
+			}
 
 			// 写入标准 SSE 格式
 			if !clientDisconnected {

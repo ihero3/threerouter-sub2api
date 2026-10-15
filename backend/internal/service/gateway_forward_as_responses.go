@@ -506,6 +506,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 
+	// 截断识别辅助：sawContent=已向客户端下发过内容；sawMessageStop=收到上游
+	// Anthropic 终止事件 message_stop。二者配合判断流是否被截断（对齐
+	// openai_gateway_responses_anthropic_native.go 的 Responses 姊妹路径）。
+	sawContent := false
+	sawMessageStop := false
+
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -541,6 +547,15 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		// Also capture usage from message_start
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+
+		// 截断识别：记录"已下发内容"与"已收到上游终止事件"（客户端断开时
+		// 仍累计 usage，故无论是否断开都记录）。
+		if event.Type == "message_stop" {
+			sawMessageStop = true
+		}
+		if event.Type == "content_block_start" || event.Type == "content_block_delta" {
+			sawContent = true
 		}
 
 		// Convert to Responses events
@@ -634,6 +649,34 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				zap.String("request_id", requestID),
 			)
 		}
+	}
+
+	// 截断识别：已向客户端下发过内容、但上游流在 message_stop 之前就中断
+	// （EOF/读错误），属流被截断而非正常收尾。与 native-anthropic Responses
+	// 姊妹路径同口径：补一帧协议正确的 response.failed 并带部分 usage 返回
+	// error，绝不合成假的 response.completed。条件保守：未见内容或已收
+	// message_stop 均不误判（客户端断开会提前 return，不会走到此处）。
+	if sawContent && !sawMessageStop {
+		failedEvt := map[string]any{
+			"type": "response.failed",
+			"response": map[string]any{
+				"id":         requestID,
+				"object":     "response",
+				"created_at": time.Now().Unix(),
+				"model":      originalModel,
+				"status":     "failed",
+				"output":     []any{},
+				"error": map[string]any{
+					"code":    "upstream_error",
+					"message": "upstream stream ended unexpectedly",
+				},
+			},
+		}
+		if payload, mErr := json.Marshal(failedEvt); mErr == nil {
+			fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", payload) //nolint:errcheck
+			c.Writer.Flush()
+		}
+		return resultWithUsage(), fmt.Errorf("forward_as_responses stream truncated before termination")
 	}
 
 	return finalizeStream()
