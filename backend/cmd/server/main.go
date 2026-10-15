@@ -74,6 +74,11 @@ func main() {
 		return
 	}
 
+	// Log the resolved data directory: a stray /app/data directory shadowing the
+	// working directory previously caused every restart to boot into the setup
+	// wizard, and this single line makes that misconfiguration obvious.
+	log.Printf("Data directory resolved to: %s", setup.GetDataDir())
+
 	// Check if setup is needed
 	if setup.NeedsSetup() {
 		// Check if auto-setup is enabled (for Docker deployment)

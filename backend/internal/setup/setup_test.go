@@ -248,3 +248,67 @@ func TestBuildDatabaseConnectionDSNsUsesPostgresForBootstrap(t *testing.T) {
 		t.Fatalf("target DSN = %q, want configured database", targetDSN)
 	}
 }
+
+func TestHasInstallMarker(t *testing.T) {
+	t.Run("empty directory has no marker", func(t *testing.T) {
+		if hasInstallMarker(t.TempDir()) {
+			t.Fatal("hasInstallMarker() = true, want false for an empty directory")
+		}
+	})
+
+	for _, name := range []string{ConfigFileName, InstallLockFile} {
+		t.Run("detects "+name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+				t.Fatalf("WriteFile(%s) error = %v", name, err)
+			}
+			if !hasInstallMarker(dir) {
+				t.Fatalf("hasInstallMarker() = false, want true when %s exists", name)
+			}
+		})
+	}
+}
+
+func TestIsWritableDir(t *testing.T) {
+	if !isWritableDir(t.TempDir()) {
+		t.Fatal("isWritableDir(existing temp dir) = false, want true")
+	}
+	if isWritableDir(filepath.Join(t.TempDir(), "missing")) {
+		t.Fatal("isWritableDir(non-existent path) = true, want false")
+	}
+}
+
+func TestGetDataDirPrefersExplicitDataDirEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DATA_DIR", dir)
+
+	if got := GetDataDir(); got != dir {
+		t.Fatalf("GetDataDir() = %q, want %q", got, dir)
+	}
+}
+
+// TestGetDataDirPrefersWorkingDirectoryInstall 复现此前的线上故障：
+// 工作目录里存在有效安装，但服务器上残留了一个空的 /app/data 目录，
+// 导致每次启动都被判定为首次安装并进入 setup 向导。
+func TestGetDataDirPrefersWorkingDirectoryInstall(t *testing.T) {
+	wd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(wd, ConfigFileName), []byte("server:\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(config.yaml) error = %v", err)
+	}
+
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(wd); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(original) })
+
+	// 空字符串等同于未设置，GetDataDir 内部按未设置处理。
+	t.Setenv("DATA_DIR", "")
+
+	if got := GetDataDir(); got != "." {
+		t.Fatalf("GetDataDir() = %q, want %q (working directory must win over a stray /app/data)", got, ".")
+	}
+}

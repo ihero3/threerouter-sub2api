@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,27 +41,62 @@ func setupDefaultAdminConcurrency() int {
 }
 
 // GetDataDir returns the data directory for storing config and lock files.
-// Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
+//
+// Priority:
+//  1. DATA_DIR environment variable (explicit override always wins).
+//  2. Current working directory, when it already holds an installation
+//     (config.yaml or .installed) — the standard non-container layout.
+//  3. /app/data, when it already holds an installation, or when AUTO_SETUP is
+//     enabled (containerized auto-install).
+//  4. Current working directory (fresh installation).
+//
+// An empty but pre-existing /app/data directory must never shadow the working
+// directory: that has previously caused deployments to boot into the setup
+// wizard on every restart even though a valid installation lived in the
+// working directory. /app/data is therefore only selected when it actually
+// carries install artifacts or when container auto-setup is opted in.
 func GetDataDir() string {
-	// Check DATA_DIR environment variable first
 	if dir := os.Getenv("DATA_DIR"); dir != "" {
 		return dir
 	}
 
-	// Check if /app/data exists and is writable (Docker environment)
-	dockerDataDir := "/app/data"
-	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
-		// Try to check if writable by creating a temp file
-		testFile := dockerDataDir + "/.write_test"
-		if f, err := os.Create(testFile); err == nil {
-			_ = f.Close()
-			_ = os.Remove(testFile)
-			return dockerDataDir
-		}
+	cwd := "."
+	if hasInstallMarker(cwd) {
+		return cwd
 	}
 
-	// Default to current directory
-	return "."
+	dockerDataDir := "/app/data"
+	if isWritableDir(dockerDataDir) && (hasInstallMarker(dockerDataDir) || AutoSetupEnabled()) {
+		return dockerDataDir
+	}
+
+	return cwd
+}
+
+// hasInstallMarker reports whether dir contains config.yaml or .installed.
+func hasInstallMarker(dir string) bool {
+	for _, name := range []string{ConfigFileName, InstallLockFile} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// isWritableDir reports whether dir exists, is a directory and accepts writes.
+func isWritableDir(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	testFile := filepath.Join(dir, ".write_test")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove(testFile)
+	return true
 }
 
 // GetConfigFilePath returns the full path to config.yaml
