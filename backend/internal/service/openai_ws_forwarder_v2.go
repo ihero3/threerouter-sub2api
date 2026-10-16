@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -360,11 +359,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
-	needModelReplace := originalModel != mappedModel
-	var mappedModelBytes []byte
-	if needModelReplace && mappedModel != "" {
-		mappedModelBytes = []byte(mappedModel)
-	}
 	bufferedStreamEvents := make([][]byte, 0, 4)
 	eventCount := 0
 	tokenEventCount := 0
@@ -570,8 +564,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if !clientDisconnected {
-			if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(message, mappedModelBytes) {
-				message = replaceOpenAIWSMessageModel(message, mappedModel, originalModel)
+			// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+			// 观测器已在上方读取过上游自报值，审计字段不受影响。
+			if normalized, changed := normalizeUpstreamResponseModel(message, originalModel); changed {
+				message = normalized
 			}
 			if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(message) {
 				if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(message); changed {
@@ -727,8 +723,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			return nil, errors.New("ws finished without final response")
 		}
 
-		if needModelReplace {
-			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
+		// 掩盖上游改名/静默降级：模型名统一回客户端请求名。
+		if normalized, changed := normalizeUpstreamResponseModel(finalResponse, originalModel); changed {
+			finalResponse = normalized
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)

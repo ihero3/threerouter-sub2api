@@ -344,6 +344,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
 		line = stripEmptyChatToolCallIdentityFromSSELine(line)
+		// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+		// 观测器已在本行上方读取过上游自报值，审计字段不受影响。
+		line = normalizeUpstreamResponseModelSSELine(line, originalModel)
 
 		writeLine(line)
 		if line == "" {
@@ -514,6 +517,11 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
 	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
+	// 掩盖上游改名/静默降级：非流式响应体里的模型名统一回客户端请求名。
+	// 上方 observer.ObserveOpenAI / Grok usage 校验读的都是真实上游值。
+	if normalized, changed := normalizeUpstreamResponseModel(respBody, originalModel); changed {
+		respBody = normalized
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

@@ -963,8 +963,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if !openAIWSEventMayContainModel(eventType) {
 				return payload
 			}
-			requestModel, upstreamModel := usageMeta.turnModels("")
-			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
+			// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+			requestModel, _ := usageMeta.turnModels("")
+			if normalized, changed := normalizeUpstreamResponseModel(payload, requestModel); changed {
+				return normalized
+			}
+			return payload
 		},
 		restoreToolNames: func(payload []byte) []byte {
 			return restoreCodexToolNamesFromContext(c, payload)

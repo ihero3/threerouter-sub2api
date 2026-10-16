@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -269,6 +270,97 @@ func isUpstreamResponseModelTerminalEvent(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+// upstreamResponseModelDeclaredPaths mirrors the observer's lookup order so the
+// response normalization rewrites exactly the fields the observer reads.
+// Only paths that already exist are rewritten — sjson never invents a field.
+var upstreamResponseModelDeclaredPaths = []string{
+	"model",
+	"response.model",
+	"message.model",
+	"modelVersion",
+	"response.modelVersion",
+	"response.response.modelVersion",
+}
+
+// normalizeUpstreamResponseModel rewrites every model declaration inside a JSON
+// payload to the client-requested target model, hiding an upstream rename or
+// silent downgrade (client asked A, upstream answered B, client still sees A).
+// The real upstream value stays available on the observer audit fields.
+//
+// Fail-open: an empty target, empty/non-JSON payload, or payload without a
+// differing declaration returns (payload, false) unchanged.
+func normalizeUpstreamResponseModel(payload []byte, targetModel string) ([]byte, bool) {
+	targetModel = strings.TrimSpace(targetModel)
+	if targetModel == "" || len(payload) == 0 {
+		return payload, false
+	}
+
+	var paths []string
+	for _, path := range upstreamResponseModelDeclaredPaths {
+		value := gjson.GetBytes(payload, path)
+		if value.Exists() && value.Type == gjson.String && value.Str != targetModel {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return payload, false
+	}
+	// Validate only after a candidate is found, matching the observer's
+	// cheap-path-first approach; malformed payloads pass through untouched.
+	if !gjson.ValidBytes(payload) {
+		return payload, false
+	}
+
+	patched := payload
+	changed := false
+	for _, path := range paths {
+		next, err := sjson.SetBytes(patched, path, targetModel)
+		if err != nil {
+			continue
+		}
+		patched = next
+		changed = true
+	}
+	if !changed {
+		return payload, false
+	}
+	return patched, true
+}
+
+// normalizeUpstreamResponseModelSSELine rewrites model declarations inside one
+// SSE "data:" line. Non-data lines, the [DONE] sentinel and payloads without a
+// differing declaration are returned verbatim.
+func normalizeUpstreamResponseModelSSELine(line, targetModel string) string {
+	if strings.TrimSpace(targetModel) == "" {
+		return line
+	}
+	data, ok := extractOpenAISSEDataLine(line)
+	if !ok {
+		return line
+	}
+	if trimmed := strings.TrimSpace(data); trimmed == "" || trimmed == "[DONE]" {
+		return line
+	}
+	rewritten, changed := normalizeUpstreamResponseModel([]byte(data), targetModel)
+	if !changed {
+		return line
+	}
+	return "data: " + string(rewritten)
+}
+
+// normalizeUpstreamResponseModelSSEBody applies the per-line normalization to a
+// whole SSE text body.
+func normalizeUpstreamResponseModelSSEBody(body, targetModel string) string {
+	if strings.TrimSpace(targetModel) == "" {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		lines[i] = normalizeUpstreamResponseModelSSELine(line, targetModel)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func upstreamModelMismatch(sentModel, responseModel string) *bool {

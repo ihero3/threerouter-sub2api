@@ -255,7 +255,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if input.RequestStream {
-		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel, input.OriginalModel)
 		if err != nil {
 			// 流中断时保留已观测到的 usage 与错误一起返回，避免上游已计量的请求
 			// 完全漏记漏计费（issue #5148）。
@@ -268,7 +268,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 	} else {
-		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
+		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.OriginalModel)
 		if err != nil {
 			return nil, err
 		}
@@ -370,6 +370,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	account *Account,
 	startTime time.Time,
 	model string,
+	originalModel string,
 ) (*streamingResult, error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
@@ -545,6 +546,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 			if !clientDisconnected {
+				// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+				// 观测器已在上方读取过上游自报值，审计字段不受影响。
+				line = normalizeUpstreamResponseModelSSELine(line, originalModel)
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
@@ -843,6 +847,7 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	originalModel string,
 ) (*ClaudeUsage, error) {
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -879,6 +884,11 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	// 掩盖上游改名/静默降级：响应体里的模型名统一回客户端请求名。
+	// 观测器已在上方读取过上游自报值，审计字段不受影响。
+	if normalized, changed := normalizeUpstreamResponseModel(body, originalModel); changed {
+		body = normalized
+	}
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }

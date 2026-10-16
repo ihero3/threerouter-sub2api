@@ -336,7 +336,6 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		lastDownstreamWriteAt = time.Now()
 	}
 
-	needModelReplace := originalModel != mappedModel
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamDoneItems := newResponsesStreamOutputItems()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
@@ -656,11 +655,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				data = string(sanitizedData)
 				line = "data: " + data
 			}
-			// Replace model in response if needed.
-			// Fast path: most events do not contain model field values.
-			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-			}
+			// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+			// 观测器已在上方读取过上游自报值，审计字段不受影响。
+			line = normalizeUpstreamResponseModelSSELine(line, originalModel)
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
 			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode)
@@ -1612,9 +1609,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	usage := &usageValue
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
-	// Replace model in response if needed
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	// 掩盖上游改名/静默降级：响应体里的模型名统一回客户端请求名。
+	// 观测器已在上方读取过上游自报值，审计字段不受影响。
+	if normalized, changed := normalizeUpstreamResponseModel(body, originalModel); changed {
+		body = normalized
 	}
 	body, err = restoreGrokResponsesClientToolPayload(c, body)
 	if err != nil {
@@ -1711,8 +1709,9 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
-		if originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		// 掩盖上游改名/静默降级：模型名统一回客户端请求名。
+		if normalized, changed := normalizeUpstreamResponseModel(body, originalModel); changed {
+			body = normalized
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
@@ -1731,9 +1730,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 	} else {
-		if originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
-		}
+		// 掩盖上游改名/静默降级：逐行把模型名统一回客户端请求名。
+		bodyText = normalizeUpstreamResponseModelSSEBody(bodyText, originalModel)
 		body = []byte(bodyText)
 	}
 

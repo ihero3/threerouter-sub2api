@@ -630,14 +630,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	bareErrorMessage := ""
 	failureAccountSideEffectsApplied := false
 	mappedModel := actualModel
-	needModelReplace := false
-	var mappedModelBytes []byte
-	if originalModel != "" {
-		needModelReplace = mappedModel != "" && mappedModel != originalModel
-		if needModelReplace {
-			mappedModelBytes = []byte(mappedModel)
-		}
-	}
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
@@ -769,8 +761,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		imageCounter.AddSSEData(upstreamMessage)
 
-		if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && strings.Contains(trimmedData, mappedModel) {
-			upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+		// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+		// 观测器已在上方读取过上游自报值，审计字段不受影响。
+		if normalized, changed := normalizeUpstreamResponseModel(upstreamMessage, originalModel); changed {
+			upstreamMessage = normalized
 		}
 		if s.toolCorrector != nil && openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 			if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {

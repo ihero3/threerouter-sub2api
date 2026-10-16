@@ -956,18 +956,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		replayCollector := &openAIWSToolCallReplayCollector{}
 		firstEventType := ""
 		lastEventType := ""
-		needModelReplace := false
 		clientDisconnected := false
 		mappedModel := ""
-		var mappedModelBytes []byte
 		if originalModel != "" {
 			mappedModel = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
 			if mappedModel == "" {
 				mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
-			}
-			needModelReplace = mappedModel != "" && mappedModel != originalModel
-			if needModelReplace {
-				mappedModelBytes = []byte(mappedModel)
 			}
 		}
 		for {
@@ -1116,8 +1110,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if !clientDisconnected {
-				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
-					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+				// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+				// 观测器已在上方读取过上游自报值，审计字段不受影响。
+				if normalized, changed := normalizeUpstreamResponseModel(upstreamMessage, originalModel); changed {
+					upstreamMessage = normalized
 				}
 				if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 					if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {

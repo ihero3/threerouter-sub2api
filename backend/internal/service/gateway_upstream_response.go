@@ -886,7 +886,6 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		flusher.Flush()
 	}
 
-	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 	sawTerminalEvent := false
 	useNoopDeltaKeepalive := c != nil && c.Request != nil && shouldUseClaudeCodeNoopDeltaKeepalive(c.GetHeader("User-Agent"))
@@ -1015,9 +1014,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			}
 		}
 
-		if needModelReplace {
+		// 掩盖上游改名/静默降级：把响应里的模型名统一回客户端请求名。
+		// 观测器已在上方读取过上游自报值，审计字段不受影响。
+		if originalModel != "" {
 			if msg, ok := event["message"].(map[string]any); ok {
-				if model, ok := msg["model"].(string); ok && model == mappedModel {
+				if model, ok := msg["model"].(string); ok && model != originalModel {
 					msg["model"] = originalModel
 					eventChanged = true
 				}
@@ -1489,9 +1490,10 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
-	// 如果有模型映射，替换响应中的model字段
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	// 掩盖上游改名/静默降级：响应体里的模型名统一回客户端请求名。
+	// 观测器已在上方读取过上游自报值，审计字段不受影响。
+	if normalized, changed := normalizeUpstreamResponseModel(body, originalModel); changed {
+		body = normalized
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
