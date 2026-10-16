@@ -54,6 +54,28 @@ func (h *OpenAIGatewayHandler) postModerateOutput(c *gin.Context, apiKey *servic
 	postModerateOutput(c, h.contentModerationService, apiKey, subject, protocol, model, requestBody, output)
 }
 
+// RiskControlEnabled 报告全局风控中心是否启用，供网关中间件用于门控请求内容预览采集。
+// nil 安全：handler 或依赖缺失时返回 false（保持原行为，不采集）。
+func (h *GatewayHandler) RiskControlEnabled(ctx context.Context) bool {
+	if h == nil || h.contentModerationService == nil || ctx == nil {
+		return false
+	}
+	return h.contentModerationService.RiskControlEnabled(ctx)
+}
+
+// usageRequestPreview 返回写入 usage_logs 的用户输入前 200 字符预览。
+// 仅当全局风控中心启用（risk_control_enabled=true）时才提取；未启用（默认）时返回空串，
+// 保持 usage_logs 原行为、不落地任何提示词内容（符合 ZERO_DATA_RETENTION 合规声明）。
+func (h *GatewayHandler) usageRequestPreview(c *gin.Context, body []byte) string {
+	if h == nil || h.contentModerationService == nil || c == nil || c.Request == nil {
+		return ""
+	}
+	if !h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
+		return ""
+	}
+	return service.ExtractRequestPreview(body)
+}
+
 func postModerateOutput(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {
 	if svc == nil || c == nil || c.Request == nil || strings.TrimSpace(output) == "" {
 		return

@@ -1804,6 +1804,8 @@ export interface UsageLog {
   // User-Agent
   user_agent: string | null
   ip_address?: string | null
+  // 请求内容预览：用户输入的前 200 个字符（仅风控中心启用时记录）
+  request_preview?: string | null
 
   // Cache TTL Override
   cache_ttl_overridden: boolean

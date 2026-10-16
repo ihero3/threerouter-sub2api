@@ -693,6 +693,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		UserAgent:                 l.UserAgent,
 		IPAddress:                 l.IPAddress,
 		SessionID:                 l.SessionID,
+		RequestPreview:            l.RequestPreview,
 		CacheTTLOverridden:        l.CacheTTLOverridden,
 		BillingMode:               l.BillingMode,
 		CreatedAt:                 l.CreatedAt,

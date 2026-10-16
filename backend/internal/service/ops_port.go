@@ -98,6 +98,10 @@ type OpsInsertErrorLogInput struct {
 	ErrorMessage string
 	ErrorBody    string
 
+	// RequestPreview is a short, sanitised head of the user's input (<=200 runes).
+	// Only populated when the risk-control center is enabled; empty otherwise.
+	RequestPreview string
+
 	ErrorSource string
 	ErrorOwner  string
 

@@ -140,6 +140,15 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-request_preview="{ row }">
+          <span
+            v-if="row.request_preview"
+            class="block max-w-[420px] truncate text-sm text-gray-600 dark:text-gray-400"
+            :title="row.request_preview"
+          >{{ row.request_preview }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-client_ip="{ row }">
           <div @click.stop>
             <div v-if="row.client_ip">
@@ -210,6 +219,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'message', label: t('admin.ops.errorLog.message') },
   { key: 'created_at', label: t('admin.ops.errorLog.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent') },
+  { key: 'request_preview', label: t('usage.requestPreview') },
   { key: 'client_ip', label: t('admin.ops.errorLog.ip') },
   { key: 'actions', label: t('admin.ops.errorLog.action') },
 ])

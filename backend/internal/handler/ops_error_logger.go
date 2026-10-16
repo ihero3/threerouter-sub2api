@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -1076,8 +1077,15 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 //
 // Notes:
 // - It buffers response bodies only for status >= 400 or terminal SSE frames.
-// - Streaming errors after the response has started (SSE) may still need explicit logging.
-func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
+//   - Streaming errors after the response has started (SSE) may still need explicit logging.
+//
+// riskControlEnabled 可选：传入风控中心开关探测函数后，仅在启用时捕获每个请求的
+// 用户输入前 200 字符（写入 ops_error_logs.request_preview）；未传入或返回 false 时保持原行为。
+func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...func(context.Context) bool) gin.HandlerFunc {
+	riskControlFn := func(context.Context) bool { return false }
+	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
+		riskControlFn = riskControlEnabled[0]
+	}
 	return func(c *gin.Context) {
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
@@ -1091,6 +1099,15 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w
+		var previewBody []byte
+		if reqCtx := func() context.Context {
+			if c.Request == nil {
+				return nil
+			}
+			return c.Request.Context()
+		}(); reqCtx != nil && riskControlFn(reqCtx) {
+			previewBody = captureOpsRequestBodyPrefix(c)
+		}
 		c.Next()
 		w.finalizeCapture()
 
@@ -1235,6 +1252,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
+			// 仅在风控中心启用时捕获；未启用时 previewBody 为空，预览为空串即不落库。
+			RequestPreview: service.ExtractRequestPreview(previewBody),
+
 			CreatedAt: time.Now(),
 		}
 		applyOpsLatencyFieldsFromContext(c, entry)
@@ -1274,6 +1294,33 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		enqueueOpsErrorLog(ops, entry)
 	}
+}
+
+// opsRestoredBody 把按上限读出的请求体前缀与未读完的原始 body 拼接回填，
+// 保证下游 handler 仍能读到完整请求体；Close 委托给原始 body。
+type opsRestoredBody struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (b *opsRestoredBody) Close() error { return b.closer.Close() }
+
+// captureOpsRequestBodyPrefix 读取请求体前缀（上限 service.AuditRequestBodyCaptureLimit）
+// 并原样回填，仅用于提取用户输入预览，不改变下游读取语义。
+func captureOpsRequestBodyPrefix(c *gin.Context) []byte {
+	if c == nil || c.Request == nil || c.Request.Body == nil || c.Request.Method == http.MethodGet {
+		return nil
+	}
+	orig := c.Request.Body
+	raw, err := io.ReadAll(io.LimitReader(orig, service.AuditRequestBodyCaptureLimit+1))
+	if err != nil {
+		return nil
+	}
+	c.Request.Body = &opsRestoredBody{
+		Reader: io.MultiReader(bytes.NewReader(raw), orig),
+		closer: orig,
+	}
+	return raw
 }
 
 func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatus int) {

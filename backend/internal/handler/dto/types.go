@@ -569,6 +569,10 @@ type UsageLog struct {
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
 	SessionID *string `json:"session_id,omitempty"`
+	// RequestPreview is the sanitised head (max 200 runes) of the latest user
+	// input. Only recorded while the risk control centre is enabled; omitted
+	// when absent.
+	RequestPreview *string `json:"request_preview,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`

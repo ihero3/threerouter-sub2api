@@ -71,6 +71,10 @@ type OpsErrorLog struct {
 	RequestType      *int16 `json:"request_type"`
 	UserAgent        string `json:"user_agent"`
 
+	// RequestPreview is a short, sanitised head of the user's input (<=200 runes),
+	// captured only when the risk-control center is enabled.
+	RequestPreview *string `json:"request_preview"`
+
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`

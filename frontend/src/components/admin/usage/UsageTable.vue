@@ -300,6 +300,11 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-request_preview="{ row }">
+          <span v-if="row.request_preview" class="text-sm text-gray-600 dark:text-gray-400 block max-w-[420px] truncate" :title="row.request_preview">{{ row.request_preview }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-ip_address="{ row }">
           <div v-if="row.ip_address">
             <span class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span>

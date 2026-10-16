@@ -1837,6 +1837,19 @@ func (s *ContentModerationService) isRiskControlEnabled(ctx context.Context) boo
 	return raw == "true"
 }
 
+// RiskControlEnabled 报告全局风控中心开关（risk_control_enabled）是否开启。
+// 读取带 TTL 的运行时快照缓存，可在请求热路径安全调用，不会同步访问数据库。
+func (s *ContentModerationService) RiskControlEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	snapshot, err := s.loadRuntimeSnapshot(ctx)
+	if err != nil || snapshot == nil {
+		return false
+	}
+	return snapshot.riskControlEnabled
+}
+
 func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *ContentModerationConfig) error {
 	if cfg == nil {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_CONFIG", "内容审计配置不能为空")

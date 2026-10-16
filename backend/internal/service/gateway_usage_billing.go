@@ -41,17 +41,21 @@ type RecordUsageInput struct {
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
-	Subscription       *UserSubscription  // 可选：订阅信息
-	PricingAt          time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
-	InboundEndpoint    string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
-	UserAgent          string             // 请求的 User-Agent
-	IPAddress          string             // 请求的客户端 IP 地址
-	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
-	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
-	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	Subscription       *UserSubscription // 可选：订阅信息
+	PricingAt          time.Time         // token 售价固定时刻；零值保持既有的记录时刻语义
+	InboundEndpoint    string            // 入站端点（客户端请求路径）
+	UpstreamEndpoint   string            // 上游端点（标准化后的上游路径）
+	UserAgent          string            // 请求的 User-Agent
+	IPAddress          string            // 请求的客户端 IP 地址
+	SessionID          string            // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	RequestPayloadHash string            // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	// RequestPreview is the sanitised head of the latest user input (200 runes max),
+	// extracted on the hot path and passed into the async worker so it can be
+	// persisted to usage_logs.request_preview without holding the raw request body.
+	RequestPreview    string
+	ForceCacheBilling bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService     APIKeyQuotaUpdater // 可选：用于更新API Key配额
+	QuotaPlatform     string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -611,6 +615,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		IPAddress:          input.IPAddress,
 		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
+		RequestPreview:     input.RequestPreview,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
@@ -632,6 +637,7 @@ type recordUsageCoreInput struct {
 	IPAddress          string
 	SessionID          string
 	RequestPayloadHash string
+	RequestPreview     string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
@@ -1179,6 +1185,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		UserAgent:                optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:                optionalTrimmedStringPtr(input.IPAddress),
 		SessionID:                optionalTrimmedStringPtr(input.SessionID),
+		RequestPreview:           optionalTrimmedStringPtr(input.RequestPreview),
 		GroupID:                  apiKey.GroupID,
 		SubscriptionID:           optionalSubscriptionID(subscription),
 		CreatedAt:                time.Now(),

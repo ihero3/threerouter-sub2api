@@ -220,6 +220,11 @@ type UsageLog struct {
 	VideoResolution      *string
 	VideoDurationSeconds *int
 
+	// RequestPreview is the sanitised head of the latest user input, capped at
+	// MaxRequestPreviewRunes. Never stores the full prompt; see
+	// ExtractRequestPreview for the extraction and redaction rules.
+	RequestPreview *string
+
 	CreatedAt time.Time
 
 	User         *User
