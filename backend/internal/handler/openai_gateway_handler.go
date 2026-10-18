@@ -795,6 +795,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
+			var requestPreview string
+			if h.contentModerationService != nil && h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
+				requestPreview = service.ExtractRequestPreview(body)
+			}
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
@@ -814,6 +818,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					PricingAt:          pricingAt,
 					CyberBlocked:       cyberBlocked,
 					NativeCompactionV2: nativeV2,
+					RequestPreview:     requestPreview,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.responses"),
@@ -1375,6 +1380,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
+			var requestPreview string
+			if h.contentModerationService != nil && h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
+				requestPreview = service.ExtractRequestPreview(body)
+			}
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,
@@ -1393,6 +1402,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
 					CyberBlocked:       cyberBlocked,
+					RequestPreview:     requestPreview,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.messages"),
