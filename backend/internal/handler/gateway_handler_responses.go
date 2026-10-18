@@ -401,6 +401,8 @@ func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastEr
 		status, code, message = http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage()
 	} else if lastErr != nil && statusCode == http.StatusTooManyRequests {
 		status, code, message = http.StatusTooManyRequests, "rate_limit_error", "All available accounts are currently rate-limited. Please retry later."
+	} else if lastErr != nil && lastErr.Reason == service.OpenAIReasoningPassthroughReason {
+		status, code, message = http.StatusBadRequest, service.OpenAIReasoningPassthroughClientCode, service.OpenAIReasoningPassthroughClientMessage
 	}
 	if streamStarted {
 		// A slot-wait heartbeat commits HTTP 200 before any upstream response.

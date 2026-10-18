@@ -266,6 +266,9 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIMaxCompletionTokensExceeded(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
+	if isOpenAIReasoningPassthroughError(statusCode, upstreamMsg, upstreamBody) {
+		return true
+	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
@@ -290,6 +293,17 @@ const openAIRequestBodyTooLargeReason = GatewayFailureReason("openai_request_bod
 const openAIMaxCompletionTokensClientMessage = "The requested output token limit exceeds the maximum supported by the available upstream models"
 
 const openAIMaxCompletionTokensReason = GatewayFailureReason("openai_max_completion_tokens_exceeded")
+
+const OpenAIReasoningPassthroughReason = GatewayFailureReason("openai_reasoning_passthrough")
+
+// openAIReasoningPassthroughClientMessage 是所有候选账号都因「上游要求回传
+// reasoning 但请求历史缺失」而拒绝后回给客户端的统一文案。绝不下发上游原文；
+// 仅给可重试提示——网关已在本请求内自动换号重试，若仍有可用异构上游即可成功。
+const OpenAIReasoningPassthroughClientMessage = "Upstream model requires prior reasoning to be included in the conversation; the request could not be served by any available upstream account, please retry"
+
+// openAIReasoningPassthroughClientCode 下发给客户端的稳定错误码，便于客户端
+// 识别为「可重试 / 需补全对话 reasoning」类错误（非上游内部 code）。
+const OpenAIReasoningPassthroughClientCode = "reasoning_passthrough_required"
 
 func isOpenAIRequestBodyTooLargeError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	return statusCode == http.StatusRequestEntityTooLarge && !isOpenAIContextWindowError(upstreamMsg, upstreamBody)
@@ -331,6 +345,30 @@ func isOpenAIMaxCompletionTokensExceeded(statusCode int, upstreamMsg string, ups
 		strings.Contains(lower, "integer above maximum")
 }
 
+// isOpenAIReasoningPassthroughError recognizes the DeepSeek/Kimi/GLM-style
+// Responses 400 "The `reasoning_text`/`reasoning_content` in the thinking mode
+// must be passed back to the API".
+//
+// 这不是账号故障，而是「对话契约」错误：同一份请求体换任何同模型账号都会得到
+// 同样的 400。但若存在「不要求 reasoning 来回传」的异构上游账号（不同厂商/协议，
+// 或不同模型映射），它仍可能服务同一请求，因此判为可换号（rotate 到下一个账号）。
+// 文本匹配（reasoning_text/reasoning_content + passed back）确保不会误伤无关 400。
+func isOpenAIReasoningPassthroughError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if lower == "" && gjson.ValidBytes(upstreamBody) {
+		lower = strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.message").String()))
+	}
+	if lower == "" {
+		// 退化到整包匹配（非 JSON 上游错误）。
+		lower = strings.ToLower(string(upstreamBody))
+	}
+	hasReasoningField := strings.Contains(lower, "reasoning_text") || strings.Contains(lower, "reasoning_content")
+	return hasReasoningField && strings.Contains(lower, "passed back")
+}
+
 func newOpenAIUpstreamFailoverError(
 	statusCode int,
 	responseHeaders http.Header,
@@ -363,6 +401,15 @@ func newOpenAIUpstreamFailoverError(
 		failoverErr.NextAccountAction = NextAccountRetry
 		failoverErr.ClientStatusCode = http.StatusBadRequest
 		failoverErr.ClientMessage = openAIMaxCompletionTokensClientMessage
+	}
+	if isOpenAIReasoningPassthroughError(statusCode, upstreamMsg, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = OpenAIReasoningPassthroughReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusBadRequest
+		failoverErr.ClientMessage = OpenAIReasoningPassthroughClientMessage
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
