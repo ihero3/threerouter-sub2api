@@ -3246,6 +3246,10 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", message, streamStarted)
 		return
 	}
+	if failoverErr.Reason == service.OpenAIReasoningPassthroughReason {
+		h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", service.OpenAIReasoningPassthroughClientCode, service.OpenAIReasoningPassthroughClientMessage, streamStarted, false)
+		return
+	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	if failoverErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(failoverErr)
