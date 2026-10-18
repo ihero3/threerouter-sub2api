@@ -1361,8 +1361,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			modelMappingChain,
 			billingTier,
 			billingMode,
-			log.AccountStatsCost,           // account_stats_cost
-			sessionID,                      // session_id
+			log.AccountStatsCost, // account_stats_cost
+			sessionID,            // session_id
 			nullString(log.RequestPreview), // request_preview
 			log.NativeCompactionV2,
 			createdAt,
