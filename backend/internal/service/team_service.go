@@ -11,15 +11,18 @@ import (
 )
 
 var (
-	ErrTeamNotFound      = infraerrors.NotFound("TEAM_NOT_FOUND", "team not found")
-	ErrTeamSlugExists    = infraerrors.Conflict("TEAM_SLUG_EXISTS", "team slug already exists")
-	ErrTeamNameEmpty     = infraerrors.BadRequest("TEAM_NAME_EMPTY", "team name cannot be empty")
-	ErrTeamSlugEmpty     = infraerrors.BadRequest("TEAM_SLUG_EMPTY", "team slug cannot be empty")
-	ErrInvalidTeamID     = infraerrors.BadRequest("INVALID_TEAM_ID", "invalid team id")
-	ErrInvalidOwnerID    = infraerrors.BadRequest("INVALID_OWNER_ID", "invalid owner id")
-	ErrNotTeamOwner      = infraerrors.Forbidden("NOT_TEAM_OWNER", "not team owner")
-	ErrMemberExists      = infraerrors.Conflict("MEMBER_EXISTS", "user is already a member of this team")
-	ErrInvalidRole       = infraerrors.BadRequest("INVALID_ROLE", "invalid team member role")
+	ErrTeamNotFound   = infraerrors.NotFound("TEAM_NOT_FOUND", "team not found")
+	ErrTeamSlugExists = infraerrors.Conflict("TEAM_SLUG_EXISTS", "team slug already exists")
+	ErrTeamNameEmpty  = infraerrors.BadRequest("TEAM_NAME_EMPTY", "team name cannot be empty")
+	ErrTeamSlugEmpty  = infraerrors.BadRequest("TEAM_SLUG_EMPTY", "team slug cannot be empty")
+	ErrInvalidTeamID  = infraerrors.BadRequest("INVALID_TEAM_ID", "invalid team id")
+	ErrInvalidOwnerID = infraerrors.BadRequest("INVALID_OWNER_ID", "invalid owner id")
+	ErrNotTeamOwner   = infraerrors.Forbidden("NOT_TEAM_OWNER", "not team owner")
+	ErrMemberExists   = infraerrors.Conflict("MEMBER_EXISTS", "user is already a member of this team")
+	ErrInvalidRole    = infraerrors.BadRequest("INVALID_ROLE", "invalid team member role")
+	// ErrOwnerMemberImmutable 团队必须始终有 owner：owner 成员记录不可被改角色/停用/移除，
+	// 否则团队会变成无主状态（当前没有所有权转移 API）。
+	ErrOwnerMemberImmutable = infraerrors.Forbidden("OWNER_MEMBER_IMMUTABLE", "cannot modify or remove the team owner member")
 )
 
 // TeamRepository 团队数据访问接口（在 service 包内定义以避免循环依赖）
@@ -415,6 +418,9 @@ func (s *teamService) UpdateMemberRole(ctx context.Context, teamID, memberID int
 	if member == nil || member.TeamID != teamID {
 		return ErrTeamNotFound
 	}
+	if member.Role == "owner" {
+		return ErrOwnerMemberImmutable
+	}
 
 	if err := s.memberRepo.UpdateRole(ctx, memberID, role); err != nil {
 		return fmt.Errorf("update member role: %w", err)
@@ -441,6 +447,9 @@ func (s *teamService) UpdateMemberStatus(ctx context.Context, teamID, memberID i
 	if member == nil || member.TeamID != teamID {
 		return ErrTeamNotFound
 	}
+	if member.Role == "owner" {
+		return ErrOwnerMemberImmutable
+	}
 
 	if err := s.memberRepo.UpdateStatus(ctx, memberID, status); err != nil {
 		return fmt.Errorf("update member status: %w", err)
@@ -464,6 +473,9 @@ func (s *teamService) RemoveMember(ctx context.Context, teamID, memberID int64) 
 	}
 	if member == nil || member.TeamID != teamID {
 		return ErrTeamNotFound
+	}
+	if member.Role == "owner" {
+		return ErrOwnerMemberImmutable
 	}
 
 	if err := s.memberRepo.Delete(ctx, memberID); err != nil {

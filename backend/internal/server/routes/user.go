@@ -16,6 +16,7 @@ func RegisterUserRoutes(
 	auditLog middleware.AuditLogMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
+	teamMemberRepo service.TeamMemberRepository,
 ) {
 	// 游客工单提交
 	publicTickets := v1.Group("/public/tickets")
@@ -165,49 +166,55 @@ func RegisterUserRoutes(
 		}
 
 		// 团队管理
+		// 团队权限中间件：修复 IDOR——此前 /teams/:id 下所有端点只校验 JWT，
+		// 任意登录用户可改删他人团队、注入 owner 成员、读取消费分析数据。
+		teamPerm := middleware.NewTeamPermissionMiddlewareFromRepo(teamMemberRepo)
+		teamRead := teamPerm.RequireViewerOrAbove()
+		teamManage := teamPerm.RequireAdminOrAbove()
+		teamOwnerOnly := teamPerm.RequireOwner()
 		teams := authenticated.Group("/teams")
 		{
 			teams.GET("", h.Team.List)
 			teams.POST("", h.Team.Create)
-			teams.GET("/:id", h.Team.Get)
-			teams.PUT("/:id", h.Team.Update)
-			teams.DELETE("/:id", h.Team.Delete)
+			teams.GET("/:id", teamRead, h.Team.Get)
+			teams.PUT("/:id", teamManage, h.Team.Update)
+			teams.DELETE("/:id", teamOwnerOnly, h.Team.Delete)
 
 			// 部门管理（使用 /teams/:id/departments 保持参数名一致）
-			teams.GET("/:id/departments", h.Department.List)
-			teams.POST("/:id/departments", h.Department.Create)
-			teams.GET("/:id/departments/tree", h.Department.GetTree)
-			teams.GET("/:id/departments/:dept_id", h.Department.Get)
-			teams.PUT("/:id/departments/:dept_id", h.Department.Update)
-			teams.DELETE("/:id/departments/:dept_id", h.Department.Delete)
+			teams.GET("/:id/departments", teamRead, h.Department.List)
+			teams.POST("/:id/departments", teamManage, h.Department.Create)
+			teams.GET("/:id/departments/tree", teamRead, h.Department.GetTree)
+			teams.GET("/:id/departments/:dept_id", teamRead, h.Department.Get)
+			teams.PUT("/:id/departments/:dept_id", teamManage, h.Department.Update)
+			teams.DELETE("/:id/departments/:dept_id", teamManage, h.Department.Delete)
 
 			// 消费者管理
-			teams.GET("/:id/consumers", h.Consumer.List)
-			teams.POST("/:id/consumers", h.Consumer.Create)
-			teams.GET("/:id/consumers/:consumer_id", h.Consumer.Get)
-			teams.PUT("/:id/consumers/:consumer_id", h.Consumer.Update)
-			teams.DELETE("/:id/consumers/:consumer_id", h.Consumer.Delete)
+			teams.GET("/:id/consumers", teamRead, h.Consumer.List)
+			teams.POST("/:id/consumers", teamManage, h.Consumer.Create)
+			teams.GET("/:id/consumers/:consumer_id", teamRead, h.Consumer.Get)
+			teams.PUT("/:id/consumers/:consumer_id", teamManage, h.Consumer.Update)
+			teams.DELETE("/:id/consumers/:consumer_id", teamManage, h.Consumer.Delete)
 
 			// 团队成员管理
-			teams.GET("/:id/members", h.Team.ListMembers)
-			teams.POST("/:id/members/invite", h.Team.InviteMember)
-			teams.PUT("/:id/members/:member_id", h.Team.UpdateMember)
-			teams.DELETE("/:id/members/:member_id", h.Team.RemoveMember)
+			teams.GET("/:id/members", teamRead, h.Team.ListMembers)
+			teams.POST("/:id/members/invite", teamManage, h.Team.InviteMember)
+			teams.PUT("/:id/members/:member_id", teamManage, h.Team.UpdateMember)
+			teams.DELETE("/:id/members/:member_id", teamManage, h.Team.RemoveMember)
 
 			// 团队分析
-			teams.GET("/:id/analytics/overview", h.TeamAnalytics.Overview)
-			teams.GET("/:id/analytics/departments/ranking", h.TeamAnalytics.DepartmentRanking)
-			teams.GET("/:id/analytics/consumers/ranking", h.TeamAnalytics.ConsumerRanking)
-			teams.GET("/:id/analytics/trend", h.TeamAnalytics.DailyTrend)
-			teams.GET("/:id/analytics/models/distribution", h.TeamAnalytics.ModelDistribution)
+			teams.GET("/:id/analytics/overview", teamRead, h.TeamAnalytics.Overview)
+			teams.GET("/:id/analytics/departments/ranking", teamRead, h.TeamAnalytics.DepartmentRanking)
+			teams.GET("/:id/analytics/consumers/ranking", teamRead, h.TeamAnalytics.ConsumerRanking)
+			teams.GET("/:id/analytics/trend", teamRead, h.TeamAnalytics.DailyTrend)
+			teams.GET("/:id/analytics/models/distribution", teamRead, h.TeamAnalytics.ModelDistribution)
 		}
 
 		// AI 治理与合规（用户端：GDPR 数据主体权利 + Account 级合规配置）
 		governance := authenticated.Group("/governance")
 		{
 			governance.POST("/data-erasure/request", h.Governance.RequestDataErasure)
-		governance.GET("/data-erasure/requests", h.Governance.ListDataErasureRequests)
-		governance.POST("/data-export", h.Governance.ExportData)
+			governance.GET("/data-erasure/requests", h.Governance.ListDataErasureRequests)
+			governance.POST("/data-export", h.Governance.ExportData)
 			governance.GET("/consent", h.Governance.GetConsent)
 			governance.POST("/consent", h.Governance.SetConsent)
 			governance.GET("/profile", h.Governance.GetComplianceProfile)
@@ -230,10 +237,10 @@ func RegisterUserRoutes(
 			governance.GET("/eu-ai-act/assessment", h.Governance.EUAIActAssessment)
 			governance.POST("/eu-ai-act/assessment", h.Governance.ExportEUAIActAssessment)
 			governance.GET("/gdpr/data-processing-record", h.Governance.DataProcessingRecord)
-		// V2 passive views require feature on + mode=v2.
-		monitorV2 := authenticated.Group("/channel-monitor-v2")
-		monitorV2.Use(panelRateLimiter.Heavy())
-		monitorV2.Use(channelMonitorModeV2Guard(settingService))
+			// V2 passive views require feature on + mode=v2.
+			monitorV2 := authenticated.Group("/channel-monitor-v2")
+			monitorV2.Use(panelRateLimiter.Heavy())
+			monitorV2.Use(channelMonitorModeV2Guard(settingService))
 			monitorV2.GET("/dimensions", h.ChannelMonitorV2.Dimensions)
 			monitorV2.GET("/snapshot", h.ChannelMonitorV2.Snapshot)
 			monitorV2.GET("/models", h.ChannelMonitorV2.Models)
