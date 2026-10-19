@@ -26,12 +26,7 @@ func TestRPMLimitMessage_IncludesLimitAndRetrySeconds(t *testing.T) {
 	if !strings.Contains(msg, "please retry after 42 seconds") {
 		t.Errorf("missing English retry context, got: %s", msg)
 	}
-	if !strings.Contains(msg, "当前限额 30 次/分钟") {
-		t.Errorf("missing Chinese limit context, got: %s", msg)
-	}
-	if !strings.Contains(msg, "请 42 秒后重试") {
-		t.Errorf("missing Chinese retry context, got: %s", msg)
-	}
+	// 文案为纯英语：限额与重试秒数的英文断言已在上方（limit is 30 requests/minute / please retry after 42 seconds）。
 }
 
 // TestRPMLimitMessage_GroupScopeUsesSameFormat 分组维度命中时同样带上上下文。
@@ -43,7 +38,7 @@ func TestRPMLimitMessage_GroupScopeUsesSameFormat(t *testing.T) {
 		"rpm_scope": "group",
 	})
 	msg := rpmLimitMessage(err, 7)
-	if !strings.Contains(msg, "当前限额 60 次/分钟") || !strings.Contains(msg, "请 7 秒后重试") {
+	if !strings.Contains(msg, "limit is 60 requests/minute") || !strings.Contains(msg, "please retry after 7 seconds") {
 		t.Errorf("group scope message = %s, want limit=60 retry=7", msg)
 	}
 }
@@ -68,12 +63,12 @@ func TestRPMLimitMessage_DegradesWithoutMetadata(t *testing.T) {
 			if strings.Contains(msg, "limit is") {
 				t.Errorf("should omit limit when unavailable, got: %s", msg)
 			}
-			if strings.Contains(msg, "0 次/分钟") || strings.Contains(msg, "-") {
-				t.Errorf("leaked invalid limit value, got: %s", msg)
-			}
-			if !strings.Contains(msg, "请 15 秒后重试") {
-				t.Errorf("should still carry retry seconds, got: %s", msg)
-			}
+		if strings.Contains(msg, "0 requests/minute") || strings.Contains(msg, "-") {
+			t.Errorf("leaked invalid limit value, got: %s", msg)
+		}
+		if !strings.Contains(msg, "please retry after 15 seconds") {
+			t.Errorf("should still carry retry seconds, got: %s", msg)
+		}
 			if msg == "" {
 				t.Fatal("message must not be empty")
 			}
@@ -86,7 +81,7 @@ func TestRPMLimitMessage_DegradesWithoutMetadata(t *testing.T) {
 func TestRPMLimitMessage_RetrySecondsFloor(t *testing.T) {
 	err := service.ErrUserRPMExceeded.WithMetadata(map[string]string{"rpm_limit": "10"})
 	for _, secs := range []int{0, -3} {
-		if msg := rpmLimitMessage(err, secs); !strings.Contains(msg, "请 1 秒后重试") {
+		if msg := rpmLimitMessage(err, secs); !strings.Contains(msg, "please retry after 1 seconds") {
 			t.Errorf("retrySeconds=%d: got %s, want floor of 1 second", secs, msg)
 		}
 	}
@@ -111,7 +106,7 @@ func TestBillingErrorDetails_RPMUsesContextualMessage(t *testing.T) {
 	if strings.Contains(msg, "requests-per-minute limit exceeded") {
 		t.Errorf("old bare message leaked through: %s", msg)
 	}
-	if !strings.Contains(msg, "当前限额 30 次/分钟") {
+	if !strings.Contains(msg, "limit is 30 requests/minute") {
 		t.Errorf("missing limit context: %s", msg)
 	}
 	// 文案里的秒数必须与 Retry-After 头同源，否则客户端会拿到自相矛盾的指引。
