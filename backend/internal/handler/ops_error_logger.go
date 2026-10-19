@@ -32,6 +32,8 @@ const (
 	opsAccountIDKey              = "ops_account_id"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 	opsDedicatedErrorRecordedKey = "ops_dedicated_error_recorded"
+	// opsRequestPreviewKey 缓存请求的用户输入预览，供中间件及专用错误记录路径共用。
+	opsRequestPreviewKey = "ops_request_preview"
 
 	opsUpstreamModelKey = service.OpsUpstreamModelKey
 	opsRequestTypeKey   = "ops_request_type"
@@ -1107,6 +1109,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 			return c.Request.Context()
 		}(); reqCtx != nil && riskControlFn(reqCtx) {
 			previewBody = captureOpsRequestBodyPrefix(c)
+			// 缓存到 context，供流式错误、恢复指标、cyber 等专用记录路径复用。
+			c.Set(opsRequestPreviewKey, service.ExtractRequestPreview(previewBody))
 		}
 		c.Next()
 		w.finalizeCapture()
@@ -1253,7 +1257,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 			ErrorOwner:  errorOwner,
 
 			// 仅在风控中心启用时捕获；未启用时 previewBody 为空，预览为空串即不落库。
-			RequestPreview: service.ExtractRequestPreview(previewBody),
+			RequestPreview: opsRequestPreviewFromContext(c),
 
 			CreatedAt: time.Now(),
 		}
@@ -1323,12 +1327,27 @@ func captureOpsRequestBodyPrefix(c *gin.Context) []byte {
 	return raw
 }
 
+// opsRequestPreviewFromContext 返回中间件缓存到 context 的用户输入预览；
+// 未启用风控中心或路径未捕获时返回空串。
+func opsRequestPreviewFromContext(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if v, ok := c.Get(opsRequestPreviewKey); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatus int) {
 	if c == nil || ops == nil || finalStatus >= 400 {
 		return
 	}
 
 	entry := &service.OpsInsertErrorLogInput{StatusCode: finalStatus}
+	entry.RequestPreview = opsRequestPreviewFromContext(c)
 	applyOpsUpstreamFieldsFromContext(c, entry)
 	if len(entry.UpstreamErrors) > 0 {
 		visibleEvents := make([]*service.OpsUpstreamErrorEvent, 0, len(entry.UpstreamErrors))
@@ -1576,6 +1595,8 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		ErrorBody:    errorBody,
 		ErrorSource:  errorSource,
 		ErrorOwner:   errorOwner,
+
+		RequestPreview: opsRequestPreviewFromContext(c),
 
 		CreatedAt: time.Now(),
 	}

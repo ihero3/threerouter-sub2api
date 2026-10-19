@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 
@@ -69,26 +68,12 @@ func (h *GatewayHandler) RiskControlEnabled(ctx context.Context) bool {
 // 保持 usage_logs 原行为、不落地任何提示词内容（符合 ZERO_DATA_RETENTION 合规声明）。
 func (h *GatewayHandler) usageRequestPreview(c *gin.Context, body []byte) string {
 	if h == nil || h.contentModerationService == nil || c == nil || c.Request == nil {
-		log.Printf("[DEBUG usage_preview] guard nil: h_nil=%v svc_nil=%v c_nil=%v",
-			h == nil, h != nil && h.contentModerationService == nil, c == nil)
 		return ""
 	}
-	enabled := h.contentModerationService.RiskControlEnabled(c.Request.Context())
-	if !enabled {
-		log.Printf("[DEBUG usage_preview] risk_control_enabled=false (gateway handler)")
+	if !h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
 		return ""
 	}
-	preview := service.ExtractRequestPreview(body)
-	log.Printf("[DEBUG usage_preview] body=%dB preview=%dB head=%q",
-		len(body), len(preview), truncateForLog(preview, 80))
-	return preview
-}
-
-func truncateForLog(s string, n int) string {
-	if n <= 0 || len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
+	return service.ExtractRequestPreview(body)
 }
 
 func postModerateOutput(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {

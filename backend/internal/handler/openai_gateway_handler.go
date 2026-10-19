@@ -3820,6 +3820,7 @@ type cyberPolicyOpsErrorMeta struct {
 	ClientIP        string
 	CreatedAt       time.Time
 	SessionBlockKey string
+	RequestPreview  string
 }
 
 // buildCyberPolicyOpsErrorEntry builds the ops_error_logs entry for an upstream
@@ -3849,6 +3850,8 @@ func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.C
 		ErrorSource: "upstream_http",
 		ErrorOwner:  "provider",
 		CreatedAt:   meta.CreatedAt,
+
+		RequestPreview: meta.RequestPreview,
 	}
 	if meta.UserID > 0 {
 		entry.UserID = &meta.UserID
@@ -3896,6 +3899,7 @@ func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.Ops
 		ErrorOwner:        "platform",
 		CreatedAt:         meta.CreatedAt,
 		// AccountID 有意不设：请求在账号选择前即被拒绝。
+		RequestPreview: meta.RequestPreview,
 	}
 	if meta.SessionBlockKey != "" {
 		entry.ErrorBody = "session_block_key=" + meta.SessionBlockKey
@@ -4016,7 +4020,7 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 	// The dedicated cyber_session_blocked entry owns Ops semantics for this
 	// request; suppress the generic middleware record of the same 403 response.
 	c.Set(opsDedicatedErrorRecordedKey, true)
-	meta := cyberPolicyOpsErrorMeta{Model: model, InboundEndpoint: GetInboundEndpoint(c), CreatedAt: time.Now(), SessionBlockKey: sessionBlockKey}
+	meta := cyberPolicyOpsErrorMeta{Model: model, InboundEndpoint: GetInboundEndpoint(c), CreatedAt: time.Now(), SessionBlockKey: sessionBlockKey, RequestPreview: opsRequestPreviewFromContext(c)}
 	meta.RequestID = c.Writer.Header().Get("X-Request-Id")
 	if c.Request != nil && c.Request.URL != nil {
 		meta.RequestPath = c.Request.URL.Path
@@ -4131,6 +4135,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		GroupID:         groupID,
 		ClientIP:        clientIPStr,
 		CreatedAt:       time.Now(),
+		RequestPreview:  opsRequestPreviewFromContext(c),
 	}
 	if gwSvc != nil && apiKey != nil {
 		plan := buildCyberSessionBlockWritePlan(apiKey.ID, c, cyberBlockBody)
