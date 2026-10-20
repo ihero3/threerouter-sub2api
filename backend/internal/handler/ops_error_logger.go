@@ -1089,6 +1089,25 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		riskControlFn = riskControlEnabled[0]
 	}
 	return func(c *gin.Context) {
+		var reqCtx context.Context
+		if c.Request != nil {
+			reqCtx = c.Request.Context()
+		}
+		var previewBody []byte
+		if reqCtx != nil && riskControlFn(reqCtx) {
+			previewBody = captureOpsRequestBodyPrefix(c)
+			// 缓存到 context，供流式错误、恢复指标、cyber 等专用记录路径复用。
+			c.Set(opsRequestPreviewKey, service.ExtractRequestPreview(previewBody))
+		}
+
+		// Fast path: without ops monitoring there is nothing to record, so skip
+		// wrapping the ResponseWriter entirely instead of paying the per-chunk
+		// capture overhead on every (successful) response write.
+		if ops == nil || !ops.IsMonitoringEnabled(reqCtx) {
+			c.Next()
+			return
+		}
+
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
 		w.setContext(c)
@@ -1101,28 +1120,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w
-		var previewBody []byte
-		if reqCtx := func() context.Context {
-			if c.Request == nil {
-				return nil
-			}
-			return c.Request.Context()
-		}(); reqCtx != nil && riskControlFn(reqCtx) {
-			previewBody = captureOpsRequestBodyPrefix(c)
-			// 缓存到 context，供流式错误、恢复指标、cyber 等专用记录路径复用。
-			c.Set(opsRequestPreviewKey, service.ExtractRequestPreview(previewBody))
-		}
 		c.Next()
 		w.finalizeCapture()
 
 		if _, rejected := middleware2.GetIngressRejectReason(c); rejected {
-			return
-		}
-
-		if ops == nil {
-			return
-		}
-		if !ops.IsMonitoringEnabled(c.Request.Context()) {
 			return
 		}
 		if c.GetBool(opsDedicatedErrorRecordedKey) {
@@ -1191,14 +1192,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
 		platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
-		requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
-		requestID = strings.TrimSpace(requestID)
-		if requestID == "" {
-			requestID = c.Writer.Header().Get("X-Request-Id")
-			if requestID == "" {
-				requestID = c.Writer.Header().Get("x-request-id")
-			}
-		}
+		requestID := opsRequestID(c)
 
 		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
 
@@ -1211,36 +1205,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 			AccountID: accountID,
 			Platform:  platform,
 			Model:     modelName,
-			RequestPath: func() string {
-				if c.Request != nil && c.Request.URL != nil {
-					return c.Request.URL.Path
-				}
-				return ""
-			}(),
+			RequestPath: opsRequestPath(c),
 			Stream:           stream,
 			InboundEndpoint:  GetInboundEndpoint(c),
 			UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
 			RequestedModel:   modelName,
-			UpstreamModel: func() string {
-				if v, ok := c.Get(opsUpstreamModelKey); ok {
-					if s, ok := v.(string); ok {
-						return strings.TrimSpace(s)
-					}
-				}
-				return ""
-			}(),
-			RequestType: func() *int16 {
-				if v, ok := c.Get(opsRequestTypeKey); ok {
-					switch t := v.(type) {
-					case int16:
-						return &t
-					case int:
-						v16 := int16(t)
-						return &v16
-					}
-				}
-				return nil
-			}(),
+			UpstreamModel: opsUpstreamModel(c),
+			RequestType: opsRequestTypeFromContext(c),
 			UserAgent: c.GetHeader("User-Agent"),
 
 			ErrorPhase:        phase,
@@ -1274,27 +1245,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		}
 		suppressOpsUpstreamAttributionForLocalModelConfiguration(c, entry)
 
-		if apiKey != nil {
-			entry.APIKeyID = &apiKey.ID
-			// 有效 key 报错时快照前缀，key 之后被删也保留。
-			entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
-			if apiKey.User != nil {
-				entry.UserID = &apiKey.User.ID
-			}
-			if apiKey.GroupID != nil {
-				entry.GroupID = apiKey.GroupID
-			}
-			// Prefer group platform if present (more stable than inferring from path).
-			if apiKey.Group != nil && apiKey.Group.Platform != "" {
-				entry.Platform = apiKey.Group.Platform
-			}
-		}
+		applyOpsAPIKeyFields(entry, apiKey)
 
-		var clientIP string
-		if ip := strings.TrimSpace(ip.GetClientIP(c)); ip != "" {
-			clientIP = ip
-			entry.ClientIP = &clientIP
-		}
+		applyOpsClientIP(entry, c)
 
 		enqueueOpsErrorLog(ops, entry)
 	}
@@ -1437,22 +1390,8 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	}
 	entry.Platform = resolveOpsPlatform(requestContext, apiKey, fallbackPlatform)
 	entry.UpstreamEndpoint = GetUpstreamEndpoint(c, entry.Platform)
-	if apiKey != nil {
-		entry.APIKeyID = &apiKey.ID
-		entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
-		if apiKey.User != nil {
-			entry.UserID = &apiKey.User.ID
-		}
-		if apiKey.GroupID != nil {
-			entry.GroupID = apiKey.GroupID
-		}
-		if apiKey.Group != nil && apiKey.Group.Platform != "" {
-			entry.Platform = apiKey.Group.Platform
-		}
-	}
-	if clientIP := strings.TrimSpace(ip.GetClientIP(c)); clientIP != "" {
-		entry.ClientIP = &clientIP
-	}
+	applyOpsAPIKeyFields(entry, apiKey)
+	applyOpsClientIP(entry, c)
 	applyOpsLatencyFieldsFromContext(c, entry)
 	enqueueOpsErrorLog(ops, entry)
 }
@@ -1472,6 +1411,75 @@ func opsRequestTypeFromContext(c *gin.Context) *int16 {
 		}
 	}
 	return nil
+}
+
+// opsRequestID returns the inbound request id, falling back to the response
+// header when the context value is absent.
+func opsRequestID(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+	requestID = strings.TrimSpace(requestID)
+	if requestID != "" {
+		return requestID
+	}
+	requestID = c.Writer.Header().Get("X-Request-Id")
+	if requestID == "" {
+		requestID = c.Writer.Header().Get("x-request-id")
+	}
+	return requestID
+}
+
+// opsRequestPath returns the inbound request path (empty when unavailable).
+func opsRequestPath(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+	}
+	return c.Request.URL.Path
+}
+
+// opsUpstreamModel returns the upstream model recorded in the gin context.
+func opsUpstreamModel(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if v, ok := c.Get(opsUpstreamModelKey); ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+// applyOpsAPIKeyFields copies API-key identity onto the entry. A group platform,
+// when present, wins over path-based inference.
+func applyOpsAPIKeyFields(entry *service.OpsInsertErrorLogInput, apiKey *service.APIKey) {
+	if entry == nil || apiKey == nil {
+		return
+	}
+	entry.APIKeyID = &apiKey.ID
+	// 有效 key 报错时快照前缀，key 之后被删也保留。
+	entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
+	if apiKey.User != nil {
+		entry.UserID = &apiKey.User.ID
+	}
+	if apiKey.GroupID != nil {
+		entry.GroupID = apiKey.GroupID
+	}
+	if apiKey.Group != nil && apiKey.Group.Platform != "" {
+		entry.Platform = apiKey.Group.Platform
+	}
+}
+
+// applyOpsClientIP records the caller IP when available.
+func applyOpsClientIP(entry *service.OpsInsertErrorLogInput, c *gin.Context) {
+	if entry == nil || c == nil {
+		return
+	}
+	if clientIP := strings.TrimSpace(ip.GetClientIP(c)); clientIP != "" {
+		entry.ClientIP = &clientIP
+	}
 }
 
 // logOpsStreamError 记录一次挂在已固化 HTTP 200 SSE 流上的就地错误。
@@ -1551,37 +1559,14 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		AccountID: accountID,
 		Platform:  platform,
 		Model:     modelName,
-		RequestPath: func() string {
-			if c.Request != nil && c.Request.URL != nil {
-				return c.Request.URL.Path
-			}
-			return ""
-		}(),
+		RequestPath: opsRequestPath(c),
 		// 就地 SSE 错误只出现在流式请求上。
 		Stream:           true,
 		InboundEndpoint:  GetInboundEndpoint(c),
 		UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
 		RequestedModel:   modelName,
-		UpstreamModel: func() string {
-			if v, ok := c.Get(opsUpstreamModelKey); ok {
-				if s, ok := v.(string); ok {
-					return strings.TrimSpace(s)
-				}
-			}
-			return ""
-		}(),
-		RequestType: func() *int16 {
-			if v, ok := c.Get(opsRequestTypeKey); ok {
-				switch t := v.(type) {
-				case int16:
-					return &t
-				case int:
-					v16 := int16(t)
-					return &v16
-				}
-			}
-			return nil
-		}(),
+		UpstreamModel: opsUpstreamModel(c),
+		RequestType: opsRequestTypeFromContext(c),
 		UserAgent: c.GetHeader("User-Agent"),
 
 		ErrorPhase:        phase,
@@ -1606,23 +1591,9 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		applyOpsStreamErrorSnapshot(entry, streamErr)
 	}
 
-	if apiKey != nil {
-		entry.APIKeyID = &apiKey.ID
-		entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
-		if apiKey.User != nil {
-			entry.UserID = &apiKey.User.ID
-		}
-		if apiKey.GroupID != nil {
-			entry.GroupID = apiKey.GroupID
-		}
-		if apiKey.Group != nil && apiKey.Group.Platform != "" {
-			entry.Platform = apiKey.Group.Platform
-		}
-	}
+	applyOpsAPIKeyFields(entry, apiKey)
 
-	if clientIP := strings.TrimSpace(ip.GetClientIP(c)); clientIP != "" {
-		entry.ClientIP = &clientIP
-	}
+	applyOpsClientIP(entry, c)
 
 	enqueueOpsErrorLog(ops, entry)
 }
