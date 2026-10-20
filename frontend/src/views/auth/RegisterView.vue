@@ -222,8 +222,8 @@
         />
         </div>
 
-        <!-- 自建顺序点击验证码（仅邮箱验证开启且开关启用时显示） -->
-        <ClickCaptcha
+        <!-- 自建注册验证码（图片点选 / 拼图滑块随机出现；仅邮箱验证开启且开关启用时显示） -->
+        <RegistrationCaptcha
           v-if="clickCaptchaEnabled"
           data-testid="registration-click-captcha"
           @verified="onClickCaptchaVerified"
@@ -351,7 +351,7 @@ import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
-import ClickCaptcha from '@/components/ClickCaptcha.vue'
+import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   buildOAuthLoginStartURL,

@@ -43,6 +43,26 @@ func (s *SettingService) IsRegistrationClickCaptchaEnabled(ctx context.Context) 
 	return value == "true"
 }
 
+// GetRegistrationCaptchaMode 返回自建验证码模式：random | image_click | slider。
+// 缺失或非法值一律回退 random（两种随机出现，安全默认）。
+func (s *SettingService) GetRegistrationCaptchaMode(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationCaptchaMode)
+	if err != nil {
+		return RegistrationCaptchaModeRandom
+	}
+	return normalizeRegistrationCaptchaMode(value)
+}
+
+// GetRegistrationCaptchaDifficulty 返回自建验证码难度：low | medium | high。
+// 缺失或非法值一律回退 medium。
+func (s *SettingService) GetRegistrationCaptchaDifficulty(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationCaptchaDifficulty)
+	if err != nil {
+		return RegistrationCaptchaDifficultyMedium
+	}
+	return normalizeRegistrationCaptchaDifficulty(value)
+}
+
 // IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
 // 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
 func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {
@@ -51,6 +71,32 @@ func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Conte
 		return false
 	}
 	return value == "true"
+}
+
+// clampRegistrationEmailDomainQuotaLimit 把每域配额收敛到 [Min, Max]。
+// 越界不报错而是钳制：调用方只需要一个可用数值。
+func clampRegistrationEmailDomainQuotaLimit(limit int) int {
+	if limit < RegistrationEmailDomainQuotaLimitMin {
+		return RegistrationEmailDomainQuotaLimitMin
+	}
+	if limit > RegistrationEmailDomainQuotaLimitMax {
+		return RegistrationEmailDomainQuotaLimitMax
+	}
+	return limit
+}
+
+// GetRegistrationEmailDomainQuotaLimit 返回白名单外每个可注册主域名允许的账户数。
+// 缺失或非法值回退默认 1（等价于历史行为）。
+func (s *SettingService) GetRegistrationEmailDomainQuotaLimit(ctx context.Context) int {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaLimit)
+	if err != nil {
+		return RegistrationEmailDomainQuotaLimitDefault
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return RegistrationEmailDomainQuotaLimitDefault
+	}
+	return clampRegistrationEmailDomainQuotaLimit(limit)
 }
 
 // GetRegistrationEmailSuffixWhitelist returns normalized registration email suffix whitelist.

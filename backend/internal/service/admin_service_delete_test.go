@@ -43,12 +43,12 @@ func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string)
 	return s.domainCounts[domain], nil
 }
 
-func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error {
+func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int) error {
 	s.domainLimitedCreates++
 	if s.domainLimitErr != nil {
 		return s.domainLimitErr
 	}
-	if s.domainCounts[domain] > 0 {
+	if s.domainCounts[domain] >= limit {
 		return ErrEmailDomainRegistrationLimit
 	}
 	return s.CreateWithEmailAliasGuard(ctx, user)

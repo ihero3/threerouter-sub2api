@@ -1341,8 +1341,8 @@ export default {
       imageTestHint: '选择图片模型后，这里会直接发起生图测试，并在下方展示返回图片。'
     },
     proxies: {
-      batchInputPlaceholder: '每行输入一个代理，支持以下格式：\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass&#64;proxy.example.com:443',
-      batchInputHint: '支持 http、https、socks5 协议，格式：协议://[用户名:密码&#64;]主机:端口',
+      batchInputPlaceholder: '每行输入一个代理，支持以下格式：\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{\'@\'}proxy.example.com:443',
+      batchInputHint: '支持 http、https、socks5 协议，格式：协议://[用户名:密码{\'@\'}]主机:端口',
       fallbackMode: '失败回退'
     },
     usage: {
@@ -1374,8 +1374,8 @@ export default {
         }
       },
       registration: {
-        emailSuffixWhitelistHint: '仅允许使用指定域名的邮箱注册账号（例如 &#64;qq.com, &#64;gmail.com, *.edu.cn）',
-        emailSuffixWhitelistPlaceholder: '&#64;example.com, *.edu.cn'
+        emailSuffixWhitelistHint: '仅允许使用指定域名的邮箱注册账号（例如 {\'@\'}qq.com, {\'@\'}gmail.com, *.edu.cn）',
+        emailSuffixWhitelistPlaceholder: '{\'@\'}example.com, *.edu.cn'
       },
       apiKeyAcl: {
         description: '控制 API Key 白名单和黑名单使用哪个客户端 IP 判断',
@@ -1396,11 +1396,11 @@ export default {
         alipayGuideWapCall: '移动端优先调用 alipay.trade.wap.pay，跳转支付宝收银台。'
       },
       smtp: {
-        usernamePlaceholder: 'your-email&#64;gmail.com',
-        fromEmailPlaceholder: 'noreply&#64;example.com'
+        usernamePlaceholder: 'your-email{\'@\'}gmail.com',
+        fromEmailPlaceholder: 'noreply{\'@\'}example.com'
       },
       testEmail: {
-        recipientEmailPlaceholder: 'test&#64;example.com'
+        recipientEmailPlaceholder: 'test{\'@\'}example.com'
       },
       soraS3: {
         title: 'Sora 存储配置',

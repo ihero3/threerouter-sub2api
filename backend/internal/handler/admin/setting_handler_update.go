@@ -26,8 +26,11 @@ type UpdateSettingsRequest struct {
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
 	RegistrationClickCaptchaEnabled     bool                         `json:"registration_click_captcha_enabled"` // 注册前顺序点击验证（省略=false）
+	RegistrationCaptchaMode             string                       `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider（省略=保持现值）
+	RegistrationCaptchaDifficulty       string                       `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high（省略=保持现值）
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
+	RegistrationEmailDomainQuotaLimit   *int                         `json:"registration_email_domain_quota_limit"`   // 非白名单域名每域配额（省略=保持现值）
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
@@ -527,6 +530,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	registrationEmailDomainQuotaEnabled := previousSettings.RegistrationEmailDomainQuotaEnabled
 	if req.RegistrationEmailDomainQuotaEnabled != nil {
 		registrationEmailDomainQuotaEnabled = *req.RegistrationEmailDomainQuotaEnabled
+	}
+	registrationEmailDomainQuotaLimit := previousSettings.RegistrationEmailDomainQuotaLimit
+	if req.RegistrationEmailDomainQuotaLimit != nil {
+		registrationEmailDomainQuotaLimit = *req.RegistrationEmailDomainQuotaLimit
 	}
 	if passkeyEnabled {
 		configured, _, _ := h.settingService.PasskeyConfiguration()
@@ -1540,8 +1547,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEnabled:                 req.RegistrationEnabled,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
 		RegistrationClickCaptchaEnabled:     req.RegistrationClickCaptchaEnabled,
+		RegistrationCaptchaMode:             req.RegistrationCaptchaMode,
+		RegistrationCaptchaDifficulty:       req.RegistrationCaptchaDifficulty,
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
+		RegistrationEmailDomainQuotaLimit:   registrationEmailDomainQuotaLimit,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
@@ -2184,9 +2194,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    updatedSettings.RegistrationEnabled,
 		RegistrationClickCaptchaEnabled:                        updatedSettings.RegistrationClickCaptchaEnabled,
+		RegistrationCaptchaMode:                                updatedSettings.RegistrationCaptchaMode,
+		RegistrationCaptchaDifficulty:                          updatedSettings.RegistrationCaptchaDifficulty,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
+		RegistrationEmailDomainQuotaLimit:                      updatedSettings.RegistrationEmailDomainQuotaLimit,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,

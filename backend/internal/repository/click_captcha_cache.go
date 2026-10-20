@@ -12,6 +12,10 @@ import (
 const (
 	clickCaptchaChallengeKeyPrefix = "captcha:click:challenge:"
 	clickCaptchaTokenKeyPrefix     = "captcha:click:token:"
+	clickCaptchaAttemptsKeyPrefix  = "captcha:click:attempts:"
+	// clickCaptchaAttemptsTTL 尝试计数键的存活时间；与 challenge 同量级，
+	// 题目作废后计数键最多再多存活该时长即可自然过期。
+	clickCaptchaAttemptsTTL = 2 * time.Minute
 )
 
 // ClickCaptchaCache 自建顺序点击验证码的 Redis 缓存。
@@ -104,4 +108,20 @@ func (c *ClickCaptchaCache) PeekToken(ctx context.Context, token string) (*servi
 		return nil, err
 	}
 	return service.UnmarshalClickCaptchaTokenPayload(raw)
+}
+
+// IncrAttempts 原子自增同一道题的尝试次数，并在每次写入时刷新计数键 TTL。
+// 计数独立于 challenge 载荷，保证 INCR 原子性且不破坏反序列化结构。
+func (c *ClickCaptchaCache) IncrAttempts(ctx context.Context, challengeID string) (int64, error) {
+	if c == nil || c.rdb == nil {
+		return 0, fmt.Errorf("click captcha cache not configured")
+	}
+	key := clickCaptchaAttemptsKeyPrefix + challengeID
+	pipe := c.rdb.TxPipeline()
+	incr := pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, clickCaptchaAttemptsTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, err
+	}
+	return incr.Val(), nil
 }

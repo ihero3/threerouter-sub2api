@@ -14,9 +14,12 @@ func firstNonEmpty(values ...string) string {
 type SystemSettings struct {
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
-	RegistrationClickCaptchaEnabled    bool
+	RegistrationClickCaptchaEnabled     bool
+	RegistrationCaptchaMode             string // 自建验证码模式：random | image_click | slider
+	RegistrationCaptchaDifficulty       string // 自建验证码难度：low | medium | high
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailDomainQuotaEnabled bool // 白名单非空时放行非白名单域名限量注册（默认关闭）
+	RegistrationEmailDomainQuotaLimit   int  // 白名单外每个主域名允许注册的账户数（默认 1）
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string
@@ -324,7 +327,7 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
-	RegistrationClickCaptchaEnabled    bool
+	RegistrationClickCaptchaEnabled     bool
 	ForceEmailOnThirdPartySignup        bool
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailDomainQuotaEnabled bool

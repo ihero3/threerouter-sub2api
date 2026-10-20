@@ -138,7 +138,7 @@ func TestUserRepositoryCreateWithEmailAliasGuardAndDomainLimit(t *testing.T) {
 		PasswordHash: "hash",
 		Role:         service.RoleUser,
 		Status:       service.StatusActive,
-	}, "custom.example")
+	}, "custom.example", 1)
 	require.ErrorIs(t, err, service.ErrEmailDomainRegistrationLimit)
 }
 

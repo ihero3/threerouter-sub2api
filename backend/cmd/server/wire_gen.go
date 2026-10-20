@@ -100,7 +100,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	authHandler := handler.NewAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService)
 	clickCaptchaCache := repository.NewClickCaptchaCache(redisClient)
-	clickCaptchaService := service.NewRegistrationClickCaptchaService(clickCaptchaCache)
+	clickCaptchaService := service.NewRegistrationClickCaptchaService(clickCaptchaCache, settingService)
 	authHandler.SetRegistrationClickCaptchaService(clickCaptchaService)
 	registrationClickCaptchaHandler := handler.NewRegistrationClickCaptchaHandler(clickCaptchaService)
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)

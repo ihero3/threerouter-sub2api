@@ -461,6 +461,44 @@ func TestAuthService_Register_NonWhitelistDomainRejectsSecondAccount(t *testing.
 
 // 域名限量注册开关默认关闭：白名单外域名保持 PR5423 之前的严格拒绝语义，
 // 即使该域名下还没有任何账户也不放行。
+// 每域配额可配为 N>1：达到上限才拒绝，且错误信息带 N。
+func TestAuthService_Register_NonWhitelistDomainHonorsConfigurableQuotaLimit(t *testing.T) {
+	// domain 已有 2 个账户，配额设为 3 → 仍允许第 3 个。
+	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 2}}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+		SettingKeyRegistrationEmailDomainQuotaLimit:   "3",
+	}, nil, nil)
+
+	_, user, err := svc.Register(context.Background(), "third@sub.custom.example", "password", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(9), user.ID)
+
+	// 此时 domain 已达 3 个，再注册应被拒绝且消息含配额数。
+	repo.domainCounts["custom.example"] = 3
+	_, _, err = svc.Register(context.Background(), "fourth@custom.example", "password", "")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, "EMAIL_DOMAIN_REGISTRATION_LIMIT", appErr.Reason)
+	require.Contains(t, appErr.Message, "3 ")
+}
+
+// 配额默认值 1 与历史行为一致：domain 已有 1 个即拒绝。
+func TestAuthService_Register_NonWhitelistDomainDefaultQuotaIsOne(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1}}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+		// 不设置 quota_limit → 默认 1
+	}, nil, nil)
+
+	_, _, err := svc.Register(context.Background(), "extra@custom.example", "password", "")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+}
+
 func TestAuthService_Register_NonWhitelistDomainRejectedWhenQuotaDisabledByDefault(t *testing.T) {
 	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0}}
 	svc := newAuthService(repo, map[string]string{

@@ -11,32 +11,94 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"go.uber.org/zap"
 )
+
+// 验证码模式：random = 两种随机出现；image_click / slider = 固定为对应模式。
+const (
+	RegistrationCaptchaModeRandom     = "random"
+	RegistrationCaptchaModeImageClick = "image_click"
+	RegistrationCaptchaModeSlider     = "slider"
+)
+
+// 验证码难度。
+const (
+	RegistrationCaptchaDifficultyLow    = "low"
+	RegistrationCaptchaDifficultyMedium = "medium"
+	RegistrationCaptchaDifficultyHigh   = "high"
+)
+
+// 归一化模式：非法/空值回退 random（安全默认，两种并存）。
+func normalizeRegistrationCaptchaMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case RegistrationCaptchaModeImageClick:
+		return RegistrationCaptchaModeImageClick
+	case RegistrationCaptchaModeSlider:
+		return RegistrationCaptchaModeSlider
+	default:
+		return RegistrationCaptchaModeRandom
+	}
+}
+
+// 归一化难度：非法/空值回退 medium。
+func normalizeRegistrationCaptchaDifficulty(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case RegistrationCaptchaDifficultyLow:
+		return RegistrationCaptchaDifficultyLow
+	case RegistrationCaptchaDifficultyHigh:
+		return RegistrationCaptchaDifficultyHigh
+	default:
+		return RegistrationCaptchaDifficultyMedium
+	}
+}
 
 // ErrRegistrationClickCaptchaDisabled 验证码功能未启用时的错误。
 var ErrRegistrationClickCaptchaDisabled = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_DISABLED", "registration click captcha is disabled")
 
-// ErrRegistrationClickCaptchaInvalid 点击顺序错误或 challenge 无效。
+// ErrRegistrationClickCaptchaInvalid 验证失败或 challenge 无效。
 var ErrRegistrationClickCaptchaInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_INVALID", "registration click captcha challenge invalid")
 
 // ErrRegistrationClickCaptchaTokenInvalid 一次性 token 无效、过期或已使用。
 var ErrRegistrationClickCaptchaTokenInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID", "registration click captcha token invalid or expired, please complete the verification again")
 
-// RegistrationClickCaptchaChallenge 一次点击验证题。
+// RegistrationClickCaptchaChallenge 一次验证题（判别联合：按 mode 二选一）。
 type RegistrationClickCaptchaChallenge struct {
-	ChallengeID string             `json:"challenge_id"`
-	ExpiresIn   int                `json:"expires_in"`
-	Prompt      []string           `json:"prompt"`
-	Grid        []ClickCaptchaCell `json:"grid"`
+	ChallengeID string               `json:"challenge_id"`
+	Mode        string               `json:"mode"` // image_click | slider
+	ExpiresIn   int                  `json:"expires_in"`
+	ImageClick  *ImageClickChallenge `json:"image_click,omitempty"`
+	Slider      *SliderChallenge     `json:"slider,omitempty"`
 }
 
-// ClickCaptchaCell 单个格子。
-type ClickCaptchaCell struct {
-	CellID  string `json:"cell_id"`
-	Content string `json:"content"`
-	Type    string `json:"type"`
+// ImageClickChallenge 图片点选题面：只含图片与"颜色+形状"提示，不含任何坐标。
+type ImageClickChallenge struct {
+	Image      string       `json:"image"` // base64 PNG（无 data URL 前缀）
+	Width      int          `json:"width"`
+	Height     int          `json:"height"`
+	Prompt     []TargetHint `json:"prompt"`
+	ClickCount int          `json:"click_count"`
+}
+
+// TargetHint 目标提示（颜色 + 形状组合）。
+type TargetHint struct {
+	Shape string `json:"shape"`
+	Color string `json:"color"`
+}
+
+// SliderChallenge 滑块题面：带缺口背景 + 拼图块，绝不返回 target_x。
+type SliderChallenge struct {
+	BgImage    string `json:"bg_image"`
+	PieceImage string `json:"piece_image"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	PieceY     int    `json:"piece_y"`
+	PieceSize  int    `json:"piece_size"`
+}
+
+// CaptchaVerifyProof 客户端回传的原始输入（点选坐标 / 滑块落点与轨迹）。
+type CaptchaVerifyProof struct {
+	Clicks     []ClickPoint      `json:"clicks"`
+	DropX      float64           `json:"drop_x"`
+	Trajectory []TrajectoryPoint `json:"trajectory"`
 }
 
 // clickCaptchaCacheStore 定义验证码持久化端口，避免 service 反向依赖 repository。
@@ -47,95 +109,73 @@ type clickCaptchaCacheStore interface {
 	SetToken(ctx context.Context, token string, payload *ClickCaptchaTokenPayloadRef) error
 	TakeToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
 	PeekToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
-}
-
-// clickCaptchaPrompt 一个提示项（文本/emoji 均可）。
-type clickCaptchaPrompt struct {
-	ID      string
-	Content string
-	CellID  string
+	IncrAttempts(ctx context.Context, challengeID string) (int64, error)
 }
 
 // ClickCaptchaChallengePayloadRef 存入 Redis 的 challenge 内部数据（repository 跨包引用）。
+// 答案（坐标 / 缺口位置）只存于此，绝不下发。
 type ClickCaptchaChallengePayloadRef struct {
-	PromptIDs   []string           `json:"prompt_ids"`
-	AnswerCells []string           `json:"answer_cells"`
-	Grid        []ClickCaptchaCell `json:"grid"`
-	IPHash      string             `json:"ip_hash"`
-	UAHash      string             `json:"ua_hash"`
-	CreatedAt   int64              `json:"created_at"`
-	ExpiresAt   int64              `json:"expires_at"`
+	Mode       string            `json:"mode"`
+	Difficulty string            `json:"difficulty"`
+	ImageClick *ImageClickAnswer `json:"image_click,omitempty"`
+	Slider     *SliderAnswer     `json:"slider,omitempty"`
+	IPHash     string            `json:"ip_hash"`
+	UAHash     string            `json:"ua_hash"`
+	CreatedAt  int64             `json:"created_at"`
+	ExpiresAt  int64             `json:"expires_at"`
 }
 
-// RegistrationClickCaptchaService 自建顺序点击验证码服务。
+// RegistrationClickCaptchaService 自建验证码服务（图片点选 / 拼图滑块）。
 type RegistrationClickCaptchaService struct {
-	cache clickCaptchaCacheStore
+	cache      clickCaptchaCacheStore
+	settingSvc *SettingService
 }
 
 // NewRegistrationClickCaptchaService 创建验证码服务。
-func NewRegistrationClickCaptchaService(cache clickCaptchaCacheStore) *RegistrationClickCaptchaService {
-	return &RegistrationClickCaptchaService{cache: cache}
-}
-
-// clickCaptchaWordBank 词库；同一词随机映射到文字或 emoji，避免脚本固定按文本匹配。
-var clickCaptchaWordBank = []struct {
-	Text  string
-	Emoji string
-}{
-	{Text: "苹果", Emoji: "🍎"},
-	{Text: "香蕉", Emoji: "🍌"},
-	{Text: "火车", Emoji: "🚂"},
-	{Text: "飞机", Emoji: "✈️"},
-	{Text: "汽车", Emoji: "🚗"},
-	{Text: "房子", Emoji: "🏠"},
-	{Text: "月亮", Emoji: "🌙"},
-	{Text: "太阳", Emoji: "☀️"},
-	{Text: "狮子", Emoji: "🦁"},
-	{Text: "老虎", Emoji: "🐯"},
-	{Text: "大树", Emoji: "🌳"},
-	{Text: "花朵", Emoji: "🌸"},
+func NewRegistrationClickCaptchaService(cache clickCaptchaCacheStore, settingSvc *SettingService) *RegistrationClickCaptchaService {
+	return &RegistrationClickCaptchaService{cache: cache, settingSvc: settingSvc}
 }
 
 const (
-	clickCaptchaGridSize     = 9 // 3x3
-	clickCaptchaClickCount   = 3 // 需要点击的目标数
 	clickCaptchaChallengeTTL = 120 * time.Second
 )
 
-// CreateChallenge 生成一道新题并写入 Redis。
+// resolveMode 依据后台设置决定本次题目模式；random 时用 crypto/rand 等权二选一。
+func (s *RegistrationClickCaptchaService) resolveMode(mode string) (string, error) {
+	switch normalizeRegistrationCaptchaMode(mode) {
+	case RegistrationCaptchaModeImageClick:
+		return RegistrationCaptchaModeImageClick, nil
+	case RegistrationCaptchaModeSlider:
+		return RegistrationCaptchaModeSlider, nil
+	default:
+		idx, err := cryptoRandomInts(2, 1)
+		if err != nil {
+			return "", err
+		}
+		if idx[0] == 0 {
+			return RegistrationCaptchaModeImageClick, nil
+		}
+		return RegistrationCaptchaModeSlider, nil
+	}
+}
+
+// CreateChallenge 生成一道新题并写入 Redis（答案只进 Redis）。
 func (s *RegistrationClickCaptchaService) CreateChallenge(ctx context.Context, ipHash, uaHash string) (*RegistrationClickCaptchaChallenge, error) {
 	if s == nil || s.cache == nil {
 		return nil, ErrRegistrationClickCaptchaDisabled
 	}
 
-	indices, err := cryptoRandomInts(len(clickCaptchaWordBank), clickCaptchaGridSize)
-	if err != nil {
-		return nil, err
+	mode := RegistrationCaptchaModeRandom
+	difficulty := RegistrationCaptchaDifficultyMedium
+	if s.settingSvc != nil {
+		mode = s.settingSvc.GetRegistrationCaptchaMode(ctx)
+		difficulty = s.settingSvc.GetRegistrationCaptchaDifficulty(ctx)
 	}
-	grid := make([]ClickCaptchaCell, 0, clickCaptchaGridSize)
-	cellIDs := make([]string, 0, clickCaptchaGridSize)
-	for i, idx := range indices {
-		word := clickCaptchaWordBank[idx]
-		cellID := fmt.Sprintf("c%d", i)
-		// 全部使用 emoji，避免暴露文字给 OCR / 文本识别型机器人。
-		grid = append(grid, ClickCaptchaCell{CellID: cellID, Content: word.Emoji, Type: "emoji"})
-		cellIDs = append(cellIDs, cellID)
-	}
+	difficulty = normalizeRegistrationCaptchaDifficulty(difficulty)
 
-	pickIndices, err := cryptoRandomInts(clickCaptchaGridSize, clickCaptchaClickCount)
+	resolved, err := s.resolveMode(mode)
 	if err != nil {
 		return nil, err
-	}
-	promptIDs := make([]string, 0, clickCaptchaClickCount)
-	answerCells := make([]string, 0, clickCaptchaClickCount)
-	prompt := make([]string, 0, clickCaptchaClickCount)
-	for _, pi := range pickIndices {
-		cellID := cellIDs[pi]
-		cell := grid[pi]
-		promptIDs = append(promptIDs, cellID)
-		answerCells = append(answerCells, cellID)
-		// 提示直接展示 emoji 目标，用户按图找图，机器人需图像识别。
-		prompt = append(prompt, cell.Content)
 	}
 
 	challengeID, err := randomHexString(16)
@@ -144,28 +184,46 @@ func (s *RegistrationClickCaptchaService) CreateChallenge(ctx context.Context, i
 	}
 	now := time.Now()
 	payload := &ClickCaptchaChallengePayloadRef{
-		PromptIDs:   promptIDs,
-		AnswerCells: answerCells,
-		Grid:        grid,
-		IPHash:      ipHash,
-		UAHash:      uaHash,
-		CreatedAt:   now.Unix(),
-		ExpiresAt:   now.Add(clickCaptchaChallengeTTL).Unix(),
+		Mode:       resolved,
+		Difficulty: difficulty,
+		IPHash:     ipHash,
+		UAHash:     uaHash,
+		CreatedAt:  now.Unix(),
+		ExpiresAt:  now.Add(clickCaptchaChallengeTTL).Unix(),
 	}
+	challenge := &RegistrationClickCaptchaChallenge{
+		ChallengeID: challengeID,
+		Mode:        resolved,
+		ExpiresIn:   int(clickCaptchaChallengeTTL.Seconds()),
+	}
+
+	switch resolved {
+	case RegistrationCaptchaModeImageClick:
+		ic, answer, err := buildImageClickChallenge(difficulty)
+		if err != nil {
+			return nil, err
+		}
+		payload.ImageClick = answer
+		challenge.ImageClick = ic
+	case RegistrationCaptchaModeSlider:
+		sl, answer, err := buildSliderChallenge(difficulty)
+		if err != nil {
+			return nil, err
+		}
+		payload.Slider = answer
+		challenge.Slider = sl
+	default:
+		return nil, ErrRegistrationClickCaptchaInvalid
+	}
+
 	if err := s.cache.SetChallenge(ctx, challengeID, payload); err != nil {
 		return nil, err
 	}
-
-	return &RegistrationClickCaptchaChallenge{
-		ChallengeID: challengeID,
-		ExpiresIn:   int(clickCaptchaChallengeTTL.Seconds()),
-		Prompt:      prompt,
-		Grid:        grid,
-	}, nil
+	return challenge, nil
 }
 
-// VerifyChallenge 校验点击顺序并签发一次性 token。
-func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, challengeID string, clicks []string, ipHash, uaHash string) (string, int64, error) {
+// VerifyChallenge 依据 Redis 中的权威 Mode 校验客户端输入，成功则签发一次性 token。
+func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, challengeID string, proof CaptchaVerifyProof, ipHash, uaHash string) (string, int64, error) {
 	if s == nil || s.cache == nil {
 		return "", 0, ErrRegistrationClickCaptchaDisabled
 	}
@@ -179,13 +237,29 @@ func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, c
 	if payload.IPHash != ipHash || payload.UAHash != uaHash {
 		return "", 0, ErrRegistrationClickCaptchaInvalid
 	}
-	if len(clicks) != len(payload.AnswerCells) {
+
+	// 单题失败次数上限：超过即删题，防止坐标/落点爆破。
+	attempts, err := s.cache.IncrAttempts(ctx, challengeID)
+	if err != nil {
 		return "", 0, ErrRegistrationClickCaptchaInvalid
 	}
-	for i := range clicks {
-		if clicks[i] != payload.AnswerCells[i] {
-			return "", 0, ErrRegistrationClickCaptchaInvalid
+	if attempts > clickCaptchaMaxAttempts(payload.Difficulty) {
+		_ = s.cache.DeleteChallenge(ctx, challengeID)
+		return "", 0, ErrRegistrationClickCaptchaInvalid
+	}
+
+	switch payload.Mode {
+	case RegistrationCaptchaModeImageClick:
+		if err := verifyImageClick(payload.ImageClick, proof.Clicks); err != nil {
+			return "", 0, err
 		}
+	case RegistrationCaptchaModeSlider:
+		params := sliderParamsFor(payload.Difficulty)
+		if err := verifySlider(payload.Slider, proof.DropX, proof.Trajectory, params.trajectory); err != nil {
+			return "", 0, err
+		}
+	default:
+		return "", 0, ErrRegistrationClickCaptchaInvalid
 	}
 
 	// 校验成功即删除 challenge，防止同一道题被多次尝试。
@@ -207,6 +281,14 @@ func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, c
 		return "", 0, err
 	}
 	return token, ttl, nil
+}
+
+// clickCaptchaMaxAttempts 单题允许的失败次数上限：high=2，其余=3。
+func clickCaptchaMaxAttempts(difficulty string) int64 {
+	if normalizeRegistrationCaptchaDifficulty(difficulty) == RegistrationCaptchaDifficultyHigh {
+		return 2
+	}
+	return 3
 }
 
 // ConsumeToken 一次性校验并消费 token，成功时返回载荷供业务失败后归还。
@@ -263,7 +345,7 @@ type ClickCaptchaTokenPayloadRef struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-// cryptoRandomInts 从 [0,poolSize) 中取 count 个不重复随机索引。
+// cryptoRandomInts 从 [0,poolSize) 中取 count 个不重复随机索引（crypto/rand）。
 func cryptoRandomInts(poolSize, count int) ([]int, error) {
 	if count > poolSize {
 		return nil, fmt.Errorf("count %d exceeds pool %d", count, poolSize)
@@ -328,6 +410,3 @@ func UnmarshalClickCaptchaTokenPayload(raw string) (*ClickCaptchaTokenPayloadRef
 	}
 	return &p, nil
 }
-
-var _ = logger.L
-var _ = zap.String

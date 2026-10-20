@@ -187,7 +187,7 @@ type UserRepository interface {
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 type RegistrationEmailDomainRepository interface {
 	CountUsersByEmailDomain(ctx context.Context, domain string) (int, error)
-	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error
+	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int) error
 }
 
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates

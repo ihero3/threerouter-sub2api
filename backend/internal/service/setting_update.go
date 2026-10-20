@@ -165,12 +165,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 	updates[SettingKeyRegistrationClickCaptchaEnabled] = strconv.FormatBool(settings.RegistrationClickCaptchaEnabled)
+	updates[SettingKeyRegistrationCaptchaMode] = normalizeRegistrationCaptchaMode(settings.RegistrationCaptchaMode)
+	updates[SettingKeyRegistrationCaptchaDifficulty] = normalizeRegistrationCaptchaDifficulty(settings.RegistrationCaptchaDifficulty)
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
 	}
 	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
 	updates[SettingKeyRegistrationEmailDomainQuotaEnabled] = strconv.FormatBool(settings.RegistrationEmailDomainQuotaEnabled)
+	settings.RegistrationEmailDomainQuotaLimit = clampRegistrationEmailDomainQuotaLimit(settings.RegistrationEmailDomainQuotaLimit)
+	updates[SettingKeyRegistrationEmailDomainQuotaLimit] = strconv.Itoa(settings.RegistrationEmailDomainQuotaLimit)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL

@@ -269,6 +269,7 @@ export interface PublicSettings {
   force_email_on_third_party_signup: boolean
   registration_email_suffix_whitelist: string[]
   registration_email_domain_quota_enabled?: boolean
+  registration_email_domain_quota_limit?: number
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
@@ -346,17 +347,52 @@ export interface AuthResponse {
   user: User & { run_mode?: 'standard' | 'simple' }
 }
 
-export interface ClickCaptchaCell {
-  cell_id: string
-  content: string
-  type: 'text' | 'emoji'
+// 自建注册验证码：判别联合（按 mode 二选一）
+export type RegistrationCaptchaMode = 'image_click' | 'slider'
+
+export interface ImageClickTargetHint {
+  shape: string
+  color: string
 }
 
-export interface ClickCaptchaChallenge {
+// 图片点选题面：只有图片与"颜色+形状"提示，不含任何坐标。
+export interface ImageClickChallenge {
+  image: string
+  width: number
+  height: number
+  prompt: ImageClickTargetHint[]
+  click_count: number
+}
+
+// 滑块题面：带缺口背景 + 拼图块（不含 target_x）。
+export interface SliderChallenge {
+  bg_image: string
+  piece_image: string
+  width: number
+  height: number
+  piece_y: number
+  piece_size: number
+}
+
+export interface RegistrationCaptchaChallenge {
   challenge_id: string
+  mode: RegistrationCaptchaMode
   expires_in: number
-  prompt: string[]
-  grid: ClickCaptchaCell[]
+  image_click?: ImageClickChallenge
+  slider?: SliderChallenge
+}
+
+// 点选坐标（图片像素坐标）
+export interface ClickPoint {
+  x: number
+  y: number
+}
+
+// 拖拽轨迹采样点（T 为相对拖拽起点的毫秒数）
+export interface TrajectoryPoint {
+  x: number
+  y: number
+  t: number
 }
 
 export interface ClickCaptchaVerifyResponse {

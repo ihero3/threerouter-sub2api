@@ -59,7 +59,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEmailVerifyEnabled:                        "false",
 		SettingKeyRegistrationEmailSuffixWhitelist:          "[]",
 		SettingKeyRegistrationEmailDomainQuotaEnabled:       "false",
-		SettingKeyRegistrationClickCaptchaEnabled:            "false",
+		SettingKeyRegistrationEmailDomainQuotaLimit:         strconv.Itoa(RegistrationEmailDomainQuotaLimitDefault),
+		SettingKeyRegistrationClickCaptchaEnabled:           "false",
+		SettingKeyRegistrationCaptchaMode:                   RegistrationCaptchaModeRandom,
+		SettingKeyRegistrationCaptchaDifficulty:             RegistrationCaptchaDifficultyMedium,
 		SettingKeyPromoCodeEnabled:                          "true", // 默认启用优惠码功能
 		SettingKeyLoginAgreementEnabled:                     "false",
 		SettingKeyLoginAgreementMode:                        defaultLoginAgreementMode,
@@ -319,6 +322,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:                     emailVerifyEnabled,
 		RegistrationClickCaptchaEnabled:        settings[SettingKeyRegistrationClickCaptchaEnabled] == "true",
+		RegistrationCaptchaMode:                normalizeRegistrationCaptchaMode(settings[SettingKeyRegistrationCaptchaMode]),
+		RegistrationCaptchaDifficulty:          normalizeRegistrationCaptchaDifficulty(settings[SettingKeyRegistrationCaptchaDifficulty]),
 		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		RegistrationEmailDomainQuotaEnabled:    settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
 		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
@@ -412,6 +417,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRegisterReward = registerReward
 	} else {
 		result.AffiliateRegisterReward = AffiliateRegisterRewardDefault
+	}
+	if quotaLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationEmailDomainQuotaLimit])); err == nil {
+		result.RegistrationEmailDomainQuotaLimit = clampRegistrationEmailDomainQuotaLimit(quotaLimit)
+	} else {
+		result.RegistrationEmailDomainQuotaLimit = RegistrationEmailDomainQuotaLimitDefault
 	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {

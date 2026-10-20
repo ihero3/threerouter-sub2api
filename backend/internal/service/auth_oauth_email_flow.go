@@ -172,7 +172,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
-			return nil, nil, ErrEmailDomainRegistrationLimit
+			return nil, nil, err
 		default:
 			slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 			return nil, nil, ErrServiceUnavailable
@@ -262,7 +262,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
-			return nil, nil, ErrEmailDomainRegistrationLimit
+			return nil, nil, err
 		default:
 			return nil, nil, ErrServiceUnavailable
 		}

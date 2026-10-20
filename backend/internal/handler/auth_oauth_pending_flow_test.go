@@ -3158,12 +3158,15 @@ func (r *oauthPendingFlowUserRepo) CountUsersByEmailDomain(ctx context.Context, 
 	return count, nil
 }
 
-func (r *oauthPendingFlowUserRepo) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *service.User, domain string) error {
+func (r *oauthPendingFlowUserRepo) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *service.User, domain string, limit int) error {
 	count, err := r.CountUsersByEmailDomain(ctx, domain)
 	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if limit < service.RegistrationEmailDomainQuotaLimitMin {
+		limit = service.RegistrationEmailDomainQuotaLimitDefault
+	}
+	if count >= limit {
 		return service.ErrEmailDomainRegistrationLimit
 	}
 	return r.CreateWithEmailAliasGuard(ctx, user)

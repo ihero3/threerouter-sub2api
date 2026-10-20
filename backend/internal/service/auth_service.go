@@ -40,7 +40,7 @@ var (
 	ErrEmailSuffixNotAllowed        = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
 	ErrEmailDomainRegistrationLimit = infraerrors.BadRequest(
 		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
-		"this email domain cannot register another account; use a mainstream email or contact support to add the enterprise domain",
+		"this email domain has reached its registration limit; use a mainstream email or contact support to add the enterprise domain",
 	)
 	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
@@ -49,6 +49,18 @@ var (
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
 )
+
+// buildEmailDomainRegistrationLimitError 构造带每域配额 N 的客户端错误。
+// reason 与 ErrEmailDomainRegistrationLimit 完全一致，errors.Is 判定不受影响。
+func buildEmailDomainRegistrationLimitError(limit int) error {
+	if limit < RegistrationEmailDomainQuotaLimitMin {
+		limit = RegistrationEmailDomainQuotaLimitDefault
+	}
+	return infraerrors.BadRequest(
+		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
+		fmt.Sprintf("this email domain has reached its registration limit of %d account(s); use a mainstream email or contact support to add the enterprise domain", limit),
+	)
+}
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
@@ -275,7 +287,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		case errors.Is(err, ErrEmailExists):
 			return "", nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
-			return "", nil, ErrEmailDomainRegistrationLimit
+			return "", nil, err
 		case errors.Is(err, ErrInvitationCodeInvalid):
 			return "", nil, ErrInvitationCodeInvalid
 		default:
@@ -1268,6 +1280,7 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 	if domain == "" {
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}
+	limit := s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
 	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
 	if !ok {
 		// 生产装配必须提供原子仓储能力；没有数据库的 unit 测试桩保留旧路径，
@@ -1282,8 +1295,8 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to count registration email domain %s: %v", domain, err)
 		return ErrServiceUnavailable
 	}
-	if count > 0 {
-		return ErrEmailDomainRegistrationLimit
+	if count >= limit {
+		return buildEmailDomainRegistrationLimitError(limit)
 	}
 	return nil
 }
@@ -1307,6 +1320,7 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 	if domain == "" {
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}
+	limit := s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
 	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
 	if !ok {
 		if s.entClient != nil {
@@ -1314,7 +1328,7 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		}
 		return s.userRepo.CreateWithEmailAliasGuard(ctx, user)
 	}
-	return quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain)
+	return quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain, limit)
 }
 
 // createUserAndClaimInvitation 原子化完成“用户创建 + 邀请码占用”。

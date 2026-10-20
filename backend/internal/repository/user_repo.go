@@ -43,13 +43,13 @@ func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepos
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, false, "")
+	return r.create(ctx, userIn, false, "", 0)
 }
 
 // CreateWithEmailAliasGuard 见 service.UserRepository：在邮箱唯一性锁内复查收件箱身份，
 // 供注册路径使用。
 func (r *userRepository) CreateWithEmailAliasGuard(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, true, "")
+	return r.create(ctx, userIn, true, "", 0)
 }
 
 // CountUsersByEmailDomain 统计指定可注册主域名及其子域名下的未删除用户。
@@ -59,11 +59,11 @@ func (r *userRepository) CountUsersByEmailDomain(ctx context.Context, domain str
 
 // CreateWithEmailAliasGuardAndDomainLimit 串行化非白名单域名的注册请求，
 // 并在用户写入的同一事务内复查域名额度。
-func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string) error {
-	return r.create(ctx, userIn, true, normalizeEmailDomain(domain))
+func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string, limit int) error {
+	return r.create(ctx, userIn, true, normalizeEmailDomain(domain), limit)
 }
 
-func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string) error {
+func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string, domainLimitN int) error {
 	if userIn == nil {
 		return nil
 	}
@@ -121,7 +121,10 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		if err != nil {
 			return err
 		}
-		if count > 0 {
+		if domainLimitN < service.RegistrationEmailDomainQuotaLimitMin {
+			domainLimitN = service.RegistrationEmailDomainQuotaLimitDefault
+		}
+		if count >= domainLimitN {
 			return service.ErrEmailDomainRegistrationLimit
 		}
 	}

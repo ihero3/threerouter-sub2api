@@ -135,9 +135,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
 		RegistrationClickCaptchaEnabled:                        settings.RegistrationClickCaptchaEnabled,
+		RegistrationCaptchaMode:                                settings.RegistrationCaptchaMode,
+		RegistrationCaptchaDifficulty:                          settings.RegistrationCaptchaDifficulty,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled:                    settings.RegistrationEmailDomainQuotaEnabled,
+		RegistrationEmailDomainQuotaLimit:                      settings.RegistrationEmailDomainQuotaLimit,
 		PromoCodeEnabled:                                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   settings.PasswordResetEnabled,
 		FrontendURL:                                            settings.FrontendURL,
