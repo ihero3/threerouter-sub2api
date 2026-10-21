@@ -863,80 +863,52 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 			}
 
-			newUser := &User{
-				Email:        email,
-				Username:     username,
-				PasswordHash: hashedPassword,
-				Role:         RoleUser,
-				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
-				RPMLimit:     defaultRPMLimit,
-				Status:       StatusActive,
-				SignupSource: signupSource,
+			// 注册 IP 取会话绑定上下文中的安全客户端 IP（与审计日志、会话绑定同源），
+			// 确保与使用记录/审计链路一致；缺失时回退为空，不参与 IP 限额统计。
+			registerIP := registerIPFromContext(ctx)
+
+			if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
+				return nil, nil, err
+			}
+			if err := s.validateRegistrationIPQuota(ctx, registerIP); err != nil {
+				return nil, nil, err
 			}
 
-			if s.entClient != nil && invitationRedeemCode != nil {
-				tx, err := s.entClient.Tx(ctx)
-				if err != nil {
-					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
+			newUser := &User{
+				Email:           email,
+				Username:        username,
+				PasswordHash:    hashedPassword,
+				Role:            RoleUser,
+				Balance:         grantPlan.Balance,
+				Concurrency:     grantPlan.Concurrency,
+				RPMLimit:        defaultRPMLimit,
+				Status:          StatusActive,
+				SignupSource:    signupSource,
+				RegisterIP:      strings.TrimSpace(registerIP),
+				RegisterCountry: s.resolveRegisterCountry(registerIP),
+			}
+
+			if err := s.createUserAndClaimInvitation(ctx, newUser, invitationRedeemCode); err != nil {
+				if errors.Is(err, ErrEmailExists) {
+					user, err = s.userRepo.GetByEmail(ctx, email)
+					if err != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
+						return nil, nil, ErrServiceUnavailable
+					}
+				} else if errors.Is(err, ErrRegistrationIPLimit) || errors.Is(err, ErrEmailDomainRegistrationLimit) {
+					return nil, nil, err
+				} else {
+					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 					return nil, nil, ErrServiceUnavailable
 				}
-				defer func() { _ = tx.Rollback() }()
-				txCtx := dbent.NewTxContext(ctx, tx)
-
-				if err := s.userRepo.Create(txCtx, newUser); err != nil {
-					if errors.Is(err, ErrEmailExists) {
-						user, err = s.userRepo.GetByEmail(ctx, email)
-						if err != nil {
-							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
-							return nil, nil, ErrServiceUnavailable
-						}
-					} else {
-						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-						return nil, nil, ErrServiceUnavailable
-					}
-				} else {
-					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
-						return nil, nil, ErrInvitationCodeInvalid
-					}
-					if err := tx.Commit(); err != nil {
-						logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction: %v", err)
-						return nil, nil, ErrServiceUnavailable
-					}
-					user = newUser
-					created = true
-					s.postAuthUserBootstrap(ctx, user, signupSource, false)
-					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
-					// snapshot user × platform quota（fail-open）
-					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
-				}
 			} else {
-				if err := s.userRepo.Create(ctx, newUser); err != nil {
-					if errors.Is(err, ErrEmailExists) {
-						user, err = s.userRepo.GetByEmail(ctx, email)
-						if err != nil {
-							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
-							return nil, nil, ErrServiceUnavailable
-						}
-					} else {
-						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-						return nil, nil, ErrServiceUnavailable
-					}
-				} else {
-					user = newUser
-					created = true
-					s.postAuthUserBootstrap(ctx, user, signupSource, false)
-					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
-					// snapshot user × platform quota（fail-open）
-					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
-					if invitationRedeemCode != nil {
-						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
-							return nil, nil, ErrInvitationCodeInvalid
-						}
-					}
-				}
+				user = newUser
+				created = true
+				s.postAuthUserBootstrap(ctx, user, signupSource, false)
+				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
+				// snapshot user × platform quota（fail-open）
+				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+				s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -1387,6 +1359,17 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 		return BuildEmailDomainRegistrationLimitError(limit, window)
 	}
 	return nil
+}
+
+// registerIPFromContext 从会话绑定上下文中提取安全客户端 IP。
+// 该 IP 由 SessionBindingContext 中间件在请求入口统一解析，与审计日志、
+// 会话绑定、使用记录同源，避免不同入口各自解析导致取值不一致。
+// 上下文缺失（如单元测试直接调用 service）时返回空串。
+func registerIPFromContext(ctx context.Context) string {
+	if binding := SessionBindingFromContext(ctx); binding != nil {
+		return strings.TrimSpace(binding.IP)
+	}
+	return ""
 }
 
 // registrationIPQuota 返回当前生效的「同一 IP 每日注册数」配额。
