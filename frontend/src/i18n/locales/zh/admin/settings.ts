@@ -160,6 +160,11 @@ export default {
         emailDomainQuotaLimitSuffix: '个账户（1–100）',
         emailDomainQuotaWindowTotal: '累计上限（不重置）',
         emailDomainQuotaWindowDaily: '每日上限（每天 0 点重置）',
+        ipQuota: '同一 IP 每日注册上限',
+        ipQuotaHint:
+          '开启后，同一 IP 地址每天最多可注册指定数量的账户，次日 0 点自动重置；关闭时不限制',
+        ipQuotaLimitPlaceholder: '每 IP 账户数',
+        ipQuotaLimitSuffix: '个账户/天（1–1000）',
         clickCaptcha: '注册前人机验证',
         clickCaptchaHint:
           '开启并启用邮箱验证后，用户注册前必须完成自建人机验证（图片点选 / 拼图滑块），无需第三方验证码服务',

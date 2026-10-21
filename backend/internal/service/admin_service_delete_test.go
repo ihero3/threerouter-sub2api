@@ -35,6 +35,10 @@ type userRepoStub struct {
 	domainCountErr       error
 	domainLimitErr       error
 	domainLimitedCreates int
+	ipCounts             map[string]int
+	ipCountErr           error
+	ipCreateErr          error
+	ipLimitedCreates     int
 }
 
 func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string, since *time.Time) (int, error) {
@@ -61,6 +65,38 @@ func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Conte
 			return BuildEmailDomainRegistrationLimitError(limit, RegistrationEmailDomainQuotaWindowDaily)
 		}
 		return ErrEmailDomainRegistrationLimit
+	}
+	return s.CreateWithEmailAliasGuard(ctx, user)
+}
+
+func (s *userRepoStub) CountUsersByRegisterIP(_ context.Context, ip string, _ time.Time) (int, error) {
+	if s.ipCountErr != nil {
+		return 0, s.ipCountErr
+	}
+	return s.ipCounts[ip], nil
+}
+
+// CreateWithRegistrationGuards 模拟仓储在事务内复查域名与 IP 配额的行为。
+func (s *userRepoStub) CreateWithRegistrationGuards(ctx context.Context, user *User, guard RegistrationCreateGuard) error {
+	s.ipLimitedCreates++
+	if s.ipCreateErr != nil {
+		return s.ipCreateErr
+	}
+	if guard.RegisterIPLimit > 0 && guard.RegisterIP != "" && s.ipCounts[guard.RegisterIP] >= guard.RegisterIPLimit {
+		return BuildRegistrationIPLimitError(guard.RegisterIPLimit)
+	}
+	if guard.EmailDomain != "" {
+		count := s.domainCounts[guard.EmailDomain]
+		if guard.EmailDomainSince != nil {
+			count = s.domainCountsToday[guard.EmailDomain]
+		}
+		if count >= guard.EmailDomainLimit {
+			window := RegistrationEmailDomainQuotaWindowTotal
+			if guard.EmailDomainSince != nil {
+				window = RegistrationEmailDomainQuotaWindowDaily
+			}
+			return BuildEmailDomainRegistrationLimitError(guard.EmailDomainLimit, window)
+		}
 	}
 	return s.CreateWithEmailAliasGuard(ctx, user)
 }

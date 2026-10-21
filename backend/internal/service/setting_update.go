@@ -177,6 +177,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationEmailDomainQuotaLimit] = strconv.Itoa(settings.RegistrationEmailDomainQuotaLimit)
 	settings.RegistrationEmailDomainQuotaWindow = normalizeRegistrationEmailDomainQuotaWindow(settings.RegistrationEmailDomainQuotaWindow)
 	updates[SettingKeyRegistrationEmailDomainQuotaWindow] = settings.RegistrationEmailDomainQuotaWindow
+	updates[SettingKeyRegistrationIPQuotaEnabled] = strconv.FormatBool(settings.RegistrationIPQuotaEnabled)
+	settings.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(settings.RegistrationIPQuotaLimit)
+	updates[SettingKeyRegistrationIPQuotaLimit] = strconv.Itoa(settings.RegistrationIPQuotaLimit)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL

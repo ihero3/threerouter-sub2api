@@ -120,6 +120,38 @@ func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context
 	return ParseRegistrationEmailSuffixWhitelist(value)
 }
 
+// IsRegistrationIPQuotaEnabled 检查是否限制同一 IP 每天的注册账户数。
+// 安全默认：设置缺失或查询出错时按关闭处理（不改变历史行为）。
+func (s *SettingService) IsRegistrationIPQuotaEnabled(ctx context.Context) bool {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaEnabled)
+	return found && value == "true"
+}
+
+// clampRegistrationIPQuotaLimit 把同一 IP 每日注册配额收敛到 [Min, Max]。
+func clampRegistrationIPQuotaLimit(limit int) int {
+	if limit < RegistrationIPQuotaLimitMin {
+		return RegistrationIPQuotaLimitMin
+	}
+	if limit > RegistrationIPQuotaLimitMax {
+		return RegistrationIPQuotaLimitMax
+	}
+	return limit
+}
+
+// GetRegistrationIPQuotaLimit 返回同一 IP 每天允许注册的账户数。
+// 缺失或非法值回退默认值。
+func (s *SettingService) GetRegistrationIPQuotaLimit(ctx context.Context) int {
+	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaLimit)
+	if !found {
+		return RegistrationIPQuotaLimitDefault
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return RegistrationIPQuotaLimitDefault
+	}
+	return clampRegistrationIPQuotaLimit(limit)
+}
+
 // IsPromoCodeEnabled 检查是否启用优惠码功能（缓存读取，默认启用）
 func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
 	value, found := s.getCachedSettingValue(ctx, SettingKeyPromoCodeEnabled)

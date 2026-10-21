@@ -146,6 +146,10 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		slog.Error("oauth email register: policy rejected", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
+	if err := s.validateRegistrationIPQuota(ctx, registerIP); err != nil {
+		slog.Error("oauth email register: ip quota rejected", "email", email, "error", err.Error())
+		return nil, nil, err
+	}
 
 	hashedPassword, err := s.HashPassword(password)
 	if err != nil {
@@ -172,6 +176,8 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
+			return nil, nil, err
+		case errors.Is(err, ErrRegistrationIPLimit):
 			return nil, nil, err
 		default:
 			slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
@@ -232,6 +238,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		return nil, nil, err
 	}
+	if err := s.validateRegistrationIPQuota(ctx, registerIP); err != nil {
+		return nil, nil, err
+	}
 
 	hashedPassword, err := s.HashPassword(password)
 	if err != nil {
@@ -262,6 +271,8 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		case errors.Is(err, ErrEmailExists):
 			return nil, nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
+			return nil, nil, err
+		case errors.Is(err, ErrRegistrationIPLimit):
 			return nil, nil, err
 		default:
 			return nil, nil, ErrServiceUnavailable

@@ -160,6 +160,11 @@ export default {
         emailDomainQuotaLimitSuffix: 'accounts (1–100)',
         emailDomainQuotaWindowTotal: 'Cumulative (never resets)',
         emailDomainQuotaWindowDaily: 'Daily (resets at midnight)',
+        ipQuota: 'Daily Registration Limit per IP',
+        ipQuotaHint:
+          'When enabled, each IP address can register up to the configured number of accounts per day; resets at midnight. Disabled means no limit',
+        ipQuotaLimitPlaceholder: 'Accounts per IP',
+        ipQuotaLimitSuffix: 'accounts/day (1–1000)',
         clickCaptcha: 'Human Verification Before Registration',
         clickCaptchaHint:
           'When enabled with email verification, users must complete the built-in human verification (image click / puzzle slider) before registration. No third-party captcha service needed',

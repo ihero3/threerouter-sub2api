@@ -192,6 +192,24 @@ type RegistrationEmailDomainRepository interface {
 	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int, since *time.Time) error
 }
 
+// RegistrationCreateGuard 描述创建注册用户时必须在同一事务内原子复查的配额。
+// EmailDomain 为空表示不做域名配额校验；RegisterIPLimit <= 0 表示不做 IP 配额校验。
+type RegistrationCreateGuard struct {
+	EmailDomain      string
+	EmailDomainLimit int
+	EmailDomainSince *time.Time
+	RegisterIP       string
+	RegisterIPLimit  int
+	RegisterIPSince  time.Time
+}
+
+// RegistrationIPQuotaRepository 是生产用户仓储为「同一 IP 每日注册上限」提供的可选能力。
+// 与 RegistrationEmailDomainRepository 一样独立于 UserRepository，避免无关测试桩被迫实现。
+type RegistrationIPQuotaRepository interface {
+	CountUsersByRegisterIP(ctx context.Context, ip string, since time.Time) (int, error)
+	CreateWithRegistrationGuards(ctx context.Context, user *User, guard RegistrationCreateGuard) error
+}
+
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
 // used by negative-value redeem codes. It is intentionally narrower than
 // UserRepository because normal usage billing is allowed to overdraw.

@@ -327,17 +327,20 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 		return nil
 	}
 	ts := psStartOfDayUTC(time.Now())
-	orders, err := tx.PaymentOrder.Query().Where(paymentorder.UserIDEQ(userID), paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted), paymentorder.PaidAtGTE(ts)).All(ctx)
-	if err != nil {
+	// 每日限额与 amount 均以 USD 计价，因此这里统一聚合订单金额 amount；
+	// pay_amount 是网关实际扣款金额（可能为 CNY），混入会把汇率差算进限额。
+	var rows []struct {
+		Sum float64
+	}
+	if err := tx.PaymentOrder.Query().
+		Where(paymentorder.UserIDEQ(userID), paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted), paymentorder.PaidAtGTE(ts)).
+		Aggregate(dbent.Sum(paymentorder.FieldAmount)).
+		Scan(ctx, &rows); err != nil {
 		return fmt.Errorf("query daily usage: %w", err)
 	}
 	var used float64
-	for _, o := range orders {
-		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
-			continue
-		}
-		used += o.Amount
+	for _, row := range rows {
+		used += row.Sum
 	}
 	if used+amount > limit {
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").

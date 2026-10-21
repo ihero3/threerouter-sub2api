@@ -519,16 +519,22 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		change BalanceChange
 		err    error
 	)
-	switch operation {
-	case "set":
-		change, err = s.userRepo.SetBalance(ctx, userID, balance)
-	case "add":
-		change, err = s.userRepo.AdjustBalance(ctx, userID, balance)
-	case "subtract":
-		change, err = s.userRepo.AdjustBalance(ctx, userID, -balance)
-	default:
+	applyBalance := func(applyCtx context.Context) (BalanceChange, error) {
+		switch operation {
+		case "set":
+			return s.userRepo.SetBalance(applyCtx, userID, balance)
+		case "add":
+			return s.userRepo.AdjustBalance(applyCtx, userID, balance)
+		case "subtract":
+			return s.userRepo.AdjustBalance(applyCtx, userID, -balance)
+		default:
+			return BalanceChange{}, fmt.Errorf("unsupported balance operation: %q", operation)
+		}
+	}
+	if operation != "set" && operation != "add" && operation != "subtract" {
 		return nil, fmt.Errorf("unsupported balance operation: %q", operation)
 	}
+	change, err = s.applyBalanceWithAdjustmentRecord(ctx, userID, notes, applyBalance)
 	if errors.Is(err, ErrBalanceNegative) {
 		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", change.Old, change.New)
 	}
@@ -557,30 +563,68 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		}()
 	}
 
-	if balanceDiff != 0 {
-		code, err := GenerateRedeemCode()
-		if err != nil {
-			logger.LegacyPrintf("service.admin", "failed to generate adjustment redeem code: %v", err)
-			return user, nil
-		}
+	return user, nil
+}
 
-		adjustmentRecord := &RedeemCode{
-			Code:   code,
-			Type:   AdjustmentTypeAdminBalance,
-			Value:  balanceDiff,
-			Status: StatusUsed,
-			UsedBy: &user.ID,
-			Notes:  notes,
+// applyBalanceWithAdjustmentRecord 在单个事务内完成余额变更与调账流水写入，
+// 避免出现“余额已变、流水丢失”的对账缺口。entClient 未注入时（如单测）退化为顺序执行。
+func (s *adminServiceImpl) applyBalanceWithAdjustmentRecord(ctx context.Context, userID int64, notes string, apply func(context.Context) (BalanceChange, error)) (BalanceChange, error) {
+	if s.entClient == nil {
+		change, err := apply(ctx)
+		if err != nil || change.New == change.Old {
+			return change, err
 		}
-		now := time.Now()
-		adjustmentRecord.UsedAt = &now
-
-		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
+		if err := s.createBalanceAdjustmentRecord(ctx, userID, change.New-change.Old, notes); err != nil {
+			return change, err
 		}
+		return change, nil
 	}
 
-	return user, nil
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return BalanceChange{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	change, err := apply(txCtx)
+	if err != nil {
+		return change, err
+	}
+	if change.New == change.Old {
+		if err := tx.Commit(); err != nil {
+			return BalanceChange{}, err
+		}
+		return change, nil
+	}
+	if err := s.createBalanceAdjustmentRecord(txCtx, userID, change.New-change.Old, notes); err != nil {
+		return change, err
+	}
+	if err := tx.Commit(); err != nil {
+		return BalanceChange{}, err
+	}
+	return change, nil
+}
+
+func (s *adminServiceImpl) createBalanceAdjustmentRecord(ctx context.Context, userID int64, diff float64, notes string) error {
+	code, err := GenerateRedeemCode()
+	if err != nil {
+		return fmt.Errorf("generate adjustment redeem code: %w", err)
+	}
+	now := time.Now()
+	adjustmentRecord := &RedeemCode{
+		Code:   code,
+		Type:   AdjustmentTypeAdminBalance,
+		Value:  diff,
+		Status: StatusUsed,
+		UsedBy: &userID,
+		Notes:  notes,
+		UsedAt: &now,
+	}
+	if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
+		return fmt.Errorf("create balance adjustment redeem code: %w", err)
+	}
+	return nil
 }
 
 func (s *adminServiceImpl) tryAccrueAffiliateRebateForAdminRecharge(ctx context.Context, userID int64, operation string, amount float64) {

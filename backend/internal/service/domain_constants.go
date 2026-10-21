@@ -55,6 +55,14 @@ const (
 	RegistrationEmailDomainQuotaWindowDefault = RegistrationEmailDomainQuotaWindowTotal
 )
 
+// 注册 IP 每日注册数配额设置（按服务器时区自然日统计，次日 0 点自动重置）。
+const (
+	// RegistrationIPQuotaLimitDefault 是同一 IP 每天可注册账户数的默认值。
+	RegistrationIPQuotaLimitDefault = 3
+	RegistrationIPQuotaLimitMin     = 1
+	RegistrationIPQuotaLimitMax     = 1000
+)
+
 // Platform constants
 const (
 	PlatformAnthropic   = domain.PlatformAnthropic
@@ -221,6 +229,10 @@ const (
 	SettingKeyRegistrationEmailDomainQuotaLimit = "registration_email_domain_quota_limit"
 	// 上面配额的统计窗口：total（累计，默认）| daily（每天 0 点重置）。
 	SettingKeyRegistrationEmailDomainQuotaWindow = "registration_email_domain_quota_window"
+	// 同一注册 IP 每天可注册账户数的限制开关（默认关闭）。
+	SettingKeyRegistrationIPQuotaEnabled = "registration_ip_quota_enabled"
+	// 同一注册 IP 每天可注册的账户数（仅在上面的开关开启时生效）。
+	SettingKeyRegistrationIPQuotaLimit = "registration_ip_quota_limit"
 	SettingKeyPromoCodeEnabled                    = "promo_code_enabled"      // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled                = "password_reset_enabled"  // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                         = "frontend_url"            // 前端基础URL，用于生成邮件中的重置密码链接

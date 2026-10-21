@@ -1581,6 +1581,35 @@
                 />
               </div>
 
+              <!-- IP Daily Registration Quota -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex-1">
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.ipQuota")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.ipQuotaHint") }}
+                  </p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <input
+                      v-model.number="form.registration_ip_quota_limit"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      :disabled="!form.registration_ip_quota_enabled"
+                      class="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-white dark:disabled:bg-dark-700"
+                      :placeholder="t('admin.settings.registration.ipQuotaLimitPlaceholder')"
+                    />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{
+                      t("admin.settings.registration.ipQuotaLimitSuffix")
+                    }}</span>
+                  </div>
+                </div>
+                <Toggle v-model="form.registration_ip_quota_enabled" />
+              </div>
+
               <!-- 自建顺序点击验证码 -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -9742,6 +9771,8 @@ const form = reactive<SettingsForm>({
   registration_email_domain_quota_enabled: false,
   registration_email_domain_quota_limit: 1,
   registration_email_domain_quota_window: "total",
+  registration_ip_quota_enabled: false,
+  registration_ip_quota_limit: 3,
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
@@ -11387,6 +11418,11 @@ async function saveSettings() {
         Number(form.registration_email_domain_quota_limit) || 1,
       registration_email_domain_quota_window:
         form.registration_email_domain_quota_window === "daily" ? "daily" : "total",
+      registration_ip_quota_enabled: form.registration_ip_quota_enabled,
+      registration_ip_quota_limit: Math.min(
+        1000,
+        Math.max(1, Number(form.registration_ip_quota_limit) || 3),
+      ),
       registration_click_captcha_enabled:
         form.registration_click_captcha_enabled,
       registration_captcha_mode: form.registration_captcha_mode,

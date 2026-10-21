@@ -21,6 +21,8 @@ type SystemSettings struct {
 	RegistrationEmailDomainQuotaEnabled bool   // 白名单非空时放行非白名单域名限量注册（默认关闭）
 	RegistrationEmailDomainQuotaLimit   int    // 白名单外每个主域名允许注册的账户数（默认 1）
 	RegistrationEmailDomainQuotaWindow  string // 上面配额的统计窗口：total（默认）| daily
+	RegistrationIPQuotaEnabled          bool   // 同一 IP 每日注册数限制开关（默认关闭）
+	RegistrationIPQuotaLimit            int    // 同一 IP 每天允许注册的账户数
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string

@@ -44,6 +44,10 @@ var (
 		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
 		"this email domain has reached its registration limit; use a mainstream email or contact support to add the enterprise domain",
 	)
+	ErrRegistrationIPLimit = infraerrors.BadRequest(
+		"REGISTRATION_IP_LIMIT",
+		"too many accounts have been registered from this IP address today; try again tomorrow",
+	)
 	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
@@ -73,10 +77,36 @@ func BuildEmailDomainRegistrationLimitError(limit int, window string) error {
 	return infraerrors.BadRequest("EMAIL_DOMAIN_REGISTRATION_LIMIT", message)
 }
 
+// BuildRegistrationIPLimitError 构造同一 IP 当天注册数超限的客户端错误。
+// reason 恒为 REGISTRATION_IP_LIMIT，与 ErrRegistrationIPLimit 一致，errors.Is 判定不受影响。
+// 文案必须纯英文（客户端可见），并提示次日可再试。
+func BuildRegistrationIPLimitError(limit int) error {
+	if limit < RegistrationIPQuotaLimitMin {
+		limit = RegistrationIPQuotaLimitDefault
+	}
+	return infraerrors.BadRequest(
+		"REGISTRATION_IP_LIMIT",
+		fmt.Sprintf("this IP address has reached today's registration limit of %d account(s); try again tomorrow", limit),
+	)
+}
+
+// logRegistrationIPQuotaRejected 记录一次因注册 IP 每日配额被拒绝的尝试。
+// msg 固定，便于按天统计被拒次数：journalctl -u sub2api --since today | grep -c registration.ip_quota_rejected
+func logRegistrationIPQuotaRejected(registerIP string, count, limit int, stage string, since time.Time) {
+	attrs := []any{
+		slog.String("component", "service.auth"),
+		slog.String("stage", stage),
+		slog.String("register_ip", strings.TrimSpace(registerIP)),
+		slog.Int("limit", limit),
+		slog.String("window_start", since.Format(time.RFC3339)),
+	}
+	if count >= 0 {
+		attrs = append(attrs, slog.Int("count", count))
+	}
+	slog.Warn("registration.ip_quota_rejected", attrs...)
+}
+
 // logRegistrationEmailDomainQuotaRejected 记录一次因域名配额被拒绝的注册尝试。
-// msg 固定，便于按天统计被拒次数：
-// journalctl -u sub2api --since today | grep -c email_domain_quota_rejected
-// 只记录域名不记录完整邮箱，避免日志泄露用户邮箱地址。
 func logRegistrationEmailDomainQuotaRejected(domain string, count, limit int, window, stage, registerIP string, since *time.Time) {
 	attrs := []any{
 		slog.String("component", "service.auth"),
@@ -288,6 +318,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		return "", nil, err
 	}
+	if err := s.validateRegistrationIPQuota(ctx, registerIP); err != nil {
+		return "", nil, err
+	}
 
 	// 密码哈希
 	hashedPassword, err := s.HashPassword(password)
@@ -322,6 +355,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		case errors.Is(err, ErrEmailExists):
 			return "", nil, ErrEmailExists
 		case errors.Is(err, ErrEmailDomainRegistrationLimit):
+			return "", nil, err
+		case errors.Is(err, ErrRegistrationIPLimit):
 			return "", nil, err
 		case errors.Is(err, ErrInvitationCodeInvalid):
 			return "", nil, ErrInvitationCodeInvalid
@@ -1354,27 +1389,97 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 	return nil
 }
 
+// registrationIPQuota 返回当前生效的「同一 IP 每日注册数」配额。
+// limit <= 0 表示未启用；统计窗口固定为服务器时区的自然日（次日 0 点自动重置）。
+func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string) (int, time.Time) {
+	if s == nil || s.settingService == nil || strings.TrimSpace(registerIP) == "" {
+		return 0, time.Time{}
+	}
+	if !s.settingService.IsRegistrationIPQuotaEnabled(ctx) {
+		return 0, time.Time{}
+	}
+	return s.settingService.GetRegistrationIPQuotaLimit(ctx), timezone.Today()
+}
+
+// validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 当天超额的注册请求。
+// 真正的并发兜底由创建用户事务内的复查完成（见 createUserWithRegistrationEmailGuard）。
+func (s *AuthService) validateRegistrationIPQuota(ctx context.Context, registerIP string) error {
+	limit, since := s.registrationIPQuota(ctx, registerIP)
+	if limit <= 0 {
+		return nil
+	}
+	repo, ok := s.userRepo.(RegistrationIPQuotaRepository)
+	if !ok {
+		// 生产装配必须提供仓储能力；没有数据库的 unit 测试桩保留旧路径。
+		if s.entClient != nil {
+			return ErrServiceUnavailable
+		}
+		return nil
+	}
+	registerIP = strings.TrimSpace(registerIP)
+	count, err := repo.CountUsersByRegisterIP(ctx, registerIP, since)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to count registrations by IP %s: %v", registerIP, err)
+		return ErrServiceUnavailable
+	}
+	if count >= limit {
+		logRegistrationIPQuotaRejected(registerIP, count, limit, "precheck", since)
+		return BuildRegistrationIPLimitError(limit)
+	}
+	return nil
+}
+
 func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, user *User) error {
 	if s == nil || s.userRepo == nil {
 		return ErrServiceUnavailable
+	}
+	guard := RegistrationCreateGuard{}
+	if ipLimit, ipSince := s.registrationIPQuota(ctx, user.RegisterIP); ipLimit > 0 {
+		guard.RegisterIP = strings.TrimSpace(user.RegisterIP)
+		guard.RegisterIPLimit = ipLimit
+		guard.RegisterIPSince = ipSince
 	}
 	whitelist := []string{}
 	if s.settingService != nil {
 		whitelist = s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
 	}
 	domain := RegistrationEmailDomain(user.Email)
-	if !IsRegistrationEmailSuffixLimited(user.Email, whitelist) {
+	domainWindow := RegistrationEmailDomainQuotaWindowDefault
+	if IsRegistrationEmailSuffixLimited(user.Email, whitelist) {
+		// 开关关闭时非白名单域名在校验阶段已被拒绝；此处兜底防御设置竞态变更。
+		if s.settingService == nil || !s.settingService.IsRegistrationEmailDomainQuotaEnabled(ctx) {
+			return buildEmailSuffixNotAllowedError(whitelist)
+		}
+		if domain == "" {
+			return buildEmailSuffixNotAllowedError(whitelist)
+		}
+		guard.EmailDomain = domain
+		guard.EmailDomainLimit = s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
+		var since *time.Time
+		domainWindow, since = s.registrationEmailDomainQuotaWindowAndSince(ctx)
+		guard.EmailDomainSince = since
+	}
+
+	if guard.RegisterIPLimit > 0 {
+		// IP 配额必须与建号在同一事务内复查：并发注册可能同时通过预检。
+		if quotaRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
+			err := quotaRepo.CreateWithRegistrationGuards(ctx, user, guard)
+			if errors.Is(err, ErrRegistrationIPLimit) {
+				logRegistrationIPQuotaRejected(guard.RegisterIP, -1, guard.RegisterIPLimit, "create", guard.RegisterIPSince)
+			}
+			if errors.Is(err, ErrEmailDomainRegistrationLimit) {
+				logRegistrationEmailDomainQuotaRejected(guard.EmailDomain, -1, guard.EmailDomainLimit, domainWindow, "create", "", guard.EmailDomainSince)
+			}
+			return err
+		}
+		if s.entClient != nil {
+			return ErrServiceUnavailable
+		}
+		// 无数据库的测试桩：退化为旧路径，预检仍然生效。
+	}
+	if guard.EmailDomain == "" {
 		return s.userRepo.CreateWithEmailAliasGuard(ctx, user)
 	}
-	// 开关关闭时非白名单域名在校验阶段已被拒绝；此处兜底防御设置竞态变更。
-	if s.settingService == nil || !s.settingService.IsRegistrationEmailDomainQuotaEnabled(ctx) {
-		return buildEmailSuffixNotAllowedError(whitelist)
-	}
-	if domain == "" {
-		return buildEmailSuffixNotAllowedError(whitelist)
-	}
-	limit := s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
-	window, since := s.registrationEmailDomainQuotaWindowAndSince(ctx)
 	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
 	if !ok {
 		if s.entClient != nil {
@@ -1382,11 +1487,11 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		}
 		return s.userRepo.CreateWithEmailAliasGuard(ctx, user)
 	}
-	err := quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain, limit, since)
+	err := quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, guard.EmailDomain, guard.EmailDomainLimit, guard.EmailDomainSince)
 	if err != nil {
 		// 预检通过后仍可能在同一事务内被并发注册挤掉配额，此处补记一次拒绝。
 		if errors.Is(err, ErrEmailDomainRegistrationLimit) {
-			logRegistrationEmailDomainQuotaRejected(domain, -1, limit, window, "create", "", since)
+			logRegistrationEmailDomainQuotaRejected(guard.EmailDomain, -1, guard.EmailDomainLimit, domainWindow, "create", "", guard.EmailDomainSince)
 		}
 		return err
 	}

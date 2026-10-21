@@ -61,6 +61,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationEmailDomainQuotaEnabled:       "false",
 		SettingKeyRegistrationEmailDomainQuotaLimit:         strconv.Itoa(RegistrationEmailDomainQuotaLimitDefault),
 		SettingKeyRegistrationEmailDomainQuotaWindow:        RegistrationEmailDomainQuotaWindowDefault,
+		SettingKeyRegistrationIPQuotaEnabled:                "false",
+		SettingKeyRegistrationIPQuotaLimit:                  strconv.Itoa(RegistrationIPQuotaLimitDefault),
 		SettingKeyRegistrationClickCaptchaEnabled:           "false",
 		SettingKeyRegistrationCaptchaMode:                   RegistrationCaptchaModeRandom,
 		SettingKeyRegistrationCaptchaDifficulty:             RegistrationCaptchaDifficultyMedium,
@@ -425,6 +427,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RegistrationEmailDomainQuotaLimit = RegistrationEmailDomainQuotaLimitDefault
 	}
 	result.RegistrationEmailDomainQuotaWindow = normalizeRegistrationEmailDomainQuotaWindow(settings[SettingKeyRegistrationEmailDomainQuotaWindow])
+	result.RegistrationIPQuotaEnabled = settings[SettingKeyRegistrationIPQuotaEnabled] == "true"
+	if ipQuotaLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationIPQuotaLimit])); err == nil {
+		result.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(ipQuotaLimit)
+	} else {
+		result.RegistrationIPQuotaLimit = RegistrationIPQuotaLimitDefault
+	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {
 			freezeHours = AffiliateRebateFreezeHoursMax
