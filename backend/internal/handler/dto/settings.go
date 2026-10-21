@@ -35,6 +35,7 @@ type SystemSettings struct {
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
 	RegistrationEmailDomainQuotaLimit   int                      `json:"registration_email_domain_quota_limit"`
+	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	FrontendURL                         string                   `json:"frontend_url"`
@@ -366,6 +367,7 @@ type PublicSettings struct {
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`

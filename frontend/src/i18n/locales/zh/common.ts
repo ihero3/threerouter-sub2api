@@ -282,6 +282,8 @@ export default {
     clickCaptchaDisabled: '人机验证服务暂不可用，请联系管理员',
     emailDomainRegistrationLimit:
       '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
+    emailDomainRegistrationLimitDaily:
+      '此邮箱域名今日注册数量已超过当天上限，请明天再试。你也可以换用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',
     emailSuffixNotAllowedWithAllowed: '该邮箱域名不被允许。可用域名：{suffixes}',
     emailSuffixAllowedMore: '等 {count} 项',

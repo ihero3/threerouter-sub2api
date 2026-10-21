@@ -36,6 +36,14 @@ type Sink interface {
 	WriteLogEvent(event *LogEvent)
 }
 
+// PrefilterSink 是可选的 Sink 扩展：在字段编码为 map 之前对事件做廉价拦截，
+// 返回 false 时直接跳过后续编码与转发。用于生产 sink 过滤大量无需入库的日志，
+// 避免为每条日志构造 MapObjectEncoder + map 的无谓开销。
+// 未实现该接口的 sink（如测试捕获器）维持原行为，接收全部事件。
+type PrefilterSink interface {
+	Prefilter(entry zapcore.Entry, fieldSets ...[]zapcore.Field) bool
+}
+
 type LogEvent struct {
 	Time       time.Time
 	Level      string
@@ -132,6 +140,14 @@ func CurrentLevel() string {
 
 func SetSink(sink Sink) {
 	currentSink.Store(sinkState{sink: sink})
+}
+
+// SetAccessLogIndexing 运行时切换 sink 是否索引 http.access 访问日志。
+// sink 未实现该能力时静默忽略。
+func SetAccessLogIndexing(enabled bool) {
+	if s, ok := loadSink().(interface{ SetIndexAccessLogs(bool) }); ok {
+		s.SetIndexAccessLogs(enabled)
+	}
 }
 
 func loadSink() Sink {
@@ -384,6 +400,11 @@ func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// Write methods (added to CheckedEntry by s.core.Check above).
 	sink := loadSink()
 	if sink == nil {
+		return nil
+	}
+
+	// 前置过滤：sink 实现 PrefilterSink 时，编码前廉价拦截无需入库的事件。
+	if pf, ok := sink.(PrefilterSink); ok && !pf.Prefilter(entry, s.fields, fields) {
 		return nil
 	}
 

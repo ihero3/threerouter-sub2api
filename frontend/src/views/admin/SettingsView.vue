@@ -1558,6 +1558,22 @@
                     <span class="text-sm text-gray-500 dark:text-gray-400">{{
                       t("admin.settings.registration.emailDomainQuotaLimitSuffix")
                     }}</span>
+                    <select
+                      v-model="form.registration_email_domain_quota_window"
+                      :disabled="!form.registration_email_domain_quota_enabled"
+                      class="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-white dark:disabled:bg-dark-700"
+                    >
+                      <option value="total">
+                        {{
+                          t("admin.settings.registration.emailDomainQuotaWindowTotal")
+                        }}
+                      </option>
+                      <option value="daily">
+                        {{
+                          t("admin.settings.registration.emailDomainQuotaWindowDaily")
+                        }}
+                      </option>
+                    </select>
                   </div>
                 </div>
                 <Toggle
@@ -9725,6 +9741,7 @@ const form = reactive<SettingsForm>({
   registration_email_suffix_whitelist: [],
   registration_email_domain_quota_enabled: false,
   registration_email_domain_quota_limit: 1,
+  registration_email_domain_quota_window: "total",
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
@@ -11368,6 +11385,8 @@ async function saveSettings() {
         form.registration_email_domain_quota_enabled,
       registration_email_domain_quota_limit:
         Number(form.registration_email_domain_quota_limit) || 1,
+      registration_email_domain_quota_window:
+        form.registration_email_domain_quota_window === "daily" ? "daily" : "total",
       registration_click_captcha_enabled:
         form.registration_click_captcha_enabled,
       registration_captcha_mode: form.registration_captcha_mode,

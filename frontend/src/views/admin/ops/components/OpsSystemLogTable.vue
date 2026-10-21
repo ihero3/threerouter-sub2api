@@ -46,7 +46,8 @@ const runtimeConfig = reactive<OpsRuntimeLogConfig>({
   sampling_thereafter: 100,
   caller: true,
   stacktrace_level: 'error',
-  retention_days: 30
+  retention_days: 30,
+  index_access_logs: false
 })
 
 const filters = reactive({
@@ -237,6 +238,7 @@ const loadRuntimeConfig = async () => {
     runtimeConfig.caller = cfg.caller
     runtimeConfig.stacktrace_level = cfg.stacktrace_level
     runtimeConfig.retention_days = cfg.retention_days
+    runtimeConfig.index_access_logs = cfg.index_access_logs
   } catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to load runtime log config', err)
   } finally {
@@ -255,6 +257,7 @@ const saveRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
+    runtimeConfig.index_access_logs = saved.index_access_logs
     appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigActive'))
   } catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to save runtime log config', err)
@@ -278,6 +281,7 @@ const resetRuntimeConfig = async () => {
     runtimeConfig.caller = saved.caller
     runtimeConfig.stacktrace_level = saved.stacktrace_level
     runtimeConfig.retention_days = saved.retention_days
+    runtimeConfig.index_access_logs = saved.index_access_logs
     appStore.showSuccess(t('admin.ops.systemLogs.runtimeConfigReset'))
     await fetchHealth()
   } catch (err: any) {
@@ -430,6 +434,10 @@ onMounted(async () => {
               <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                 <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
                 {{ t('admin.ops.systemLogs.sampling') }}
+              </label>
+              <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <input v-model="runtimeConfig.index_access_logs" type="checkbox" />
+                {{ t('admin.ops.systemLogs.indexAccessLogs') }}
               </label>
             </div>
             <div class="flex flex-wrap items-center gap-2 lg:justify-end">

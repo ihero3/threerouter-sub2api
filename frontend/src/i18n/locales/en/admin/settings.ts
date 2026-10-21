@@ -157,7 +157,9 @@ export default {
         emailDomainQuotaHint:
           'When enabled and the allowlist is not empty, every other registrable domain can register up to the configured number of accounts. When disabled, non-allowlist domains are rejected. Has no effect while the allowlist is empty',
         emailDomainQuotaLimitPlaceholder: 'Accounts per domain',
-        emailDomainQuotaLimitSuffix: 'accounts / domain (1–100)',
+        emailDomainQuotaLimitSuffix: 'accounts (1–100)',
+        emailDomainQuotaWindowTotal: 'Cumulative (never resets)',
+        emailDomainQuotaWindowDaily: 'Daily (resets at midnight)',
         clickCaptcha: 'Human Verification Before Registration',
         clickCaptchaHint:
           'When enabled with email verification, users must complete the built-in human verification (image click / puzzle slider) before registration. No third-party captcha service needed',

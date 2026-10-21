@@ -461,6 +461,75 @@ func TestAuthService_Register_NonWhitelistDomainRejectsSecondAccount(t *testing.
 
 // 域名限量注册开关默认关闭：白名单外域名保持 PR5423 之前的严格拒绝语义，
 // 即使该域名下还没有任何账户也不放行。
+// 每日窗口：只统计当天注册数，达到当日上限才拒绝，且提示明天可再试。
+func TestAuthService_Register_DailyQuotaWindowCountsOnlyToday(t *testing.T) {
+	repo := &userRepoStub{
+		nextID:            9,
+		domainCounts:      map[string]int{"custom.example": 50}, // 累计已很多
+		domainCountsToday: map[string]int{"custom.example": 2},   // 但今天只有 2 个
+	}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+		SettingKeyRegistrationEmailDomainQuotaLimit:   "3",
+		SettingKeyRegistrationEmailDomainQuotaWindow:  "daily",
+	}, nil, nil)
+
+	// 累计 50 个不影响每日窗口，今天 2 < 3 应放行。
+	_, user, err := svc.Register(context.Background(), "today@custom.example", "password", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(9), user.ID)
+
+	// 今天达到 3 个后拒绝，文案提示当天上限与明天再试。
+	repo.domainCountsToday["custom.example"] = 3
+	_, _, err = svc.Register(context.Background(), "later@custom.example", "password", "")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, "EMAIL_DOMAIN_REGISTRATION_LIMIT", appErr.Reason)
+	require.Contains(t, appErr.Message, "today")
+	require.Contains(t, appErr.Message, "tomorrow")
+}
+
+// 累计窗口（默认/显式 total）：忽略当天维度，按域名累计统计。
+func TestAuthService_Register_TotalQuotaWindowIgnoresDailyCounts(t *testing.T) {
+	repo := &userRepoStub{
+		domainCounts:      map[string]int{"custom.example": 3},
+		domainCountsToday: map[string]int{"custom.example": 0},
+	}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+		SettingKeyRegistrationEmailDomainQuotaLimit:   "3",
+		SettingKeyRegistrationEmailDomainQuotaWindow:  "total",
+	}, nil, nil)
+
+	_, _, err := svc.Register(context.Background(), "extra@custom.example", "password", "")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+	appErr := infraerrors.FromError(err)
+	// 累计窗口不应出现"明天再试"的提示。
+	require.NotContains(t, appErr.Message, "tomorrow")
+}
+
+// 未配置或非法窗口值一律回退 total，不会意外放宽限制。
+func TestAuthService_Register_UnknownQuotaWindowFallsBackToTotal(t *testing.T) {
+	repo := &userRepoStub{
+		domainCounts:      map[string]int{"custom.example": 3},
+		domainCountsToday: map[string]int{"custom.example": 0},
+	}
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+		SettingKeyRegistrationEmailDomainQuotaLimit:   "3",
+		SettingKeyRegistrationEmailDomainQuotaWindow:  "weekly", // 非法值
+	}, nil, nil)
+
+	_, _, err := svc.Register(context.Background(), "extra@custom.example", "password", "")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+}
+
 // 每域配额可配为 N>1：达到上限才拒绝，且错误信息带 N。
 func TestAuthService_Register_NonWhitelistDomainHonorsConfigurableQuotaLimit(t *testing.T) {
 	// domain 已有 2 个账户，配额设为 3 → 仍允许第 3 个。

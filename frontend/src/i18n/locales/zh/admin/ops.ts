@@ -44,6 +44,7 @@ export default {
         retentionDays: '保留天数',
         caller: '调用方',
         sampling: '采样',
+        indexAccessLogs: '访问日志入库（默认关闭，开启后每个请求写一条日志）',
         saveAndApply: '保存并应用',
         resetDefaults: '重置默认值',
         latestWriteError: '最近写入错误：',

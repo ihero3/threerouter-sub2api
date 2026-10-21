@@ -45,6 +45,16 @@ const (
 	RegistrationEmailDomainQuotaLimitMax     = 100
 )
 
+// 注册邮箱域名配额的统计窗口。
+const (
+	// RegistrationEmailDomainQuotaWindowTotal 按域名累计账户数统计（永不重置）。
+	RegistrationEmailDomainQuotaWindowTotal = "total"
+	// RegistrationEmailDomainQuotaWindowDaily 只统计当天（服务器时区 0 点起）注册的账户数，次日自动清零。
+	RegistrationEmailDomainQuotaWindowDaily = "daily"
+	// RegistrationEmailDomainQuotaWindowDefault 默认窗口：保持历史行为（累计）。
+	RegistrationEmailDomainQuotaWindowDefault = RegistrationEmailDomainQuotaWindowTotal
+)
+
 // Platform constants
 const (
 	PlatformAnthropic   = domain.PlatformAnthropic
@@ -209,6 +219,8 @@ const (
 	SettingKeyRegistrationEmailDomainQuotaEnabled = "registration_email_domain_quota_enabled"
 	// 非白名单域名每个可注册主域名允许的账户数（仅在上面的开关开启时生效）。
 	SettingKeyRegistrationEmailDomainQuotaLimit = "registration_email_domain_quota_limit"
+	// 上面配额的统计窗口：total（累计，默认）| daily（每天 0 点重置）。
+	SettingKeyRegistrationEmailDomainQuotaWindow = "registration_email_domain_quota_window"
 	SettingKeyPromoCodeEnabled                    = "promo_code_enabled"      // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled                = "password_reset_enabled"  // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                         = "frontend_url"            // 前端基础URL，用于生成邮件中的重置密码链接

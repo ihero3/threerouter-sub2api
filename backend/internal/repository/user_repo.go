@@ -43,27 +43,28 @@ func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepos
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, false, "", 0)
+	return r.create(ctx, userIn, false, "", 0, nil)
 }
 
 // CreateWithEmailAliasGuard 见 service.UserRepository：在邮箱唯一性锁内复查收件箱身份，
 // 供注册路径使用。
 func (r *userRepository) CreateWithEmailAliasGuard(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, true, "", 0)
+	return r.create(ctx, userIn, true, "", 0, nil)
 }
 
 // CountUsersByEmailDomain 统计指定可注册主域名及其子域名下的未删除用户。
-func (r *userRepository) CountUsersByEmailDomain(ctx context.Context, domain string) (int, error) {
-	return countUsersByEmailDomainWithClient(ctx, clientFromContext(ctx, r.client), domain)
+// since 非 nil 时只统计该时刻之后注册的用户（每日配额窗口）。
+func (r *userRepository) CountUsersByEmailDomain(ctx context.Context, domain string, since *time.Time) (int, error) {
+	return countUsersByEmailDomainWithClient(ctx, clientFromContext(ctx, r.client), domain, since)
 }
 
 // CreateWithEmailAliasGuardAndDomainLimit 串行化非白名单域名的注册请求，
 // 并在用户写入的同一事务内复查域名额度。
-func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string, limit int) error {
-	return r.create(ctx, userIn, true, normalizeEmailDomain(domain), limit)
+func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string, limit int, since *time.Time) error {
+	return r.create(ctx, userIn, true, normalizeEmailDomain(domain), limit, since)
 }
 
-func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string, domainLimitN int) error {
+func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string, domainLimitN int, domainLimitSince *time.Time) error {
 	if userIn == nil {
 		return nil
 	}
@@ -117,7 +118,7 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	defer releaseEmailLock()
 
 	if domainLimit != "" {
-		count, err := countUsersByEmailDomainWithClient(txCtx, txClient, domainLimit)
+		count, err := countUsersByEmailDomainWithClient(txCtx, txClient, domainLimit, domainLimitSince)
 		if err != nil {
 			return err
 		}
@@ -125,7 +126,13 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 			domainLimitN = service.RegistrationEmailDomainQuotaLimitDefault
 		}
 		if count >= domainLimitN {
-			return service.ErrEmailDomainRegistrationLimit
+			// 与预检保持同一 reason，errors.Is 判定不受影响；窗口由 since 推导，
+			// 保证并发挤掉配额时用户看到的文案与预检一致。
+			window := service.RegistrationEmailDomainQuotaWindowTotal
+			if domainLimitSince != nil {
+				window = service.RegistrationEmailDomainQuotaWindowDaily
+			}
+			return service.BuildEmailDomainRegistrationLimitError(domainLimitN, window)
 		}
 	}
 
@@ -1351,13 +1358,17 @@ func normalizeEmailDomain(domain string) string {
 	return service.NormalizeRegistrationEmailDomain(domain)
 }
 
-func countUsersByEmailDomainWithClient(ctx context.Context, client *dbent.Client, domain string) (int, error) {
+func countUsersByEmailDomainWithClient(ctx context.Context, client *dbent.Client, domain string, since *time.Time) (int, error) {
 	client = clientFromContext(ctx, client)
 	domain = normalizeEmailDomain(domain)
 	if client == nil || domain == "" {
 		return 0, nil
 	}
-	return client.User.Query().Where(userEmailDomainPredicate(domain)).Count(ctx)
+	query := client.User.Query().Where(userEmailDomainPredicate(domain))
+	if since != nil {
+		query = query.Where(dbuser.CreatedAtGTE(*since))
+	}
+	return query.Count(ctx)
 }
 
 func userEmailDomainPredicate(domain string) predicate.User {

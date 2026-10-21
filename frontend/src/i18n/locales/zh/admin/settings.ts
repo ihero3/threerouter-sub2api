@@ -157,7 +157,9 @@ export default {
         emailDomainQuotaHint:
           '开启后，白名单非空时，其他可注册主域名各限注册指定数量账户；关闭时非白名单域名直接拒绝注册。白名单为空时本开关无效果',
         emailDomainQuotaLimitPlaceholder: '每域账户数',
-        emailDomainQuotaLimitSuffix: '个账户 / 每主域名（1–100）',
+        emailDomainQuotaLimitSuffix: '个账户（1–100）',
+        emailDomainQuotaWindowTotal: '累计上限（不重置）',
+        emailDomainQuotaWindowDaily: '每日上限（每天 0 点重置）',
         clickCaptcha: '注册前人机验证',
         clickCaptchaHint:
           '开启并启用邮箱验证后，用户注册前必须完成自建人机验证（图片点选 / 拼图滑块），无需第三方验证码服务',

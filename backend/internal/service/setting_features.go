@@ -14,40 +14,31 @@ import (
 	"time"
 )
 
-// IsRegistrationEnabled 检查是否开放注册
+// IsRegistrationEnabled 检查是否开放注册。
+// 注册/登录公开端点热路径读取，走进程内缓存；安全默认：缺失或出错时关闭注册。
 func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
-	if err != nil {
-		// 安全默认：如果设置不存在或查询出错，默认关闭注册
-		return false
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationEnabled)
+	return found && value == "true"
 }
 
-// IsEmailVerifyEnabled 检查是否开启邮件验证
+// IsEmailVerifyEnabled 检查是否开启邮件验证（缓存读取，默认关闭）。
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyEmailVerifyEnabled)
+	return found && value == "true"
 }
 
 // IsRegistrationClickCaptchaEnabled 检查是否启用自建顺序点击验证码。
 // 仅当设置值显式为 "true" 时生效，安全默认关闭（向后兼容）。
 func (s *SettingService) IsRegistrationClickCaptchaEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationClickCaptchaEnabled)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationClickCaptchaEnabled)
+	return found && value == "true"
 }
 
 // GetRegistrationCaptchaMode 返回自建验证码模式：random | image_click | slider。
 // 缺失或非法值一律回退 random（两种随机出现，安全默认）。
 func (s *SettingService) GetRegistrationCaptchaMode(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationCaptchaMode)
-	if err != nil {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationCaptchaMode)
+	if !found {
 		return RegistrationCaptchaModeRandom
 	}
 	return normalizeRegistrationCaptchaMode(value)
@@ -56,8 +47,8 @@ func (s *SettingService) GetRegistrationCaptchaMode(ctx context.Context) string 
 // GetRegistrationCaptchaDifficulty 返回自建验证码难度：low | medium | high。
 // 缺失或非法值一律回退 medium。
 func (s *SettingService) GetRegistrationCaptchaDifficulty(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationCaptchaDifficulty)
-	if err != nil {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationCaptchaDifficulty)
+	if !found {
 		return RegistrationCaptchaDifficultyMedium
 	}
 	return normalizeRegistrationCaptchaDifficulty(value)
@@ -66,11 +57,8 @@ func (s *SettingService) GetRegistrationCaptchaDifficulty(ctx context.Context) s
 // IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
 // 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
 func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaEnabled)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationEmailDomainQuotaEnabled)
+	return found && value == "true"
 }
 
 // clampRegistrationEmailDomainQuotaLimit 把每域配额收敛到 [Min, Max]。
@@ -85,11 +73,35 @@ func clampRegistrationEmailDomainQuotaLimit(limit int) int {
 	return limit
 }
 
+// normalizeRegistrationEmailDomainQuotaWindow 归一配额统计窗口。
+// 未知/缺失/空值一律回退 total（累计），保证非法配置不会意外放宽限制。
+func normalizeRegistrationEmailDomainQuotaWindow(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), RegistrationEmailDomainQuotaWindowDaily) {
+		return RegistrationEmailDomainQuotaWindowDaily
+	}
+	return RegistrationEmailDomainQuotaWindowTotal
+}
+
+// NormalizeRegistrationEmailDomainQuotaWindow 归一配额统计窗口，供 handler 层复用（非法值一律回退 total）。
+func NormalizeRegistrationEmailDomainQuotaWindow(value string) string {
+	return normalizeRegistrationEmailDomainQuotaWindow(value)
+}
+
+// GetRegistrationEmailDomainQuotaWindow 返回白名单外域名配额的统计窗口：total | daily。
+// 默认 total（累计），与历史行为一致。
+func (s *SettingService) GetRegistrationEmailDomainQuotaWindow(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaWindow)
+	if err != nil {
+		return RegistrationEmailDomainQuotaWindowDefault
+	}
+	return normalizeRegistrationEmailDomainQuotaWindow(value)
+}
+
 // GetRegistrationEmailDomainQuotaLimit 返回白名单外每个可注册主域名允许的账户数。
 // 缺失或非法值回退默认 1（等价于历史行为）。
 func (s *SettingService) GetRegistrationEmailDomainQuotaLimit(ctx context.Context) int {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaLimit)
-	if err != nil {
+	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationEmailDomainQuotaLimit)
+	if !found {
 		return RegistrationEmailDomainQuotaLimitDefault
 	}
 	limit, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -101,29 +113,26 @@ func (s *SettingService) GetRegistrationEmailDomainQuotaLimit(ctx context.Contex
 
 // GetRegistrationEmailSuffixWhitelist returns normalized registration email suffix whitelist.
 func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context) []string {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailSuffixWhitelist)
-	if err != nil {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationEmailSuffixWhitelist)
+	if !found {
 		return []string{}
 	}
 	return ParseRegistrationEmailSuffixWhitelist(value)
 }
 
-// IsPromoCodeEnabled 检查是否启用优惠码功能
+// IsPromoCodeEnabled 检查是否启用优惠码功能（缓存读取，默认启用）
 func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyPromoCodeEnabled)
-	if err != nil {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyPromoCodeEnabled)
+	if !found {
 		return true // 默认启用
 	}
 	return value != "false"
 }
 
-// IsInvitationCodeEnabled 检查是否启用邀请码注册功能
+// IsInvitationCodeEnabled 检查是否启用邀请码注册功能（缓存读取，默认关闭）
 func (s *SettingService) IsInvitationCodeEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyInvitationCodeEnabled)
-	if err != nil {
-		return false // 默认关闭
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyInvitationCodeEnabled)
+	return found && value == "true"
 }
 
 // GetCustomMenuItemsRaw returns the raw JSON string of custom_menu_items setting.
@@ -350,12 +359,10 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 // IsSessionBindingEnabled 检查会话 IP/UA 绑定是否启用（默认关闭）。
 // 开启时会话与登录时的 IP/User-Agent 绑定，任一变化立即失效并撤销该会话。
 // 默认关闭：移动网络/多出口 IP 场景下 IP 频繁变化会导致登录后立即掉线。
+// 面板/管理端每个认证请求都会读取，走进程内缓存，不直查 DB。
 func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeySessionBindingEnabled)
-	if err != nil {
-		return false // 默认关闭
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeySessionBindingEnabled)
+	return found && value == "true"
 }
 
 // IsStepUpEnabled 检查敏感操作 step-up 2FA 门控是否启用（默认关闭）。
@@ -558,13 +565,10 @@ func (s *SettingService) UpdateAuthSourceDefaultSettings(ctx context.Context, se
 	return nil
 }
 
-// IsTurnstileEnabled 检查是否启用 Turnstile 验证
+// IsTurnstileEnabled 检查是否启用 Turnstile 验证（缓存读取，默认关闭）
 func (s *SettingService) IsTurnstileEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileEnabled)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyTurnstileEnabled)
+	return found && value == "true"
 }
 
 // GetTurnstileSecretKey 获取 Turnstile Secret Key
@@ -645,8 +649,8 @@ func (s *SettingService) GetCaptchaProviderConfig(ctx context.Context) (CaptchaP
 }
 
 func (s *SettingService) IsTencentCaptchaEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyTencentCaptchaEnabled)
-	return err == nil && value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyTencentCaptchaEnabled)
+	return found && value == "true"
 }
 
 func (s *SettingService) GetTencentCaptchaConfig(ctx context.Context) TencentCaptchaConfig {
@@ -736,13 +740,11 @@ func (s *SettingService) DeleteAdminAPIKey(ctx context.Context) error {
 	return s.settingRepo.Delete(ctx, SettingKeyAdminAPIKey)
 }
 
-// IsModelFallbackEnabled 检查是否启用模型兜底机制
+// IsModelFallbackEnabled 检查是否启用模型兜底机制（默认关闭）。
+// 网关调度/故障转移热路径读取，走进程内缓存。
 func (s *SettingService) IsModelFallbackEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyEnableModelFallback)
-	if err != nil {
-		return false // Default: disabled
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyEnableModelFallback)
+	return found && value == "true"
 }
 
 // GetFallbackModel 获取指定平台的兜底模型
@@ -767,8 +769,8 @@ func (s *SettingService) GetFallbackModel(ctx context.Context, platform string) 
 		return ""
 	}
 
-	value, err := s.settingRepo.GetValue(ctx, key)
-	if err != nil || value == "" {
+	value, found := s.getCachedSettingValue(ctx, key)
+	if !found || value == "" {
 		return defaultModel
 	}
 	return value
@@ -958,24 +960,17 @@ func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamT
 }
 
 // IsUngroupedKeySchedulingAllowed 查询是否允许未分组 Key 调度
+// 网关请求（未分组 Key）热路径读取，走进程内缓存；fail-closed：查询失败时默认不允许。
 func (s *SettingService) IsUngroupedKeySchedulingAllowed(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyAllowUngroupedKeyScheduling)
-	if err != nil {
-		return false // fail-closed: 查询失败时默认不允许
-	}
-	return value == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyAllowUngroupedKeyScheduling)
+	return found && value == "true"
 }
 
-// GetRectifierSettings 获取请求整流器配置
+// GetRectifierSettings 获取请求整流器配置（进程内缓存，60s TTL）。
+// 错误处理路径热调用（IsSignatureRectifierEnabled/IsBudgetRectifierEnabled），不直查 DB。
 func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSettings, error) {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyRectifierSettings)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return DefaultRectifierSettings(), nil
-		}
-		return nil, fmt.Errorf("get rectifier settings: %w", err)
-	}
-	if value == "" {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRectifierSettings)
+	if !found || value == "" {
 		return DefaultRectifierSettings(), nil
 	}
 
@@ -998,7 +993,11 @@ func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *Rec
 		return fmt.Errorf("marshal rectifier settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data)); err != nil {
+		return err
+	}
+	s.invalidateCachedSettingValues(SettingKeyRectifierSettings)
+	return nil
 }
 
 // IsSignatureRectifierEnabled 判断签名整流是否启用（总开关 && 签名子开关）
@@ -1019,16 +1018,11 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
-// GetBetaPolicySettings 获取 Beta 策略配置
+// GetBetaPolicySettings 获取 Beta 策略配置（进程内缓存，60s TTL）。
+// Anthropic 网关每个请求都会读取并评估规则，走进程内缓存，不直查 DB。
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return DefaultBetaPolicySettings(), nil
-		}
-		return nil, fmt.Errorf("get beta policy settings: %w", err)
-	}
-	if value == "" {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyBetaPolicySettings)
+	if !found || value == "" {
 		return DefaultBetaPolicySettings(), nil
 	}
 
@@ -1082,7 +1076,11 @@ func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *Be
 		return fmt.Errorf("marshal beta policy settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data)); err != nil {
+		return err
+	}
+	s.invalidateCachedSettingValues(SettingKeyBetaPolicySettings)
+	return nil
 }
 
 // GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置

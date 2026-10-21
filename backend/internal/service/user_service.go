@@ -185,9 +185,11 @@ type UserRepository interface {
 
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
+// RegistrationEmailDomainRepository 的窗口参数 since：
+// nil 表示按域名累计统计（不过滤时间）；非 nil 表示只统计该时刻之后注册的账户（每日窗口）。
 type RegistrationEmailDomainRepository interface {
-	CountUsersByEmailDomain(ctx context.Context, domain string) (int, error)
-	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int) error
+	CountUsersByEmailDomain(ctx context.Context, domain string, since *time.Time) (int, error)
+	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int, since *time.Time) error
 }
 
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates

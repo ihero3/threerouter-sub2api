@@ -420,6 +420,8 @@ const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 // 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
 const emailDomainQuotaEnabled = ref<boolean>(false)
+// 配额统计窗口：daily 时提示用户"明天可再试"，total 时提示"已达上限"。
+const emailDomainQuotaWindow = ref<string>('total')
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -561,6 +563,8 @@ onMounted(async () => {
       settings.registration_email_suffix_whitelist || []
     )
     emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
+    emailDomainQuotaWindow.value =
+      settings.registration_email_domain_quota_window === 'daily' ? 'daily' : 'total'
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -1082,7 +1086,9 @@ async function handleRegister(): Promise<void> {
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
   const code = extractApiErrorCode(error)
   if (code === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
-    return t('auth.emailDomainRegistrationLimit')
+    return emailDomainQuotaWindow.value === 'daily'
+      ? t('auth.emailDomainRegistrationLimitDaily')
+      : t('auth.emailDomainRegistrationLimit')
   }
   if (code === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID') {
     return t('auth.clickCaptchaTokenInvalid')

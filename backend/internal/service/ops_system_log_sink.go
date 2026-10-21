@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"go.uber.org/zap/zapcore"
 )
 
 type OpsSystemLogSinkHealth struct {
@@ -46,6 +47,10 @@ type OpsSystemLogSink struct {
 	writeFailed  uint64
 	writtenCount uint64
 	totalDelayNs uint64
+
+	// indexAccessLogs 控制 http.access 访问日志是否落库。默认关闭：访问日志与 QPS
+	// 成正比，全量入库会给数据库带来持续的线性写入压力；需要排查时再开启。
+	indexAccessLogs atomic.Bool
 
 	lastError atomic.Value
 }
@@ -128,6 +133,48 @@ func (s *OpsSystemLogSink) Stop() {
 	s.wg.Wait()
 }
 
+// SetIndexAccessLogs 切换 http.access 访问日志是否入库（线程安全，可运行时调整）。
+func (s *OpsSystemLogSink) SetIndexAccessLogs(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.indexAccessLogs.Store(enabled)
+}
+
+// Prefilter 在 zap 字段被编码为 map 之前做廉价拦截，与 shouldIndex 口径一致。
+// 仅做字段 key 扫描与级别判断，不分配内存。
+func (s *OpsSystemLogSink) Prefilter(entry zapcore.Entry, fieldSets ...[]zapcore.Field) bool {
+	component := entry.LoggerName
+	skipped := false
+	for _, fields := range fieldSets {
+		for i := range fields {
+			f := &fields[i]
+			switch f.Key {
+			case logger.OpsSystemLogSkipField:
+				if f.Type == zapcore.BoolType && f.Integer == 1 {
+					skipped = true
+				}
+			case "component":
+				if f.Type == zapcore.StringType && f.String != "" {
+					component = f.String
+				}
+			}
+		}
+	}
+	if skipped {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(entry.Level.String())) {
+	case "warn", "warning", "error", "fatal", "panic", "dpanic":
+		return true
+	}
+	component = strings.ToLower(strings.TrimSpace(component))
+	if strings.Contains(component, "http.access") {
+		return s.indexAccessLogs.Load()
+	}
+	return strings.Contains(component, "audit")
+}
+
 func (s *OpsSystemLogSink) WriteLogEvent(event *logger.LogEvent) {
 	if s == nil || event == nil || !s.shouldIndex(event) {
 		return
@@ -167,7 +214,7 @@ func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
 		}
 	}
 	if strings.Contains(component, "http.access") {
-		return true
+		return s.indexAccessLogs.Load()
 	}
 	if strings.Contains(component, "audit") {
 		return true

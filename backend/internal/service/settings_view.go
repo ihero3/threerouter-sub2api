@@ -18,8 +18,9 @@ type SystemSettings struct {
 	RegistrationCaptchaMode             string // 自建验证码模式：random | image_click | slider
 	RegistrationCaptchaDifficulty       string // 自建验证码难度：low | medium | high
 	RegistrationEmailSuffixWhitelist    []string
-	RegistrationEmailDomainQuotaEnabled bool // 白名单非空时放行非白名单域名限量注册（默认关闭）
-	RegistrationEmailDomainQuotaLimit   int  // 白名单外每个主域名允许注册的账户数（默认 1）
+	RegistrationEmailDomainQuotaEnabled bool   // 白名单非空时放行非白名单域名限量注册（默认关闭）
+	RegistrationEmailDomainQuotaLimit   int    // 白名单外每个主域名允许注册的账户数（默认 1）
+	RegistrationEmailDomainQuotaWindow  string // 上面配额的统计窗口：total（默认）| daily
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string
@@ -331,6 +332,7 @@ type PublicSettings struct {
 	ForceEmailOnThirdPartySignup        bool
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailDomainQuotaEnabled bool
+	RegistrationEmailDomainQuotaWindow  string
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	InvitationCodeEnabled               bool

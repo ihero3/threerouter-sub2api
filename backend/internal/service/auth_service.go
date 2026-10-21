@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -50,16 +52,49 @@ var (
 	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
 )
 
-// buildEmailDomainRegistrationLimitError 构造带每域配额 N 的客户端错误。
-// reason 与 ErrEmailDomainRegistrationLimit 完全一致，errors.Is 判定不受影响。
-func buildEmailDomainRegistrationLimitError(limit int) error {
+// BuildEmailDomainRegistrationLimitError 构造带每域配额 N 与统计窗口的客户端错误。
+// reason 恒为 EMAIL_DOMAIN_REGISTRATION_LIMIT，与 ErrEmailDomainRegistrationLimit 一致，
+// 因此 errors.Is 判定不受影响。
+// 文案必须纯英文（客户端可见），daily 窗口额外提示用户明天可再试。
+func BuildEmailDomainRegistrationLimitError(limit int, window string) error {
 	if limit < RegistrationEmailDomainQuotaLimitMin {
 		limit = RegistrationEmailDomainQuotaLimitDefault
 	}
-	return infraerrors.BadRequest(
-		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
-		fmt.Sprintf("this email domain has reached its registration limit of %d account(s); use a mainstream email or contact support to add the enterprise domain", limit),
+	message := fmt.Sprintf(
+		"this email domain has reached its registration limit of %d account(s); use a mainstream email or contact support to add the enterprise domain",
+		limit,
 	)
+	if window == RegistrationEmailDomainQuotaWindowDaily {
+		message = fmt.Sprintf(
+			"this email domain has exceeded today's registration limit of %d account(s); try again tomorrow, or use a mainstream email, or contact support to add the enterprise domain",
+			limit,
+		)
+	}
+	return infraerrors.BadRequest("EMAIL_DOMAIN_REGISTRATION_LIMIT", message)
+}
+
+// logRegistrationEmailDomainQuotaRejected 记录一次因域名配额被拒绝的注册尝试。
+// msg 固定，便于按天统计被拒次数：
+// journalctl -u sub2api --since today | grep -c email_domain_quota_rejected
+// 只记录域名不记录完整邮箱，避免日志泄露用户邮箱地址。
+func logRegistrationEmailDomainQuotaRejected(domain string, count, limit int, window, stage, registerIP string, since *time.Time) {
+	attrs := []any{
+		slog.String("component", "service.auth"),
+		slog.String("stage", stage),
+		slog.String("email_domain", domain),
+		slog.Int("limit", limit),
+		slog.String("window", window),
+	}
+	if count >= 0 {
+		attrs = append(attrs, slog.Int("count", count))
+	}
+	if since != nil {
+		attrs = append(attrs, slog.String("window_start", since.Format(time.RFC3339)))
+	}
+	if ip := strings.TrimSpace(registerIP); ip != "" {
+		attrs = append(attrs, slog.String("register_ip", ip))
+	}
+	slog.Warn("registration.email_domain_quota_rejected", attrs...)
 }
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -250,7 +285,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if existsEmail {
 		return "", nil, ErrEmailExists
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		return "", nil, err
 	}
 
@@ -359,7 +394,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	if existsEmail {
 		return ErrEmailExists
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return err
 	}
 
@@ -400,7 +435,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		logger.LegacyPrintf("service.auth", "[Auth] Email already exists: %s", email)
 		return nil, ErrEmailExists
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return nil, err
 	}
 
@@ -1261,10 +1296,26 @@ func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email
 	return nil
 }
 
+// registrationEmailDomainQuotaWindowAndSince 返回域名配额的统计窗口及其起始时间。
+// daily 窗口返回服务器时区当天 0 点（次日自动前移，等效于每天重置）；
+// total 窗口返回 nil，表示不限时间、按域名累计。
+func (s *AuthService) registrationEmailDomainQuotaWindowAndSince(ctx context.Context) (string, *time.Time) {
+	if s.settingService == nil {
+		return RegistrationEmailDomainQuotaWindowDefault, nil
+	}
+	window := s.settingService.GetRegistrationEmailDomainQuotaWindow(ctx)
+	if window != RegistrationEmailDomainQuotaWindowDaily {
+		return window, nil
+	}
+	dayStart := timezone.Today()
+	return window, &dayStart
+}
+
 // validateRegistrationEmailQuota 保留白名单为空时的全放行行为；配置白名单后，
 // 非白名单域名默认直接拒绝（严格白名单模式）；仅当域名限量注册开关开启时，
-// 非白名单域名每个最多允许一个账户。
-func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email string) error {
+// 非白名单域名每个最多允许 limit 个账户（累计窗口）或每天 limit 个账户（每日窗口）。
+// registerIP 仅用于审计日志，可为空。
+func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email string, registerIP string) error {
 	if s.settingService == nil {
 		return nil
 	}
@@ -1281,6 +1332,7 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}
 	limit := s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
+	window, since := s.registrationEmailDomainQuotaWindowAndSince(ctx)
 	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
 	if !ok {
 		// 生产装配必须提供原子仓储能力；没有数据库的 unit 测试桩保留旧路径，
@@ -1290,13 +1342,14 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 		}
 		return nil
 	}
-	count, err := quotaRepo.CountUsersByEmailDomain(ctx, domain)
+	count, err := quotaRepo.CountUsersByEmailDomain(ctx, domain, since)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to count registration email domain %s: %v", domain, err)
 		return ErrServiceUnavailable
 	}
 	if count >= limit {
-		return buildEmailDomainRegistrationLimitError(limit)
+		logRegistrationEmailDomainQuotaRejected(domain, count, limit, window, "precheck", registerIP, since)
+		return BuildEmailDomainRegistrationLimitError(limit, window)
 	}
 	return nil
 }
@@ -1321,6 +1374,7 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}
 	limit := s.settingService.GetRegistrationEmailDomainQuotaLimit(ctx)
+	window, since := s.registrationEmailDomainQuotaWindowAndSince(ctx)
 	quotaRepo, ok := s.userRepo.(RegistrationEmailDomainRepository)
 	if !ok {
 		if s.entClient != nil {
@@ -1328,7 +1382,15 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		}
 		return s.userRepo.CreateWithEmailAliasGuard(ctx, user)
 	}
-	return quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain, limit)
+	err := quotaRepo.CreateWithEmailAliasGuardAndDomainLimit(ctx, user, domain, limit, since)
+	if err != nil {
+		// 预检通过后仍可能在同一事务内被并发注册挤掉配额，此处补记一次拒绝。
+		if errors.Is(err, ErrEmailDomainRegistrationLimit) {
+			logRegistrationEmailDomainQuotaRejected(domain, -1, limit, window, "create", "", since)
+		}
+		return err
+	}
+	return nil
 }
 
 // createUserAndClaimInvitation 原子化完成“用户创建 + 邀请码占用”。

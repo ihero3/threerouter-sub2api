@@ -282,6 +282,8 @@ export default {
     clickCaptchaDisabled: 'Human verification is currently unavailable. Please contact support',
     emailDomainRegistrationLimit:
       'This email domain cannot register another account. Please use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
+    emailDomainRegistrationLimitDaily:
+      'This email domain has exceeded today’s registration limit. Please try again tomorrow. You can also use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
     emailSuffixNotAllowedWithAllowed:
       'This email domain is not allowed. Allowed domains: {suffixes}',

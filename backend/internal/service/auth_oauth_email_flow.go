@@ -42,7 +42,7 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if s == nil || s.emailService == nil {
 		return nil, ErrServiceUnavailable
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return nil, err
 	}
 
@@ -142,7 +142,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	if existsEmail {
 		return nil, nil, ErrEmailExists
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		slog.Error("oauth email register: policy rejected", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
@@ -229,7 +229,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if existsEmail {
 		return nil, nil, ErrEmailExists
 	}
-	if err := s.validateRegistrationEmailQuota(ctx, email); err != nil {
+	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		return nil, nil, err
 	}
 

@@ -122,7 +122,7 @@ func TestUserRepositoryCountUsersByEmailDomain(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, deleted))
 	require.NoError(t, repo.Delete(ctx, deleted.ID))
 
-	count, err := repo.CountUsersByEmailDomain(ctx, "custom.example")
+	count, err := repo.CountUsersByEmailDomain(ctx, "custom.example", nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 }
@@ -138,7 +138,7 @@ func TestUserRepositoryCreateWithEmailAliasGuardAndDomainLimit(t *testing.T) {
 		PasswordHash: "hash",
 		Role:         service.RoleUser,
 		Status:       service.StatusActive,
-	}, "custom.example", 1)
+	}, "custom.example", 1, nil)
 	require.ErrorIs(t, err, service.ErrEmailDomainRegistrationLimit)
 }
 
@@ -148,7 +148,7 @@ func TestUserRepositoryCountUsersByEmailDomainEscapesLikeWildcards(t *testing.T)
 	seedUserForAliasTest(t, repo, "first@foo_bar.com")
 	seedUserForAliasTest(t, repo, "other@fooxbar.com")
 
-	count, err := repo.CountUsersByEmailDomain(ctx, "foo_bar.com")
+	count, err := repo.CountUsersByEmailDomain(ctx, "foo_bar.com", nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, count)

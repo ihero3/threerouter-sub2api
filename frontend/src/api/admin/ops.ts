@@ -822,6 +822,7 @@ export interface OpsRuntimeLogConfig {
   caller: boolean
   stacktrace_level: 'none' | 'error' | 'fatal'
   retention_days: number
+  index_access_logs: boolean
   source?: string
   updated_at?: string
   updated_by_user_id?: number

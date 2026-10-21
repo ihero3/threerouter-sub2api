@@ -31,24 +31,35 @@ type userRepoStub struct {
 	getByEmailErr        error
 	getByEmailMisses     int
 	domainCounts         map[string]int
+	domainCountsToday    map[string]int
 	domainCountErr       error
 	domainLimitErr       error
 	domainLimitedCreates int
 }
 
-func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string) (int, error) {
+func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string, since *time.Time) (int, error) {
 	if s.domainCountErr != nil {
 		return 0, s.domainCountErr
+	}
+	if since != nil {
+		return s.domainCountsToday[domain], nil
 	}
 	return s.domainCounts[domain], nil
 }
 
-func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int) error {
+func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int, since *time.Time) error {
 	s.domainLimitedCreates++
 	if s.domainLimitErr != nil {
 		return s.domainLimitErr
 	}
-	if s.domainCounts[domain] >= limit {
+	count := s.domainCounts[domain]
+	if since != nil {
+		count = s.domainCountsToday[domain]
+	}
+	if count >= limit {
+		if since != nil {
+			return BuildEmailDomainRegistrationLimitError(limit, RegistrationEmailDomainQuotaWindowDaily)
+		}
 		return ErrEmailDomainRegistrationLimit
 	}
 	return s.CreateWithEmailAliasGuard(ctx, user)

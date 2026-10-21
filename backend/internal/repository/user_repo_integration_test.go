@@ -78,7 +78,7 @@ func (s *UserRepoSuite) TestCreateWithEmailAliasGuardAndDomainLimitConcurrent() 
 		wg.Add(1)
 		go func(user *service.User) {
 			defer wg.Done()
-			errs <- s.repo.CreateWithEmailAliasGuardAndDomainLimit(s.ctx, user, domain)
+			errs <- s.repo.CreateWithEmailAliasGuardAndDomainLimit(s.ctx, user, domain, 1, nil)
 		}(user)
 	}
 	wg.Wait()
@@ -98,7 +98,7 @@ func (s *UserRepoSuite) TestCreateWithEmailAliasGuardAndDomainLimitConcurrent() 
 	s.Require().Equal(1, success)
 	s.Require().Equal(1, limited)
 
-	count, err := s.repo.CountUsersByEmailDomain(s.ctx, domain)
+	count, err := s.repo.CountUsersByEmailDomain(s.ctx, domain, nil)
 	s.Require().NoError(err)
 	s.Require().Equal(1, count)
 }

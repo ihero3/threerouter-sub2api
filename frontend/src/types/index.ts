@@ -270,6 +270,7 @@ export interface PublicSettings {
   registration_email_suffix_whitelist: string[]
   registration_email_domain_quota_enabled?: boolean
   registration_email_domain_quota_limit?: number
+  registration_email_domain_quota_window?: string
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean

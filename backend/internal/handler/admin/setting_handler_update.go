@@ -31,6 +31,7 @@ type UpdateSettingsRequest struct {
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
 	RegistrationEmailDomainQuotaLimit   *int                         `json:"registration_email_domain_quota_limit"`   // 非白名单域名每域配额（省略=保持现值）
+	RegistrationEmailDomainQuotaWindow  *string                      `json:"registration_email_domain_quota_window"`  // 配额统计窗口：total | daily（省略=保持现值）
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
@@ -534,6 +535,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	registrationEmailDomainQuotaLimit := previousSettings.RegistrationEmailDomainQuotaLimit
 	if req.RegistrationEmailDomainQuotaLimit != nil {
 		registrationEmailDomainQuotaLimit = *req.RegistrationEmailDomainQuotaLimit
+	}
+	registrationEmailDomainQuotaWindow := previousSettings.RegistrationEmailDomainQuotaWindow
+	if req.RegistrationEmailDomainQuotaWindow != nil {
+		registrationEmailDomainQuotaWindow = service.NormalizeRegistrationEmailDomainQuotaWindow(*req.RegistrationEmailDomainQuotaWindow)
 	}
 	if passkeyEnabled {
 		configured, _, _ := h.settingService.PasskeyConfiguration()
@@ -1552,6 +1557,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
 		RegistrationEmailDomainQuotaLimit:   registrationEmailDomainQuotaLimit,
+		RegistrationEmailDomainQuotaWindow:  registrationEmailDomainQuotaWindow,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
@@ -2200,6 +2206,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
 		RegistrationEmailDomainQuotaLimit:                      updatedSettings.RegistrationEmailDomainQuotaLimit,
+		RegistrationEmailDomainQuotaWindow:                     updatedSettings.RegistrationEmailDomainQuotaWindow,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,

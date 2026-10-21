@@ -44,6 +44,7 @@ export default {
         retentionDays: 'Retention days',
         caller: 'caller',
         sampling: 'sampling',
+        indexAccessLogs: 'Index access logs (off by default; writes one log entry per request when on)',
         saveAndApply: 'Save and apply',
         resetDefaults: 'Reset defaults',
         latestWriteError: 'Latest write error:',

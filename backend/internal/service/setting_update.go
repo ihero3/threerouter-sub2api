@@ -175,6 +175,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationEmailDomainQuotaEnabled] = strconv.FormatBool(settings.RegistrationEmailDomainQuotaEnabled)
 	settings.RegistrationEmailDomainQuotaLimit = clampRegistrationEmailDomainQuotaLimit(settings.RegistrationEmailDomainQuotaLimit)
 	updates[SettingKeyRegistrationEmailDomainQuotaLimit] = strconv.Itoa(settings.RegistrationEmailDomainQuotaLimit)
+	settings.RegistrationEmailDomainQuotaWindow = normalizeRegistrationEmailDomainQuotaWindow(settings.RegistrationEmailDomainQuotaWindow)
+	updates[SettingKeyRegistrationEmailDomainQuotaWindow] = settings.RegistrationEmailDomainQuotaWindow
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
@@ -813,6 +815,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	// 通用单键设置缓存：全量写后统一清空，下一次读取即从 DB 重载。
+	s.invalidateAllCachedSettingValues()
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}

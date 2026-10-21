@@ -400,6 +400,7 @@ export interface SystemSettings {
   registration_email_suffix_whitelist: string[];
   registration_email_domain_quota_enabled: boolean;
   registration_email_domain_quota_limit: number;
+  registration_email_domain_quota_window: string;
   registration_click_captcha_enabled: boolean;
   registration_captcha_mode: "random" | "image_click" | "slider";
   registration_captcha_difficulty: "low" | "medium" | "high";
@@ -755,6 +756,7 @@ export interface UpdateSettingsRequest {
   registration_email_suffix_whitelist?: string[];
   registration_email_domain_quota_enabled?: boolean;
   registration_email_domain_quota_limit?: number;
+  registration_email_domain_quota_window?: string;
   registration_click_captcha_enabled?: boolean;
   registration_captcha_mode?: "random" | "image_click" | "slider";
   registration_captcha_difficulty?: "low" | "medium" | "high";

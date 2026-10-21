@@ -1,10 +1,11 @@
 package service
 
 import (
-	"encoding/json"
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/tidwall/gjson"
 )
 
 // MaxRequestPreviewRunes caps the user-input head kept on usage_logs.request_preview.
@@ -82,12 +83,15 @@ func unwrapRequestPreviewWrappers(text string) string {
 // ExtractRequestPreview returns a short, sanitised head of the latest user
 // message from the raw JSON request body. Returns "" when no user text can be
 // located (e.g. tool-only call, malformed JSON).
+//
+// 使用 gjson 按路径抽取而不是整包 Unmarshal：大体积请求（长上下文、多模态）
+// 无需构建全量 map[string]any，热路径上的解析开销与 GC 压力显著降低。
 func ExtractRequestPreview(body []byte) string {
 	if len(body) == 0 {
 		return ""
 	}
-	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
+	root := gjson.ParseBytes(body)
+	if !root.Exists() || !root.IsObject() {
 		return ""
 	}
 	text := extractLatestUserText(root)
@@ -116,14 +120,11 @@ func ExtractRequestPreview(body []byte) string {
 // extractLatestUserText walks the common request shapes (chat, responses,
 // anthropic messages, gemini contents, media prompts) and returns the text of
 // the most recent user turn, or "" if none.
-func extractLatestUserText(root map[string]any) string {
-	if root == nil {
-		return ""
-	}
-	if text := extractUserFromMessages(root["messages"]); text != "" {
+func extractLatestUserText(root gjson.Result) string {
+	if text := extractUserFromMessages(root.Get("messages")); text != "" {
 		return text
 	}
-	if text := extractUserFromResponsesInput(root["input"]); text != "" {
+	if text := extractUserFromResponsesInput(root.Get("input")); text != "" {
 		return text
 	}
 	if text := extractUserFromMediaPrompt(root); text != "" {
@@ -132,21 +133,21 @@ func extractLatestUserText(root map[string]any) string {
 	return ""
 }
 
-func extractUserFromMessages(value any) string {
-	items, ok := value.([]any)
-	if !ok {
+func extractUserFromMessages(value gjson.Result) string {
+	if !value.IsArray() {
 		return ""
 	}
+	items := value.Array()
 	for i := len(items) - 1; i >= 0; i-- {
-		msg, ok := items[i].(map[string]any)
-		if !ok {
+		msg := items[i]
+		if !msg.IsObject() {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(stringValueAny(msg["role"])))
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").String()))
 		if role != "user" {
 			continue
 		}
-		texts := collectContentTexts(msg["content"])
+		texts := collectContentTexts(msg.Get("content"))
 		if len(texts) == 0 {
 			continue
 		}
@@ -155,42 +156,46 @@ func extractUserFromMessages(value any) string {
 	return ""
 }
 
-func extractUserFromResponsesInput(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case []any:
-		for i := len(typed) - 1; i >= 0; i-- {
-			switch entry := typed[i].(type) {
-			case string:
-				if t := strings.TrimSpace(entry); t != "" {
+func extractUserFromResponsesInput(value gjson.Result) string {
+	switch {
+	case value.Type == gjson.String:
+		return strings.TrimSpace(value.String())
+	case value.IsArray():
+		items := value.Array()
+		for i := len(items) - 1; i >= 0; i-- {
+			entry := items[i]
+			if entry.Type == gjson.String {
+				if t := strings.TrimSpace(entry.String()); t != "" {
 					return t
 				}
-			case map[string]any:
-				role := strings.ToLower(strings.TrimSpace(stringValueAny(entry["role"])))
-				if role != "" && role != "user" {
-					continue
+				continue
+			}
+			if !entry.IsObject() {
+				continue
+			}
+			role := strings.ToLower(strings.TrimSpace(entry.Get("role").String()))
+			if role != "" && role != "user" {
+				continue
+			}
+			if content := entry.Get("content"); content.Exists() {
+				if texts := collectContentTexts(content); len(texts) > 0 {
+					return strings.Join(texts, "\n")
 				}
-				if content, ok := entry["content"]; ok {
-					if texts := collectContentTexts(content); len(texts) > 0 {
-						return strings.Join(texts, "\n")
-					}
-				}
-				if text := stringValueAny(entry["text"]); text != "" {
-					return text
-				}
+			}
+			if text := strings.TrimSpace(entry.Get("text").String()); text != "" {
+				return text
 			}
 		}
 	}
 	return ""
 }
 
-func extractUserFromMediaPrompt(root map[string]any) string {
+func extractUserFromMediaPrompt(root gjson.Result) string {
 	// Walk common media-prompt keys; only fires when nothing else matched.
 	keys := []string{"prompt", "input", "description", "query", "input_prompt", "text_prompt"}
 	for _, k := range keys {
-		if v, ok := root[k]; ok {
-			if t := stringValueAny(v); t != "" {
+		if v := root.Get(k); v.Exists() && v.Type == gjson.String {
+			if t := strings.TrimSpace(v.String()); t != "" {
 				return t
 			}
 		}
@@ -200,41 +205,33 @@ func extractUserFromMediaPrompt(root map[string]any) string {
 
 // collectContentTexts handles both string content and structured content arrays
 // (text blocks inside multimodal requests).
-func collectContentTexts(value any) []string {
-	switch typed := value.(type) {
-	case string:
-		if t := strings.TrimSpace(typed); t != "" {
+func collectContentTexts(value gjson.Result) []string {
+	switch {
+	case value.Type == gjson.String:
+		if t := strings.TrimSpace(value.String()); t != "" {
 			return []string{t}
 		}
-	case []any:
+	case value.IsArray():
 		var out []string
-		for _, part := range typed {
-			object, ok := part.(map[string]any)
-			if !ok {
+		for _, part := range value.Array() {
+			if !part.IsObject() {
 				continue
 			}
-			typeName := strings.ToLower(stringValueAny(object["type"]))
+			typeName := strings.ToLower(strings.TrimSpace(part.Get("type").String()))
 			if typeName != "" && typeName != "text" && typeName != "input_text" && typeName != "output_text" {
 				continue
 			}
-			if text := stringValueAny(object["text"]); text != "" {
+			if text := strings.TrimSpace(part.Get("text").String()); text != "" {
 				out = append(out, text)
 			}
 		}
 		return out
-	case map[string]any:
-		if text := stringValueAny(typed["text"]); text != "" {
+	case value.IsObject():
+		if text := strings.TrimSpace(value.Get("text").String()); text != "" {
 			return []string{text}
 		}
 	}
 	return nil
-}
-
-func stringValueAny(value any) string {
-	if s, ok := value.(string); ok {
-		return strings.TrimSpace(s)
-	}
-	return ""
 }
 
 func sanitizeRequestPreview(text string) string {
