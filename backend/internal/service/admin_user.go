@@ -291,6 +291,13 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, err
 	}
 
+	// 管理员变更该用户的允许分组后，让 API Key 的分组自动跟随，避免 Key 停留在
+	// 已不再允许的分组上：那种状态下 Key 列表徽标仍显示旧分组，但请求会被
+	// 403 GROUP_NOT_ALLOWED 拦截，用户只能逐个手动改 Key，且很容易漏掉。
+	if input.AllowedGroups != nil && !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
+		s.realignUserAPIKeyGroups(ctx, user)
+	}
+
 	// 角色变更属权限敏感操作，落审计日志（含操作者），便于事后追溯。
 	if user.Role != oldRole {
 		logger.LegacyPrintf("service.admin", "audit: user role changed actor_admin_id=%d target_user_id=%d old_role=%s new_role=%s",
@@ -334,6 +341,98 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+// realignUserAPIKeyGroups 让用户的 API Key 分组跟随管理员的允许分组配置。
+//
+// 规则：
+//   - 管理员只指定了一个分组：该用户所有已绑定分组的 Key 统一迁移到该分组，
+//     用户无需自己调整；
+//   - 管理员指定了多个分组：只迁移那些已不在允许范围内的分组，保留用户在
+//     允许范围内自选的 Key 分组；
+//   - 管理员清空了允许分组：无法确定迁移目标，跳过并记录日志（需管理员重新指定）。
+//
+// 与 AdminUpdateAPIKeyGroupID 保持同一套不变量：目标分组必须存在且启用、订阅型
+// 分组需要用户持有有效订阅；订阅型分组自身承载用户已购买的订阅，不参与迁移。
+// 这里的失败不阻断用户更新本身（与 GroupRates 同步保持一致），但会落日志便于排查。
+func (s *adminServiceImpl) realignUserAPIKeyGroups(ctx context.Context, user *User) {
+	if s.apiKeyRepo == nil || s.groupRepo == nil || user == nil {
+		return
+	}
+	if len(user.AllowedGroups) == 0 {
+		logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d has no allowed groups", user.ID)
+		return
+	}
+
+	target := user.AllowedGroups[0]
+	targetGroup, err := s.groupRepo.GetByIDLite(ctx, target)
+	if err != nil || targetGroup == nil {
+		logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d target_group_id=%d not found err=%v", user.ID, target, err)
+		return
+	}
+	if !targetGroup.IsActive() {
+		logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d target_group_id=%d is not active", user.ID, target)
+		return
+	}
+	if targetGroup.IsSubscriptionType() {
+		if s.userSubRepo == nil {
+			logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d target_group_id=%d subscription repo unavailable", user.ID, target)
+			return
+		}
+		if _, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, target); err != nil {
+			logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d target_group_id=%d requires active subscription err=%v", user.ID, target, err)
+			return
+		}
+	}
+
+	keys, err := s.listUserAPIKeysForDeletion(ctx, user.ID)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "failed to list api keys for group realign: user_id=%d err=%v", user.ID, err)
+		return
+	}
+
+	// 收集 Key 上实际出现的分组（去重），避免按 Key 逐条写库。
+	present := make(map[int64]struct{}, len(keys))
+	for i := range keys {
+		if keys[i].GroupID != nil {
+			present[*keys[i].GroupID] = struct{}{}
+		}
+	}
+	if len(present) == 0 {
+		return
+	}
+
+	for groupID := range present {
+		if groupID == target {
+			continue
+		}
+		srcGroup, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil || srcGroup == nil {
+			// 无法判断来源分组，保守跳过；该 Key 的可用性仍由网关原有逻辑判断。
+			logger.LegacyPrintf("service.admin", "skip api key group realign: user_id=%d source_group_id=%d not found err=%v", user.ID, groupID, err)
+			continue
+		}
+		// 订阅型分组承载用户已购买的订阅，不随管理员调整分组而迁移。
+		if srcGroup.IsSubscriptionType() {
+			continue
+		}
+		// 多分组场景下，仍在允许范围内且可绑定的分组保留用户的选择。
+		if len(user.AllowedGroups) > 1 &&
+			!strings.EqualFold(srcGroup.Status, "deleted") &&
+			user.CanBindGroup(srcGroup.ID, srcGroup.IsExclusive) {
+			continue
+		}
+		affected, err := s.apiKeyRepo.UpdateGroupIDByUserAndGroup(ctx, user.ID, groupID, target)
+		if err != nil {
+			logger.LegacyPrintf("service.admin", "failed to realign api key group: user_id=%d from_group_id=%d to_group_id=%d err=%v",
+				user.ID, groupID, target, err)
+			continue
+		}
+		if affected > 0 {
+			logger.LegacyPrintf("service.admin", "audit: realigned api key groups user_id=%d from_group_id=%d to_group_id=%d affected=%d",
+				user.ID, groupID, target, affected)
+		}
+	}
 }
 
 func sameInt64Set(a, b []int64) bool {

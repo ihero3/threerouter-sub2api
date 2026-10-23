@@ -219,3 +219,14 @@ func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context,
 	}
 	return err
 }
+
+// ClearOpenAIStickySessionOnUnsupportedFeature 在「上游不支持请求中的 tool/feature」
+// 类 failover 切换账号时调用：粘性绑定的账号对该会话的此类请求永远不可用，清除绑定
+// 可避免下一个同会话请求再次命中同一不可用账号、白消耗一次上游往返后才 failover。
+// 仅针对能力不匹配类错误使用——限流/瞬时错误不应清除粘性（缓存亲和仍有价值）。
+func (s *OpenAIGatewayService) ClearOpenAIStickySessionOnUnsupportedFeature(ctx context.Context, groupID *int64, sessionHash string) {
+	if strings.TrimSpace(sessionHash) == "" {
+		return
+	}
+	_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+}

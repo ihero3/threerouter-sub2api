@@ -895,6 +895,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
+					if failoverErr.Reason == service.OpenAIUnsupportedFeatureReason {
+						// 能力不匹配：该账号对携带此 tool/feature 的会话请求永远不可用，
+						// 清除粘性绑定，避免下一个同会话请求再次命中它后才 failover。
+						h.gatewayService.ClearOpenAIStickySessionOnUnsupportedFeature(c.Request.Context(), apiKey.GroupID, sessionHash)
+					}
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -1472,6 +1477,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
+					if failoverErr.Reason == service.OpenAIUnsupportedFeatureReason {
+						// 能力不匹配：该账号对携带此 tool/feature 的会话请求永远不可用，
+						// 清除粘性绑定，避免下一个同会话请求再次命中它后才 failover。
+						h.gatewayService.ClearOpenAIStickySessionOnUnsupportedFeature(c.Request.Context(), apiKey.GroupID, sessionHash)
+					}
 					if switchCount >= maxAccountSwitches {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
