@@ -31,25 +31,72 @@ type userRepoStub struct {
 	getByEmailErr        error
 	getByEmailMisses     int
 	domainCounts         map[string]int
+	domainCountsToday    map[string]int
 	domainCountErr       error
 	domainLimitErr       error
 	domainLimitedCreates int
+	ipCounts             map[string]int
+	ipCountErr           error
+	ipCreateErr          error
+	ipLimitedCreates     int
 }
 
-func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string) (int, error) {
+func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string, since *time.Time) (int, error) {
 	if s.domainCountErr != nil {
 		return 0, s.domainCountErr
+	}
+	if since != nil {
+		return s.domainCountsToday[domain], nil
 	}
 	return s.domainCounts[domain], nil
 }
 
-func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error {
+func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string, limit int, since *time.Time) error {
 	s.domainLimitedCreates++
 	if s.domainLimitErr != nil {
 		return s.domainLimitErr
 	}
-	if s.domainCounts[domain] > 0 {
+	count := s.domainCounts[domain]
+	if since != nil {
+		count = s.domainCountsToday[domain]
+	}
+	if count >= limit {
+		if since != nil {
+			return BuildEmailDomainRegistrationLimitError(limit, RegistrationEmailDomainQuotaWindowDaily)
+		}
 		return ErrEmailDomainRegistrationLimit
+	}
+	return s.CreateWithEmailAliasGuard(ctx, user)
+}
+
+func (s *userRepoStub) CountUsersByRegisterIP(_ context.Context, ip string, _ time.Time) (int, error) {
+	if s.ipCountErr != nil {
+		return 0, s.ipCountErr
+	}
+	return s.ipCounts[ip], nil
+}
+
+// CreateWithRegistrationGuards 模拟仓储在事务内复查域名与 IP 配额的行为。
+func (s *userRepoStub) CreateWithRegistrationGuards(ctx context.Context, user *User, guard RegistrationCreateGuard) error {
+	s.ipLimitedCreates++
+	if s.ipCreateErr != nil {
+		return s.ipCreateErr
+	}
+	if guard.RegisterIPLimit > 0 && guard.RegisterIP != "" && s.ipCounts[guard.RegisterIP] >= guard.RegisterIPLimit {
+		return BuildRegistrationIPLimitError(guard.RegisterIPLimit)
+	}
+	if guard.EmailDomain != "" {
+		count := s.domainCounts[guard.EmailDomain]
+		if guard.EmailDomainSince != nil {
+			count = s.domainCountsToday[guard.EmailDomain]
+		}
+		if count >= guard.EmailDomainLimit {
+			window := RegistrationEmailDomainQuotaWindowTotal
+			if guard.EmailDomainSince != nil {
+				window = RegistrationEmailDomainQuotaWindowDaily
+			}
+			return BuildEmailDomainRegistrationLimitError(guard.EmailDomainLimit, window)
+		}
 	}
 	return s.CreateWithEmailAliasGuard(ctx, user)
 }

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -9,6 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// skipAccessLogPath 判断请求路径是否跳过 access 日志。
+// 覆盖健康检查/探针与内嵌前端静态资源（assets/ 下的内容哈希文件等）。
+func skipAccessLogPath(path string) bool {
+	switch path {
+	case "/health", "/setup/status", "/favicon.ico":
+		return true
+	}
+	return strings.HasPrefix(path, "/assets/")
+}
 
 // Logger 请求日志中间件
 func Logger() gin.HandlerFunc {
@@ -22,8 +33,9 @@ func Logger() gin.HandlerFunc {
 		// 处理请求
 		c.Next()
 
-		// 跳过健康检查等高频探针路径的日志
-		if path == "/health" || path == "/setup/status" {
+		// 跳过健康检查、高频探针与内嵌前端静态资源的日志。
+		// 静态资源请求与页面浏览量成正比，记录它们只会制造噪声。
+		if skipAccessLogPath(path) {
 			return
 		}
 

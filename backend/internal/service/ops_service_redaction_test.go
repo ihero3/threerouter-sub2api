@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -73,6 +74,43 @@ func TestSanitizeAndTrimJSONPayload_PreservesTokenBudgetFields(t *testing.T) {
 
 	if got := decoded["access_token"]; got != "[REDACTED]" {
 		t.Fatalf("expected access_token to be redacted, got %#v", got)
+	}
+}
+
+func TestSanitizeAndTrimJSONPayload_StripsEchoedUserContent(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"error":{"message":"invalid request","type":"invalid_request_error"},"messages":[{"role":"user","content":"secret prompt"}],"input":"secret input","prompt":"secret prompt","text":"secret text","model":"gpt-4o"}`)
+	out, _, _ := sanitizeAndTrimJSONPayload(raw, 10*1024)
+	if out == "" {
+		t.Fatalf("expected non-empty sanitized output")
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("unmarshal sanitized output: %v", err)
+	}
+
+	// Error diagnostics and regular fields must survive for triage.
+	errObj, ok := decoded["error"].(map[string]any)
+	if !ok || errObj["type"] != "invalid_request_error" {
+		t.Fatalf("expected error diagnostics preserved, got %#v", decoded["error"])
+	}
+	if decoded["model"] != "gpt-4o" {
+		t.Fatalf("expected model preserved, got %#v", decoded["model"])
+	}
+
+	// User-content containers must be blanked on the normal (non-oversized) path.
+	if got, ok := decoded["messages"].([]any); !ok || len(got) != 0 {
+		t.Fatalf("expected messages blanked, got %#v", decoded["messages"])
+	}
+	for _, key := range []string{"input", "prompt", "text"} {
+		if decoded[key] != "" {
+			t.Fatalf("expected %s blanked, got %#v", key, decoded[key])
+		}
+	}
+	if strings.Contains(out, "secret") {
+		t.Fatalf("user content leaked into sanitized output: %s", out)
 	}
 }
 

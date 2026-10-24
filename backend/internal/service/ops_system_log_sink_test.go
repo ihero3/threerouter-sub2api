@@ -32,9 +32,9 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "access component",
+			name:  "access component not indexed by default",
 			event: &logger.LogEvent{Level: "info", Component: "http.access"},
-			want:  true,
+			want:  false,
 		},
 		{
 			name: "rejected access excluded from database sink",
@@ -46,13 +46,13 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "access component from fields (real zap path)",
+			name: "access component from fields not indexed by default",
 			event: &logger.LogEvent{
 				Level:     "info",
 				Component: "",
 				Fields:    map[string]any{"component": "http.access"},
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name:  "audit component",
@@ -79,6 +79,18 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 		if got := sink.shouldIndex(tc.event); got != tc.want {
 			t.Fatalf("%s: shouldIndex()=%v, want %v", tc.name, got, tc.want)
 		}
+	}
+
+	// 开启 access 日志入库开关后，http.access 应被索引。
+	sink.SetIndexAccessLogs(true)
+	defer sink.SetIndexAccessLogs(false)
+	if got := sink.shouldIndex(&logger.LogEvent{Level: "info", Component: "http.access"}); !got {
+		t.Fatalf("enabled access indexing: shouldIndex()=%v, want true", got)
+	}
+	if got := sink.shouldIndex(&logger.LogEvent{
+		Level: "info", Fields: map[string]any{"component": "http.access"},
+	}); !got {
+		t.Fatalf("enabled access indexing (fields): shouldIndex()=%v, want true", got)
 	}
 }
 

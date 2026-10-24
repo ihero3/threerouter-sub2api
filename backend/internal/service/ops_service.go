@@ -809,6 +809,11 @@ func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, tr
 	}
 
 	decoded = redactSensitiveJSON(decoded)
+	// Error bodies sometimes echo the inbound request back (a validation error
+	// embedding the original messages, for example). Blank user-content
+	// containers on every path — not only the oversized fallback below — so raw
+	// prompts/completions never reach ops_error_logs.
+	decoded = stripUserContentFields(decoded)
 
 	encoded, err := json.Marshal(decoded)
 	if err != nil {
@@ -890,6 +895,60 @@ func redactSensitiveJSON(v any) any {
 		return out
 	default:
 		return v
+	}
+}
+
+// userContentFieldNames are request/response payload containers that can carry
+// the user's raw prompt, completion text, or media bytes. Error payloads may
+// echo the inbound request, so these are blanked before persistence.
+var userContentFieldNames = map[string]struct{}{
+	"messages": {},
+	"contents": {},
+	"input":    {},
+	"prompt":   {},
+	"text":     {},
+	"content":  {},
+	"image":    {},
+	"images":   {},
+	"b64_json": {},
+}
+
+// stripUserContentFields walks a decoded JSON payload and replaces user-content
+// containers with type-preserving placeholders. Keys and sibling diagnostic
+// fields (error/code/type/message) are preserved so operators can still triage.
+func stripUserContentFields(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, vv := range t {
+			if _, ok := userContentFieldNames[strings.ToLower(strings.TrimSpace(k))]; ok {
+				out[k] = blankUserContentValue(vv)
+				continue
+			}
+			out[k] = stripUserContentFields(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(t))
+		for _, vv := range t {
+			out = append(out, stripUserContentFields(vv))
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// blankUserContentValue preserves the container's JSON type so downstream code
+// that expects an array/string key keeps working.
+func blankUserContentValue(v any) any {
+	switch v.(type) {
+	case []any:
+		return []any{}
+	case string:
+		return ""
+	default:
+		return "[REDACTED]"
 	}
 }
 

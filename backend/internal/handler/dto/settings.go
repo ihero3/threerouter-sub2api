@@ -29,9 +29,15 @@ type CustomEndpoint struct {
 type SystemSettings struct {
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	RegistrationClickCaptchaEnabled     bool                     `json:"registration_click_captcha_enabled"` // 注册前顺序点击验证
+	RegistrationCaptchaMode             string                   `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider
+	RegistrationCaptchaDifficulty       string                   `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	RegistrationEmailDomainQuotaLimit   int                      `json:"registration_email_domain_quota_limit"`
+	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
+	RegistrationIPQuotaEnabled          bool                     `json:"registration_ip_quota_enabled"`
+	RegistrationIPQuotaLimit            int                      `json:"registration_ip_quota_limit"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	FrontendURL                         string                   `json:"frontend_url"`
@@ -359,10 +365,11 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
-	RegistrationClickCaptchaEnabled    bool                     `json:"registration_click_captcha_enabled"`
+	RegistrationClickCaptchaEnabled     bool                     `json:"registration_click_captcha_enabled"`
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`

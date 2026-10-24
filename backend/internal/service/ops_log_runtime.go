@@ -227,6 +227,7 @@ func applyOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
 	}); err != nil {
 		return err
 	}
+	logger.SetAccessLogIndexing(cfg.IndexAccessLogs)
 	return nil
 }
 

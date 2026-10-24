@@ -135,6 +135,13 @@ type apiKeyRepoStubForGroupUpdate struct {
 	getErr    error
 	updateErr error
 	updated   *APIKey // captures what was passed to Update
+
+	// realignUserAPIKeyGroups 相关
+	keys         []APIKey
+	listErr      error
+	realignErr   error
+	realignFrom  map[int64]int64 // from_group_id -> to_group_id
+	realignUsers map[int64]struct{}
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -169,7 +176,11 @@ func (s *apiKeyRepoStubForGroupUpdate) DeleteWithAudit(context.Context, int64) e
 	panic("unexpected")
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListByUserID(context.Context, int64, pagination.PaginationParams, APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
-	panic("unexpected")
+	if s.listErr != nil {
+		return nil, nil, s.listErr
+	}
+	keys := append([]APIKey(nil), s.keys...)
+	return keys, &pagination.PaginationResult{Total: int64(len(keys))}, nil
 }
 func (s *apiKeyRepoStubForGroupUpdate) VerifyOwnership(context.Context, int64, []int64) ([]int64, error) {
 	panic("unexpected")
@@ -213,8 +224,19 @@ func (s *apiKeyRepoStubForGroupUpdate) ResetRateLimitWindows(context.Context, in
 func (s *apiKeyRepoStubForGroupUpdate) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
 	panic("unexpected")
 }
-func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
-	panic("unexpected")
+func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(_ context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
+	if s.realignErr != nil {
+		return 0, s.realignErr
+	}
+	if s.realignFrom == nil {
+		s.realignFrom = make(map[int64]int64)
+	}
+	if s.realignUsers == nil {
+		s.realignUsers = make(map[int64]struct{})
+	}
+	s.realignFrom[oldGroupID] = newGroupID
+	s.realignUsers[userID] = struct{}{}
+	return 1, nil
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
@@ -222,6 +244,9 @@ type groupRepoStubForGroupUpdate struct {
 	group          *Group
 	getErr         error
 	lastGetByIDArg int64
+
+	// groupsByID 供 GetByIDLite 使用（realignUserAPIKeyGroups 判定可绑定性）
+	groupsByID map[int64]*Group
 }
 
 func (s *groupRepoStubForGroupUpdate) GetByID(_ context.Context, id int64) (*Group, error) {
@@ -235,8 +260,13 @@ func (s *groupRepoStubForGroupUpdate) GetByID(_ context.Context, id int64) (*Gro
 
 // Unused methods – panic on unexpected call.
 func (s *groupRepoStubForGroupUpdate) Create(context.Context, *Group) error { panic("unexpected") }
-func (s *groupRepoStubForGroupUpdate) GetByIDLite(context.Context, int64) (*Group, error) {
-	panic("unexpected")
+func (s *groupRepoStubForGroupUpdate) GetByIDLite(_ context.Context, id int64) (*Group, error) {
+	group, ok := s.groupsByID[id]
+	if !ok {
+		return nil, ErrGroupNotFound
+	}
+	clone := *group
+	return &clone, nil
 }
 func (s *groupRepoStubForGroupUpdate) Update(context.Context, *Group) error { panic("unexpected") }
 func (s *groupRepoStubForGroupUpdate) Delete(context.Context, int64) error  { panic("unexpected") }
@@ -564,4 +594,153 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+// ---------------------------------------------------------------------------
+// realignUserAPIKeyGroups：管理员变更允许分组后 API Key 分组自动跟随
+// ---------------------------------------------------------------------------
+
+func TestAdminService_RealignUserAPIKeyGroups_SingleAllowedGroup_MovesAllKeys(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{
+			{ID: 1, GroupID: int64Ptr(5)}, // 已被移除的旧分组
+			{ID: 2, GroupID: int64Ptr(5)},
+			{ID: 3, GroupID: int64Ptr(7)}, // 另一个旧分组
+			{ID: 4, GroupID: nil},         // 未绑定分组的 Key 不动
+		},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{
+			9: {ID: 9, Name: "target", Status: StatusActive},
+			5: {ID: 5, Name: "old-a", Status: StatusActive},
+			7: {ID: 7, Name: "old-b", Status: StatusActive},
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+
+	require.Equal(t, map[int64]int64{5: 9, 7: 9}, apiKeyRepo.realignFrom,
+		"单指定分组时应把所有已绑定分组的 Key 统一迁移到该分组")
+	require.Equal(t, map[int64]struct{}{42: {}}, apiKeyRepo.realignUsers)
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_MultipleAllowedGroups_OnlyMovesInvalid(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{
+			{ID: 1, GroupID: int64Ptr(5)},
+			{ID: 2, GroupID: int64Ptr(7)},
+		},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{
+			9: {ID: 9, Name: "target", Status: StatusActive},
+			// 5 仍可绑定（公开非专属）→ 保留用户选择
+			5: {ID: 5, Name: "public", Status: StatusActive, IsExclusive: false},
+			// 7 为专属分组且已不在允许列表 → 迁移
+			7: {ID: 7, Name: "vip", Status: StatusActive, IsExclusive: true},
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{
+		ID:                   42,
+		AllowedGroups:        []int64{9, 5},
+		RestrictPublicGroups: false,
+	})
+
+	require.Equal(t, map[int64]int64{7: 9}, apiKeyRepo.realignFrom,
+		"多允许分组时只迁移已不可绑定的分组，保留仍可绑定的用户选择")
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_SubscriptionSourceGroup_Preserved(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{{ID: 1, GroupID: int64Ptr(11)}},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{
+			9:  {ID: 9, Name: "target", Status: StatusActive},
+			11: {ID: 11, Name: "sub", Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+
+	require.Nil(t, apiKeyRepo.realignFrom,
+		"订阅型分组承载用户已购买的订阅，不应被管理员改分组带动迁移")
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_InactiveTarget_Skips(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{{ID: 1, GroupID: int64Ptr(5)}},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{
+			9: {ID: 9, Name: "disabled", Status: StatusDisabled},
+			5: {ID: 5, Name: "old", Status: StatusActive},
+		},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+
+	require.Nil(t, apiKeyRepo.realignFrom, "目标分组未启用时不应迁移，否则整批 Key 会 403")
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_SubscriptionTargetRequiresActiveSub(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{{ID: 1, GroupID: int64Ptr(5)}},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{
+			9: {ID: 9, Name: "sub-target", Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+			5: {ID: 5, Name: "old", Status: StatusActive},
+		},
+	}
+	userSubRepo := &userSubRepoStubForGroupUpdate{getActiveErr: ErrSubscriptionNotFound}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userSubRepo: userSubRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+
+	require.Nil(t, apiKeyRepo.realignFrom, "目标为订阅分组但用户无有效订阅时不应迁移")
+	require.True(t, userSubRepo.called)
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_NoAllowedGroups_Skips(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{{ID: 1, GroupID: int64Ptr(5)}},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: &groupRepoStubForGroupUpdate{}}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: nil})
+
+	require.Nil(t, apiKeyRepo.realignFrom, "没有允许分组时应跳过，不迁移")
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_ExistingGroupIsTarget_NoOp(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keys: []APIKey{{ID: 1, GroupID: int64Ptr(9)}},
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{9: {ID: 9, Name: "target", Status: StatusActive}},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+
+	require.Nil(t, apiKeyRepo.realignFrom, "Key 已在目标分组上时不应产生任何更新")
+}
+
+func TestAdminService_RealignUserAPIKeyGroups_ListError_DoesNotPanic(t *testing.T) {
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{listErr: errors.New("db down")}
+	groupRepo := &groupRepoStubForGroupUpdate{
+		groupsByID: map[int64]*Group{9: {ID: 9, Name: "target", Status: StatusActive}},
+	}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	require.NotPanics(t, func() {
+		svc.realignUserAPIKeyGroups(context.Background(), &User{ID: 42, AllowedGroups: []int64{9}})
+	})
+	require.Nil(t, apiKeyRepo.realignFrom)
 }

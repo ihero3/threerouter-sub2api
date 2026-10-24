@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -161,6 +160,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyForceEmailOnThirdPartySignup,
 		SettingKeyRegistrationEmailSuffixWhitelist,
 		SettingKeyRegistrationEmailDomainQuotaEnabled,
+		SettingKeyRegistrationEmailDomainQuotaWindow,
 		SettingKeyRegistrationClickCaptchaEnabled,
 		SettingKeyPromoCodeEnabled,
 		SettingKeyPasswordResetEnabled,
@@ -304,6 +304,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ForceEmailOnThirdPartySignup:        settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist:    registrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
+		RegistrationEmailDomainQuotaWindow:  normalizeRegistrationEmailDomainQuotaWindow(settings[SettingKeyRegistrationEmailDomainQuotaWindow]),
 		PromoCodeEnabled:                    settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:                passwordResetEnabled,
 		InvitationCodeEnabled:               settings[SettingKeyInvitationCodeEnabled] == "true",
@@ -526,14 +527,11 @@ func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRun
 }
 
 // IsUserErrorViewAllowed reads the user-facing error-requests visibility switch
-// directly from the settings store. Fail-closed: on error returns false (opt-in default).
+// from the in-process settings cache (60s TTL). Fail-closed: on error returns
+// false (opt-in default).
 func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
-	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyAllowUserViewErrorRequests})
-	if err != nil {
-		slog.Warn("failed to get allow_user_view_error_requests setting, defaulting to false", "error", err)
-		return false
-	}
-	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
+	value, found := s.getCachedSettingValue(ctx, SettingKeyAllowUserViewErrorRequests)
+	return found && value == "true"
 }
 
 // PublicSettingsInjectionPayload is the JSON shape embedded into HTML as
@@ -555,6 +553,7 @@ type PublicSettingsInjectionPayload struct {
 	RegistrationClickCaptchaEnabled    bool                     `json:"registration_click_captcha_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
@@ -645,6 +644,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		RegistrationClickCaptchaEnabled:     settings.RegistrationClickCaptchaEnabled,
 		RegistrationEmailSuffixWhitelist:    settings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings.RegistrationEmailDomainQuotaEnabled,
+		RegistrationEmailDomainQuotaWindow:  settings.RegistrationEmailDomainQuotaWindow,
 		PromoCodeEnabled:                    settings.PromoCodeEnabled,
 		PasswordResetEnabled:                settings.PasswordResetEnabled,
 		InvitationCodeEnabled:               settings.InvitationCodeEnabled,

@@ -141,6 +141,12 @@ type SettingService struct {
 	panelRateLimitCache atomic.Value
 	panelRateLimitSF    singleflight.Group
 
+	// settingValueCache 通用单键设置缓存（key -> *cachedSettingValue，60s TTL）。
+	// 供请求热路径上的开关读取（session 绑定、beta 策略、模型兜底、注册/验证码等），
+	// 禁止这些读路径每请求直查 DB。写后由 refreshCachedSettings 统一清空。
+	settingValueCache sync.Map
+	settingValueSF    singleflight.Group
+
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
 	// path without ever blocking on the DB; when the cached entry expires, a background

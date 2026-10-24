@@ -20,10 +20,12 @@ func NewRegistrationClickCaptchaHandler(clickCaptcha *service.RegistrationClickC
 	return &RegistrationClickCaptchaHandler{clickCaptcha: clickCaptcha}
 }
 
-// clickCaptchaRequestBody 请求体公共字段。
-type clickCaptchaRequestBody struct {
-	ChallengeID string   `json:"challenge_id"`
-	Clicks      []string `json:"clicks"`
+// captchaVerifyRequestBody 请求体：按题目模式二选一携带点选坐标或滑块落点+轨迹。
+type captchaVerifyRequestBody struct {
+	ChallengeID string                    `json:"challenge_id"`
+	Clicks      []service.ClickPoint      `json:"clicks"`     // image_click
+	DropX       float64                   `json:"drop_x"`     // slider
+	Trajectory  []service.TrajectoryPoint `json:"trajectory"` // slider
 }
 
 // Challenge POST /api/v1/auth/captcha/challenge
@@ -47,17 +49,22 @@ func (h *RegistrationClickCaptchaHandler) Verify(c *gin.Context) {
 		response.InternalError(c, "Click captcha service not configured")
 		return
 	}
-	var req clickCaptchaRequestBody
+	var req captchaVerifyRequestBody
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(req.ChallengeID) == "" || len(req.Clicks) == 0 {
-		response.BadRequest(c, "Invalid request: challenge_id and clicks are required")
+	if strings.TrimSpace(req.ChallengeID) == "" {
+		response.BadRequest(c, "Invalid request: challenge_id is required")
 		return
 	}
 	ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
-	token, ttl, err := h.clickCaptcha.VerifyChallenge(c.Request.Context(), req.ChallengeID, req.Clicks, ipHash, ipHash)
+	proof := service.CaptchaVerifyProof{
+		Clicks:     req.Clicks,
+		DropX:      req.DropX,
+		Trajectory: req.Trajectory,
+	}
+	token, ttl, err := h.clickCaptcha.VerifyChallenge(c.Request.Context(), req.ChallengeID, proof, ipHash, ipHash)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

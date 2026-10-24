@@ -76,6 +76,9 @@ type OpsRuntimeLogConfig struct {
 	Caller          bool           `json:"caller"`
 	StacktraceLevel string         `json:"stacktrace_level"`
 	RetentionDays   int            `json:"retention_days"`
+	// IndexAccessLogs 控制 http.access 访问日志是否写入 ops_system_logs。
+	// 默认 false：访问日志与 QPS 成正比，全量入库会造成持续的线性写入压力。
+	IndexAccessLogs bool           `json:"index_access_logs"`
 	Source          string         `json:"source,omitempty"`
 	UpdatedAt       string         `json:"updated_at,omitempty"`
 	UpdatedByUserID int64          `json:"updated_by_user_id,omitempty"`

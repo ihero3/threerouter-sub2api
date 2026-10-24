@@ -259,7 +259,7 @@ func abortRateLimit(c *gin.Context, limit int, retryAfter time.Duration) {
 	})
 }
 
-// rateLimitMessage 生成 IP 维度限流的 429 文案（中英双语）。
+// rateLimitMessage 生成 IP 维度限流的 429 文案（纯英语，客户端不可见汉语）。
 // 无有效限额时降级为不含 N 的文案。
 func rateLimitMessage(limit, retrySeconds int) string {
 	if retrySeconds < 1 {
@@ -267,14 +267,13 @@ func rateLimitMessage(limit, retrySeconds int) string {
 	}
 	if limit > 0 {
 		return fmt.Sprintf(
-			"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds. "+
-				"当前限额 %d 次/分钟，请 %d 秒后重试。",
-			limit, retrySeconds, limit, retrySeconds,
+			"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds.",
+			limit, retrySeconds,
 		)
 	}
 	return fmt.Sprintf(
-		"Rate limit exceeded: please retry after %d seconds. 请求过于频繁，请 %d 秒后重试。",
-		retrySeconds, retrySeconds,
+		"Rate limit exceeded: please retry after %d seconds.",
+		retrySeconds,
 	)
 }
 

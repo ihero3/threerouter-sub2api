@@ -1265,8 +1265,8 @@ export default {
       }
     },
     proxies: {
-      batchInputPlaceholder: 'Enter one proxy per line in the following formats:\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass&#64;proxy.example.com:443',
-      batchInputHint: 'Supports http, https, socks5 protocols. Format: protocol://[user:pass&#64;]host:port',
+      batchInputPlaceholder: 'Enter one proxy per line in the following formats:\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{\'@\'}proxy.example.com:443',
+      batchInputHint: 'Supports http, https, socks5 protocols. Format: protocol://[user:pass{\'@\'}]host:port',
       fallbackMode: 'Failure fallback'
     },
     usage: {
@@ -1294,8 +1294,8 @@ export default {
         }
       },
       registration: {
-        emailSuffixWhitelistHint: 'Only email addresses from the specified domains can register (for example, &#64;qq.com, &#64;gmail.com, *.edu.cn)',
-        emailSuffixWhitelistPlaceholder: '&#64;example.com, *.edu.cn'
+        emailSuffixWhitelistHint: 'Only email addresses from the specified domains can register (for example, {\'@\'}qq.com, {\'@\'}gmail.com, *.edu.cn)',
+        emailSuffixWhitelistPlaceholder: '{\'@\'}example.com, *.edu.cn'
       },
       apiKeyAcl: {
         description: 'Choose which client IP is used by API Key allowlists and denylists',
@@ -1312,11 +1312,11 @@ export default {
         enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
       },
       smtp: {
-        usernamePlaceholder: 'your-email&#64;gmail.com',
-        fromEmailPlaceholder: 'noreply&#64;example.com'
+        usernamePlaceholder: 'your-email{\'@\'}gmail.com',
+        fromEmailPlaceholder: 'noreply{\'@\'}example.com'
       },
       testEmail: {
-        recipientEmailPlaceholder: 'test&#64;example.com'
+        recipientEmailPlaceholder: 'test{\'@\'}example.com'
       },
       soraS3: {
         title: 'Sora Storage',

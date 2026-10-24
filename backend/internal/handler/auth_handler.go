@@ -202,9 +202,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	// 注册 IP 取安全客户端 IP（与审计日志、使用记录同源），
+	// 由 SessionBindingContext 中间件统一解析，避免与其他链路取值不一致。
+	clientIP := middleware2.SecurityClientIP(c)
 	// 验证当前启用的验证码（邮箱验证码注册场景避免重复校验一次性票据）
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, ip.GetClientIP(c), req.VerifyCode); err != nil {
+	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, clientIP, req.VerifyCode); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -212,7 +215,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// 注册前非破坏性校验点击验证 token（不消费，失败重试无需重新人机验证）；
 	// 注册成功后才一次性消费 token，防止成功后重放。
 	if h.enforceClickCaptchaForRegistration(c) {
-		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -227,7 +230,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.PromoCode,
 		req.InvitationCode,
 		req.AffCode,
-		ip.GetClientIP(c),
+		clientIP,
 	)
 	if err != nil {
 		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）
@@ -238,7 +241,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	// 注册成功后一次性消费 token，防止同一个人用同一 token 注册多个账号
 	if h.enforceClickCaptchaForRegistration(c) {
-		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 		_, _ = h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
 	}
 
@@ -253,9 +256,10 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	clientIP := middleware2.SecurityClientIP(c)
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, clientIP); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -263,7 +267,7 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	// 邮箱验证开启且启用点击验证时，发送验证码前必须持有有效的真人验证 token（非消费式校验），
 	// 杜绝机器人绕过前端直接调用本接口刷邮件；token 仍由后续注册接口做一次性消费。
 	if h.enforceClickCaptchaForRegistration(c) {
-		ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
 			response.ErrorFrom(c, err)
 			return

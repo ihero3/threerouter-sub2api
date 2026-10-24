@@ -840,12 +840,17 @@ database:
   # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
   sslmode: "prefer"
-  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
+  # Max open connections
   # 最大打开连接数
-  max_open_conns: 256
+  # 必须显著小于 PostgreSQL 的 max_connections（扣除 superuser_reserved_connections
+  # 后才是应用实际可用的槽位），否则连接池打满时会触发
+  # "FATAL: too many clients already"，并挤占管理/迁移/监控的连接。
+  # 默认 50：适配 PostgreSQL max_connections=100 的常见部署（97 个可用槽位）。
+  # 若 PG max_connections 调大（如 300），可相应调整为 150-200。
+  max_open_conns: 50
   # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
   # 最大空闲连接数
-  max_idle_conns: 128
+  max_idle_conns: 25
   # Connection max lifetime (minutes)
   # 连接最大存活时间（分钟）
   conn_max_lifetime_minutes: 30

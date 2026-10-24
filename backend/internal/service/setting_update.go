@@ -165,12 +165,21 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 	updates[SettingKeyRegistrationClickCaptchaEnabled] = strconv.FormatBool(settings.RegistrationClickCaptchaEnabled)
+	updates[SettingKeyRegistrationCaptchaMode] = normalizeRegistrationCaptchaMode(settings.RegistrationCaptchaMode)
+	updates[SettingKeyRegistrationCaptchaDifficulty] = normalizeRegistrationCaptchaDifficulty(settings.RegistrationCaptchaDifficulty)
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
 	}
 	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
 	updates[SettingKeyRegistrationEmailDomainQuotaEnabled] = strconv.FormatBool(settings.RegistrationEmailDomainQuotaEnabled)
+	settings.RegistrationEmailDomainQuotaLimit = clampRegistrationEmailDomainQuotaLimit(settings.RegistrationEmailDomainQuotaLimit)
+	updates[SettingKeyRegistrationEmailDomainQuotaLimit] = strconv.Itoa(settings.RegistrationEmailDomainQuotaLimit)
+	settings.RegistrationEmailDomainQuotaWindow = normalizeRegistrationEmailDomainQuotaWindow(settings.RegistrationEmailDomainQuotaWindow)
+	updates[SettingKeyRegistrationEmailDomainQuotaWindow] = settings.RegistrationEmailDomainQuotaWindow
+	updates[SettingKeyRegistrationIPQuotaEnabled] = strconv.FormatBool(settings.RegistrationIPQuotaEnabled)
+	settings.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(settings.RegistrationIPQuotaLimit)
+	updates[SettingKeyRegistrationIPQuotaLimit] = strconv.Itoa(settings.RegistrationIPQuotaLimit)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
@@ -809,6 +818,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	// 通用单键设置缓存：全量写后统一清空，下一次读取即从 DB 重载。
+	s.invalidateAllCachedSettingValues()
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}

@@ -372,26 +372,49 @@ func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
 	return outTradeNo, nil
 }
 
+// expireOrderBatchSize 限制单次过期扫描拉取的订单数，避免积压时一次性把
+// 全部过期订单读进内存。
+const expireOrderBatchSize = 200
+
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
 	now := time.Now()
-	orders, err := s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusPending), paymentorder.ExpiresAtLTE(now)).All(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("query expired: %w", err)
-	}
 	n := 0
-	for _, o := range orders {
-		// Check upstream payment status before expiring — the user may have
-		// paid just before timeout and the webhook hasn't arrived yet.
-		outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
-		if outcome == checkPaidResultAlreadyPaid {
-			slog.Info("order was paid during expiry", "orderID", o.ID)
-			continue
+	var lastID int64
+	for {
+		// 使用 ID 游标而非 OFFSET：被判定为“已支付”而跳过的订单不会改变状态，
+		// 基于 offset 的分页会重复返回同一批订单。
+		orders, err := s.entClient.PaymentOrder.Query().
+			Where(
+				paymentorder.StatusEQ(OrderStatusPending),
+				paymentorder.ExpiresAtLTE(now),
+				paymentorder.IDGT(lastID),
+			).
+			Order(dbent.Asc(paymentorder.FieldID)).
+			Limit(expireOrderBatchSize).
+			All(ctx)
+		if err != nil {
+			return n, fmt.Errorf("query expired: %w", err)
 		}
-		if outcome != "" {
-			n++
+		if len(orders) == 0 {
+			return n, nil
+		}
+		lastID = orders[len(orders)-1].ID
+		for _, o := range orders {
+			// Check upstream payment status before expiring — the user may have
+			// paid just before timeout and the webhook hasn't arrived yet.
+			outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+			if outcome == checkPaidResultAlreadyPaid {
+				slog.Info("order was paid during expiry", "orderID", o.ID)
+				continue
+			}
+			if outcome != "" {
+				n++
+			}
+		}
+		if len(orders) < expireOrderBatchSize {
+			return n, nil
 		}
 	}
-	return n, nil
 }
 
 // getOrderProvider creates a provider using the order's original instance config.

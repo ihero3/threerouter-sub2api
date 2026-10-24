@@ -2567,7 +2567,7 @@ func extractQuotaResetSeconds(err error) int {
 	return int(math.Ceil(secs))
 }
 
-// rpmLimitMessage 生成带具体限额与建议等待秒数的 RPM 超限文案（中英双语）。
+// rpmLimitMessage 生成带具体限额与建议等待秒数的 RPM 超限文案（纯英语，客户端不可见汉语）。
 //
 // 背景：旧文案是一句干巴巴的 "requests-per-minute limit exceeded"——最终用户
 // 既不知道自己超了多少、也不知道要等多久，只能判定"服务不稳定"。
@@ -2579,7 +2579,7 @@ func rpmLimitMessage(err error, retrySeconds int) string {
 	if retrySeconds < 1 {
 		retrySeconds = 1
 	}
-	const contactHint = "如需更高限额请联系服务方调整 / Contact your provider to raise this limit."
+	const contactHint = "Contact your provider to raise this limit."
 	limit := 0
 	if appErr := pkgerrors.FromError(err); appErr != nil {
 		if parsed, convErr := strconv.Atoi(appErr.Metadata["rpm_limit"]); convErr == nil {
@@ -2588,14 +2588,13 @@ func rpmLimitMessage(err error, retrySeconds int) string {
 	}
 	if limit <= 0 {
 		return fmt.Sprintf(
-			"Rate limit exceeded: please retry after %d seconds. 请求过于频繁，请 %d 秒后重试。%s",
-			retrySeconds, retrySeconds, contactHint,
+			"Rate limit exceeded: please retry after %d seconds. %s",
+			retrySeconds, contactHint,
 		)
 	}
 	return fmt.Sprintf(
-		"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds. "+
-			"当前限额 %d 次/分钟，请 %d 秒后重试。%s",
-		limit, retrySeconds, limit, retrySeconds, contactHint,
+		"Rate limit exceeded: current limit is %d requests/minute, please retry after %d seconds. %s",
+		limit, retrySeconds, contactHint,
 	)
 }
 

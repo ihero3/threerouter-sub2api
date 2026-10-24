@@ -263,6 +263,12 @@ func (h *TeamHandler) InviteMember(c *gin.Context) {
 	if req.Role == "" {
 		req.Role = "member"
 	}
+	// owner 只能由 owner 授予：admin 邀请/改派 owner 会造成团队内权限提升
+	// （新 owner 可删除整个团队）。调用方角色由团队权限中间件写入上下文。
+	if req.Role == "owner" && !isCallerTeamOwner(c) {
+		response.Forbidden(c, "Only the team owner can grant the owner role")
+		return
+	}
 
 	member, err := h.teamService.InviteMember(c.Request.Context(), teamID, req.Email, req.Role, req.DisplayName)
 	if err != nil {
@@ -271,6 +277,13 @@ func (h *TeamHandler) InviteMember(c *gin.Context) {
 	}
 
 	response.Success(c, member)
+}
+
+// isCallerTeamOwner 判断当前调用方在该团队中的角色是否为 owner。
+// 角色由团队权限中间件（RequireAdminOrAbove/RequireOwner 等）写入上下文。
+func isCallerTeamOwner(c *gin.Context) bool {
+	role, ok := middleware2.GetTeamRoleFromContext(c)
+	return ok && role == middleware2.TeamRoleOwner
 }
 
 // UpdateMemberRequest represents the update member request payload
@@ -306,6 +319,11 @@ func (h *TeamHandler) UpdateMember(c *gin.Context) {
 	}
 
 	if req.Role != nil {
+		// 与 InviteMember 同口径：owner 角色只能由 owner 授予，防止 admin 自我提权。
+		if *req.Role == "owner" && !isCallerTeamOwner(c) {
+			response.Forbidden(c, "Only the team owner can grant the owner role")
+			return
+		}
 		if err := h.teamService.UpdateMemberRole(c.Request.Context(), teamID, memberID, *req.Role); err != nil {
 			response.ErrorFrom(c, err)
 			return

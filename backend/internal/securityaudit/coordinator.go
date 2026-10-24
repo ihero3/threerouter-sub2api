@@ -112,13 +112,13 @@ func prioritize(legacy *LegacyDecision, prompt *PromptDecision) Decision {
 	switch prompt.Kind {
 	case DecisionBlock:
 		return Decision{Kind: DecisionBlock, HTTPStatus: http.StatusForbidden, ErrorCode: ErrorCodeBlocked,
-			ClientMessage: "提示词安全审计拒绝了该请求，请调整输入后重试", Legacy: legacy, Prompt: prompt}
+			ClientMessage: "The prompt safety audit rejected this request. Please revise your input and retry", Legacy: legacy, Prompt: prompt}
 	case DecisionInvalid:
 		return Decision{Kind: DecisionInvalid, HTTPStatus: http.StatusServiceUnavailable, ErrorCode: ErrorCodeInvalidResponse,
-			ClientMessage: "提示词安全审计暂时不可用，请稍后重试", Legacy: legacy, Prompt: prompt}
+			ClientMessage: "The prompt safety audit is temporarily unavailable. Please retry later", Legacy: legacy, Prompt: prompt}
 	case DecisionUnavailable:
 		return Decision{Kind: DecisionUnavailable, HTTPStatus: http.StatusServiceUnavailable, ErrorCode: ErrorCodeUnavailable,
-			ClientMessage: "提示词安全审计暂时不可用，请稍后重试", Legacy: legacy, Prompt: prompt}
+			ClientMessage: "The prompt safety audit is temporarily unavailable. Please retry later", Legacy: legacy, Prompt: prompt}
 	case DecisionFlag:
 		return Decision{Kind: DecisionFlag, HTTPStatus: http.StatusOK, Legacy: legacy, Prompt: prompt, AllowNextStage: true}
 	default:

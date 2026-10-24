@@ -269,6 +269,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIReasoningPassthroughError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
+	// 「网关阶段不支持该 tool/feature」的 400（如 web_search 不被当前上游支持）：
+	// 属账号/上游能力不匹配而非请求语法错误，换一个支持该特性的上游账号即可服务
+	// 同一请求，故判为可 failover。
+	if isOpenAIUnsupportedToolFeatureError(statusCode, upstreamMsg, upstreamBody) {
+		return true
+	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
@@ -294,7 +300,16 @@ const openAIMaxCompletionTokensClientMessage = "The requested output token limit
 
 const openAIMaxCompletionTokensReason = GatewayFailureReason("openai_max_completion_tokens_exceeded")
 
+// OpenAIReasoningPassthroughReason 标识「上游要求回传 reasoning 但对话历史缺失」类 400。
 const OpenAIReasoningPassthroughReason = GatewayFailureReason("openai_reasoning_passthrough")
+
+// OpenAIUnsupportedFeatureReason 标识「当前上游不支持请求中的 tool/feature」类 400
+// （如 web_search 在该上游网关阶段不受支持）。属账号能力不匹配，可换号重试。
+const OpenAIUnsupportedFeatureReason = GatewayFailureReason("openai_unsupported_feature")
+
+// openAIUnsupportedFeatureClientMessage 是所有候选账号均不支持该工具/特性后回给
+// 客户端的统一文案。绝不下发上游原文（可能含上游网关内部措辞）。
+const openAIUnsupportedFeatureClientMessage = "The requested tool or feature is not supported by any available upstream account"
 
 // openAIReasoningPassthroughClientMessage 是所有候选账号都因「上游要求回传
 // reasoning 但请求历史缺失」而拒绝后回给客户端的统一文案。绝不下发上游原文；
@@ -369,6 +384,41 @@ func isOpenAIReasoningPassthroughError(statusCode int, upstreamMsg string, upstr
 	return hasReasoningField && strings.Contains(lower, "passed back")
 }
 
+// isOpenAIUnsupportedToolFeatureError 识别「网关阶段不支持请求中某 tool/feature」的
+// 400 响应，典型形如：
+//
+//	{"error":{"code":"responses_feature_not_supported","type":"unsupported_feature",
+//	 "message":"tool type 'web_search' is not supported by this gateway phase.","param":""}}
+//
+// 这不是请求语法错误，而是账号/上游能力不匹配：换一个支持该特性的上游（不同厂商、
+// 不同网关阶段或不同模型映射）即可服务同一请求，因此判为可换号（rotate 到下一个
+// 账号）。判定锚定结构化 error.code / error.type，避免误伤无关 400；消息短语
+// "is not supported by this gateway" 仅作为无结构化字段时的兜底。
+func isOpenAIUnsupportedToolFeatureError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+	if len(upstreamBody) > 0 && gjson.ValidBytes(upstreamBody) {
+		for _, path := range []string{"error.code", "response.error.code", "code"} {
+			code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, path).String()))
+			if strings.Contains(code, "feature_not_supported") {
+				return true
+			}
+		}
+		for _, path := range []string{"error.type", "response.error.type", "type"} {
+			if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(upstreamBody, path).String()), "unsupported_feature") {
+				return true
+			}
+		}
+	}
+	// 兜底：无结构化 code/type 时匹配 gateway-phase 措辞。
+	lower := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if lower == "" && gjson.ValidBytes(upstreamBody) {
+		lower = strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.message").String()))
+	}
+	return lower != "" && strings.Contains(lower, "is not supported by this gateway")
+}
+
 func newOpenAIUpstreamFailoverError(
 	statusCode int,
 	responseHeaders http.Header,
@@ -410,6 +460,15 @@ func newOpenAIUpstreamFailoverError(
 		failoverErr.NextAccountAction = NextAccountRetry
 		failoverErr.ClientStatusCode = http.StatusBadRequest
 		failoverErr.ClientMessage = OpenAIReasoningPassthroughClientMessage
+	}
+	if isOpenAIUnsupportedToolFeatureError(statusCode, upstreamMsg, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = OpenAIUnsupportedFeatureReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusBadRequest
+		failoverErr.ClientMessage = openAIUnsupportedFeatureClientMessage
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
