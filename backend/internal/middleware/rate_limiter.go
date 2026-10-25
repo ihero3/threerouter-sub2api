@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	ippkg "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -64,13 +65,17 @@ var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, w
 type RateLimiter struct {
 	redis  *redis.Client
 	prefix string
+	// fallback 进程内降级限流器：仅在 Redis 故障且调用方要求 fail-close 时使用，
+	// 避免限流存储不可用（如 Redis OOM/宕机）把整条入口的所有用户一起锁死。
+	fallback *localRateLimiter
 }
 
 // NewRateLimiter 创建速率限制器实例
 func NewRateLimiter(redisClient *redis.Client) *RateLimiter {
 	return &RateLimiter{
-		redis:  redisClient,
-		prefix: "rate_limit:",
+		redis:    redisClient,
+		prefix:   "rate_limit:",
+		fallback: newLocalRateLimiter(),
 	}
 }
 
@@ -132,11 +137,18 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 	}
 
 	return func(c *gin.Context) {
-		result, err := r.Allow(c.Request.Context(), key+":"+clientIPForRateLimit(c), limit, window)
+		scopedKey := key + ":" + clientIPForRateLimit(c)
+		result, err := r.Allow(c.Request.Context(), scopedKey, limit, window)
 		if err != nil {
 			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", r.prefix+key, failureModeLabel(failureMode), err)
 			if failureMode == RateLimitFailClose {
-				abortRateLimit(c, limit, window)
+				// 限流存储故障（如 Redis OOM / 宕机）时降级为进程内限流：
+				// 仍保留防爆破能力，同时避免把整站用户一起挡在门外。
+				if r.fallback != nil && !r.fallback.allow(scopedKey, limit, window, time.Now()) {
+					abortRateLimit(c, limit, window)
+					return
+				}
+				c.Next()
 				return
 			}
 			// Redis 错误时放行，避免影响正常服务
@@ -151,6 +163,72 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 		}
 
 		c.Next()
+	}
+}
+
+const (
+	// localRateLimiterMaxKeys 限制降级限流表的最大条目数，防止极端情况（大量伪造 IP）拖垮进程内存。
+	localRateLimiterMaxKeys = 20000
+	// localRateLimiterSweepInterval 定期清理过期窗口的最小间隔。
+	localRateLimiterSweepInterval = time.Minute
+)
+
+// localRateLimiter 是 Redis 不可用时的进程内固定窗口限流器。
+// 语义与 Redis 版本一致：窗口从首次请求开始计时，窗口内计数超过 limit 即拒绝。
+type localRateLimiter struct {
+	mu        sync.Mutex
+	windows   map[string]localRateWindow
+	lastSweep time.Time
+}
+
+type localRateWindow struct {
+	start  time.Time
+	window time.Duration
+	count  int
+}
+
+func newLocalRateLimiter() *localRateLimiter {
+	return &localRateLimiter{
+		windows:   make(map[string]localRateWindow),
+		lastSweep: time.Now(),
+	}
+}
+
+// allow 判定并计数；超过上限返回 false。
+func (l *localRateLimiter) allow(key string, limit int, window time.Duration, now time.Time) bool {
+	if l == nil || limit <= 0 || window <= 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sweep(now)
+
+	entry, ok := l.windows[key]
+	if !ok || now.Sub(entry.start) >= entry.window {
+		l.windows[key] = localRateWindow{start: now, window: window, count: 1}
+		return true
+	}
+	if entry.count >= limit {
+		return false
+	}
+	entry.count++
+	l.windows[key] = entry
+	return true
+}
+
+// sweep 定期清理过期窗口，避免长期运行时映射无限增长。
+func (l *localRateLimiter) sweep(now time.Time) {
+	if now.Sub(l.lastSweep) < localRateLimiterSweepInterval && len(l.windows) < localRateLimiterMaxKeys {
+		return
+	}
+	for k, entry := range l.windows {
+		if now.Sub(entry.start) >= entry.window {
+			delete(l.windows, k)
+		}
+	}
+	l.lastSweep = now
+	if len(l.windows) > localRateLimiterMaxKeys {
+		l.windows = make(map[string]localRateWindow)
 	}
 }
 

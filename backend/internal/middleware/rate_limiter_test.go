@@ -20,6 +20,18 @@ func TestWindowTTLMillis(t *testing.T) {
 	require.Equal(t, int64(2), windowTTLMillis(2500*time.Microsecond))
 }
 
+func TestLocalRateLimiterWindowAndReset(t *testing.T) {
+	l := newLocalRateLimiter()
+	now := time.Now()
+
+	require.True(t, l.allow("k", 2, time.Minute, now))
+	require.True(t, l.allow("k", 2, time.Minute, now.Add(time.Second)))
+	require.False(t, l.allow("k", 2, time.Minute, now.Add(2*time.Second)))
+
+	// 窗口到期后重新计数
+	require.True(t, l.allow("k", 2, time.Minute, now.Add(2*time.Minute)))
+}
+
 func TestRateLimiterFailureModes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -59,6 +71,15 @@ func TestRateLimiterFailureModes(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:1234"
 	recorder = httptest.NewRecorder()
 	failCloseRouter.ServeHTTP(recorder, req)
+	// Redis 不可用时降级为进程内限流：首个请求仍应放行，
+	// 避免存储故障（如 Redis OOM）把整站用户一起挡在门外。
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	req = httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	recorder = httptest.NewRecorder()
+	failCloseRouter.ServeHTTP(recorder, req)
+	// 超出进程内额度后继续限流，保留防爆破能力。
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 }
 
