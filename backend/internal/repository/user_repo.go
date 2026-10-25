@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -578,14 +579,21 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.RoleEQ(filters.Role))
 	}
 	if filters.Search != "" {
-		q = q.Where(
-			dbuser.Or(
-				dbuser.EmailContainsFold(filters.Search),
-				dbuser.UsernameContainsFold(filters.Search),
-				dbuser.NotesContainsFold(filters.Search),
-				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
-			),
-		)
+		search := strings.TrimSpace(filters.Search)
+		// 纯数字输入额外按用户 ID 精确匹配，与模糊字段并存（OR），避免备注含数字时漏匹配。
+		or := []predicate.User{
+			dbuser.EmailContainsFold(search),
+			dbuser.UsernameContainsFold(search),
+			dbuser.NotesContainsFold(search),
+			dbuser.HasAPIKeysWith(apikey.KeyContainsFold(search)),
+		}
+		if id, err := strconv.ParseInt(search, 10, 64); err == nil && id > 0 {
+			or = append(or, dbuser.IDEQ(id))
+		}
+		// 仅空白字符输入不加任何搜索条件，避免 ContainsFold("") 命中全表。
+		if search != "" {
+			q = q.Where(dbuser.Or(or...))
+		}
 	}
 
 	if filters.GroupName != "" {
