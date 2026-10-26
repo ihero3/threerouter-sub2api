@@ -1002,6 +1002,18 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 		s.handleCNProviderConcurrencyLimit403(ctx, account)
 		return true
 	}
+	// 账号/分组功能能力限制类 403（如 "Image generation is not enabled for this group"）：
+	// 语义是「该账号/分组没开通此功能」，不是凭据失效或封号。只 failover 换账号，
+	// 不进 403 累计计数、不写临时冷却、不禁用账号——它的其他能力可能完全正常。
+	// 只匹配 upstreamMsg：responseBody 可能是 HTML 拦截页，含类似措辞会误判。
+	if isUpstreamCapabilityDenied(http.StatusForbidden, upstreamMsg) {
+		slog.Warn("upstream_403_capability_denied_skip_account_penalty",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"upstream_message", truncateForLog([]byte(upstreamMsg), 200),
+		)
+		return true
+	}
 	// 国产供应商与 openai 同口径:HTML 403(CDN/代理拦截页)不构成账号失效证据,
 	// 且 403 在 failover 状态集里会被逐账号重放——直接 SetError 会让一个坏请求/
 	// 一层坏代理连环永久禁用整组账号。走 HTML 豁免 + N 次累计 + 临时冷却。
