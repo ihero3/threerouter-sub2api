@@ -2533,6 +2533,9 @@ var (
 		{Name: "restrict_public_groups", Type: field.TypeBool, Default: false},
 		{Name: "register_ip", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "register_country", Type: field.TypeString, Size: 8, Default: ""},
+		{Name: "risk_level", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "risk_reasons", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "risk_updated_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

@@ -153,6 +153,10 @@ export interface AdminUser extends User {
   // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
   // 管理侧权限开关，普通用户接口不返回。
   restrict_public_groups?: boolean
+  // 邀请注册风险标记（仅管理端返回）：'' = 正常，suspect = 存疑，abnormal = 异常。
+  // risk_reasons 为逗号分隔的原因 key，见 admin.users.risk.reasons.*。
+  risk_level?: string
+  risk_reasons?: string
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }

@@ -423,10 +423,11 @@ export default {
         truncated: 'Result hit the depth or row limit and may be incomplete',
         rebateHint: 'Amount = rebates this user generated for their direct inviter (invite + recharge). Rebates only flow one level up, so only level 1 amounts belong to the queried user.',
         columns: {
-          depth: 'Level',
+          depth: 'Depth',
           user: 'User',
           createdAt: 'Registered',
-          rebate: 'Rebate'
+          rebate: 'Rebate',
+          actions: 'Actions'
         },
         unsourced: {
           description: 'Accounts without an invite source: either no affiliate profile at all (mostly accounts registered before the affiliate feature launched), or a profile with an empty inviter.',
@@ -441,6 +442,12 @@ export default {
             totalRecharged: 'Total recharged',
             profile: 'Profile'
           }
+        },
+        riskScan: {
+          button: 'Scan History',
+          running: 'Scanning...',
+          done: 'Scan complete: {scanned} accounts scanned, {suspect} suspect, {abnormal} abnormal ({marked} marks written)',
+          failed: 'Scan failed'
         },
         guard: {
           description: 'Accounts registered in bulk from the same IP through the same inviter. They appear here when the guard mode is Manual Review: approving binds the inviter and pays the registration reward; rejecting binds nothing and pays nothing.',
@@ -542,6 +549,21 @@ export default {
       },
       editUser: 'Edit User',
       deleteUser: 'Delete User',
+      risk: {
+        level: {
+          suspect: 'Suspect',
+          abnormal: 'Abnormal'
+        },
+        reasons: {
+          invite_burst_24h: 'Invite burst within 24 hours',
+          chain_depth: 'Invite chain too deep',
+          disposable_email: 'Disposable email domain',
+          random_local_part: 'Randomized email local part',
+          shared_password: 'Shared password across accounts',
+          chain_contagion: 'Linked to abnormal accounts'
+        },
+        tooltipFallback: 'Account risk detected, please review manually'
+      },
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",
       searchPlaceholder: 'Search by user ID, email, username, notes, or API key...',
       searchUsers: 'Search by user ID, email, username, notes, or API key',

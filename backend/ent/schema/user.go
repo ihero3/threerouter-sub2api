@@ -129,6 +129,19 @@ func (User) Fields() []ent.Field {
 		field.String("register_country").
 			MaxLen(8).
 			Default(""),
+
+		// 邀请注册风险标记（见迁移 245）。仅用于管理端展示与人工研判，
+		// 不参与鉴权/限流/返利结算。标记只升不降。
+		field.String("risk_level").
+			MaxLen(16).
+			Default(""),
+		field.String("risk_reasons").
+			MaxLen(255).
+			Default(""),
+		field.Time("risk_updated_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

@@ -177,6 +177,14 @@ type AffiliateRepository interface {
 	GetAffiliateGuardEvent(ctx context.Context, id int64) (*AffiliateGuardEvent, error)
 	// MarkAffiliateGuardEventReviewed 将 pending 事件置为 status；仅当仍为 pending 时生效，返回是否更新。
 	MarkAffiliateGuardEventReviewed(ctx context.Context, id int64, status string, reviewedBy int64, rewardAmount float64) (bool, error)
+
+	// 管理端：邀请注册风险标记（只标记，不拦截业务）
+	// CollectAffiliateRiskSignals 批量聚合指定用户的邀请风险信号（上溯/下溯深度、24h 邀请数、密码复用等）。
+	CollectAffiliateRiskSignals(ctx context.Context, userIDs []int64) ([]AffiliateRiskSignal, error)
+	// BumpUserRiskMarks 写入风险标记，语义为「只升不降」：新等级不低于当前等级时才更新。
+	BumpUserRiskMarks(ctx context.Context, marks []UserRiskMark) (int, error)
+	// ListUserIDsForRiskScan 按 ID 游标分页列出待扫描用户，用于存量回填。
+	ListUserIDsForRiskScan(ctx context.Context, afterID int64, limit int) ([]int64, error)
 }
 
 // AffiliateAdminFilter 列表筛选条件
@@ -271,18 +279,22 @@ type AffiliateTransferRecord struct {
 
 // AffiliateRelationUser 关系图上的一个用户（不含层级信息）。
 type AffiliateRelationUser struct {
-	UserID    int64     `json:"user_id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
+	UserID    int64      `json:"user_id"`
+	Email     string     `json:"email"`
+	Username  string     `json:"username"`
+	CreatedAt time.Time  `json:"created_at"`
+	// DeletedAt 非空表示该账号已被软删除。
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
 // AffiliateRelationNode 关系图上的一个节点。
 type AffiliateRelationNode struct {
-	UserID    int64     `json:"user_id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
+	UserID    int64      `json:"user_id"`
+	Email     string     `json:"email"`
+	Username  string     `json:"username"`
+	CreatedAt time.Time  `json:"created_at"`
+	// DeletedAt 非空表示该账号已被软删除。
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// Depth 距查询用户的层数：上游 1 = 直接邀请人，下游 1 = 直接邀请的人。
 	Depth int `json:"depth"`
 	// RebateAmount 该用户为其**直接邀请人**贡献的返利合计（邀请返利 + 充值返利）。
@@ -625,6 +637,11 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 			logger.LegacyPrintf("service.affiliate", "[Affiliate] Registration reward %.2f credited to inviter %d (invitee %d)", reward, inviterSummary.UserID, userID)
 		}
 	}
+
+	// 邀请注册风险标记：只写标记、不拦截注册。
+	// 同时评估被邀请人与邀请人，让「短时间拉大量小号」的邀请人当场被标记出来。
+	// 失败只记录日志，不影响注册主流程。
+	s.EvaluateInviteRisk(ctx, userID, inviterSummary.UserID)
 	return nil
 }
 

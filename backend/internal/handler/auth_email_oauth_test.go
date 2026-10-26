@@ -488,6 +488,19 @@ func (r *oauthEmailAffiliateRepoStub) MarkAffiliateGuardEventReviewed(context.Co
 	panic("unexpected MarkAffiliateGuardEventReviewed call")
 }
 
+// 风险标记是旁路能力：测试里统一返回空结果，不参与断言。
+func (r *oauthEmailAffiliateRepoStub) CollectAffiliateRiskSignals(context.Context, []int64) ([]service.AffiliateRiskSignal, error) {
+	return nil, nil
+}
+
+func (r *oauthEmailAffiliateRepoStub) BumpUserRiskMarks(context.Context, []service.UserRiskMark) (int, error) {
+	return 0, nil
+}
+
+func (r *oauthEmailAffiliateRepoStub) ListUserIDsForRiskScan(context.Context, int64, int) ([]int64, error) {
+	return nil, nil
+}
+
 func findSetCookieValue(cookies []*http.Cookie, name string) string {
 	for _, cookie := range cookies {
 		if cookie != nil && strings.EqualFold(cookie.Name, name) && cookie.MaxAge >= 0 {

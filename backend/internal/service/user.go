@@ -36,6 +36,11 @@ type User struct {
 	// 仅对采集启用后的新注册用户有值，存量用户为空（不回填）。
 	RegisterIP     string
 	RegisterCountry string
+	// RiskLevel/RiskReasons 邀请注册风险标记（见迁移 245）。
+	// 仅用于管理端展示与人工研判，不参与鉴权、限流或返利结算。
+	RiskLevel     string
+	RiskReasons   string
+	RiskUpdatedAt *time.Time
 	LastLoginAt          *time.Time
 	LastActiveAt         *time.Time
 	LastUsedAt           *time.Time

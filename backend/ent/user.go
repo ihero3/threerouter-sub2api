@@ -71,6 +71,12 @@ type User struct {
 	RegisterIP string `json:"register_ip,omitempty"`
 	// RegisterCountry holds the value of the "register_country" field.
 	RegisterCountry string `json:"register_country,omitempty"`
+	// RiskLevel holds the value of the "risk_level" field.
+	RiskLevel string `json:"risk_level,omitempty"`
+	// RiskReasons holds the value of the "risk_reasons" field.
+	RiskReasons string `json:"risk_reasons,omitempty"`
+	// RiskUpdatedAt holds the value of the "risk_updated_at" field.
+	RiskUpdatedAt *time.Time `json:"risk_updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -293,9 +299,9 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldRegisterIP, user.FieldRegisterCountry:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldRegisterIP, user.FieldRegisterCountry, user.FieldRiskLevel, user.FieldRiskReasons:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt, user.FieldRiskUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -485,6 +491,25 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field register_country", values[i])
 			} else if value.Valid {
 				_m.RegisterCountry = value.String
+			}
+		case user.FieldRiskLevel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field risk_level", values[i])
+			} else if value.Valid {
+				_m.RiskLevel = value.String
+			}
+		case user.FieldRiskReasons:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field risk_reasons", values[i])
+			} else if value.Valid {
+				_m.RiskReasons = value.String
+			}
+		case user.FieldRiskUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field risk_updated_at", values[i])
+			} else if value.Valid {
+				_m.RiskUpdatedAt = new(time.Time)
+				*_m.RiskUpdatedAt = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -704,6 +729,17 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("register_country=")
 	builder.WriteString(_m.RegisterCountry)
+	builder.WriteString(", ")
+	builder.WriteString("risk_level=")
+	builder.WriteString(_m.RiskLevel)
+	builder.WriteString(", ")
+	builder.WriteString("risk_reasons=")
+	builder.WriteString(_m.RiskReasons)
+	builder.WriteString(", ")
+	if v := _m.RiskUpdatedAt; v != nil {
+		builder.WriteString("risk_updated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

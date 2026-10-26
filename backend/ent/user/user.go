@@ -69,6 +69,12 @@ const (
 	FieldRegisterIP = "register_ip"
 	// FieldRegisterCountry holds the string denoting the register_country field in the database.
 	FieldRegisterCountry = "register_country"
+	// FieldRiskLevel holds the string denoting the risk_level field in the database.
+	FieldRiskLevel = "risk_level"
+	// FieldRiskReasons holds the string denoting the risk_reasons field in the database.
+	FieldRiskReasons = "risk_reasons"
+	// FieldRiskUpdatedAt holds the string denoting the risk_updated_at field in the database.
+	FieldRiskUpdatedAt = "risk_updated_at"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -263,6 +269,9 @@ var Columns = []string{
 	FieldRestrictPublicGroups,
 	FieldRegisterIP,
 	FieldRegisterCountry,
+	FieldRiskLevel,
+	FieldRiskReasons,
+	FieldRiskUpdatedAt,
 }
 
 var (
@@ -345,6 +354,14 @@ var (
 	DefaultRegisterCountry string
 	// RegisterCountryValidator is a validator for the "register_country" field. It is called by the builders before save.
 	RegisterCountryValidator func(string) error
+	// DefaultRiskLevel holds the default value on creation for the "risk_level" field.
+	DefaultRiskLevel string
+	// RiskLevelValidator is a validator for the "risk_level" field. It is called by the builders before save.
+	RiskLevelValidator func(string) error
+	// DefaultRiskReasons holds the default value on creation for the "risk_reasons" field.
+	DefaultRiskReasons string
+	// RiskReasonsValidator is a validator for the "risk_reasons" field. It is called by the builders before save.
+	RiskReasonsValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -488,6 +505,21 @@ func ByRegisterIP(opts ...sql.OrderTermOption) OrderOption {
 // ByRegisterCountry orders the results by the register_country field.
 func ByRegisterCountry(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRegisterCountry, opts...).ToFunc()
+}
+
+// ByRiskLevel orders the results by the risk_level field.
+func ByRiskLevel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRiskLevel, opts...).ToFunc()
+}
+
+// ByRiskReasons orders the results by the risk_reasons field.
+func ByRiskReasons(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRiskReasons, opts...).ToFunc()
+}
+
+// ByRiskUpdatedAt orders the results by the risk_updated_at field.
+func ByRiskUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRiskUpdatedAt, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

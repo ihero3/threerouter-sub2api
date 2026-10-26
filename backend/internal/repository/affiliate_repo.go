@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -867,18 +868,22 @@ func (r *affiliateRepository) GetInviteRelations(ctx context.Context, userID int
 		inviterEmail  sql.NullString
 		inviterName   sql.NullString
 		inviterJoined sql.NullTime
+		inviterDelAt  sql.NullTime
 		boundAt       sql.NullTime
 	)
+	var userDelAt sql.NullTime
 	rows, err := client.QueryContext(ctx, `
 SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.deleted_at,
        ua.inviter_id,
        ua.created_at,
        iu.email,
        iu.username,
-       iu.created_at
+       iu.created_at,
+       iu.deleted_at
 FROM users u
 LEFT JOIN user_affiliates ua ON ua.user_id = u.id
 LEFT JOIN users iu ON iu.id = ua.inviter_id
@@ -890,8 +895,8 @@ LIMIT 1`, userID)
 	found := rows.Next()
 	if found {
 		err = rows.Scan(
-			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt,
-			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined,
+			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userDelAt,
+			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterDelAt,
 		)
 	}
 	scanErr := rows.Err()
@@ -905,16 +910,26 @@ LIMIT 1`, userID)
 	if !found {
 		return nil, service.ErrUserNotFound
 	}
+	if userDelAt.Valid {
+		t := userDelAt.Time
+		rel.User.DeletedAt = &t
+	}
 	if boundAt.Valid {
 		v := boundAt.Time
 		rel.BoundAt = &v
 	}
 	if inviterID.Valid && inviterID.Int64 > 0 {
+		var delPtr *time.Time
+		if inviterDelAt.Valid {
+			t := inviterDelAt.Time
+			delPtr = &t
+		}
 		rel.Inviter = &service.AffiliateRelationUser{
 			UserID:    inviterID.Int64,
 			Email:     inviterEmail.String,
 			Username:  inviterName.String,
 			CreatedAt: inviterJoined.Time,
+			DeletedAt: delPtr,
 		}
 	}
 
@@ -934,6 +949,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.deleted_at,
        up.depth
 FROM up
 JOIN users u ON u.id = up.user_id
@@ -943,9 +959,14 @@ ORDER BY up.depth DESC`, userID, maxDepth)
 	}
 	for ancestorRows.Next() {
 		var node service.AffiliateRelationNode
-		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &node.Depth); err != nil {
+		var delAt sql.NullTime
+		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &delAt, &node.Depth); err != nil {
 			_ = ancestorRows.Close()
 			return nil, err
+		}
+		if delAt.Valid {
+			t := delAt.Time
+			node.DeletedAt = &t
 		}
 		rel.Ancestors = append(rel.Ancestors, node)
 	}
@@ -979,6 +1000,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.deleted_at,
        d.depth,
        COALESCE(r.rebate_total, 0)::double precision
 FROM down d
@@ -997,9 +1019,14 @@ LIMIT $3`, userID, maxDepth, affiliateRelationDescendantRowCap)
 	}
 	for descendantRows.Next() {
 		var node service.AffiliateRelationNode
-		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &node.Depth, &node.RebateAmount); err != nil {
+		var delAt sql.NullTime
+		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &delAt, &node.Depth, &node.RebateAmount); err != nil {
 			_ = descendantRows.Close()
 			return nil, err
+		}
+		if delAt.Valid {
+			t := delAt.Time
+			node.DeletedAt = &t
 		}
 		rel.Descendants = append(rel.Descendants, node)
 	}
@@ -1763,4 +1790,175 @@ func scanInt64(ctx context.Context, client affiliateQueryExecer, query string, a
 		return 0, err
 	}
 	return v, nil
+}
+
+// =========================
+// 邀请注册风险标记
+// =========================
+
+// CollectAffiliateRiskSignals 一次性聚合给定用户集合的全部风险原始信号。
+//
+// 一次查询算完所有规则所需的原始事实，判定逻辑全部放在 service 层，
+// 保证实时注册路径与存量扫描走完全相同的判定口径。
+//
+// 参数：
+//   - $1 目标用户 ID 数组
+//   - $2 链深递归上限（防止异常数据形成环导致查询失控）
+//   - $3 链路传染扫描半径（向上/向下各几跳）
+func (r *affiliateRepository) CollectAffiliateRiskSignals(ctx context.Context, userIDs []int64) ([]service.AffiliateRiskSignal, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+WITH RECURSIVE up AS (
+    SELECT ua.user_id AS origin, ua.inviter_id AS node_id, 1 AS depth
+    FROM user_affiliates ua
+    WHERE ua.user_id = ANY($1) AND ua.inviter_id IS NOT NULL
+    UNION ALL
+    SELECT up.origin, ua.inviter_id, up.depth + 1
+    FROM up
+    JOIN user_affiliates ua ON ua.user_id = up.node_id
+    WHERE up.depth < $2 AND ua.inviter_id IS NOT NULL
+),
+down AS (
+    SELECT ua.inviter_id AS origin, ua.user_id AS node_id, 1 AS depth
+    FROM user_affiliates ua
+    WHERE ua.inviter_id = ANY($1)
+    UNION ALL
+    SELECT down.origin, ua.user_id, down.depth + 1
+    FROM down
+    JOIN user_affiliates ua ON ua.inviter_id = down.node_id
+    WHERE down.depth < $2
+),
+contagion AS (
+    SELECT DISTINCT x.origin
+    FROM (
+        SELECT origin, node_id FROM up WHERE depth <= $3
+        UNION ALL
+        SELECT origin, node_id FROM down WHERE depth <= $3
+    ) x
+    JOIN users nu ON nu.id = x.node_id AND nu.risk_level = 'abnormal'
+),
+burst AS (
+    SELECT inviter_id, COUNT(*)::int AS cnt
+    FROM user_affiliates
+    WHERE inviter_id = ANY($1)
+      AND created_at > NOW() - INTERVAL '24 hours'
+    GROUP BY inviter_id
+),
+pw AS (
+    SELECT u2.password_hash, COUNT(*)::int AS cnt
+    FROM users u2
+    WHERE u2.deleted_at IS NULL
+      AND u2.password_hash <> ''
+      AND u2.password_hash IN (SELECT password_hash FROM users WHERE id = ANY($1))
+    GROUP BY u2.password_hash
+)
+SELECT u.id,
+       COALESCE(u.email, ''),
+       COALESCE(u.password_hash, ''),
+       COALESCE(up_agg.depth, 0),
+       COALESCE(down_agg.depth, 0),
+       (contagion.origin IS NOT NULL),
+       COALESCE(burst.cnt, 0),
+       COALESCE(pw.cnt, 1)
+FROM users u
+LEFT JOIN (SELECT origin, MAX(depth) AS depth FROM up GROUP BY origin) up_agg ON up_agg.origin = u.id
+LEFT JOIN (SELECT origin, MAX(depth) AS depth FROM down GROUP BY origin) down_agg ON down_agg.origin = u.id
+LEFT JOIN contagion ON contagion.origin = u.id
+LEFT JOIN burst ON burst.inviter_id = u.id
+LEFT JOIN pw ON pw.password_hash = u.password_hash
+WHERE u.id = ANY($1)`,
+		pq.Array(userIDs),
+		service.AffiliateRiskChainDepthMaxScan,
+		service.AffiliateRiskContagionRadius,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("collect affiliate risk signals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	signals := make([]service.AffiliateRiskSignal, 0, len(userIDs))
+	for rows.Next() {
+		var s service.AffiliateRiskSignal
+		if err := rows.Scan(
+			&s.UserID, &s.Email, &s.PasswordHash,
+			&s.AncestorDepth, &s.DescendantDepth, &s.ChainContagion,
+			&s.InvitesIn24h, &s.SharedPasswordCount,
+		); err != nil {
+			return nil, err
+		}
+		signals = append(signals, s)
+	}
+	return signals, rows.Err()
+}
+
+// BumpUserRiskMarks 批量写入风险标记，语义为「只升不降」：
+// 仅当新等级不低于当前等级时才覆盖，绝不会把已标记的用户改回正常。
+func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []service.UserRiskMark) (int, error) {
+	if len(marks) == 0 {
+		return 0, nil
+	}
+	ids := make([]int64, 0, len(marks))
+	levels := make([]string, 0, len(marks))
+	reasons := make([]string, 0, len(marks))
+	for _, m := range marks {
+		if m.UserID <= 0 || m.Level == "" || len(m.Reasons) == 0 {
+			continue
+		}
+		ids = append(ids, m.UserID)
+		levels = append(levels, m.Level)
+		reasons = append(reasons, strings.Join(m.Reasons, ","))
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	res, err := client.ExecContext(ctx, `
+UPDATE users u
+SET risk_level = v.level,
+    risk_reasons = v.reasons,
+    risk_updated_at = NOW()
+FROM unnest($1::bigint[], $2::text[], $3::text[]) AS v(id, level, reasons)
+WHERE u.id = v.id
+  AND v.level <> ''
+  AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
+      >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`,
+		pq.Array(ids), pq.Array(levels), pq.Array(reasons))
+	if err != nil {
+		return 0, fmt.Errorf("bump user risk marks: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil // 更新成功但拿不到影响行数不算失败
+	}
+	return int(affected), nil
+}
+
+// ListUserIDsForRiskScan 按 ID 游标分批取待扫描的用户 ID（仅未软删除）。
+func (r *affiliateRepository) ListUserIDsForRiskScan(ctx context.Context, afterID int64, limit int) ([]int64, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+SELECT id FROM users
+WHERE deleted_at IS NULL AND id > $1
+ORDER BY id
+LIMIT $2`, afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list user ids for risk scan: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }

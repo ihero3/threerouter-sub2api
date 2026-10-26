@@ -190,6 +190,21 @@ func RegisterCountry(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRegisterCountry, v))
 }
 
+// RiskLevel applies equality check predicate on the "risk_level" field. It's identical to RiskLevelEQ.
+func RiskLevel(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskLevel, v))
+}
+
+// RiskReasons applies equality check predicate on the "risk_reasons" field. It's identical to RiskReasonsEQ.
+func RiskReasons(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskReasons, v))
+}
+
+// RiskUpdatedAt applies equality check predicate on the "risk_updated_at" field. It's identical to RiskUpdatedAtEQ.
+func RiskUpdatedAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskUpdatedAt, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1538,6 +1553,186 @@ func RegisterCountryEqualFold(v string) predicate.User {
 // RegisterCountryContainsFold applies the ContainsFold predicate on the "register_country" field.
 func RegisterCountryContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldRegisterCountry, v))
+}
+
+// RiskLevelEQ applies the EQ predicate on the "risk_level" field.
+func RiskLevelEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskLevel, v))
+}
+
+// RiskLevelNEQ applies the NEQ predicate on the "risk_level" field.
+func RiskLevelNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRiskLevel, v))
+}
+
+// RiskLevelIn applies the In predicate on the "risk_level" field.
+func RiskLevelIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRiskLevel, vs...))
+}
+
+// RiskLevelNotIn applies the NotIn predicate on the "risk_level" field.
+func RiskLevelNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRiskLevel, vs...))
+}
+
+// RiskLevelGT applies the GT predicate on the "risk_level" field.
+func RiskLevelGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRiskLevel, v))
+}
+
+// RiskLevelGTE applies the GTE predicate on the "risk_level" field.
+func RiskLevelGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRiskLevel, v))
+}
+
+// RiskLevelLT applies the LT predicate on the "risk_level" field.
+func RiskLevelLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRiskLevel, v))
+}
+
+// RiskLevelLTE applies the LTE predicate on the "risk_level" field.
+func RiskLevelLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRiskLevel, v))
+}
+
+// RiskLevelContains applies the Contains predicate on the "risk_level" field.
+func RiskLevelContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRiskLevel, v))
+}
+
+// RiskLevelHasPrefix applies the HasPrefix predicate on the "risk_level" field.
+func RiskLevelHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRiskLevel, v))
+}
+
+// RiskLevelHasSuffix applies the HasSuffix predicate on the "risk_level" field.
+func RiskLevelHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRiskLevel, v))
+}
+
+// RiskLevelEqualFold applies the EqualFold predicate on the "risk_level" field.
+func RiskLevelEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRiskLevel, v))
+}
+
+// RiskLevelContainsFold applies the ContainsFold predicate on the "risk_level" field.
+func RiskLevelContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRiskLevel, v))
+}
+
+// RiskReasonsEQ applies the EQ predicate on the "risk_reasons" field.
+func RiskReasonsEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskReasons, v))
+}
+
+// RiskReasonsNEQ applies the NEQ predicate on the "risk_reasons" field.
+func RiskReasonsNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRiskReasons, v))
+}
+
+// RiskReasonsIn applies the In predicate on the "risk_reasons" field.
+func RiskReasonsIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRiskReasons, vs...))
+}
+
+// RiskReasonsNotIn applies the NotIn predicate on the "risk_reasons" field.
+func RiskReasonsNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRiskReasons, vs...))
+}
+
+// RiskReasonsGT applies the GT predicate on the "risk_reasons" field.
+func RiskReasonsGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRiskReasons, v))
+}
+
+// RiskReasonsGTE applies the GTE predicate on the "risk_reasons" field.
+func RiskReasonsGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRiskReasons, v))
+}
+
+// RiskReasonsLT applies the LT predicate on the "risk_reasons" field.
+func RiskReasonsLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRiskReasons, v))
+}
+
+// RiskReasonsLTE applies the LTE predicate on the "risk_reasons" field.
+func RiskReasonsLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRiskReasons, v))
+}
+
+// RiskReasonsContains applies the Contains predicate on the "risk_reasons" field.
+func RiskReasonsContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRiskReasons, v))
+}
+
+// RiskReasonsHasPrefix applies the HasPrefix predicate on the "risk_reasons" field.
+func RiskReasonsHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRiskReasons, v))
+}
+
+// RiskReasonsHasSuffix applies the HasSuffix predicate on the "risk_reasons" field.
+func RiskReasonsHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRiskReasons, v))
+}
+
+// RiskReasonsEqualFold applies the EqualFold predicate on the "risk_reasons" field.
+func RiskReasonsEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRiskReasons, v))
+}
+
+// RiskReasonsContainsFold applies the ContainsFold predicate on the "risk_reasons" field.
+func RiskReasonsContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRiskReasons, v))
+}
+
+// RiskUpdatedAtEQ applies the EQ predicate on the "risk_updated_at" field.
+func RiskUpdatedAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtNEQ applies the NEQ predicate on the "risk_updated_at" field.
+func RiskUpdatedAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtIn applies the In predicate on the "risk_updated_at" field.
+func RiskUpdatedAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRiskUpdatedAt, vs...))
+}
+
+// RiskUpdatedAtNotIn applies the NotIn predicate on the "risk_updated_at" field.
+func RiskUpdatedAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRiskUpdatedAt, vs...))
+}
+
+// RiskUpdatedAtGT applies the GT predicate on the "risk_updated_at" field.
+func RiskUpdatedAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtGTE applies the GTE predicate on the "risk_updated_at" field.
+func RiskUpdatedAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtLT applies the LT predicate on the "risk_updated_at" field.
+func RiskUpdatedAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtLTE applies the LTE predicate on the "risk_updated_at" field.
+func RiskUpdatedAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRiskUpdatedAt, v))
+}
+
+// RiskUpdatedAtIsNil applies the IsNil predicate on the "risk_updated_at" field.
+func RiskUpdatedAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldRiskUpdatedAt))
+}
+
+// RiskUpdatedAtNotNil applies the NotNil predicate on the "risk_updated_at" field.
+func RiskUpdatedAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldRiskUpdatedAt))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

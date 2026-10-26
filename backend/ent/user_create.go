@@ -400,6 +400,48 @@ func (_c *UserCreate) SetNillableRegisterCountry(v *string) *UserCreate {
 	return _c
 }
 
+// SetRiskLevel sets the "risk_level" field.
+func (_c *UserCreate) SetRiskLevel(v string) *UserCreate {
+	_c.mutation.SetRiskLevel(v)
+	return _c
+}
+
+// SetNillableRiskLevel sets the "risk_level" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRiskLevel(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRiskLevel(*v)
+	}
+	return _c
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (_c *UserCreate) SetRiskReasons(v string) *UserCreate {
+	_c.mutation.SetRiskReasons(v)
+	return _c
+}
+
+// SetNillableRiskReasons sets the "risk_reasons" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRiskReasons(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRiskReasons(*v)
+	}
+	return _c
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (_c *UserCreate) SetRiskUpdatedAt(v time.Time) *UserCreate {
+	_c.mutation.SetRiskUpdatedAt(v)
+	return _c
+}
+
+// SetNillableRiskUpdatedAt sets the "risk_updated_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRiskUpdatedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetRiskUpdatedAt(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -774,6 +816,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRegisterCountry
 		_c.mutation.SetRegisterCountry(v)
 	}
+	if _, ok := _c.mutation.RiskLevel(); !ok {
+		v := user.DefaultRiskLevel
+		_c.mutation.SetRiskLevel(v)
+	}
+	if _, ok := _c.mutation.RiskReasons(); !ok {
+		v := user.DefaultRiskReasons
+		_c.mutation.SetRiskReasons(v)
+	}
 	return nil
 }
 
@@ -880,6 +930,22 @@ func (_c *UserCreate) check() error {
 	if v, ok := _c.mutation.RegisterCountry(); ok {
 		if err := user.RegisterCountryValidator(v); err != nil {
 			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RiskLevel(); !ok {
+		return &ValidationError{Name: "risk_level", err: errors.New(`ent: missing required field "User.risk_level"`)}
+	}
+	if v, ok := _c.mutation.RiskLevel(); ok {
+		if err := user.RiskLevelValidator(v); err != nil {
+			return &ValidationError{Name: "risk_level", err: fmt.Errorf(`ent: validator failed for field "User.risk_level": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RiskReasons(); !ok {
+		return &ValidationError{Name: "risk_reasons", err: errors.New(`ent: missing required field "User.risk_reasons"`)}
+	}
+	if v, ok := _c.mutation.RiskReasons(); ok {
+		if err := user.RiskReasonsValidator(v); err != nil {
+			return &ValidationError{Name: "risk_reasons", err: fmt.Errorf(`ent: validator failed for field "User.risk_reasons": %w`, err)}
 		}
 	}
 	return nil
@@ -1016,6 +1082,18 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RegisterCountry(); ok {
 		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
 		_node.RegisterCountry = value
+	}
+	if value, ok := _c.mutation.RiskLevel(); ok {
+		_spec.SetField(user.FieldRiskLevel, field.TypeString, value)
+		_node.RiskLevel = value
+	}
+	if value, ok := _c.mutation.RiskReasons(); ok {
+		_spec.SetField(user.FieldRiskReasons, field.TypeString, value)
+		_node.RiskReasons = value
+	}
+	if value, ok := _c.mutation.RiskUpdatedAt(); ok {
+		_spec.SetField(user.FieldRiskUpdatedAt, field.TypeTime, value)
+		_node.RiskUpdatedAt = &value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1729,6 +1807,48 @@ func (u *UserUpsert) UpdateRegisterCountry() *UserUpsert {
 	return u
 }
 
+// SetRiskLevel sets the "risk_level" field.
+func (u *UserUpsert) SetRiskLevel(v string) *UserUpsert {
+	u.Set(user.FieldRiskLevel, v)
+	return u
+}
+
+// UpdateRiskLevel sets the "risk_level" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRiskLevel() *UserUpsert {
+	u.SetExcluded(user.FieldRiskLevel)
+	return u
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (u *UserUpsert) SetRiskReasons(v string) *UserUpsert {
+	u.Set(user.FieldRiskReasons, v)
+	return u
+}
+
+// UpdateRiskReasons sets the "risk_reasons" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRiskReasons() *UserUpsert {
+	u.SetExcluded(user.FieldRiskReasons)
+	return u
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (u *UserUpsert) SetRiskUpdatedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldRiskUpdatedAt, v)
+	return u
+}
+
+// UpdateRiskUpdatedAt sets the "risk_updated_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRiskUpdatedAt() *UserUpsert {
+	u.SetExcluded(user.FieldRiskUpdatedAt)
+	return u
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (u *UserUpsert) ClearRiskUpdatedAt() *UserUpsert {
+	u.SetNull(user.FieldRiskUpdatedAt)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2219,6 +2339,55 @@ func (u *UserUpsertOne) SetRegisterCountry(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRegisterCountry() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRegisterCountry()
+	})
+}
+
+// SetRiskLevel sets the "risk_level" field.
+func (u *UserUpsertOne) SetRiskLevel(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskLevel(v)
+	})
+}
+
+// UpdateRiskLevel sets the "risk_level" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRiskLevel() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskLevel()
+	})
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (u *UserUpsertOne) SetRiskReasons(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskReasons(v)
+	})
+}
+
+// UpdateRiskReasons sets the "risk_reasons" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRiskReasons() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskReasons()
+	})
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (u *UserUpsertOne) SetRiskUpdatedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskUpdatedAt(v)
+	})
+}
+
+// UpdateRiskUpdatedAt sets the "risk_updated_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRiskUpdatedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskUpdatedAt()
+	})
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (u *UserUpsertOne) ClearRiskUpdatedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRiskUpdatedAt()
 	})
 }
 
@@ -2878,6 +3047,55 @@ func (u *UserUpsertBulk) SetRegisterCountry(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRegisterCountry() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRegisterCountry()
+	})
+}
+
+// SetRiskLevel sets the "risk_level" field.
+func (u *UserUpsertBulk) SetRiskLevel(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskLevel(v)
+	})
+}
+
+// UpdateRiskLevel sets the "risk_level" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRiskLevel() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskLevel()
+	})
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (u *UserUpsertBulk) SetRiskReasons(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskReasons(v)
+	})
+}
+
+// UpdateRiskReasons sets the "risk_reasons" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRiskReasons() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskReasons()
+	})
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (u *UserUpsertBulk) SetRiskUpdatedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRiskUpdatedAt(v)
+	})
+}
+
+// UpdateRiskUpdatedAt sets the "risk_updated_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRiskUpdatedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRiskUpdatedAt()
+	})
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (u *UserUpsertBulk) ClearRiskUpdatedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearRiskUpdatedAt()
 	})
 }
 

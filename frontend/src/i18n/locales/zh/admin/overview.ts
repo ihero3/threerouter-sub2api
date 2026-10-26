@@ -426,7 +426,8 @@ export default {
           depth: '层级',
           user: '用户',
           createdAt: '注册时间',
-          rebate: '贡献返利'
+          rebate: '贡献返利',
+          actions: '操作'
         },
         unsourced: {
           description: '没有邀请来源的账号：连邀请档案都没有（多为邀请功能上线前注册的老账号），或有档案但没有邀请人。',
@@ -441,6 +442,12 @@ export default {
             totalRecharged: '累计充值',
             profile: '档案'
           }
+        },
+        riskScan: {
+          button: '扫描历史',
+          running: '扫描中...',
+          done: '扫描完成：共扫描 {scanned} 个账号，标记存疑 {suspect} 个、异常 {abnormal} 个（实际写入 {marked} 个）',
+          failed: '扫描失败'
         },
         guard: {
           description: '同一 IP 下通过同一邀请人批量注册的账号。风控模式为「转人工审核」时会出现在这里：批准将绑定邀请人并补发注册奖励，拒绝则不绑定、不发奖。',
@@ -542,6 +549,21 @@ export default {
       },
       editUser: '编辑用户',
       deleteUser: '删除用户',
+      risk: {
+        level: {
+          suspect: '账号存疑',
+          abnormal: '账号异常'
+        },
+        reasons: {
+          invite_burst_24h: '24 小时内邀请过于密集',
+          chain_depth: '邀请链路过深',
+          disposable_email: '使用一次性邮箱',
+          random_local_part: '邮箱账号随机生成',
+          shared_password: '多个账号使用相同密码',
+          chain_contagion: '关联链路中存在异常账号'
+        },
+        tooltipFallback: '账号存在风险，请人工核查'
+      },
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       searchPlaceholder: '用户 ID/邮箱/用户名/备注/API Key 模糊搜索...',
       searchUsers: '用户 ID/邮箱/用户名/备注/API Key 模糊搜索',

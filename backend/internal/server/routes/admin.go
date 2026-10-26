@@ -916,6 +916,9 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		affiliates.POST("/guard-events/:id/approve", h.Admin.Affiliate.ApproveGuardEvent)
 		affiliates.POST("/guard-events/:id/reject", h.Admin.Affiliate.RejectGuardEvent)
 
+		// 邀请注册风险标记：触发存量扫描回填（只标记，不改业务行为）
+		affiliates.POST("/risk/scan", h.Admin.Affiliate.ScanRisk)
+
 		users := affiliates.Group("/users")
 		{
 			users.GET("", h.Admin.Affiliate.ListUsers)

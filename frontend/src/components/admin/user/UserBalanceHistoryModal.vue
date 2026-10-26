@@ -75,6 +75,15 @@
           </svg>
           {{ t('admin.users.withdraw') }}
         </button>
+        <!-- Delete user button - always visible (not gated by hideActions) -->
+        <button
+          v-if="user && !user.deleted_at"
+          @click="handleDeleteUser"
+          class="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:bg-dark-800 dark:text-red-400 dark:hover:bg-red-500/10"
+        >
+          <Icon name="trash" size="sm" :stroke-width="2" />
+          删除用户
+        </button>
       </div>
 
       <!-- Loading -->
@@ -169,6 +178,16 @@
       </div>
     </div>
   </BaseDialog>
+
+  <ConfirmDialog
+    v-if="user"
+    :show="showDeleteDialog"
+    :title="t('admin.users.deleteUser')"
+    :message="t('admin.users.deleteConfirm', { email: user.email })"
+    :danger="true"
+    @confirm="confirmDeleteUser"
+    @cancel="showDeleteDialog = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -176,14 +195,18 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI, type BalanceHistoryItem } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
+import { extractI18nErrorMessage } from '@/utils/apiError'
+import { useAppStore } from '@/stores/app'
 import type { AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null; hideActions?: boolean }>()
-const emit = defineEmits(['close', 'deposit', 'withdraw'])
+const emit = defineEmits(['close', 'deposit', 'withdraw', 'deleted'])
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const history = ref<BalanceHistoryItem[]>([])
 const loading = ref(false)
@@ -192,6 +215,8 @@ const total = ref(0)
 const totalRecharged = ref(0)
 const pageSize = 15
 const typeFilter = ref('')
+const showDeleteDialog = ref(false)
+const deleting = ref(false)
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
 
@@ -324,5 +349,25 @@ const formatValue = (item: BalanceHistoryItem) => {
   // concurrency types
   const sign = item.value >= 0 ? '+' : ''
   return `${sign}${item.value}`
+}
+
+function handleDeleteUser() {
+  showDeleteDialog.value = true
+}
+
+async function confirmDeleteUser() {
+  if (!props.user || deleting.value) return
+  deleting.value = true
+  try {
+    await adminAPI.users.delete(props.user.id)
+    appStore.showSuccess(t('common.success'))
+    emit('deleted', props.user.id)
+    emit('close')
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.users', '删除用户失败'))
+  } finally {
+    deleting.value = false
+    showDeleteDialog.value = false
+  }
 }
 </script>

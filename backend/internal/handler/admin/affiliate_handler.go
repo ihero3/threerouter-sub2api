@@ -326,6 +326,18 @@ func (h *AffiliateHandler) RejectGuardEvent(c *gin.Context) {
 	response.Success(c, event)
 }
 
+// ScanRisk 触发一次存量用户邀请注册风险扫描并回填标记。
+// 只写标记，不改变任何业务行为。
+// POST /api/v1/admin/affiliates/risk/scan
+func (h *AffiliateHandler) ScanRisk(c *gin.Context) {
+	result, err := h.affiliateService.AdminScanAffiliateRisk(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // currentAdminUserID 从鉴权上下文中取当前管理员的 user id；取不到时返回 0。
 func currentAdminUserID(c *gin.Context) int64 {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)

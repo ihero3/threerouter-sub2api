@@ -478,6 +478,54 @@ func (_u *UserUpdate) SetNillableRegisterCountry(v *string) *UserUpdate {
 	return _u
 }
 
+// SetRiskLevel sets the "risk_level" field.
+func (_u *UserUpdate) SetRiskLevel(v string) *UserUpdate {
+	_u.mutation.SetRiskLevel(v)
+	return _u
+}
+
+// SetNillableRiskLevel sets the "risk_level" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRiskLevel(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetRiskLevel(*v)
+	}
+	return _u
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (_u *UserUpdate) SetRiskReasons(v string) *UserUpdate {
+	_u.mutation.SetRiskReasons(v)
+	return _u
+}
+
+// SetNillableRiskReasons sets the "risk_reasons" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRiskReasons(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetRiskReasons(*v)
+	}
+	return _u
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (_u *UserUpdate) SetRiskUpdatedAt(v time.Time) *UserUpdate {
+	_u.mutation.SetRiskUpdatedAt(v)
+	return _u
+}
+
+// SetNillableRiskUpdatedAt sets the "risk_updated_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRiskUpdatedAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetRiskUpdatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (_u *UserUpdate) ClearRiskUpdatedAt() *UserUpdate {
+	_u.mutation.ClearRiskUpdatedAt()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1179,6 +1227,16 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RiskLevel(); ok {
+		if err := user.RiskLevelValidator(v); err != nil {
+			return &ValidationError{Name: "risk_level", err: fmt.Errorf(`ent: validator failed for field "User.risk_level": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RiskReasons(); ok {
+		if err := user.RiskReasonsValidator(v); err != nil {
+			return &ValidationError{Name: "risk_reasons", err: fmt.Errorf(`ent: validator failed for field "User.risk_reasons": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1307,6 +1365,18 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.RegisterCountry(); ok {
 		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskLevel(); ok {
+		_spec.SetField(user.FieldRiskLevel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskReasons(); ok {
+		_spec.SetField(user.FieldRiskReasons, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskUpdatedAt(); ok {
+		_spec.SetField(user.FieldRiskUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RiskUpdatedAtCleared() {
+		_spec.ClearField(user.FieldRiskUpdatedAt, field.TypeTime)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2539,6 +2609,54 @@ func (_u *UserUpdateOne) SetNillableRegisterCountry(v *string) *UserUpdateOne {
 	return _u
 }
 
+// SetRiskLevel sets the "risk_level" field.
+func (_u *UserUpdateOne) SetRiskLevel(v string) *UserUpdateOne {
+	_u.mutation.SetRiskLevel(v)
+	return _u
+}
+
+// SetNillableRiskLevel sets the "risk_level" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRiskLevel(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetRiskLevel(*v)
+	}
+	return _u
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (_u *UserUpdateOne) SetRiskReasons(v string) *UserUpdateOne {
+	_u.mutation.SetRiskReasons(v)
+	return _u
+}
+
+// SetNillableRiskReasons sets the "risk_reasons" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRiskReasons(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetRiskReasons(*v)
+	}
+	return _u
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (_u *UserUpdateOne) SetRiskUpdatedAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetRiskUpdatedAt(v)
+	return _u
+}
+
+// SetNillableRiskUpdatedAt sets the "risk_updated_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRiskUpdatedAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetRiskUpdatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (_u *UserUpdateOne) ClearRiskUpdatedAt() *UserUpdateOne {
+	_u.mutation.ClearRiskUpdatedAt()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3253,6 +3371,16 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "register_country", err: fmt.Errorf(`ent: validator failed for field "User.register_country": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RiskLevel(); ok {
+		if err := user.RiskLevelValidator(v); err != nil {
+			return &ValidationError{Name: "risk_level", err: fmt.Errorf(`ent: validator failed for field "User.risk_level": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RiskReasons(); ok {
+		if err := user.RiskReasonsValidator(v); err != nil {
+			return &ValidationError{Name: "risk_reasons", err: fmt.Errorf(`ent: validator failed for field "User.risk_reasons": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -3398,6 +3526,18 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.RegisterCountry(); ok {
 		_spec.SetField(user.FieldRegisterCountry, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskLevel(); ok {
+		_spec.SetField(user.FieldRiskLevel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskReasons(); ok {
+		_spec.SetField(user.FieldRiskReasons, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RiskUpdatedAt(); ok {
+		_spec.SetField(user.FieldRiskUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RiskUpdatedAtCleared() {
+		_spec.ClearField(user.FieldRiskUpdatedAt, field.TypeTime)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

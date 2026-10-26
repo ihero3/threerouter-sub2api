@@ -65889,6 +65889,9 @@ type UserMutation struct {
 	restrict_public_groups        *bool
 	register_ip                   *string
 	register_country              *string
+	risk_level                    *string
+	risk_reasons                  *string
+	risk_updated_at               *time.Time
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -67215,6 +67218,127 @@ func (m *UserMutation) ResetRegisterCountry() {
 	m.register_country = nil
 }
 
+// SetRiskLevel sets the "risk_level" field.
+func (m *UserMutation) SetRiskLevel(s string) {
+	m.risk_level = &s
+}
+
+// RiskLevel returns the value of the "risk_level" field in the mutation.
+func (m *UserMutation) RiskLevel() (r string, exists bool) {
+	v := m.risk_level
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRiskLevel returns the old "risk_level" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRiskLevel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRiskLevel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRiskLevel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRiskLevel: %w", err)
+	}
+	return oldValue.RiskLevel, nil
+}
+
+// ResetRiskLevel resets all changes to the "risk_level" field.
+func (m *UserMutation) ResetRiskLevel() {
+	m.risk_level = nil
+}
+
+// SetRiskReasons sets the "risk_reasons" field.
+func (m *UserMutation) SetRiskReasons(s string) {
+	m.risk_reasons = &s
+}
+
+// RiskReasons returns the value of the "risk_reasons" field in the mutation.
+func (m *UserMutation) RiskReasons() (r string, exists bool) {
+	v := m.risk_reasons
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRiskReasons returns the old "risk_reasons" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRiskReasons(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRiskReasons is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRiskReasons requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRiskReasons: %w", err)
+	}
+	return oldValue.RiskReasons, nil
+}
+
+// ResetRiskReasons resets all changes to the "risk_reasons" field.
+func (m *UserMutation) ResetRiskReasons() {
+	m.risk_reasons = nil
+}
+
+// SetRiskUpdatedAt sets the "risk_updated_at" field.
+func (m *UserMutation) SetRiskUpdatedAt(t time.Time) {
+	m.risk_updated_at = &t
+}
+
+// RiskUpdatedAt returns the value of the "risk_updated_at" field in the mutation.
+func (m *UserMutation) RiskUpdatedAt() (r time.Time, exists bool) {
+	v := m.risk_updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRiskUpdatedAt returns the old "risk_updated_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRiskUpdatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRiskUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRiskUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRiskUpdatedAt: %w", err)
+	}
+	return oldValue.RiskUpdatedAt, nil
+}
+
+// ClearRiskUpdatedAt clears the value of the "risk_updated_at" field.
+func (m *UserMutation) ClearRiskUpdatedAt() {
+	m.risk_updated_at = nil
+	m.clearedFields[user.FieldRiskUpdatedAt] = struct{}{}
+}
+
+// RiskUpdatedAtCleared returns if the "risk_updated_at" field was cleared in this mutation.
+func (m *UserMutation) RiskUpdatedAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldRiskUpdatedAt]
+	return ok
+}
+
+// ResetRiskUpdatedAt resets all changes to the "risk_updated_at" field.
+func (m *UserMutation) ResetRiskUpdatedAt() {
+	m.risk_updated_at = nil
+	delete(m.clearedFields, user.FieldRiskUpdatedAt)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -68167,7 +68291,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -68249,6 +68373,15 @@ func (m *UserMutation) Fields() []string {
 	if m.register_country != nil {
 		fields = append(fields, user.FieldRegisterCountry)
 	}
+	if m.risk_level != nil {
+		fields = append(fields, user.FieldRiskLevel)
+	}
+	if m.risk_reasons != nil {
+		fields = append(fields, user.FieldRiskReasons)
+	}
+	if m.risk_updated_at != nil {
+		fields = append(fields, user.FieldRiskUpdatedAt)
+	}
 	return fields
 }
 
@@ -68311,6 +68444,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.RegisterIP()
 	case user.FieldRegisterCountry:
 		return m.RegisterCountry()
+	case user.FieldRiskLevel:
+		return m.RiskLevel()
+	case user.FieldRiskReasons:
+		return m.RiskReasons()
+	case user.FieldRiskUpdatedAt:
+		return m.RiskUpdatedAt()
 	}
 	return nil, false
 }
@@ -68374,6 +68513,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRegisterIP(ctx)
 	case user.FieldRegisterCountry:
 		return m.OldRegisterCountry(ctx)
+	case user.FieldRiskLevel:
+		return m.OldRiskLevel(ctx)
+	case user.FieldRiskReasons:
+		return m.OldRiskReasons(ctx)
+	case user.FieldRiskUpdatedAt:
+		return m.OldRiskUpdatedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -68572,6 +68717,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRegisterCountry(v)
 		return nil
+	case user.FieldRiskLevel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRiskLevel(v)
+		return nil
+	case user.FieldRiskReasons:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRiskReasons(v)
+		return nil
+	case user.FieldRiskUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRiskUpdatedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -68695,6 +68861,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
+	if m.FieldCleared(user.FieldRiskUpdatedAt) {
+		fields = append(fields, user.FieldRiskUpdatedAt)
+	}
 	return fields
 }
 
@@ -68726,6 +68895,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
+		return nil
+	case user.FieldRiskUpdatedAt:
+		m.ClearRiskUpdatedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -68815,6 +68987,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRegisterCountry:
 		m.ResetRegisterCountry()
+		return nil
+	case user.FieldRiskLevel:
+		m.ResetRiskLevel()
+		return nil
+	case user.FieldRiskReasons:
+		m.ResetRiskReasons()
+		return nil
+	case user.FieldRiskUpdatedAt:
+		m.ResetRiskUpdatedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

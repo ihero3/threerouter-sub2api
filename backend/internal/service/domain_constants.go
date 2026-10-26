@@ -788,6 +788,74 @@ const (
 	AffiliateGuardEventStatusRejected = "rejected"
 )
 
+// 邀请注册风险标记（users.risk_level / risk_reasons）。
+//
+// 与上面的 IP 关联风控不同：这里**只标记、不拦截**，不改变登录/调用/返利任何行为，
+// 仅供管理端在用户列表展示并供运营人工研判。
+//   - 空串      : 无风险
+//   - suspect   : 存疑（命中弱特征，可能是真实推广者）
+//   - abnormal  : 异常（命中强特征，几乎确定是批量注册/链条农场）
+//
+// 标记只升不降：扫描不会清除历史标记，避免证据被后续扫描抹掉。
+const (
+	AffiliateRiskLevelNone     = ""
+	AffiliateRiskLevelSuspect  = "suspect"
+	AffiliateRiskLevelAbnormal = "abnormal"
+
+	// 规则 1：邀请爆发——邀请人 24h 内邀请数量超阈值。
+	AffiliateRiskReasonInviteBurst24h = "invite_burst_24h"
+	// 规则 2：邀请链深度——上溯（我上面有几级）或下溯（我下面有几级）超阈值。
+	AffiliateRiskReasonChainDepth = "chain_depth"
+	// 规则 3：一次性邮箱域名——注册邮箱命中已知临时/一次性邮箱服务。
+	AffiliateRiskReasonDisposableEmail = "disposable_email"
+	// 规则 4：邮箱本地部分为无意义随机串（机器批量注册的典型特征）。
+	AffiliateRiskReasonRandomLocalPart = "random_local_part"
+	// 规则 6：密码哈希复用——多个账号使用完全相同的密码。
+	AffiliateRiskReasonSharedPassword = "shared_password"
+	// 规则 10：链路传染——链上（向上或向下两跳内）存在已判异常的账号。
+	AffiliateRiskReasonChainContagion = "chain_contagion"
+
+	// 规则阈值。
+	// 规则 1：24h 邀请数达到该值 → 存疑；超过该值数倍 → 异常。
+	AffiliateRiskInviteBurstSuspect  = 3
+	AffiliateRiskInviteBurstAbnormal = 10
+	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。自然裂变到 4 级很常见，故放宽。
+	AffiliateRiskChainDepthSuspect  = 4
+	AffiliateRiskChainDepthAbnormal = 6
+	// 规则 2 的递归上限，防止异常数据（环）导致查询失控。
+	AffiliateRiskChainDepthMaxScan = 20
+	// 规则 6：相同密码账号数阈值。
+	AffiliateRiskSharedPasswordSuspect  = 3
+	AffiliateRiskSharedPasswordAbnormal = 5
+	// 规则 10：链路传染的扫描半径（向上/向下各几跳）。
+	AffiliateRiskContagionRadius = 2
+
+	// 存量扫描每批处理的用户数，避免一次性写满事务。
+	AffiliateRiskScanBatchSize = 500
+)
+
+// 已知一次性/临时邮箱域名（点号分隔的后缀匹配，可继续追加）。
+// 命中即判 abnormal：正常用户不会用阅后即焚邮箱长期使用本服务。
+var AffiliateRiskDisposableEmailDomains = []string{
+	"mailto.plus",
+	"fexbox.org",
+	"fextemp.com",
+	"rover.info",
+	"any.pink",
+	"merepost.com",
+	"fexpost.com",
+	"high.edu.pl",
+	"mailinator.com",
+	"guerrillamail.com",
+	"10minutemail.com",
+	"temp-mail.org",
+	"yopmail.com",
+	"trashmail.com",
+	"sharklasers.com",
+	"getnada.com",
+	"dropmail.me",
+}
+
 // SettingKeyDisableFailedAccountOnFailover 出错后是否在 failover 时禁用失败账号（默认 false）。
 // 置 true 后，账号触发可重试错误时会在 failover 阶段被自动禁用，避免反复失败。
 const SettingKeyDisableFailedAccountOnFailover = "disable_failed_account_on_failover"

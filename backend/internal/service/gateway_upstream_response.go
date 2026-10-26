@@ -532,6 +532,48 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 // to active once the reset time arrives. Other statuses, and 429s without a
 // trustworthy reset time, remain permanently disabled until an admin
 // test-recovers the account.
+
+// isUpstreamCapabilityDenied 判断上游错误是否属于「账号/分组功能能力限制」类 403。
+// 这类错误的语义是"这个账号/分组没开通 X 功能"（如图像生成、某些高级 API），
+// 而非账号被封、Key 被吊销或配额耗尽。
+//
+// 命中后只做 failover 换账号，不禁用当前账号——它的其他能力（文本生成等）
+// 可能完全正常。典型错误消息：
+//   - "Image generation is not enabled for this group"
+//   - "XXX is not enabled for this group"
+//   - "This feature is not available for your plan"
+//
+// 该判断故意只作用于 403：其他 status code 的能力限制有各自的处理逻辑
+// （如 400 unsupported_feature 已被标记为 OpenAIUnsupportedFeatureReason）。
+func isUpstreamCapabilityDenied(statusCode int, msg string) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	if lower == "" {
+		return false
+	}
+	// 这些短语明确是"功能没开通"语义，而非真正的权限吊销。
+	capabilityDeniedPhrases := []string{
+		"is not enabled",                 // "Image generation is not enabled for this group"
+		"not enabled for this group",     // 同上变体
+		"not available for your plan",     // 计费计划限制
+		"plan does not include",          // "Your plan does not include XXX"
+		"feature.*not supported",         // 通用"不支持"措辞
+		"is not included in your plan",   // 同上变体
+		"generation is not enabled",      // 更具体的生成类
+		"image.*is not enabled",          // 图像类
+		"video.*is not enabled",          // 视频类
+		"speech.*is not enabled",         // 语音类
+	}
+	for _, p := range capabilityDeniedPhrases {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func maybeDisableAccountOnFailover(
 	ctx context.Context,
 	settingService *SettingService,
@@ -546,6 +588,15 @@ func maybeDisableAccountOnFailover(
 		return
 	}
 	if !shouldFailover(statusCode) {
+		return
+	}
+	// 上游返回 403 但错误表明「账号/分组没开通该功能」——这是能力限制，
+	// 不是账号被封或 Key 吊销。正确行为是 failover 换账号（其他能力正常的账号），
+	// 不禁用当前账号（它的文本生成等能力可能仍可用）。
+	// 参见 issue: 用户账号因 "Image generation is not enabled for this group" 被永久禁用。
+	if isUpstreamCapabilityDenied(statusCode, upstreamMsg) {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: skip disable for account %d — upstream capability denied (HTTP %d): %s",
+			account.ID, statusCode, truncateString(strings.TrimSpace(upstreamMsg), 150))
 		return
 	}
 	if !settingService.IsDisableFailedAccountOnFailoverEnabled(ctx) {

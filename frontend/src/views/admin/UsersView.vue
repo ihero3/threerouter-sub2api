@@ -279,7 +279,7 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value }">
+          <template #cell-email="{ value, row }">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
@@ -288,7 +288,22 @@
                   {{ value.charAt(0).toUpperCase() }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="min-w-0">
+                <span class="block font-medium text-gray-900 dark:text-white">{{ value }}</span>
+                <!-- 邀请注册风险标注：仅管理端展示，不改变任何业务行为 -->
+                <span
+                  v-if="row.risk_level"
+                  class="text-xs"
+                  :class="
+                    row.risk_level === 'abnormal'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  "
+                  :title="riskTooltip(row.risk_reasons)"
+                >
+                  （{{ t(`admin.users.risk.level.${row.risk_level}`) }}）
+                </span>
+              </div>
             </div>
           </template>
 
@@ -1334,6 +1349,19 @@ const handleSelectedKeysUpdate = (keys: Array<string | number>) => {
 
 const getUserSelectionLabel = (user: AdminUser) =>
   t('admin.users.bulkLimits.selectUser', { email: user.email })
+
+// 把后端的逗号分隔 risk_reasons 转成本地化的悬浮说明。
+// 未知原因 key 直接忽略，避免前后端枚举不一致时展示原始 key。
+const riskTooltip = (reasons?: string) => {
+  const keys = (reasons || '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean)
+  const labels = keys
+    .map((k) => t(`admin.users.risk.reasons.${k}`))
+    .filter((label) => label && !label.startsWith('admin.users.risk.reasons.'))
+  return labels.length > 0 ? labels.join(' / ') : t('admin.users.risk.tooltipFallback')
+}
 
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])

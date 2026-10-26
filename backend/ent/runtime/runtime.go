@@ -3052,6 +3052,18 @@ func init() {
 	user.DefaultRegisterCountry = userDescRegisterCountry.Default.(string)
 	// user.RegisterCountryValidator is a validator for the "register_country" field. It is called by the builders before save.
 	user.RegisterCountryValidator = userDescRegisterCountry.Validators[0].(func(string) error)
+	// userDescRiskLevel is the schema descriptor for risk_level field.
+	userDescRiskLevel := userFields[24].Descriptor()
+	// user.DefaultRiskLevel holds the default value on creation for the risk_level field.
+	user.DefaultRiskLevel = userDescRiskLevel.Default.(string)
+	// user.RiskLevelValidator is a validator for the "risk_level" field. It is called by the builders before save.
+	user.RiskLevelValidator = userDescRiskLevel.Validators[0].(func(string) error)
+	// userDescRiskReasons is the schema descriptor for risk_reasons field.
+	userDescRiskReasons := userFields[25].Descriptor()
+	// user.DefaultRiskReasons holds the default value on creation for the risk_reasons field.
+	user.DefaultRiskReasons = userDescRiskReasons.Default.(string)
+	// user.RiskReasonsValidator is a validator for the "risk_reasons" field. It is called by the builders before save.
+	user.RiskReasonsValidator = userDescRiskReasons.Validators[0].(func(string) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

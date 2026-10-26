@@ -23,6 +23,15 @@
             : 'btn-secondary text-gray-600 dark:text-dark-300'"
           @click="switchToGuard"
         >{{ t('admin.affiliates.relations.tabs.guard') }}</button>
+        <!-- 邀请注册风险标记：一次性扫描存量用户并回填标记（只标记，不改业务行为） -->
+        <button
+          class="btn btn-secondary ml-auto px-3 py-1.5 text-sm"
+          :disabled="scanning"
+          @click="scanRisk"
+        >
+          <Icon name="shield" size="sm" class="mr-1" />
+          {{ scanning ? t('admin.affiliates.relations.riskScan.running') : t('admin.affiliates.relations.riskScan.button') }}
+        </button>
       </div>
 
       <template v-if="activeTab === 'relations'">
@@ -63,11 +72,25 @@
         </div>
 
         <div v-if="relation" class="card p-4 md:p-6">
-          <div class="flex flex-wrap items-baseline gap-2">
-            <span class="font-mono text-sm text-gray-900 dark:text-white">#{{ relation.user.user_id }}</span>
-            <span class="font-medium text-gray-900 dark:text-white">{{ relation.user.email || '-' }}</span>
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ relation.user.username || '-' }}</span>
-            <span class="text-xs text-gray-400 dark:text-dark-500">{{ formatDateTime(relation.user.created_at) }}</span>
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <div class="flex flex-wrap items-baseline gap-2">
+              <span class="font-mono text-sm text-gray-900 dark:text-white">#{{ relation.user.user_id }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ relation.user.email || '-' }}</span>
+              <span class="text-sm text-gray-500 dark:text-dark-400">{{ relation.user.username || '-' }}</span>
+              <span class="text-xs text-gray-400 dark:text-dark-500">{{ formatDateTime(relation.user.created_at) }}</span>
+              <span v-if="relation.user.deleted_at" class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                {{ t('admin.usage.userDeletedBadge') }}
+              </span>
+            </div>
+            <button
+              v-if="!relation.user.deleted_at"
+              class="btn btn-danger btn-sm"
+              :disabled="deletingUser"
+              @click="requestDeleteCurrentUser"
+            >
+              <Icon name="trash" size="sm" :stroke-width="2" class="mr-1" />
+              {{ t('admin.users.deleteUser') }}
+            </button>
           </div>
           <div class="mt-2 text-sm">
             <span v-if="relation.inviter" class="text-gray-600 dark:text-dark-300">
@@ -76,6 +99,9 @@
                 #{{ relation.inviter.user_id }}
               </button>
               {{ relation.inviter.email }}
+              <span v-if="relation.inviter.deleted_at" class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                {{ t('admin.usage.userDeletedBadge') }}
+              </span>
               <span v-if="relation.bound_at" class="ml-2 text-xs text-gray-400 dark:text-dark-500">
                 {{ t('admin.affiliates.relations.boundAt') }} {{ formatDateTime(relation.bound_at) }}
               </span>
@@ -97,7 +123,12 @@
                 class="rounded-lg bg-gray-50 px-3 py-2 text-left hover:bg-gray-100 dark:bg-dark-800 dark:hover:bg-dark-700"
                 @click="loadRelations(node.user_id)"
               >
-                <div class="font-mono text-xs text-gray-900 dark:text-white">#{{ node.user_id }}</div>
+                <div class="flex items-center gap-1">
+                  <span class="font-mono text-xs text-gray-900 dark:text-white">#{{ node.user_id }}</span>
+                  <span v-if="node.deleted_at" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                    {{ t('admin.usage.userDeletedBadge') }}
+                  </span>
+                </div>
                 <div class="text-xs text-gray-600 dark:text-dark-300">{{ node.email || '-' }}</div>
                 <div class="text-xs text-gray-400 dark:text-dark-500">
                   {{ ancestorLabel(node, index) }}
@@ -126,13 +157,14 @@
             {{ t('admin.affiliates.relations.descendantsEmpty') }}
           </div>
           <div v-else class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[520px] text-left text-sm">
+            <table class="w-full min-w-[600px] text-left text-sm">
               <thead>
                 <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.depth') }}</th>
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.user') }}</th>
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.createdAt') }}</th>
                   <th class="px-2 py-2 text-right font-medium">{{ t('admin.affiliates.relations.columns.rebate') }}</th>
+                  <th class="px-2 py-2 text-right font-medium">{{ t('admin.affiliates.relations.columns.actions') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,9 +187,23 @@
                       <span class="ml-1 text-gray-900 dark:text-white">{{ node.email || '-' }}</span>
                       <span v-if="node.username" class="ml-1 text-xs text-gray-500 dark:text-dark-400">{{ node.username }}</span>
                     </button>
+                    <span v-if="node.deleted_at" class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                      {{ t('admin.usage.userDeletedBadge') }}
+                    </span>
                   </td>
                   <td class="px-2 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(node.created_at) }}</td>
                   <td class="px-2 py-2 text-right font-mono text-gray-900 dark:text-white">${{ formatAmount(node.rebate_amount) }}</td>
+                  <td class="px-2 py-2 text-right">
+                    <button
+                      v-if="!node.deleted_at"
+                      class="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
+                      :disabled="deletingUser"
+                      @click="requestDeleteDescendant(node)"
+                    >
+                      {{ t('admin.users.deleteUser') }}
+                    </button>
+                    <span v-else class="text-xs text-gray-400 dark:text-dark-500">—</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -329,6 +375,15 @@
       </template>
     </div>
   </AppLayout>
+
+  <ConfirmDialog
+    :show="deleteTarget !== null"
+    :title="t('admin.users.deleteUser')"
+    :message="t('admin.users.deleteConfirm', { email: deleteTarget?.email || '' })"
+    :danger="true"
+    @confirm="confirmDeleteUser"
+    @cancel="deleteTarget = null"
+  />
 </template>
 
 <script setup lang="ts">
@@ -339,6 +394,8 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import { affiliatesAPI, type AffiliateGuardEvent, type AffiliateInviteRelation, type AffiliateRelationNode, type AffiliateUnsourcedUser, type SimpleUser } from '@/api/admin/affiliates'
+import { adminAPI } from '@/api/admin'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -354,6 +411,35 @@ const keyword = ref('')
 const loading = ref(false)
 const relation = ref<AffiliateInviteRelation | null>(null)
 const candidates = ref<SimpleUser[]>([])
+// 删除目标：为空表示弹框关闭。node 有值表示删除「他邀请的人」列表中的某一行。
+type DeleteTarget = { userId: number; email: string; node?: AffiliateRelationNode }
+const deleteTarget = ref<DeleteTarget | null>(null)
+const deletingUser = ref(false)
+// 存量风险扫描进行中标记（扫描是同步请求，耗时随用户量增长）
+const scanning = ref(false)
+
+// 触发后台存量扫描并回填风险标记，结果只做 toast 提示。
+async function scanRisk() {
+  if (scanning.value) return
+  scanning.value = true
+  try {
+    const r = await affiliatesAPI.scanAffiliateRisk()
+    appStore.showSuccess(
+      t('admin.affiliates.relations.riskScan.done', {
+        scanned: r.scanned,
+        suspect: r.suspect,
+        abnormal: r.abnormal,
+        marked: r.marked,
+      }),
+    )
+  } catch (error) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'admin.affiliates', t('admin.affiliates.relations.riskScan.failed')),
+    )
+  } finally {
+    scanning.value = false
+  }
+}
 
 const unsourced = ref<AffiliateUnsourcedUser[]>([])
 const unsourcedTotal = ref(0)
@@ -403,6 +489,45 @@ async function loadRelations(userId: number) {
     appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', t('admin.affiliates.relations.loadFailed')))
   } finally {
     loading.value = false
+  }
+}
+
+function requestDeleteCurrentUser() {
+  if (!relation.value) return
+  deleteTarget.value = { userId: relation.value.user.user_id, email: relation.value.user.email }
+}
+
+// 删除「他邀请的人」列表中的一行：确认后原地标记，不离开当前页面。
+function requestDeleteDescendant(node: AffiliateRelationNode) {
+  deleteTarget.value = { userId: node.user_id, email: node.email, node }
+}
+
+async function confirmDeleteUser() {
+  const target = deleteTarget.value
+  if (!target || deletingUser.value) return
+  deletingUser.value = true
+  try {
+    await adminAPI.users.delete(target.userId)
+    appStore.showSuccess(t('common.success'))
+    if (target.node) {
+      // 原地打上「已删除」标记，停留在当前页面
+      target.node.deleted_at = new Date().toISOString()
+    } else {
+      // 删除的是当前正在查看的用户：清空视图，避免继续显示已删除用户的数据
+      relation.value = null
+      keyword.value = ''
+      candidates.value = []
+      // 同时清理 URL 上的 user_id，避免刷新后又自动加载（结果会是 404/空）
+      if (route.query.user_id) {
+        route.query = { ...route.query } as Record<string, any>
+        delete (route.query as Record<string, any>).user_id
+      }
+    }
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', '删除失败'))
+  } finally {
+    deletingUser.value = false
+    deleteTarget.value = null
   }
 }
 

@@ -229,6 +229,8 @@ export interface AffiliateRelationUser {
   email: string
   username: string
   created_at: string
+  /** 非空表示该账号已被软删除 */
+  deleted_at?: string | null
 }
 
 export interface AffiliateRelationNode {
@@ -236,6 +238,8 @@ export interface AffiliateRelationNode {
   email: string
   username: string
   created_at: string
+  /** 非空表示该账号已被软删除 */
+  deleted_at?: string | null
   /** 距查询用户的层数：1 = 直接上级 / 直接下级 */
   depth: number
   /** 该用户为其**直接上级**贡献的返利合计（返利只向上走一级） */
@@ -352,6 +356,23 @@ export async function rejectGuardEvent(
   return data
 }
 
+export interface AffiliateRiskScanResult {
+  scanned: number
+  suspect: number
+  abnormal: number
+  marked: number
+}
+
+/**
+ * 触发一次存量用户邀请注册风险扫描并回填标记（只标记，不改变业务行为）。
+ */
+export async function scanAffiliateRisk(): Promise<AffiliateRiskScanResult> {
+  const { data } = await apiClient.post<AffiliateRiskScanResult>(
+    '/admin/affiliates/risk/scan',
+  )
+  return data
+}
+
 export const affiliatesAPI = {
   listUsers,
   lookupUsers,
@@ -367,6 +388,7 @@ export const affiliatesAPI = {
   listGuardEvents,
   approveGuardEvent,
   rejectGuardEvent,
+  scanAffiliateRisk,
 }
 
 export default affiliatesAPI
