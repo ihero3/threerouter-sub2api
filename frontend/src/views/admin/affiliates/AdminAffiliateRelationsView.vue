@@ -389,7 +389,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -402,6 +402,7 @@ import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 
 type TabKey = 'relations' | 'unsourced' | 'guard'
@@ -519,8 +520,9 @@ async function confirmDeleteUser() {
       candidates.value = []
       // 同时清理 URL 上的 user_id，避免刷新后又自动加载（结果会是 404/空）
       if (route.query.user_id) {
-        route.query = { ...route.query } as Record<string, any>
-        delete (route.query as Record<string, any>).user_id
+        const newQuery = { ...route.query }
+        delete newQuery.user_id
+        void router.replace({ query: newQuery })
       }
     }
   } catch (error) {
