@@ -283,6 +283,8 @@ type AffiliateRelationUser struct {
 	Email     string     `json:"email"`
 	Username  string     `json:"username"`
 	CreatedAt time.Time  `json:"created_at"`
+	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
@@ -293,6 +295,8 @@ type AffiliateRelationNode struct {
 	Email     string     `json:"email"`
 	Username  string     `json:"username"`
 	CreatedAt time.Time  `json:"created_at"`
+	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// Depth 距查询用户的层数：上游 1 = 直接邀请人，下游 1 = 直接邀请的人。

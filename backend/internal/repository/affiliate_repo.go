@@ -869,20 +869,24 @@ func (r *affiliateRepository) GetInviteRelations(ctx context.Context, userID int
 		inviterName   sql.NullString
 		inviterJoined sql.NullTime
 		inviterDelAt  sql.NullTime
+		inviterLastAt sql.NullTime
 		boundAt       sql.NullTime
 	)
 	var userDelAt sql.NullTime
+	var userLastAt sql.NullTime
 	rows, err := client.QueryContext(ctx, `
 SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.last_active_at,
        u.deleted_at,
        ua.inviter_id,
        ua.created_at,
        iu.email,
        iu.username,
        iu.created_at,
+       iu.last_active_at,
        iu.deleted_at
 FROM users u
 LEFT JOIN user_affiliates ua ON ua.user_id = u.id
@@ -895,8 +899,8 @@ LIMIT 1`, userID)
 	found := rows.Next()
 	if found {
 		err = rows.Scan(
-			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userDelAt,
-			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterDelAt,
+			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userLastAt, &userDelAt,
+			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterLastAt, &inviterDelAt,
 		)
 	}
 	scanErr := rows.Err()
@@ -909,6 +913,10 @@ LIMIT 1`, userID)
 	}
 	if !found {
 		return nil, service.ErrUserNotFound
+	}
+	if userLastAt.Valid {
+		t := userLastAt.Time
+		rel.User.LastUsedAt = &t
 	}
 	if userDelAt.Valid {
 		t := userDelAt.Time
@@ -924,12 +932,18 @@ LIMIT 1`, userID)
 			t := inviterDelAt.Time
 			delPtr = &t
 		}
+		var lastPtr *time.Time
+		if inviterLastAt.Valid {
+			t := inviterLastAt.Time
+			lastPtr = &t
+		}
 		rel.Inviter = &service.AffiliateRelationUser{
-			UserID:    inviterID.Int64,
-			Email:     inviterEmail.String,
-			Username:  inviterName.String,
-			CreatedAt: inviterJoined.Time,
-			DeletedAt: delPtr,
+			UserID:     inviterID.Int64,
+			Email:      inviterEmail.String,
+			Username:   inviterName.String,
+			CreatedAt:  inviterJoined.Time,
+			LastUsedAt: lastPtr,
+			DeletedAt:  delPtr,
 		}
 	}
 
@@ -949,6 +963,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.last_active_at,
        u.deleted_at,
        up.depth
 FROM up
@@ -959,10 +974,14 @@ ORDER BY up.depth DESC`, userID, maxDepth)
 	}
 	for ancestorRows.Next() {
 		var node service.AffiliateRelationNode
-		var delAt sql.NullTime
-		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &delAt, &node.Depth); err != nil {
+		var delAt, lastAt sql.NullTime
+		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth); err != nil {
 			_ = ancestorRows.Close()
 			return nil, err
+		}
+		if lastAt.Valid {
+			t := lastAt.Time
+			node.LastUsedAt = &t
 		}
 		if delAt.Valid {
 			t := delAt.Time
@@ -1000,6 +1019,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
+       u.last_active_at,
        u.deleted_at,
        d.depth,
        COALESCE(r.rebate_total, 0)::double precision
@@ -1019,10 +1039,14 @@ LIMIT $3`, userID, maxDepth, affiliateRelationDescendantRowCap)
 	}
 	for descendantRows.Next() {
 		var node service.AffiliateRelationNode
-		var delAt sql.NullTime
-		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &delAt, &node.Depth, &node.RebateAmount); err != nil {
+		var delAt, lastAt sql.NullTime
+		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.RebateAmount); err != nil {
 			_ = descendantRows.Close()
 			return nil, err
+		}
+		if lastAt.Valid {
+			t := lastAt.Time
+			node.LastUsedAt = &t
 		}
 		if delAt.Valid {
 			t := delAt.Time

@@ -157,12 +157,13 @@
             {{ t('admin.affiliates.relations.descendantsEmpty') }}
           </div>
           <div v-else class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[600px] text-left text-sm">
+            <table class="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.depth') }}</th>
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.user') }}</th>
                   <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.createdAt') }}</th>
+                  <th class="px-2 py-2 font-medium">{{ t('admin.affiliates.relations.columns.lastUsedAt') }}</th>
                   <th class="px-2 py-2 text-right font-medium">{{ t('admin.affiliates.relations.columns.rebate') }}</th>
                   <th class="px-2 py-2 text-right font-medium">{{ t('admin.affiliates.relations.columns.actions') }}</th>
                 </tr>
@@ -192,6 +193,9 @@
                     </span>
                   </td>
                   <td class="px-2 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(node.created_at) }}</td>
+                  <td class="px-2 py-2" :class="node.last_used_at ? 'text-gray-600 dark:text-dark-300' : 'text-gray-400 dark:text-dark-500'">
+                    {{ node.last_used_at ? formatDateTime(node.last_used_at) : t('admin.affiliates.relations.columns.neverUsed') }}
+                  </td>
                   <td class="px-2 py-2 text-right font-mono text-gray-900 dark:text-white">${{ formatAmount(node.rebate_amount) }}</td>
                   <td class="px-2 py-2 text-right">
                     <button

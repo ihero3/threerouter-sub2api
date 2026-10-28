@@ -229,6 +229,8 @@ export interface AffiliateRelationUser {
   email: string
   username: string
   created_at: string
+  /** 用户最后活跃时间（登录时刷新），可能为 null */
+  last_used_at?: string | null
   /** 非空表示该账号已被软删除 */
   deleted_at?: string | null
 }
@@ -238,6 +240,8 @@ export interface AffiliateRelationNode {
   email: string
   username: string
   created_at: string
+  /** 用户最后活跃时间（登录时刷新），可能为 null */
+  last_used_at?: string | null
   /** 非空表示该账号已被软删除 */
   deleted_at?: string | null
   /** 距查询用户的层数：1 = 直接上级 / 直接下级 */
