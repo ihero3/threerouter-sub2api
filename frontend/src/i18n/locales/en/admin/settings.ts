@@ -227,6 +227,21 @@ export default {
         saved: 'Panel rate limit settings saved',
         saveFailed: 'Failed to save panel rate limit settings'
       },
+      gatewayIpRateLimit: {
+        title: 'Gateway API per-IP Rate Limiting',
+        description: 'Throttle model API requests per client IP to keep aggregated traffic from many accounts/scripts behind one IP from overwhelming upstreams',
+        proxySafeNote: 'Counted per real client IP (proxy forwarding headers are honored). Loopback and private addresses are skipped automatically, so reverse-proxy hops are never blocked. For corporate NAT egress, observe your traffic distribution before enabling — a threshold of at least 600 req/min is recommended.',
+        enabled: 'Enable gateway IP rate limiting',
+        enabledHint: 'Limits all model API forwarding routes (/v1/* etc.) per source IP. Requests over the threshold get HTTP 429 with Retry-After and recover when the window resets.',
+        rpm: 'Requests per IP',
+        rpmHint: 'Total model API requests allowed per client IP per minute. 0 = unlimited. Keep it at 600 (~10 req/s) or higher to avoid blocking legitimate users behind corporate NAT egress.',
+        whitelist: 'IP Whitelist',
+        whitelistPlaceholder: 'One per line; exact IP or CIDR, e.g.:\n203.0.113.9\n198.51.100.0/24',
+        whitelistHint: 'Whitelisted IPs/CIDRs bypass rate limiting — use for your own monitoring, partner egress, etc.',
+        perMinute: 'req/min',
+        saved: 'Gateway IP rate limit settings saved',
+        saveFailed: 'Failed to save gateway IP rate limit settings'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: 'Bot protection for login and registration',

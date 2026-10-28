@@ -476,6 +476,13 @@ type PanelRateLimitSettings struct {
 	PublicIPRPM int  `json:"public_ip_rpm"`
 }
 
+// GatewayIPRateLimitSettings 网关 API 按客户端 IP 限流配置 DTO
+type GatewayIPRateLimitSettings struct {
+	Enabled   bool     `json:"enabled"`
+	RPM       int      `json:"rpm"`
+	Whitelist []string `json:"whitelist"`
+}
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

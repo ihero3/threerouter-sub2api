@@ -134,12 +134,18 @@ func TestEnsureFailoverAutoRecoverTag(t *testing.T) {
 	}
 }
 
-// failoverDisableRepoStub 只承载 GetByID/Update，其余接口方法通过内嵌接口保持空实现。
+// failoverDisableRepoStub 只承载 GetByID/Update/SetTempUnschedulable，
+// 其余接口方法通过内嵌接口保持空实现。
 type failoverDisableRepoStub struct {
 	AccountRepository
 	acct      *Account
 	updated   *Account
 	getCalled bool
+
+	tempCalled bool
+	tempID     int64
+	tempUntil  time.Time
+	tempReason string
 }
 
 func (r *failoverDisableRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -149,6 +155,14 @@ func (r *failoverDisableRepoStub) GetByID(ctx context.Context, id int64) (*Accou
 
 func (r *failoverDisableRepoStub) Update(ctx context.Context, account *Account) error {
 	r.updated = account
+	return nil
+}
+
+func (r *failoverDisableRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	r.tempCalled = true
+	r.tempID = id
+	r.tempUntil = until
+	r.tempReason = reason
 	return nil
 }
 
@@ -196,7 +210,7 @@ func TestMaybeDisableAccountOnFailover_429WithResetTime_AutoRecoverable(t *testi
 		resetAt.Format("2006-01-02 15:04:05 -0700 MST") + ". Please wait."
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
-		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, msg)
+		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, msg, nil)
 
 	if repo.updated == nil {
 		t.Fatal("expected account to be updated")
@@ -222,7 +236,7 @@ func TestMaybeDisableAccountOnFailover_429WithoutResetTime_Permanent(t *testing.
 	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
-		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, "rate limit exceeded")
+		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, "rate limit exceeded", nil)
 
 	if repo.updated == nil {
 		t.Fatal("expected account to be updated")
@@ -242,7 +256,7 @@ func TestMaybeDisableAccountOnFailover_401_Permanent(t *testing.T) {
 	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
-		repo.acct, http.StatusUnauthorized, nil, alwaysFailover, "unauthorized")
+		repo.acct, http.StatusUnauthorized, nil, alwaysFailover, "unauthorized", nil)
 
 	if repo.updated == nil || repo.updated.Status != StatusError {
 		t.Fatal("expected account to be permanently disabled")
@@ -256,9 +270,84 @@ func TestMaybeDisableAccountOnFailover_SettingDisabled_NoOp(t *testing.T) {
 	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(false), repo,
-		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, "reset at 2026-10-14 12:58:44 +0800 CST")
+		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, "reset at 2026-10-14 12:58:44 +0800 CST", nil)
 
 	if repo.getCalled || repo.updated != nil {
 		t.Fatal("account must be untouched when the setting is disabled")
+	}
+}
+
+func TestMaybeDisableAccountOnFailover_404ModelNotSupportedByAnyAccount_NoDisable(t *testing.T) {
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
+	// sub2api/one-api 类中转站的模型缺失错误：分组内无账号支持该模型。
+	// 语义是（账号, 模型）组合在上游无能力，不是账号失效——不得永久禁用整个账号。
+	body := []byte(`{"error":{"message":"Model \"deepseek-v4-flash\" is not supported by any configured account in this group","type":"invalid_request_error"}}`)
+
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, http.StatusNotFound, nil, alwaysFailover, "Model \"deepseek-v4-flash\" is not supported by any configured account in this group", body)
+
+	if repo.updated != nil {
+		t.Fatalf("404 model-not-supported must not disable account, got status %s msg %q", repo.updated.Status, repo.updated.ErrorMessage)
+	}
+}
+
+func newRelayAccount(id int64) *Account {
+	return &Account{
+		ID:          id,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{AccountExtraUpstreamRelay: true},
+	}
+}
+
+// 中转站账号遇到 401 这类账号级错误：只做 3 分钟临时冷却，账号保持 active，
+// 到期自动恢复调度——上游 Key 失效是中转站内部的事，不能永久禁用本地账号。
+func TestMaybeDisableAccountOnFailover_RelayUpstream_401TempCooldown(t *testing.T) {
+	for _, statusCode := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+		repo := &failoverDisableRepoStub{acct: newRelayAccount(1)}
+		before := time.Now()
+
+		maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+			repo.acct, statusCode, nil, alwaysFailover, "upstream error", nil)
+
+		if repo.updated != nil {
+			t.Fatalf("HTTP %d must not permanently disable a relay account, got status %s", statusCode, repo.updated.Status)
+		}
+		if !repo.tempCalled {
+			t.Fatalf("HTTP %d must set temp-unschedulable cooldown", statusCode)
+		}
+		if repo.tempID != repo.acct.ID {
+			t.Fatalf("expected temp cooldown on account %d, got %d", repo.acct.ID, repo.tempID)
+		}
+		if repo.tempUntil.Before(before.Add(relayUpstreamCooldown-time.Second)) ||
+			repo.tempUntil.After(before.Add(relayUpstreamCooldown+time.Minute)) {
+			t.Fatalf("unexpected cooldown until %s", repo.tempUntil.Format(time.RFC3339))
+		}
+	}
+}
+
+// 429 带可信重置时间时保留原有自动恢复逻辑（记录 rate_limit_reset_at + auto-recover tag），
+// 不被中转站的固定 3 分钟冷却覆盖——上游已经明确告诉我们要等到几点。
+func TestMaybeDisableAccountOnFailover_RelayUpstream_429WithResetTimeKeepsAutoRecover(t *testing.T) {
+	repo := &failoverDisableRepoStub{acct: newRelayAccount(2)}
+	cst := time.FixedZone("CST", 8*3600)
+	resetAt := time.Now().In(cst).Add(2 * time.Hour)
+	msg := "You have exceeded the 5-hour usage quota. It will reset at " +
+		resetAt.Format("2006-01-02 15:04:05 -0700 MST") + ". Please wait."
+
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, msg, nil)
+
+	if repo.tempCalled {
+		t.Fatal("429 with a trusted reset time must keep auto-recover, not the fixed relay cooldown")
+	}
+	if repo.updated == nil || repo.updated.Status != StatusError {
+		t.Fatal("expected account to be disabled with a recover time")
+	}
+	if repo.updated.RateLimitResetAt == nil || repo.updated.RateLimitResetAt.Unix() != resetAt.Unix() {
+		t.Fatalf("expected rate_limit_reset_at = %d, got %v", resetAt.Unix(), repo.updated.RateLimitResetAt)
+	}
+	if !strings.Contains(repo.updated.ErrorMessage, FailoverAutoRecoverMessageTag) {
+		t.Fatalf("expected auto-recover tag, got %q", repo.updated.ErrorMessage)
 	}
 }

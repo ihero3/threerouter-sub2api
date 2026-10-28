@@ -2165,7 +2165,153 @@
             </div>
           </div>
 
-          <!-- 人机验证 Settings -->
+          <!-- 网关 API 按客户端 IP 限流 Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="shield"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.gatewayIpRateLimit.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.gatewayIpRateLimit.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="gatewayIpRateLimitLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- 计数维度说明：按安全客户端 IP，内网/回环自动跳过 -->
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.gatewayIpRateLimit.proxySafeNote") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.gatewayIpRateLimit.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayIpRateLimit.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="gatewayIpRateLimitForm.enabled" />
+                </div>
+
+                <div
+                  v-if="gatewayIpRateLimitForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayIpRateLimit.rpm") }}
+                    </label>
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model.number="gatewayIpRateLimitForm.rpm"
+                        data-testid="gateway-ip-rate-limit-rpm"
+                        type="number"
+                        min="0"
+                        max="100000"
+                        class="input w-32"
+                      />
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.gatewayIpRateLimit.perMinute") }}
+                      </span>
+                    </div>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayIpRateLimit.rpmHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayIpRateLimit.whitelist") }}
+                    </label>
+                    <textarea
+                      v-model="gatewayIpRateLimitWhitelistText"
+                      data-testid="gateway-ip-rate-limit-whitelist"
+                      rows="4"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="t('admin.settings.gatewayIpRateLimit.whitelistPlaceholder')"
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayIpRateLimit.whitelistHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="gateway-ip-rate-limit-save"
+                    @click="saveGatewayIpRateLimitSettings"
+                    :disabled="gatewayIpRateLimitSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="gatewayIpRateLimitSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      gatewayIpRateLimitSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
@@ -9239,6 +9385,16 @@ const panelRateLimitForm = reactive({
   public_ip_rpm: 300,
 });
 
+// Gateway API 按客户端 IP 限流状态
+const gatewayIpRateLimitLoading = ref(true);
+const gatewayIpRateLimitSaving = ref(false);
+const gatewayIpRateLimitForm = reactive({
+  enabled: false,
+  rpm: 600,
+});
+// 白名单用文本域编辑（每行一个 IP 或 CIDR），保存时拆分为数组
+const gatewayIpRateLimitWhitelistText = ref("");
+
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true);
 const streamTimeoutSaving = ref(false);
@@ -12150,6 +12306,49 @@ async function savePanelRateLimitSettings() {
   }
 }
 
+// Gateway API 按客户端 IP 限流方法
+async function loadGatewayIpRateLimitSettings() {
+  gatewayIpRateLimitLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getGatewayIPRateLimitSettings();
+    gatewayIpRateLimitForm.enabled = settings.enabled;
+    gatewayIpRateLimitForm.rpm = settings.rpm;
+    gatewayIpRateLimitWhitelistText.value = (settings.whitelist || []).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    gatewayIpRateLimitLoading.value = false;
+  }
+}
+
+async function saveGatewayIpRateLimitSettings() {
+  gatewayIpRateLimitSaving.value = true;
+  try {
+    const whitelist = gatewayIpRateLimitWhitelistText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const updated = await adminAPI.settings.updateGatewayIPRateLimitSettings({
+      enabled: gatewayIpRateLimitForm.enabled,
+      rpm: gatewayIpRateLimitForm.rpm,
+      whitelist,
+    });
+    gatewayIpRateLimitForm.enabled = updated.enabled;
+    gatewayIpRateLimitForm.rpm = updated.rpm;
+    gatewayIpRateLimitWhitelistText.value = (updated.whitelist || []).join("\n");
+    appStore.showSuccess(t("admin.settings.gatewayIpRateLimit.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.gatewayIpRateLimit.saveFailed"),
+      ),
+    );
+  } finally {
+    gatewayIpRateLimitSaving.value = false;
+  }
+}
+
 // Rate Limit Cooldown (429) 方法
 async function loadRateLimit429CooldownSettings() {
   rateLimit429CooldownLoading.value = true;
@@ -12827,6 +13026,7 @@ onMounted(() => {
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();
+  loadGatewayIpRateLimitSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();

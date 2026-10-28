@@ -227,6 +227,21 @@ export default {
         saved: '面板接口限流配置已保存',
         saveFailed: '保存面板接口限流配置失败'
       },
+      gatewayIpRateLimit: {
+        title: '网关 API 按 IP 限流',
+        description: '限制同一客户端 IP 调用模型 API 的请求频率，防止单 IP 下多账号/脚本聚合流量打爆上游',
+        proxySafeNote: '按真实客户端 IP 计数（自动识别反向代理转发头）；回环与内网地址会自动跳过，不会误拦反代链路。企业 NAT 出口场景请先观察流量分布再开启，建议阈值不低于 600 次/分钟。',
+        enabled: '启用网关 IP 限流',
+        enabledHint: '对所有模型 API 转发路径（/v1/* 等）按来源 IP 限流；超出阈值返回 429 与 Retry-After，窗口重置后自动恢复。',
+        rpm: '每 IP 请求上限',
+        rpmHint: '单个客户端 IP 每分钟允许的模型 API 请求总数；0 表示不限制。建议不小于 600（约 10 次/秒），避免误伤企业 NAT 共享出口下的正常用户。',
+        whitelist: 'IP 白名单',
+        whitelistPlaceholder: '每行一个，支持精确 IP 或 CIDR 网段，例如：\n203.0.113.9\n198.51.100.0/24',
+        whitelistHint: '白名单中的 IP/网段不受限流约束，可用于豁免自有监控、合作伙伴出口等。',
+        perMinute: '次/分钟',
+        saved: '网关 IP 限流配置已保存',
+        saveFailed: '保存网关 IP 限流配置失败'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: '登录和注册的机器人防护',

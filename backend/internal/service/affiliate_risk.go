@@ -153,7 +153,7 @@ func isDisposableEmail(email string) bool {
 // isRandomLocalPart 判断邮箱本地部分是否像机器生成的随机串。
 //
 // 判定口径（三项同时满足才命中，尽量压低误报）：
-//   - 长度为 10-14；
+//   - 长度为 10-24（覆盖机器随机串与「长人名+数字」批量命名形态）；
 //   - 只含小写字母与数字，且不含任何分隔符；
 //   - 数字至少 2 个；
 //   - 元音占比 (a/e/i/o/u) 不超过 20% —— 正常姓名/拼音通常在 25% 以上，
@@ -166,7 +166,7 @@ func isRandomLocalPart(email string) bool {
 		return false
 	}
 	local := strings.ToLower(strings.TrimSpace(email[:at]))
-	if len(local) < 10 || len(local) > 14 {
+	if len(local) < 10 || len(local) > 24 {
 		return false
 	}
 	letters, digits, vowels := 0, 0, 0

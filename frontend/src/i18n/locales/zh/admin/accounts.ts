@@ -862,6 +862,10 @@ export default {
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
       poolModeRetryStatusCodes: '同账号重试状态码',
       poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
+      relayUpstream: '上游是中转站',
+      relayUpstreamHint: '上游为 sub2api / one-api 等聚合转发站时启用',
+      relayUpstreamInfo:
+        '启用后，上游透传的账号级错误（401/402/5xx/403 等）只做故障转移并临时冷却 3 分钟，到期自动恢复调度，不会永久禁用该账号。中转站内部账号故障不代表本账号密钥失效。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',

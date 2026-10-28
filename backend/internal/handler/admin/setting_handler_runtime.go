@@ -245,6 +245,62 @@ func (h *SettingHandler) UpdatePanelRateLimitSettings(c *gin.Context) {
 	})
 }
 
+// GetGatewayIPRateLimitSettings 获取网关 API 按客户端 IP 限流配置
+// GET /api/v1/admin/settings/gateway-ip-rate-limit
+func (h *SettingHandler) GetGatewayIPRateLimitSettings(c *gin.Context) {
+	settings, err := h.settingService.GetGatewayIPRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.GatewayIPRateLimitSettings{
+		Enabled:   settings.Enabled,
+		RPM:       settings.RPM,
+		Whitelist: settings.Whitelist,
+	})
+}
+
+// UpdateGatewayIPRateLimitSettingsRequest 更新网关 IP 限流配置请求
+type UpdateGatewayIPRateLimitSettingsRequest struct {
+	Enabled   bool     `json:"enabled"`
+	RPM       int      `json:"rpm"`
+	Whitelist []string `json:"whitelist"`
+}
+
+// UpdateGatewayIPRateLimitSettings 更新网关 API 按客户端 IP 限流配置
+// PUT /api/v1/admin/settings/gateway-ip-rate-limit
+func (h *SettingHandler) UpdateGatewayIPRateLimitSettings(c *gin.Context) {
+	var req UpdateGatewayIPRateLimitSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.GatewayIPRateLimitSettings{
+		Enabled:   req.Enabled,
+		RPM:       req.RPM,
+		Whitelist: req.Whitelist,
+	}
+
+	if err := h.settingService.SetGatewayIPRateLimitSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetGatewayIPRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.GatewayIPRateLimitSettings{
+		Enabled:   updatedSettings.Enabled,
+		RPM:       updatedSettings.RPM,
+		Whitelist: updatedSettings.Whitelist,
+	})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {

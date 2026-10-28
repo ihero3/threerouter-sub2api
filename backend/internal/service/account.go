@@ -290,6 +290,26 @@ func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
+// AccountExtraUpstreamRelay 标记账号的上游是「中转站/聚合转发」类型（如 sub2api、
+// one-api 等多层转售系统）。该类上游返回的账号级错误（401/402/5xx 等）实际反映的是
+// 中转站内部账号的健康度，而非本账号 API Key 本身失效，因此不能据此永久禁用本地账号。
+const AccountExtraUpstreamRelay = "upstream_relay"
+
+// IsRelayUpstream 报告账号是否被标记为「上游是中转站」。
+// 命中后，所有账号级错误的永久禁用路径统一降级为临时冷却（见
+// RateLimitService.handleAuthError 与 maybeDisableAccountOnFailover）。
+func (a *Account) IsRelayUpstream() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra[AccountExtraUpstreamRelay]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
 // openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。

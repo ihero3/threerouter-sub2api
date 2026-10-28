@@ -1368,6 +1368,36 @@ export async function updatePanelRateLimitSettings(
   return data;
 }
 
+// ==================== Gateway IP Rate Limit Settings ====================
+
+/**
+ * Gateway API per-client-IP rate limit settings.
+ * Applies to model API forwarding routes (/v1/* etc.); requests from
+ * loopback/private/relay-internal addresses are skipped automatically.
+ */
+export interface GatewayIPRateLimitSettings {
+  enabled: boolean;
+  rpm: number;
+  whitelist: string[];
+}
+
+export async function getGatewayIPRateLimitSettings(): Promise<GatewayIPRateLimitSettings> {
+  const { data } = await apiClient.get<GatewayIPRateLimitSettings>(
+    "/admin/settings/gateway-ip-rate-limit",
+  );
+  return data;
+}
+
+export async function updateGatewayIPRateLimitSettings(
+  settings: GatewayIPRateLimitSettings,
+): Promise<GatewayIPRateLimitSettings> {
+  const { data } = await apiClient.put<GatewayIPRateLimitSettings>(
+    "/admin/settings/gateway-ip-rate-limit",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1597,6 +1627,8 @@ export const settingsAPI = {
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,
   updatePanelRateLimitSettings,
+  getGatewayIPRateLimitSettings,
+  updateGatewayIPRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

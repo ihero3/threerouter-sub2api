@@ -86,3 +86,35 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *test
 	require.Contains(t, repo.lastErrorMsg, "workspace forbidden by policy")
 	require.Contains(t, repo.lastErrorMsg, "consecutive_403=3/3")
 }
+
+// 中转站账号的 403 只走固定短冷却：不进入 403 累计计数器（否则累计打满会永久禁用），
+// 且账号保持 active，到期自动恢复调度。
+func TestRateLimitService_HandleUpstreamError_RelayUpstream403TempCooldownSkipsCounter(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	counter := &openAI403CounterCacheStub{counts: []int64{3}}
+	blocker := &runtimeBlockRecorder{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetOpenAI403CounterCache(counter)
+	service.SetAccountRuntimeBlocker(blocker)
+	account := &Account{
+		ID:       303,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{AccountExtraUpstreamRelay: true},
+	}
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusForbidden,
+		http.Header{},
+		[]byte(`{"error":{"message":"forbidden by upstream group policy"}}`),
+	)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setErrorCalls, "relay upstream 403 must never permanently disable the account")
+	require.Equal(t, 1, repo.tempCalls)
+	require.Len(t, counter.counts, 1, "relay upstream 403 must not consume the 403 escalation counter")
+	require.Len(t, blocker.accounts, 1)
+	require.Equal(t, "relay_upstream_error", blocker.reasons[0])
+}

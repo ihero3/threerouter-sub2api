@@ -5,7 +5,16 @@ import (
 	"strings"
 )
 
-var upstreamModelNotFoundKeywords = []string{"model not found", "unknown model", "not found"}
+var upstreamModelNotFoundKeywords = []string{
+	"model not found",
+	"unknown model",
+	"not found",
+	// sub2api/one-api 类中转站：分组内没有任何账号支持该模型。
+	// 例：Model "deepseek-v4-flash" is not supported by any configured account in this group
+	"not supported by any configured account",
+	"not supported by any account",
+	"no available account",
+}
 
 func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
 	if statusCode != http.StatusNotFound {

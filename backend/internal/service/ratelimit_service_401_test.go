@@ -263,6 +263,28 @@ func TestRateLimitService_HandleUpstreamError_OAuth401DoesNotOverwriteCredential
 	require.Nil(t, repo.lastCredentials, "no credentials should have been persisted")
 }
 
+// 中转站账号的 401 只做临时冷却：上游（sub2api/one-api 类）内部 Key 失效
+// 不代表本地账号失效，永久禁用会误杀仍能服务其他时段/模型的健康账号。
+func TestRateLimitService_HandleUpstreamError_RelayUpstream401TempCooldown(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       104,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{AccountExtraUpstreamRelay: true},
+	}
+
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{},
+		[]byte(`{"error":{"message":"upstream key invalid"}}`))
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setErrorCalls, "relay upstream 401 must never permanently disable the account")
+	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, int64(104), repo.lastTempID)
+	require.Contains(t, repo.lastTempReason, "upstream key invalid")
+}
+
 // 缺少 refresh_token 的 OAuth 账号 401 应直接 SetError 永久禁用，
 // 不再走 10 分钟冷却（冷却期内无人能刷新它，结束后还会被选中再 502 一次）。
 func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t *testing.T) {

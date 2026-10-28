@@ -789,6 +789,10 @@ export default {
       poolModeRetryStatusCodes: 'Retry Status Codes',
       poolModeRetryStatusCodesHint:
         'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
+      relayUpstream: 'Upstream is a relay',
+      relayUpstreamHint: 'Enable when upstream is a relay/aggregator such as sub2api or one-api',
+      relayUpstreamInfo:
+        'When enabled, account-level errors relayed by the upstream (401/402/5xx/403 etc.) only trigger failover plus a 3-minute temporary cooldown that auto-recovers. The account is never permanently disabled — a fault inside the relay does not mean this API key is invalid.',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:

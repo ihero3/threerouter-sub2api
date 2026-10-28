@@ -1617,6 +1617,42 @@
           </div>
         </div>
 
+        <!-- Relay Upstream Section：上游是中转站（sub2api/one-api 等） -->
+        <div
+          v-if="accountCategory === 'apikey'"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.relayUpstream') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.relayUpstreamHint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="relayUpstreamEnabled = !relayUpstreamEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                relayUpstreamEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  relayUpstreamEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="relayUpstreamEnabled" class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.relayUpstreamInfo') }}
+            </p>
+          </div>
+        </div>
+
         <!-- Custom Error Codes Section -->
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -4182,6 +4218,8 @@ function parsePoolModeRetryStatusCodes(input: string): number[] {
   return out.sort((a, b) => a - b)
 }
 const customErrorCodesEnabled = ref(false)
+// 上游是中转站（sub2api/one-api 等）：账号级上游错误降级为短冷却，不永久禁用
+const relayUpstreamEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const headerOverrideEnabled = ref(false)
@@ -5129,6 +5167,7 @@ const resetForm = () => {
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
   customErrorCodesEnabled.value = false
+  relayUpstreamEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   headerOverrideEnabled.value = false
@@ -5312,6 +5351,16 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  // 上游是中转站：透传到 extra，后端据此把账号级错误降级为短冷却而非永久禁用
+  if (payload.type === 'apikey') {
+    const extra: Record<string, unknown> = { ...(payload.extra || {}) }
+    if (relayUpstreamEnabled.value) {
+      extra.upstream_relay = true
+    } else {
+      delete extra.upstream_relay
+    }
+    payload.extra = Object.keys(extra).length > 0 ? extra : undefined
+  }
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })

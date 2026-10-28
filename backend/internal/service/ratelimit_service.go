@@ -91,6 +91,11 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+// relayUpstreamCooldown 中转站账号遇到账号级错误时的临时冷却时长。
+// 中转站（sub2api/one-api 等）内部账号轮换频繁，短暂冷却后通常即可恢复；
+// 永久禁用会把仍可正常服务其他模型/其他时段的健康 Key 误踢出调度池。
+const relayUpstreamCooldown = 3 * time.Minute
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
@@ -956,6 +961,18 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 	if s == nil || s.accountRepo == nil || account == nil {
 		return
 	}
+	// 中转站账号：上游的 401/402/组织封禁等账号级错误反映的是中转站内部账号状态，
+	// 不代表本账号 Key 失效。降级为临时冷却（到期自动恢复调度），绝不永久禁用。
+	if account.IsRelayUpstream() {
+		until := time.Now().Add(relayUpstreamCooldown)
+		s.notifyAccountSchedulingBlocked(account, until, "relay_upstream_error")
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, errorMsg); err != nil {
+			slog.Warn("relay_upstream_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+			return
+		}
+		slog.Warn("relay_upstream_auth_error_temp_cooldown", "account_id", account.ID, "cooldown", relayUpstreamCooldown, "error", errorMsg)
+		return
+	}
 	s.notifyAccountSchedulingBlocked(account, time.Time{}, "auth_error")
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		slog.Warn("account_set_error_failed", "account_id", account.ID, "error", err)
@@ -1060,6 +1077,19 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		responseBody,
 		"account may be suspended or lack permissions",
 	)
+
+	// 中转站账号：403 是上游内部账号/分组的状态透传，不构成我方 Key 失效证据。
+	// 直接走固定短冷却自动恢复，不进入 403 累计计数（避免累计打满后触发永久禁用）。
+	if account.IsRelayUpstream() {
+		until := time.Now().Add(relayUpstreamCooldown)
+		s.notifyAccountSchedulingBlocked(account, until, "relay_upstream_error")
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+			slog.Warn("relay_upstream_403_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+			return true
+		}
+		slog.Warn("relay_upstream_403_temp_cooldown", "account_id", account.ID, "cooldown", relayUpstreamCooldown)
+		return true
+	}
 
 	if s.openAI403CounterCache == nil {
 		s.handleAuthError(ctx, account, msg)

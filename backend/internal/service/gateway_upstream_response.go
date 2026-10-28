@@ -512,7 +512,7 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	}
 	// 开启 "Disable Failed Account on Failover" 时，对 failover 名单内错误（含 429）的出错账号禁用。
 	// 429 且上游给出明确配额重置时间时，账号在重置时刻由后台任务自动恢复。
-	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, statusCode, resp.Header, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body))
+	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, statusCode, resp.Header, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body), body)
 }
 
 // maybeDisableAccountOnFailover disables the failing upstream account
@@ -583,6 +583,7 @@ func maybeDisableAccountOnFailover(
 	headers http.Header,
 	shouldFailover func(int) bool,
 	upstreamMsg string,
+	upstreamBody []byte,
 ) {
 	if settingService == nil || accountRepo == nil || account == nil || shouldFailover == nil {
 		return
@@ -599,6 +600,16 @@ func maybeDisableAccountOnFailover(
 			account.ID, statusCode, truncateString(strings.TrimSpace(upstreamMsg), 150))
 		return
 	}
+	// 上游返回 404 且是「模型不存在/不被支持」——典型于 sub2api/one-api 类中转站：
+	// "Model \"X\" is not supported by any configured account in this group"。
+	// 语义是该（账号, 模型）组合在上游分组内无对应能力，并非账号本身失效；
+	// HandleUpstreamModelNotFound 已对 (account, model) 做模型级冷却与 failover，
+	// 此处若再永久禁用整个账号，会把仍能正常服务其他模型的健康账号误踢出调度池。
+	if isUpstreamModelNotFoundError(statusCode, upstreamBody) {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: skip disable for account %d — upstream model not found (HTTP %d): %s",
+			account.ID, statusCode, truncateString(strings.TrimSpace(upstreamMsg), 150))
+		return
+	}
 	if !settingService.IsDisableFailedAccountOnFailoverEnabled(ctx) {
 		return
 	}
@@ -610,6 +621,20 @@ func maybeDisableAccountOnFailover(
 
 	// 429 且能拿到可信的配额重置时间：记录恢复时间，交给后台任务到期自动恢复。
 	recoverAt := failoverAutoRecoverAt(statusCode, upstreamMsg, headers, time.Now())
+
+	// 中转站账号：上游透传的账号级错误不代表本账号 Key 失效，永久禁用会误杀
+	// 仍能服务其他模型/其他时段的健康 Key。降级为临时冷却，到期自动恢复调度。
+	// 429 已带可信重置时间的保持原有自动恢复逻辑（recoverAt != nil），不在此覆盖。
+	if recoverAt == nil && account.IsRelayUpstream() {
+		until := time.Now().Add(relayUpstreamCooldown)
+		if err := accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+			logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: relay account %d temp cooldown failed: %v", account.ID, err)
+			return
+		}
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: relay account %d temp cooldown %s instead of disable after HTTP %d",
+			account.ID, relayUpstreamCooldown, statusCode)
+		return
+	}
 
 	acct, err := accountRepo.GetByID(ctx, account.ID)
 	if err != nil {
@@ -648,7 +673,7 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	// 当开启 "Disable Failed Account on Failover" 且上游返回 failover 名单内错误（含 429）时，
 	// 将出错账号永久禁用（status=error），避免其他用户重复命中同一故障账号；同一请求内的
 	// 透明换号仍由 failover 机制保障，用户无感。
-	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, resp.StatusCode, resp.Header, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body))
+	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, resp.StatusCode, resp.Header, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body), body)
 }
 
 // handleRetryExhaustedError 处理重试耗尽后的错误

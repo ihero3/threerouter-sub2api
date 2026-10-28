@@ -120,6 +120,18 @@ func (r *paymentFulfillmentAffiliateRepoStub) ListInvitees(context.Context, int6
 	panic("unexpected ListInvitees call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) BumpUserRiskMarks(context.Context, []UserRiskMark) (int, error) {
+	panic("unexpected BumpUserRiskMarks call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) CollectAffiliateRiskSignals(context.Context, []int64) ([]AffiliateRiskSignal, error) {
+	panic("unexpected CollectAffiliateRiskSignals call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) ListUserIDsForRiskScan(context.Context, int64, int) ([]int64, error) {
+	panic("unexpected ListUserIDsForRiskScan call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
 	panic("unexpected UpdateUserAffCode call")
 }
