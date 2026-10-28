@@ -118,6 +118,14 @@ type schedulerActiveGroupIDLister interface {
 	ListActiveIDs(ctx context.Context) ([]int64, error)
 }
 
+// inProcessSchedulerSnapshot 是进程内零拷贝 scheduler snapshot。
+// 重建 worker 成功写入 Redis 后同步更新；热路径 ListSchedulableAccounts 优先读这里，
+// 避免每次请求打 Redis 读快照（2 GET + 1 ZRANGE + 2 * 分块 MGET = 5~10 往返）。
+// 进程内存与 Redis 是最终一致关系，容忍秒级 stale；outbox poll interval 1s 保证快速收敛。
+type inProcessSchedulerSnapshot struct {
+	accounts []Account
+}
+
 type SchedulerSnapshotService struct {
 	cache                        SchedulerCache
 	outboxRepo                   SchedulerOutboxRepository
@@ -128,6 +136,9 @@ type SchedulerSnapshotService struct {
 	stopOnce                     sync.Once
 	wg                           sync.WaitGroup
 	fallbackLimit                *fallbackLimiter
+
+	// bucketSnapshots 按 bucket 存进程内快照；key = SchedulerBucket.String()
+	bucketSnapshots sync.Map
 	lagMu                        sync.Mutex
 	lagFailures                  int
 	outboxRebuildLatched         bool
@@ -143,6 +154,43 @@ type SchedulerSnapshotService struct {
 	fullRebuildRequested uint64
 	fullRebuildCompleted uint64
 	fullRebuildLastErr   error
+}
+
+// loadInProcessBucketSnapshot 从进程内缓存加载指定 bucket 的调度快照。
+// 返回 (accounts, hit)；hit=false 表示从未重建过该 bucket 或已被清理。
+func (s *SchedulerSnapshotService) loadInProcessBucketSnapshot(bucket SchedulerBucket) ([]Account, bool) {
+	if s == nil {
+		return nil, false
+	}
+	val, ok := s.bucketSnapshots.Load(bucket.String())
+	if !ok {
+		return nil, false
+	}
+	snap := val.(inProcessSchedulerSnapshot)
+	if len(snap.accounts) == 0 {
+		return nil, false
+	}
+	return snap.accounts, true
+}
+
+// storeInProcessBucketSnapshot 在 bucket 成功重建后写入进程内缓存。
+// accounts 由调用方持有，这里做浅拷贝切片（Account 是结构体，内部指针如 Proxy/Group
+// 复用同一实例；重建全量刷新会覆盖，无需深拷贝）。
+func (s *SchedulerSnapshotService) storeInProcessBucketSnapshot(bucket SchedulerBucket, accounts []Account) {
+	if s == nil {
+		return
+	}
+	clone := make([]Account, len(accounts))
+	copy(clone, accounts)
+	s.bucketSnapshots.Store(bucket.String(), inProcessSchedulerSnapshot{accounts: clone})
+}
+
+// deleteInProcessBucketSnapshot bucket 退休时清理进程内缓存。
+func (s *SchedulerSnapshotService) deleteInProcessBucketSnapshot(bucket SchedulerBucket) {
+	if s == nil {
+		return
+	}
+	s.bucketSnapshots.Delete(bucket.String())
 }
 
 func NewSchedulerSnapshotService(
@@ -217,6 +265,12 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 		return nil, useMixed, err
 	}
 
+	// P0: 优先读进程内快照（热路径零 Redis 往返）。
+	// rebuild worker 每次成功写入 Redis 后同步更新；这里只做 sync.Map.Load。
+	if accounts, hit := s.loadInProcessBucketSnapshot(bucket); hit {
+		return accounts, useMixed, nil
+	}
+
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -265,6 +319,9 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 			} else {
 				logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache write failed: bucket=%s err=%v", bucket.String(), err)
 			}
+		} else {
+			// P0: DB fallback 成功发布后也同步进程内缓存。
+			s.storeInProcessBucketSnapshot(bucket, accounts)
 		}
 	}
 
@@ -779,6 +836,8 @@ func (s *SchedulerSnapshotService) prepareGroupLifecycle(ctx context.Context, gr
 			if err := s.cache.RetireBucket(lifecycleCtx, bucket); err != nil {
 				return schedulerGroupLifecyclePlan{}, err
 			}
+			// P0: 退休后同步清理进程内缓存，避免热路径读到已废弃 bucket。
+			s.deleteInProcessBucketSnapshot(bucket)
 		}
 	}
 
@@ -982,6 +1041,8 @@ func (s *SchedulerSnapshotService) rebuildBucketWithTokenPolicyAndQueryCache(
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
+	// P0: 重建成功后立即同步进程内缓存；热路径 ListSchedulableAccounts 下一次即可命中。
+	s.storeInProcessBucketSnapshot(bucket, accounts)
 	slog.Debug("[Scheduler] rebuild ok", "bucket", bucket.String(), "reason", reason, "size", len(accounts))
 	return nil
 }
