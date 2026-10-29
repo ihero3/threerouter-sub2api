@@ -83,26 +83,24 @@ func TestGatewayIPRateLimiterLimitsPublicIP(t *testing.T) {
 	}
 }
 
-func TestGatewayIPRateLimiterWhitelist(t *testing.T) {
+func TestGatewayIPRateLimiterBlacklistDenies(t *testing.T) {
 	allower := &fakePanelAllower{}
 	p := &GatewayIPRateLimiter{
 		limiter:        allower,
-		settingService: newGatewayIPRateLimitTestService(t, `{"enabled":true,"rpm":1,"whitelist":["203.0.113.9","198.51.100.0/24"]}`),
+		settingService: newGatewayIPRateLimitTestService(t, `{"enabled":true,"rpm":1,"blacklist":["203.0.113.9","198.51.100.0/24"]}`),
 	}
 	router := newPanelTestRouter(p.Middleware(), nil)
 
-	// 精确 IP 命中白名单：不计数
-	for i := 0; i < 3; i++ {
-		require.Equal(t, http.StatusOK, performPanelRequest(router, "203.0.113.9:1000").Code)
-	}
-	// CIDR 命中白名单：不计数
-	for i := 0; i < 3; i++ {
-		require.Equal(t, http.StatusOK, performPanelRequest(router, "198.51.100.7:1000").Code)
-	}
-	// 未命中白名单：正常限流
+	// 精确 IP 命中黑名单：直接 403，不进入限流计数
+	require.Equal(t, http.StatusForbidden, performPanelRequest(router, "203.0.113.9:1000").Code)
+	require.Equal(t, http.StatusForbidden, performPanelRequest(router, "203.0.113.9:1000").Code)
+	// CIDR 命中黑名单：直接 403
+	require.Equal(t, http.StatusForbidden, performPanelRequest(router, "198.51.100.7:1000").Code)
+	// 没命中黑名单：正常限流
 	require.Equal(t, http.StatusOK, performPanelRequest(router, "8.8.8.8:1000").Code)
 	require.Equal(t, http.StatusTooManyRequests, performPanelRequest(router, "8.8.8.8:1000").Code)
 
+	// 黑名单 IP 没有进入过限流桶
 	allower.mu.Lock()
 	defer allower.mu.Unlock()
 	require.NotContains(t, allower.counts, "gateway:ip:203.0.113.9")
@@ -121,14 +119,14 @@ func TestGatewayIPRateLimiterFailOpenOnRedisError(t *testing.T) {
 	}
 }
 
-func TestGatewayIPWhitelisted(t *testing.T) {
-	require.True(t, gatewayIPWhitelisted("203.0.113.9", []string{"203.0.113.9"}))
-	require.True(t, gatewayIPWhitelisted("203.0.113.9", []string{"203.0.113.0/24"}))
-	require.True(t, gatewayIPWhitelisted("2001:db8::1", []string{"2001:db8::/32"}))
-	require.False(t, gatewayIPWhitelisted("203.0.113.9", []string{"203.0.113.10"}))
-	require.False(t, gatewayIPWhitelisted("203.0.113.9", []string{"198.51.100.0/24"}))
-	require.False(t, gatewayIPWhitelisted("203.0.113.9", nil))
+func TestGatewayIPBlacklisted(t *testing.T) {
+	require.True(t, gatewayIPBlacklisted("203.0.113.9", []string{"203.0.113.9"}))
+	require.True(t, gatewayIPBlacklisted("203.0.113.9", []string{"203.0.113.0/24"}))
+	require.True(t, gatewayIPBlacklisted("2001:db8::1", []string{"2001:db8::/32"}))
+	require.False(t, gatewayIPBlacklisted("203.0.113.9", []string{"203.0.113.10"}))
+	require.False(t, gatewayIPBlacklisted("203.0.113.9", []string{"198.51.100.0/24"}))
+	require.False(t, gatewayIPBlacklisted("203.0.113.9", nil))
 	// 非法条目被忽略，不影响其他条目
-	require.True(t, gatewayIPWhitelisted("203.0.113.9", []string{"not-an-ip", "203.0.113.9"}))
-	require.False(t, gatewayIPWhitelisted("not-an-ip", []string{"203.0.113.9"}))
+	require.True(t, gatewayIPBlacklisted("203.0.113.9", []string{"not-an-ip", "203.0.113.9"}))
+	require.False(t, gatewayIPBlacklisted("not-an-ip", []string{"203.0.113.9"}))
 }

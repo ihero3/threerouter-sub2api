@@ -28,7 +28,8 @@ type gatewayIPRateLimitAllower interface {
 // 设计要点：
 //   - 按安全客户端 IP 维度计数：与审计日志/会话绑定同口径解析，回环/内网/
 //     链路本地地址直接跳过，避免反代内部转发地址把整条链路合并进同一个桶。
-//   - 白名单（精确 IP / CIDR）命中即跳过计数。
+//   - 黑名单（精确 IP / CIDR）命中 → 直接 403 Forbidden，不参与限流计数。
+//     不在黑名单的所有 IP 一视同仁参与限流，不搞任何豁免。
 //   - 配置走进程内缓存（60s TTL），热路径零 DB 访问。
 //   - Redis 异常一律 fail-open：限流是保护措施，不能反过来把网关打挂。
 //   - 默认关闭，由管理员在系统设置中开启并配置阈值。
@@ -63,8 +64,10 @@ func (p *GatewayIPRateLimiter) Middleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if gatewayIPWhitelisted(clientIP, settings.Whitelist) {
-			c.Next()
+		// 黑名单优先：命中直接 403，不进入限流计数。
+		// 设计原则：不搞任何白名单豁免——所有没被拉黑的 IP 一视同仁参与限流。
+		if gatewayIPBlacklisted(clientIP, settings.Blacklist) {
+			abortGatewayIPRateBlocked(c)
 			return
 		}
 
@@ -83,28 +86,42 @@ func (p *GatewayIPRateLimiter) Middleware() gin.HandlerFunc {
 	}
 }
 
-// gatewayIPWhitelisted 判断客户端 IP 是否命中白名单（精确 IP 或 CIDR）。
-// 白名单条目在写入设置时已校验合法性，这里解析失败直接忽略该条目。
-func gatewayIPWhitelisted(clientIP string, whitelist []string) bool {
-	if len(whitelist) == 0 {
+// gatewayIPBlacklisted 判断客户端 IP 是否命中黑名单（精确 IP 或 CIDR）。
+// 黑名单条目在写入设置时已校验合法性，这里解析失败直接忽略该条目。
+func gatewayIPBlacklisted(clientIP string, blacklist []string) bool {
+	if len(blacklist) == 0 {
 		return false
 	}
 	addr, err := netip.ParseAddr(clientIP)
 	if err != nil {
 		return false
 	}
-	for _, entry := range whitelist {
+	for _, entry := range blacklist {
 		if prefix, err := netip.ParsePrefix(entry); err == nil {
 			if prefix.Contains(addr) {
 				return true
 			}
 			continue
 		}
-		if whitelistedAddr, err := netip.ParseAddr(entry); err == nil && whitelistedAddr == addr {
+		if blacklistedAddr, err := netip.ParseAddr(entry); err == nil && blacklistedAddr == addr {
 			return true
 		}
 	}
 	return false
+}
+
+// abortGatewayIPRateBlocked 返回 403 Forbidden——IP 命中网关级黑名单，直接拒绝访问。
+func abortGatewayIPRateBlocked(c *gin.Context) {
+	c.Status(http.StatusForbidden)
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": gin.H{
+			"message": "This IP address is blocked from accessing the gateway. Contact the site admin if this is a mistake.",
+			"type":    "blocked",
+			"param":   nil,
+			"code":    "ip_blocked",
+		},
+	})
+	c.Abort()
 }
 
 // abortGatewayIPRateLimited 以 OpenAI 兼容错误格式返回 429。

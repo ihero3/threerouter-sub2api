@@ -235,9 +235,9 @@ export default {
         enabledHint: '对所有模型 API 转发路径（/v1/* 等）按来源 IP 限流；超出阈值返回 429 与 Retry-After，窗口重置后自动恢复。',
         rpm: '每 IP 请求上限',
         rpmHint: '单个客户端 IP 每分钟允许的模型 API 请求总数；0 表示不限制。建议不小于 600（约 10 次/秒），避免误伤企业 NAT 共享出口下的正常用户。',
-        whitelist: 'IP 白名单',
-        whitelistPlaceholder: '每行一个，支持精确 IP 或 CIDR 网段，例如：\n203.0.113.9\n198.51.100.0/24',
-        whitelistHint: '白名单中的 IP/网段不受限流约束，可用于豁免自有监控、合作伙伴出口等。',
+        blacklist: 'IP 黑名单',
+        blacklistPlaceholder: '每行一个，支持精确 IP 或 CIDR 网段，例如：\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: '黑名单中的 IP/网段直接拒绝访问（403），不参与限流计数。不在黑名单的所有 IP 一视同仁按每分钟上限计数。',
         perMinute: '次/分钟',
         saved: '网关 IP 限流配置已保存',
         saveFailed: '保存网关 IP 限流配置失败'

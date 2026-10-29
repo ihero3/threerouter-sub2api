@@ -1378,7 +1378,7 @@ export async function updatePanelRateLimitSettings(
 export interface GatewayIPRateLimitSettings {
   enabled: boolean;
   rpm: number;
-  whitelist: string[];
+  blacklist: string[];
 }
 
 export async function getGatewayIPRateLimitSettings(): Promise<GatewayIPRateLimitSettings> {

@@ -2256,17 +2256,17 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ t("admin.settings.gatewayIpRateLimit.whitelist") }}
+                      {{ t("admin.settings.gatewayIpRateLimit.blacklist") }}
                     </label>
                     <textarea
-                      v-model="gatewayIpRateLimitWhitelistText"
-                      data-testid="gateway-ip-rate-limit-whitelist"
+                      v-model="gatewayIpRateLimitBlacklistText"
+                      data-testid="gateway-ip-rate-limit-blacklist"
                       rows="4"
                       class="input w-full font-mono text-sm"
-                      :placeholder="t('admin.settings.gatewayIpRateLimit.whitelistPlaceholder')"
+                      :placeholder="t('admin.settings.gatewayIpRateLimit.blacklistPlaceholder')"
                     ></textarea>
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayIpRateLimit.whitelistHint") }}
+                      {{ t("admin.settings.gatewayIpRateLimit.blacklistHint") }}
                     </p>
                   </div>
                 </div>
@@ -9392,8 +9392,9 @@ const gatewayIpRateLimitForm = reactive({
   enabled: false,
   rpm: 600,
 });
-// 白名单用文本域编辑（每行一个 IP 或 CIDR），保存时拆分为数组
-const gatewayIpRateLimitWhitelistText = ref("");
+// 黑名单用文本域编辑（每行一个 IP 或 CIDR），保存时拆分为数组。
+// 命中黑名单的 IP 直接 403，不在黑名单的所有 IP 一视同仁参与限流。
+const gatewayIpRateLimitBlacklistText = ref("");
 
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true);
@@ -12313,7 +12314,7 @@ async function loadGatewayIpRateLimitSettings() {
     const settings = await adminAPI.settings.getGatewayIPRateLimitSettings();
     gatewayIpRateLimitForm.enabled = settings.enabled;
     gatewayIpRateLimitForm.rpm = settings.rpm;
-    gatewayIpRateLimitWhitelistText.value = (settings.whitelist || []).join("\n");
+    gatewayIpRateLimitBlacklistText.value = (settings.blacklist || []).join("\n");
   } catch (_error: unknown) {
     // Silent fail - settings will use defaults
   } finally {
@@ -12324,18 +12325,18 @@ async function loadGatewayIpRateLimitSettings() {
 async function saveGatewayIpRateLimitSettings() {
   gatewayIpRateLimitSaving.value = true;
   try {
-    const whitelist = gatewayIpRateLimitWhitelistText.value
+    const blacklist = gatewayIpRateLimitBlacklistText.value
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
     const updated = await adminAPI.settings.updateGatewayIPRateLimitSettings({
       enabled: gatewayIpRateLimitForm.enabled,
       rpm: gatewayIpRateLimitForm.rpm,
-      whitelist,
+      blacklist,
     });
     gatewayIpRateLimitForm.enabled = updated.enabled;
     gatewayIpRateLimitForm.rpm = updated.rpm;
-    gatewayIpRateLimitWhitelistText.value = (updated.whitelist || []).join("\n");
+    gatewayIpRateLimitBlacklistText.value = (updated.blacklist || []).join("\n");
     appStore.showSuccess(t("admin.settings.gatewayIpRateLimit.saved"));
   } catch (error: unknown) {
     appStore.showError(

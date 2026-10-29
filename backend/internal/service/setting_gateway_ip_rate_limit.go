@@ -19,8 +19,10 @@ type GatewayIPRateLimitSettings struct {
 	Enabled bool `json:"enabled"`
 	// RPM 每 IP 每分钟请求数上限（0 = 不限制）
 	RPM int `json:"rpm"`
-	// Whitelist 豁免 IP/CIDR 列表（精确 IP 或 CIDR 网段，命中即跳过计数）
-	Whitelist []string `json:"whitelist"`
+	// Blacklist 拒绝访问的 IP/CIDR 列表（精确 IP 或 CIDR 网段）。
+	// 命中黑名单 → 直接 403 Forbidden，不进入限流计数。
+	// 不在黑名单的所有 IP 一视同仁参与限流，不搞任何豁免。
+	Blacklist []string `json:"blacklist"`
 }
 
 // 网关 IP 限流 RPM 的取值上限，防止配置异常大的值失去意义。
@@ -44,11 +46,11 @@ func DefaultGatewayIPRateLimitSettings() *GatewayIPRateLimitSettings {
 	return &GatewayIPRateLimitSettings{
 		Enabled:   false,
 		RPM:       600,
-		Whitelist: nil,
+		Blacklist: nil,
 	}
 }
 
-// normalizeGatewayIPRateLimitSettings 修正非法取值（负数归零、超上限截断、白名单去空白）。
+// normalizeGatewayIPRateLimitSettings 修正非法取值（负数归零、超上限截断、黑名单去空白）。
 func normalizeGatewayIPRateLimitSettings(s *GatewayIPRateLimitSettings) {
 	if s == nil {
 		return
@@ -59,20 +61,20 @@ func normalizeGatewayIPRateLimitSettings(s *GatewayIPRateLimitSettings) {
 	if s.RPM > gatewayIPRateLimitRPMMax {
 		s.RPM = gatewayIPRateLimitRPMMax
 	}
-	if len(s.Whitelist) > 0 {
-		cleaned := s.Whitelist[:0]
-		for _, entry := range s.Whitelist {
+	if len(s.Blacklist) > 0 {
+		cleaned := s.Blacklist[:0]
+		for _, entry := range s.Blacklist {
 			if v := strings.TrimSpace(entry); v != "" {
 				cleaned = append(cleaned, v)
 			}
 		}
-		s.Whitelist = cleaned
+		s.Blacklist = cleaned
 	}
 }
 
-// validateGatewayIPRateLimitWhitelist 校验白名单条目必须是合法 IP 或 CIDR。
-func validateGatewayIPRateLimitWhitelist(whitelist []string) error {
-	for _, entry := range whitelist {
+// validateGatewayIPRateLimitBlacklist 校验黑名单条目必须是合法 IP 或 CIDR。
+func validateGatewayIPRateLimitBlacklist(blacklist []string) error {
+	for _, entry := range blacklist {
 		v := strings.TrimSpace(entry)
 		if v == "" {
 			continue
@@ -83,9 +85,18 @@ func validateGatewayIPRateLimitWhitelist(whitelist []string) error {
 		if _, err := netip.ParsePrefix(v); err == nil {
 			continue
 		}
-		return fmt.Errorf("invalid whitelist entry %q: must be an IP address or CIDR", entry)
+		return fmt.Errorf("invalid blacklist entry %q: must be an IP address or CIDR", entry)
 	}
 	return nil
+}
+
+// legacyGatewayIPRateLimitSettings 用于从旧 whitelist JSON 兼容读取。
+// 迁移路径：老配置里的 whitelist 自动迁移成 blacklist（管理员原想豁免的那些 IP
+// 现在会被拒绝——语义完全相反，迁移后请管理员务必复查黑名单内容）。
+type legacyGatewayIPRateLimitSettings struct {
+	Enabled   bool     `json:"enabled"`
+	RPM       int      `json:"rpm"`
+	Whitelist []string `json:"whitelist"`
 }
 
 // GetGatewayIPRateLimitSettings 获取网关 IP 限流配置（直读 DB，供管理端读写路径使用）。
@@ -108,6 +119,15 @@ func (s *SettingService) GetGatewayIPRateLimitSettings(ctx context.Context) (*Ga
 			"error", err, "key", SettingKeyGatewayIPRateLimitSettings)
 		return DefaultGatewayIPRateLimitSettings(), nil
 	}
+	// 老配置兼容：有 whitelist 但没有 blacklist 时自动迁移
+	if len(settings.Blacklist) == 0 {
+		var legacy legacyGatewayIPRateLimitSettings
+		if err := json.Unmarshal([]byte(value), &legacy); err == nil && len(legacy.Whitelist) > 0 {
+			slog.Warn("gateway ip rate limit whitelist is deprecated, migrating to blacklist — review carefully, semantics are reversed",
+				"count", len(legacy.Whitelist))
+			settings.Blacklist = legacy.Whitelist
+		}
+	}
 	normalizeGatewayIPRateLimitSettings(settings)
 	return settings, nil
 }
@@ -124,7 +144,7 @@ func (s *SettingService) SetGatewayIPRateLimitSettings(ctx context.Context, sett
 	if settings.RPM > gatewayIPRateLimitRPMMax {
 		return fmt.Errorf("rpm must be at most %d", gatewayIPRateLimitRPMMax)
 	}
-	if err := validateGatewayIPRateLimitWhitelist(settings.Whitelist); err != nil {
+	if err := validateGatewayIPRateLimitBlacklist(settings.Blacklist); err != nil {
 		return err
 	}
 	normalizeGatewayIPRateLimitSettings(settings)

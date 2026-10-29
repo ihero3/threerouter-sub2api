@@ -235,9 +235,9 @@ export default {
         enabledHint: 'Limits all model API forwarding routes (/v1/* etc.) per source IP. Requests over the threshold get HTTP 429 with Retry-After and recover when the window resets.',
         rpm: 'Requests per IP',
         rpmHint: 'Total model API requests allowed per client IP per minute. 0 = unlimited. Keep it at 600 (~10 req/s) or higher to avoid blocking legitimate users behind corporate NAT egress.',
-        whitelist: 'IP Whitelist',
-        whitelistPlaceholder: 'One per line; exact IP or CIDR, e.g.:\n203.0.113.9\n198.51.100.0/24',
-        whitelistHint: 'Whitelisted IPs/CIDRs bypass rate limiting — use for your own monitoring, partner egress, etc.',
+        blacklist: 'IP Blacklist',
+        blacklistPlaceholder: 'One per line; exact IP or CIDR, e.g.:\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: 'IPs/CIDRs on this list get 403 Forbidden immediately — they never touch the rate limiter. Every other IP is treated equally and shares the same per-IP RPM quota; no one gets a special pass.',
         perMinute: 'req/min',
         saved: 'Gateway IP rate limit settings saved',
         saveFailed: 'Failed to save gateway IP rate limit settings'

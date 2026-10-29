@@ -480,7 +480,8 @@ type PanelRateLimitSettings struct {
 type GatewayIPRateLimitSettings struct {
 	Enabled   bool     `json:"enabled"`
 	RPM       int      `json:"rpm"`
-	Whitelist []string `json:"whitelist"`
+	// Blacklist 命中即 403 Forbidden，所有未命中黑名单的 IP 一视同仁参与限流。
+	Blacklist []string `json:"blacklist"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

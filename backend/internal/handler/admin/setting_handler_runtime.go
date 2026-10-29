@@ -257,7 +257,7 @@ func (h *SettingHandler) GetGatewayIPRateLimitSettings(c *gin.Context) {
 	response.Success(c, dto.GatewayIPRateLimitSettings{
 		Enabled:   settings.Enabled,
 		RPM:       settings.RPM,
-		Whitelist: settings.Whitelist,
+		Blacklist: settings.Blacklist,
 	})
 }
 
@@ -265,7 +265,7 @@ func (h *SettingHandler) GetGatewayIPRateLimitSettings(c *gin.Context) {
 type UpdateGatewayIPRateLimitSettingsRequest struct {
 	Enabled   bool     `json:"enabled"`
 	RPM       int      `json:"rpm"`
-	Whitelist []string `json:"whitelist"`
+	Blacklist []string `json:"blacklist"`
 }
 
 // UpdateGatewayIPRateLimitSettings 更新网关 API 按客户端 IP 限流配置
@@ -280,7 +280,7 @@ func (h *SettingHandler) UpdateGatewayIPRateLimitSettings(c *gin.Context) {
 	settings := &service.GatewayIPRateLimitSettings{
 		Enabled:   req.Enabled,
 		RPM:       req.RPM,
-		Whitelist: req.Whitelist,
+		Blacklist: req.Blacklist,
 	}
 
 	if err := h.settingService.SetGatewayIPRateLimitSettings(c.Request.Context(), settings); err != nil {
@@ -297,7 +297,7 @@ func (h *SettingHandler) UpdateGatewayIPRateLimitSettings(c *gin.Context) {
 	response.Success(c, dto.GatewayIPRateLimitSettings{
 		Enabled:   updatedSettings.Enabled,
 		RPM:       updatedSettings.RPM,
-		Whitelist: updatedSettings.Whitelist,
+		Blacklist: updatedSettings.Blacklist,
 	})
 }
 
