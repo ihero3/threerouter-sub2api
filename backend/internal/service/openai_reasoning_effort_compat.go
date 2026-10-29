@@ -150,18 +150,42 @@ func upstreamReasoningEffortAllowedValues(message string) ([]string, bool) {
 //	          "param":"reasoning_effort"}}
 //
 // 只看 message 会导致这一整类报文判成"与我无关"而失去自愈——用户仍然拿到 400。
+//
+// 另一种形态是**清单整句写在 param 里**（线上实例：小米 MiMo 官方上游）：
+//
+//	{"error":{"message":"Param Incorrect",
+//	          "param":"reasoning_effort must be one of 'none', 'low', 'medium' or 'high'."}}
+//
+// message 只有泛化描述、连清单措辞都没有。对这种报文，message 解析失败后要回退到
+// param 文本再解析一次——param 里字段名与枚举清单俱全，不解析就会漏救。
 func upstreamReasoningEffortAllowedValuesWithParam(message, param string) ([]string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(message))
-	if normalized == "" {
+	normalizedParam := strings.ToLower(strings.TrimSpace(param))
+	if normalized == "" && normalizedParam == "" {
 		return nil, false
 	}
 
 	// 字段名的证据有两个来源，取并集：message 里提到，或 param 明确指向 effort。
 	if !upstreamReasoningEffortMentionsField(normalized) &&
-		!upstreamReasoningEffortMentionsField(strings.ToLower(strings.TrimSpace(param))) {
+		!upstreamReasoningEffortMentionsField(normalizedParam) {
 		return nil, false
 	}
 
+	// 清单解析按 message → param 顺序尝试：message 是主流形态；param 兜底覆盖
+	// 小米 MiMo 这种"清单整句写在 param"的形态。两段文本都过同一套精度闸门
+	// （清单措辞 + 引号取值 / ≥2 个认得档位的裸词），param 只是普通字段名时
+	// 过不了闸门，不会引入误判。
+	for _, text := range []string{normalized, normalizedParam} {
+		if values, ok := upstreamReasoningEffortAllowedValuesFromListText(text); ok {
+			return values, true
+		}
+	}
+	return nil, false
+}
+
+// upstreamReasoningEffortAllowedValuesFromListText 从单段文本里提取枚举清单：
+// 必须先出现清单措辞（must be one of …），措辞之后才有取值。
+func upstreamReasoningEffortAllowedValuesFromListText(normalized string) ([]string, bool) {
 	// 只在清单措辞**之后**取值：字段名本身（'reasoning_effort'）出现在清单之前，
 	// 不切分会把它也当成一个允许值。
 	markerIndex := upstreamReasoningEffortMarkerIndex(normalized)

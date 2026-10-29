@@ -75,6 +75,10 @@ const (
 	FieldRiskReasons = "risk_reasons"
 	// FieldRiskUpdatedAt holds the string denoting the risk_updated_at field in the database.
 	FieldRiskUpdatedAt = "risk_updated_at"
+	// FieldLookedCount holds the string denoting the looked_count field in the database.
+	FieldLookedCount = "looked_count"
+	// FieldTicketFlag holds the string denoting the ticket_flag field in the database.
+	FieldTicketFlag = "ticket_flag"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -272,6 +276,8 @@ var Columns = []string{
 	FieldRiskLevel,
 	FieldRiskReasons,
 	FieldRiskUpdatedAt,
+	FieldLookedCount,
+	FieldTicketFlag,
 }
 
 var (
@@ -362,6 +368,10 @@ var (
 	DefaultRiskReasons string
 	// RiskReasonsValidator is a validator for the "risk_reasons" field. It is called by the builders before save.
 	RiskReasonsValidator func(string) error
+	// DefaultLookedCount holds the default value on creation for the "looked_count" field.
+	DefaultLookedCount int
+	// DefaultTicketFlag holds the default value on creation for the "ticket_flag" field.
+	DefaultTicketFlag bool
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -520,6 +530,16 @@ func ByRiskReasons(opts ...sql.OrderTermOption) OrderOption {
 // ByRiskUpdatedAt orders the results by the risk_updated_at field.
 func ByRiskUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRiskUpdatedAt, opts...).ToFunc()
+}
+
+// ByLookedCount orders the results by the looked_count field.
+func ByLookedCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLookedCount, opts...).ToFunc()
+}
+
+// ByTicketFlag orders the results by the ticket_flag field.
+func ByTicketFlag(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTicketFlag, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

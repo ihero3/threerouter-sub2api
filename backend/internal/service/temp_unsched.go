@@ -43,3 +43,13 @@ type TimeoutCounterCache interface {
 	// GetTimeoutCountTTL 获取计数器剩余过期时间
 	GetTimeoutCountTTL(ctx context.Context, accountID int64) (time.Duration, error)
 }
+
+// StreamTruncationCounterCache 统计账号级"上游 SSE 流截断"次数，
+// 供 HandleStreamTruncation 的短时降权阈值判断使用。
+// 与 TimeoutCounterCache 使用独立 key 命名空间，避免互相污染计数。
+type StreamTruncationCounterCache interface {
+	// IncrementStreamTruncationCount 增加账号的截断计数，返回当前窗口内累计值。
+	IncrementStreamTruncationCount(ctx context.Context, accountID int64, windowMinutes int) (int64, error)
+	// ResetStreamTruncationCount 降权生效后清零计数，避免降权期内的连续误伤。
+	ResetStreamTruncationCount(ctx context.Context, accountID int64) error
+}

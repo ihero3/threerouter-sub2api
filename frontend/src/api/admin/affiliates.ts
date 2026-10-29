@@ -248,6 +248,10 @@ export interface AffiliateRelationNode {
   depth: number
   /** 该用户为其**直接上级**贡献的返利合计（返利只向上走一级） */
   rebate_amount: number
+  /** 管理员「看过」次数（只增不减，仅管理端展示） */
+  looked_count: number
+  /** 管理员「提过工单」标记（仅管理端展示） */
+  ticket_flagged: boolean
 }
 
 export interface AffiliateInviteRelation {

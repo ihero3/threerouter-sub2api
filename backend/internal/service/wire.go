@@ -509,6 +509,12 @@ func ProvideRateLimitService(
 		svc.SetOpenAIAPIKeyHealthCache(healthCache)
 	}
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
+	// 同一个 timeoutCounterCache 实例同时实现 StreamTruncationCounterCache
+	// （独立 key 前缀），用类型断言复用，避免 ProvideRateLimitService 签名变动
+	// 牵连 wire_gen.go。
+	if truncationCache, ok := timeoutCounterCache.(StreamTruncationCounterCache); ok {
+		svc.SetStreamTruncationCounterCache(truncationCache)
+	}
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)

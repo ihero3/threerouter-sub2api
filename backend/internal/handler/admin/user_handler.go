@@ -416,6 +416,44 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	})
 }
 
+// IncrementLooked handles the admin "看过" counter: each call adds one.
+// POST /api/v1/admin/users/:id/looked
+func (h *UserHandler) IncrementLooked(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	count, err := h.adminService.IncrementUserLookedCount(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID, "looked_count": count})
+}
+
+// SetTicketFlag handles the admin "提过工单" toggle.
+// PUT /api/v1/admin/users/:id/ticket-flag
+func (h *UserHandler) SetTicketFlag(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	var req struct {
+		Flagged bool `json:"flagged"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.adminService.SetUserTicketFlag(c.Request.Context(), userID, req.Flagged); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID, "ticket_flagged": req.Flagged})
+}
+
 // GetUserAPIKeys handles getting user's API keys
 // GET /api/v1/admin/users/:id/api-keys
 func (h *UserHandler) GetUserAPIKeys(c *gin.Context) {

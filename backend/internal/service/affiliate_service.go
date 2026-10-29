@@ -279,10 +279,10 @@ type AffiliateTransferRecord struct {
 
 // AffiliateRelationUser 关系图上的一个用户（不含层级信息）。
 type AffiliateRelationUser struct {
-	UserID    int64      `json:"user_id"`
-	Email     string     `json:"email"`
-	Username  string     `json:"username"`
-	CreatedAt time.Time  `json:"created_at"`
+	UserID    int64     `json:"user_id"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
 	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
@@ -291,10 +291,10 @@ type AffiliateRelationUser struct {
 
 // AffiliateRelationNode 关系图上的一个节点。
 type AffiliateRelationNode struct {
-	UserID    int64      `json:"user_id"`
-	Email     string     `json:"email"`
-	Username  string     `json:"username"`
-	CreatedAt time.Time  `json:"created_at"`
+	UserID    int64     `json:"user_id"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
 	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
@@ -305,6 +305,9 @@ type AffiliateRelationNode struct {
 	// 注意返利只向上走一级：二级及更深的后代产生的返利归各自的直接上级，
 	// 不会进查询用户的口袋；所以只有 Depth=1 的金额才真正属于查询用户。
 	RebateAmount float64 `json:"rebate_amount"`
+	// LookedCount / TicketFlag 管理员人工跟进标记（见迁移 246），仅下游后代查询返回。
+	LookedCount int  `json:"looked_count"`
+	TicketFlag  bool `json:"ticket_flagged"`
 }
 
 // AffiliateInviteRelation 一个用户的完整邀请关系（上游链路 + 下游树）。

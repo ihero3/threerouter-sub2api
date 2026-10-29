@@ -19,6 +19,10 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
+	// IncrementUserLookedCount 把管理员「看过」该账号的次数加一，返回累加后的值。
+	IncrementUserLookedCount(ctx context.Context, userID int64) (int, error)
+	// SetUserTicketFlag 设置该账号的「提过工单」标记。
+	SetUserTicketFlag(ctx context.Context, userID int64, flagged bool) error
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)

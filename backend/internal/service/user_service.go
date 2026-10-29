@@ -183,6 +183,15 @@ type UserRepository interface {
 	DisableTotp(ctx context.Context, userID int64) error
 }
 
+// UserFollowUpMarkRepository 是生产用户仓储为管理员人工跟进标记（看过次数 /
+// 提过工单）提供的可选能力。独立于 UserRepository，避免无关测试桩被迫实现。
+type UserFollowUpMarkRepository interface {
+	// IncrementLookedCount 原子地把「看过」次数加一，返回累加后的值。
+	IncrementLookedCount(ctx context.Context, id int64) (int, error)
+	// SetTicketFlag 设置「提过工单」标记。
+	SetTicketFlag(ctx context.Context, id int64, flagged bool) error
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 // RegistrationEmailDomainRepository 的窗口参数 since：

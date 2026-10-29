@@ -191,6 +191,9 @@
                     <span v-if="node.deleted_at" class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
                       {{ t('admin.usage.userDeletedBadge') }}
                     </span>
+                    <div v-if="userMarkLabel(node)" class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                      {{ userMarkLabel(node) }}
+                    </div>
                   </td>
                   <td class="px-2 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(node.created_at) }}</td>
                   <td class="px-2 py-2" :class="node.last_used_at ? 'text-gray-600 dark:text-dark-300' : 'text-gray-400 dark:text-dark-500'">
@@ -198,15 +201,36 @@
                   </td>
                   <td class="px-2 py-2 text-right font-mono text-gray-900 dark:text-white">${{ formatAmount(node.rebate_amount) }}</td>
                   <td class="px-2 py-2 text-right">
-                    <button
-                      v-if="!node.deleted_at"
-                      class="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
-                      :disabled="deletingUser"
-                      @click="requestDeleteDescendant(node)"
-                    >
-                      {{ t('admin.users.deleteUser') }}
-                    </button>
-                    <span v-else class="text-xs text-gray-400 dark:text-dark-500">—</span>
+                    <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                      <button
+                        v-if="!node.deleted_at"
+                        class="text-xs text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400"
+                        :disabled="markingUserId === node.user_id"
+                        @click="markLooked(node)"
+                      >
+                        {{ t('admin.affiliates.relations.marks.lookedButton') }}
+                      </button>
+                      <button
+                        v-if="!node.deleted_at"
+                        class="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        :class="node.ticket_flagged
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-gray-600 dark:text-dark-300'"
+                        :disabled="markingUserId === node.user_id"
+                        @click="toggleTicketFlag(node)"
+                      >
+                        {{ node.ticket_flagged ? t('admin.affiliates.relations.marks.ticketUnmark') : t('admin.affiliates.relations.marks.ticketButton') }}
+                      </button>
+                      <button
+                        v-if="!node.deleted_at"
+                        class="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
+                        :disabled="deletingUser"
+                        @click="requestDeleteDescendant(node)"
+                      >
+                        {{ t('admin.users.deleteUser') }}
+                      </button>
+                      <span v-if="node.deleted_at" class="text-xs text-gray-400 dark:text-dark-500">—</span>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -505,6 +529,47 @@ function requestDeleteCurrentUser() {
 // 删除「他邀请的人」列表中的一行：确认后原地标记，不离开当前页面。
 function requestDeleteDescendant(node: AffiliateRelationNode) {
   deleteTarget.value = { userId: node.user_id, email: node.email, node }
+}
+
+// 管理员人工标记：看过次数（+1）与提过工单（开关），均只用于管理端展示。
+const markingUserId = ref<number | null>(null)
+
+async function markLooked(node: AffiliateRelationNode) {
+  if (markingUserId.value !== null) return
+  markingUserId.value = node.user_id
+  try {
+    const res = await adminAPI.users.incrementLookedCount(node.user_id)
+    node.looked_count = res.looked_count
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', '标记失败'))
+  } finally {
+    markingUserId.value = null
+  }
+}
+
+async function toggleTicketFlag(node: AffiliateRelationNode) {
+  if (markingUserId.value !== null) return
+  const next = !node.ticket_flagged
+  markingUserId.value = node.user_id
+  try {
+    await adminAPI.users.setTicketFlag(node.user_id, next)
+    node.ticket_flagged = next
+  } catch (error) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', '标记失败'))
+  } finally {
+    markingUserId.value = null
+  }
+}
+
+function userMarkLabel(node: AffiliateRelationNode): string {
+  const labels: string[] = []
+  if (node.looked_count > 0) {
+    labels.push(t('admin.affiliates.relations.marks.looked', { count: node.looked_count }))
+  }
+  if (node.ticket_flagged) {
+    labels.push(t('admin.affiliates.relations.marks.ticketButton'))
+  }
+  return labels.join('、')
 }
 
 async function confirmDeleteUser() {

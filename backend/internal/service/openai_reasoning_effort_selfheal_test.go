@@ -620,6 +620,42 @@ func TestUpstreamReasoningEffortAcceptsBareEffortFieldName(t *testing.T) {
 	require.False(t, ok)
 }
 
+// 小米 MiMo 形态：error.message 只有泛化的 "Param Incorrect"，
+// 枚举清单整句写在 error.param 里。线上实例（2026-10-29，claude-opus-4.8 →
+// /v1/chat/completions）：
+//
+//	{"error":{"code":"400","message":"Param Incorrect",
+//	  "param":"reasoning_effort must be one of 'none', 'low', 'medium' or 'high'.","type":""}}
+//
+// message 没有清单措辞，旧实现直接放弃自愈，客户端拿到无法自行修复的 400。
+// 修复后应从 param 解析出允许集，把客户端发的 max/xhigh 就近贴到 high。
+func TestUpstreamReasoningEffortListCanComeFromErrorParam(t *testing.T) {
+	// message 泛化、param 带清单。
+	allowed, ok := upstreamReasoningEffortAllowedValuesWithParam(
+		"Param Incorrect",
+		"reasoning_effort must be one of 'none', 'low', 'medium' or 'high'.")
+	require.True(t, ok)
+	require.Equal(t, []string{"none", "low", "medium", "high"}, allowed)
+
+	// 从整包错误体里取（与线上报文逐字一致）。
+	body := []byte(`{"error":{"code":"400","message":"Param Incorrect",` +
+		`"param":"reasoning_effort must be one of 'none', 'low', 'medium' or 'high'.","type":""}}`)
+	allowed, ok = upstreamReasoningEffortAllowedValuesFromErrorBody(body)
+	require.True(t, ok)
+	require.Equal(t, []string{"none", "low", "medium", "high"}, allowed)
+
+	// 端到端：客户端发的 max 被就近贴到 high，重发请求体能被改写。
+	out, changed := clampReasoningEffortToAllowedValues(
+		[]byte(`{"model":"claude-opus-4.8","reasoning_effort":"max"}`), allowed)
+	require.True(t, changed)
+	require.Equal(t, "high", gjson.GetBytes(out, "reasoning_effort").String())
+
+	// param 提了字段但没有清单措辞 → 仍不介入（保持原有精度）。
+	_, ok = upstreamReasoningEffortAllowedValuesWithParam(
+		"Param Incorrect", "reasoning_effort")
+	require.False(t, ok)
+}
+
 // allowed: 这种短写法要认；但被 not 否定（写的是**禁止**取值）时必须跳过，
 // 否则会把请求改成一个上游明确不要的值。
 func TestUpstreamReasoningEffortIgnoresNegatedAllowedList(t *testing.T) {

@@ -34,6 +34,10 @@ type RateLimitService struct {
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 
+	// streamTruncationCounterCache 统计账号级"上游 SSE 流截断"次数（可选依赖）。
+	// 未注入时 HandleStreamTruncation 退化为只记录日志、不做降权。
+	streamTruncationCounterCache StreamTruncationCounterCache
+
 	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
 	openaiTeamLinkedMu     sync.Mutex
 	openaiTeamLinkedRecent map[string]time.Time
@@ -120,6 +124,11 @@ func (s *RateLimitService) SetOpenAIAPIKeyHealthCache(cache OpenAIAPIKeyHealthCa
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）
 func (s *RateLimitService) SetOpenAI403CounterCache(cache OpenAI403CounterCache) {
 	s.openAI403CounterCache = cache
+}
+
+// SetStreamTruncationCounterCache 设置流截断计数器（可选依赖）
+func (s *RateLimitService) SetStreamTruncationCounterCache(cache StreamTruncationCounterCache) {
+	s.streamTruncationCounterCache = cache
 }
 
 // SetSettingService 设置系统设置服务（可选依赖）
@@ -2875,5 +2884,107 @@ func (s *RateLimitService) triggerStreamTimeoutError(ctx context.Context, accoun
 	}
 
 	slog.Warn("stream_timeout_account_error", "account_id", account.ID, "model", model)
+	return true
+}
+
+const (
+	// 截断降权参数：同一账号 5 分钟内累计 2 次截断 → 临时降权 2 分钟。
+	//
+	// 阈值选 2 而不是 1：偶发的单次链路抖动（CF edge reset、上游 worker 重启）
+	// 不应该把一个健康账号摘除。但连续 2 次意味着该账号在此刻确实不可服务，
+	// 2 分钟的窗口刚好覆盖客户端常见的自动重试周期（重试 1~3 次、间隔 1~2s），
+	// 让重试天然落到其他账号上。
+	streamTruncationCountWindowMinutes = 5
+	streamTruncationCountThreshold     = 2
+	streamTruncationTempUnschedMinutes = 2
+
+	// 出现在 TempUnschedState.MatchedKeyword 里，前端/日志可据此区分触发原因。
+	streamTruncationMatchedKeyword = "upstream_stream_truncated"
+)
+
+// HandleStreamTruncation 处理"上游 SSE 流在任何终止信号（[DONE]/usage/finish_reason）
+// 出现之前被切断"。与 HandleStreamTimeout 的差别：超时是"长时间无数据"，截断是
+// "明明在输出但突然断了"。两者分开计数，避免互相污染阈值。
+//
+// 返回 true 表示账号已被临时降权。未注入计数器或计数失败时不降权（安全降级）。
+func (s *RateLimitService) HandleStreamTruncation(ctx context.Context, account *Account, model string) bool {
+	if s == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if s.streamTruncationCounterCache == nil {
+		// 计数器不可用（例如未注入 Redis）时不做降权，避免把单次截断当阈值命中。
+		return false
+	}
+
+	count, err := s.streamTruncationCounterCache.IncrementStreamTruncationCount(ctx, account.ID, streamTruncationCountWindowMinutes)
+	if err != nil {
+		slog.Warn("stream_truncation_increment_failed", "account_id", account.ID, "model", model, "error", err)
+		return false
+	}
+
+	slog.Info("stream_truncation_count",
+		"account_id", account.ID,
+		"model", model,
+		"count", count,
+		"threshold", streamTruncationCountThreshold,
+		"window_minutes", streamTruncationCountWindowMinutes)
+
+	if count < streamTruncationCountThreshold {
+		return false
+	}
+	return s.triggerStreamTruncationTempUnsched(ctx, account, model, count)
+}
+
+// triggerStreamTruncationTempUnsched 把账号临时标记为不可调度，并清零计数。
+func (s *RateLimitService) triggerStreamTruncationTempUnsched(ctx context.Context, account *Account, model string, count int64) bool {
+	if s.accountRepo == nil {
+		return false
+	}
+	now := time.Now()
+	until := now.Add(time.Duration(streamTruncationTempUnschedMinutes) * time.Minute)
+
+	state := &TempUnschedState{
+		UntilUnix:            until.Unix(),
+		TriggeredAtUnix:      now.Unix(),
+		StatusCode:           0,
+		MatchedKeyword:       streamTruncationMatchedKeyword,
+		RuleIndex:            -1, // 系统级规则，不是用户自定义规则
+		ErrorMessage:         "Upstream stream truncated before terminal chunk for model: " + model,
+		TriggerCount:         count,
+		TriggerThreshold:     streamTruncationCountThreshold,
+		TriggerWindowMinutes: streamTruncationCountWindowMinutes,
+	}
+	reason := ""
+	if raw, err := json.Marshal(state); err == nil {
+		reason = string(raw)
+	}
+	if reason == "" {
+		reason = state.ErrorMessage
+	}
+
+	// 先阻塞运行时调度，再落库；落库失败也保留 runtime block，避免 DB 抖动期间
+	// 客户端继续撞上同一个坏账号。
+	s.notifyAccountSchedulingBlocked(account, until, streamTruncationMatchedKeyword+"_temp_unschedulable")
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+		slog.Warn("stream_truncation_set_temp_unsched_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("stream_truncation_set_temp_unsched_cache_failed", "account_id", account.ID, "error", err)
+		}
+	}
+
+	// 清零计数：已降权期间再次命中时从零重新开始，避免降权期结束后立刻再次触发。
+	if err := s.streamTruncationCounterCache.ResetStreamTruncationCount(ctx, account.ID); err != nil {
+		slog.Warn("stream_truncation_reset_count_failed", "account_id", account.ID, "error", err)
+	}
+
+	slog.Info("stream_truncation_temp_unschedulable",
+		"account_id", account.ID,
+		"until", until,
+		"model", model,
+		"count", count)
 	return true
 }

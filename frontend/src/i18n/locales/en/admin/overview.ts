@@ -422,10 +422,18 @@ export default {
         depthLevel: 'L{n}',
         truncated: 'Result hit the depth or row limit and may be incomplete',
         rebateHint: 'Amount = rebates this user generated for their direct inviter (invite + recharge). Rebates only flow one level up, so only level 1 amounts belong to the queried user.',
+        marks: {
+          lookedButton: 'Viewed',
+          looked: 'Viewed +{count}',
+          ticketButton: 'Has ticket',
+          ticketUnmark: 'Clear ticket mark'
+        },
         columns: {
           depth: 'Depth',
           user: 'User',
           createdAt: 'Registered',
+          lastUsedAt: 'Last Used',
+          neverUsed: 'Never used',
           rebate: 'Rebate',
           actions: 'Actions'
         },
@@ -563,6 +571,10 @@ export default {
           chain_contagion: 'Linked to abnormal accounts'
         },
         tooltipFallback: 'Account risk detected, please review manually'
+      },
+      marks: {
+        looked: 'Viewed +{count}',
+        ticket: 'Has ticket'
       },
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",
       searchPlaceholder: 'Search by user ID, email, username, notes, or API key...',

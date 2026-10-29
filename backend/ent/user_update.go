@@ -526,6 +526,41 @@ func (_u *UserUpdate) ClearRiskUpdatedAt() *UserUpdate {
 	return _u
 }
 
+// SetLookedCount sets the "looked_count" field.
+func (_u *UserUpdate) SetLookedCount(v int) *UserUpdate {
+	_u.mutation.ResetLookedCount()
+	_u.mutation.SetLookedCount(v)
+	return _u
+}
+
+// SetNillableLookedCount sets the "looked_count" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableLookedCount(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetLookedCount(*v)
+	}
+	return _u
+}
+
+// AddLookedCount adds value to the "looked_count" field.
+func (_u *UserUpdate) AddLookedCount(v int) *UserUpdate {
+	_u.mutation.AddLookedCount(v)
+	return _u
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (_u *UserUpdate) SetTicketFlag(v bool) *UserUpdate {
+	_u.mutation.SetTicketFlag(v)
+	return _u
+}
+
+// SetNillableTicketFlag sets the "ticket_flag" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTicketFlag(v *bool) *UserUpdate {
+	if v != nil {
+		_u.SetTicketFlag(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1377,6 +1412,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RiskUpdatedAtCleared() {
 		_spec.ClearField(user.FieldRiskUpdatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LookedCount(); ok {
+		_spec.SetField(user.FieldLookedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLookedCount(); ok {
+		_spec.AddField(user.FieldLookedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TicketFlag(); ok {
+		_spec.SetField(user.FieldTicketFlag, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2657,6 +2701,41 @@ func (_u *UserUpdateOne) ClearRiskUpdatedAt() *UserUpdateOne {
 	return _u
 }
 
+// SetLookedCount sets the "looked_count" field.
+func (_u *UserUpdateOne) SetLookedCount(v int) *UserUpdateOne {
+	_u.mutation.ResetLookedCount()
+	_u.mutation.SetLookedCount(v)
+	return _u
+}
+
+// SetNillableLookedCount sets the "looked_count" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableLookedCount(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetLookedCount(*v)
+	}
+	return _u
+}
+
+// AddLookedCount adds value to the "looked_count" field.
+func (_u *UserUpdateOne) AddLookedCount(v int) *UserUpdateOne {
+	_u.mutation.AddLookedCount(v)
+	return _u
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (_u *UserUpdateOne) SetTicketFlag(v bool) *UserUpdateOne {
+	_u.mutation.SetTicketFlag(v)
+	return _u
+}
+
+// SetNillableTicketFlag sets the "ticket_flag" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTicketFlag(v *bool) *UserUpdateOne {
+	if v != nil {
+		_u.SetTicketFlag(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -3538,6 +3617,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.RiskUpdatedAtCleared() {
 		_spec.ClearField(user.FieldRiskUpdatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LookedCount(); ok {
+		_spec.SetField(user.FieldLookedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedLookedCount(); ok {
+		_spec.AddField(user.FieldLookedCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TicketFlag(); ok {
+		_spec.SetField(user.FieldTicketFlag, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

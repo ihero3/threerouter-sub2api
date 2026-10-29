@@ -114,11 +114,21 @@ func (r *RateLimiter) Allow(ctx context.Context, key string, limit int, window t
 }
 
 // clientIPForRateLimit 返回 IP 维度限流使用的客户端地址。
-// 与聊天/会话绑定/审计日志/IP 限制链路同口径：走自研转发头解析（默认信任
-// X-Real-IP / X-Forwarded-For），避免反代部署下 gin ClientIP() 恒等于本机
-// 127.0.0.1、所有用户坍缩进同一个限流桶造成整体误拦截。
+//
+// 安全边界：**必须走 Gin 的 server.trusted_proxies 可信代理链**，
+// 不信任原始 X-Forwarded-For / X-Real-IP 转发头——因为限流是防滥用的
+// 第一道防线，如果滥用者能自己写转发头，那每次请求换个伪造 IP 就能
+// 把限流桶 key 打散，完全绕过 IP 维度的所有限流（auth-register、
+// auth-login、send-verify-code 等）。
+//
+// 与审计日志/会话绑定/API Key ACL 链路不同：那些路径有业务需求允许
+// 管理员配置 "信任原始转发头"，但限流是硬安全兜底，不能放权给客户端。
+//
+// 部署时：必须在 server.trusted_proxies 里声明反代 IP（Nginx/CDN/Cloudflare），
+// 否则 Gin ClientIP() 会直接返回 RemoteAddr（反代 IP），所有客户端坍缩进
+// 同一个限流桶——这是部署配置问题，不是代码逻辑问题。
 func clientIPForRateLimit(c *gin.Context) string {
-	return ippkg.GetClientIP(c)
+	return ippkg.GetTrustedClientIP(c)
 }
 
 // Limit 返回速率限制中间件

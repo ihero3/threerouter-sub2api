@@ -142,6 +142,13 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+
+		// 人工跟进标记（见迁移 246）。仅用于管理端展示，
+		// 不参与鉴权/限流/返利结算。looked_count 只增不减，ticket_flag 可切换。
+		field.Int("looked_count").
+			Default(0),
+		field.Bool("ticket_flag").
+			Default(false),
 	}
 }
 

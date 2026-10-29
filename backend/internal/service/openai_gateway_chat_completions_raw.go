@@ -408,6 +408,14 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			zap.Bool("saw_sse_data", terminal.sawDataLine),
 			zap.Bool("client_output_started", clientOutputStarted),
 		)
+		// P0: 账号级截断降权——同一账号 5 分钟内累计 2 次截断 → 降权 2 分钟。
+		// 用 WithoutCancel + 短超时：客户端断开后 c.Request.Context() 也会被取消，
+		// 如果沿用原 context 会把降权写库一并取消，导致降权从未生效。
+		if s.rateLimitService != nil {
+			penaltyCtx, penaltyCancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
+			s.rateLimitService.HandleStreamTruncation(penaltyCtx, account, upstreamModel)
+			penaltyCancel()
+		}
 		if !clientOutputStarted {
 			// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, cause)

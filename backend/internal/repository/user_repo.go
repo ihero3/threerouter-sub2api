@@ -1121,6 +1121,53 @@ func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, i
 	return nil
 }
 
+// IncrementLookedCount 原子地把管理员「看过」次数加一，返回累加后的值。
+func (r *userRepository) IncrementLookedCount(ctx context.Context, id int64) (int, error) {
+	const updateSQL = `
+		UPDATE users
+		SET looked_count = looked_count + 1, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING looked_count
+	`
+	rows, err := r.sql.QueryContext(ctx, updateSQL, id)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var count int
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		return 0, service.ErrUserNotFound
+	}
+	if err := rows.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// SetTicketFlag 设置管理员「提过工单」标记。
+func (r *userRepository) SetTicketFlag(ctx context.Context, id int64, flagged bool) error {
+	const updateSQL = `
+		UPDATE users
+		SET ticket_flag = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, id, flagged)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *userRepository) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
 	if len(userIDs) == 0 {
 		return 0, nil

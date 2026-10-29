@@ -34,19 +34,23 @@ type User struct {
 	SignupSource         string
 	// RegisterIP/RegisterCountry 注册时的客户端 IP 与 GeoIP 国家 ISO 代码。
 	// 仅对采集启用后的新注册用户有值，存量用户为空（不回填）。
-	RegisterIP     string
+	RegisterIP      string
 	RegisterCountry string
 	// RiskLevel/RiskReasons 邀请注册风险标记（见迁移 245）。
 	// 仅用于管理端展示与人工研判，不参与鉴权、限流或返利结算。
 	RiskLevel     string
 	RiskReasons   string
 	RiskUpdatedAt *time.Time
-	LastLoginAt          *time.Time
-	LastActiveAt         *time.Time
-	LastUsedAt           *time.Time
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	DeletedAt            *time.Time // 非 nil 表示用户已软删除
+	// LookedCount/TicketFlag 管理员人工跟进标记（见迁移 246）。
+	// 仅用于管理端展示，不参与鉴权、限流或返利结算。
+	LookedCount  int
+	TicketFlag   bool
+	LastLoginAt  *time.Time
+	LastActiveAt *time.Time
+	LastUsedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	DeletedAt    *time.Time // 非 nil 表示用户已软删除
 
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier

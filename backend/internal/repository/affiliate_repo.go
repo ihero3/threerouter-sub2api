@@ -1022,7 +1022,9 @@ SELECT u.id,
        u.last_active_at,
        u.deleted_at,
        d.depth,
-       COALESCE(r.rebate_total, 0)::double precision
+       COALESCE(r.rebate_total, 0)::double precision,
+       u.looked_count,
+       u.ticket_flag
 FROM down d
 JOIN users u ON u.id = d.user_id
 LEFT JOIN (
@@ -1040,7 +1042,7 @@ LIMIT $3`, userID, maxDepth, affiliateRelationDescendantRowCap)
 	for descendantRows.Next() {
 		var node service.AffiliateRelationNode
 		var delAt, lastAt sql.NullTime
-		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.RebateAmount); err != nil {
+		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.RebateAmount, &node.LookedCount, &node.TicketFlag); err != nil {
 			_ = descendantRows.Close()
 			return nil, err
 		}

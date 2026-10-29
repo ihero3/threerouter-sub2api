@@ -157,6 +157,10 @@ export interface AdminUser extends User {
   // risk_reasons 为逗号分隔的原因 key，见 admin.users.risk.reasons.*。
   risk_level?: string
   risk_reasons?: string
+  // 管理员人工跟进标记（仅管理端返回）：
+  // looked_count 为「看过」次数（只增不减），ticket_flagged 为「提过工单」开关。
+  looked_count?: number
+  ticket_flagged?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }

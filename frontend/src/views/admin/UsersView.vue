@@ -290,18 +290,18 @@
               </div>
               <div class="min-w-0">
                 <span class="block font-medium text-gray-900 dark:text-white">{{ value }}</span>
-                <!-- 邀请注册风险标注：仅管理端展示，不改变任何业务行为 -->
+                <!-- 人工标记：风险等级 / 看过次数 / 提过工单，仅管理端展示，不改变任何业务行为 -->
                 <span
-                  v-if="row.risk_level"
+                  v-if="userMarkLabels(row).length > 0"
                   class="text-xs"
                   :class="
                     row.risk_level === 'abnormal'
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-amber-600 dark:text-amber-400'
                   "
-                  :title="riskTooltip(row.risk_reasons)"
+                  :title="row.risk_level ? riskTooltip(row.risk_reasons) : undefined"
                 >
-                  （{{ t(`admin.users.risk.level.${row.risk_level}`) }}）
+                  （{{ userMarkLabels(row).join('、') }}）
                 </span>
               </div>
             </div>
@@ -1363,6 +1363,21 @@ const riskTooltip = (reasons?: string) => {
   return labels.length > 0 ? labels.join(' / ') : t('admin.users.risk.tooltipFallback')
 }
 
+// 用户名字下方的标记列表：风险等级、看过次数、提过工单，用顿号分隔。
+const userMarkLabels = (row: AdminUser): string[] => {
+  const labels: string[] = []
+  if (row.risk_level) {
+    labels.push(t(`admin.users.risk.level.${row.risk_level}`))
+  }
+  if ((row.looked_count ?? 0) > 0) {
+    labels.push(t('admin.users.marks.looked', { count: row.looked_count }))
+  }
+  if (row.ticket_flagged) {
+    labels.push(t('admin.users.marks.ticket'))
+  }
+  return labels
+}
+
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
 const userAttributeValues = ref<Record<number, Record<number, string>>>({})
@@ -1862,10 +1877,15 @@ const handleBalanceHistory = (user: AdminUser) => {
   showBalanceHistoryModal.value = true
 }
 
-// 跳转到邀请关系页并带上该用户，省去复制 ID 再搜索的步骤
+// 在新标签页打开邀请关系页并带上该用户。
+// 不在当前标签页内跳转：返回时用户列表会重新加载，分页/筛选/滚动位置都会丢失。
 const handleInviteRelations = (user: AdminUser) => {
   closeActionMenu()
-  router.push({ path: '/admin/affiliates/relations', query: { user_id: String(user.id) } })
+  const target = router.resolve({
+    path: '/admin/affiliates/relations',
+    query: { user_id: String(user.id) }
+  })
+  window.open(target.href, '_blank', 'noopener,noreferrer')
 }
 
 const closeBalanceHistoryModal = () => {

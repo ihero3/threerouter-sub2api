@@ -442,6 +442,34 @@ func (_c *UserCreate) SetNillableRiskUpdatedAt(v *time.Time) *UserCreate {
 	return _c
 }
 
+// SetLookedCount sets the "looked_count" field.
+func (_c *UserCreate) SetLookedCount(v int) *UserCreate {
+	_c.mutation.SetLookedCount(v)
+	return _c
+}
+
+// SetNillableLookedCount sets the "looked_count" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLookedCount(v *int) *UserCreate {
+	if v != nil {
+		_c.SetLookedCount(*v)
+	}
+	return _c
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (_c *UserCreate) SetTicketFlag(v bool) *UserCreate {
+	_c.mutation.SetTicketFlag(v)
+	return _c
+}
+
+// SetNillableTicketFlag sets the "ticket_flag" field if the given value is not nil.
+func (_c *UserCreate) SetNillableTicketFlag(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetTicketFlag(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -824,6 +852,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRiskReasons
 		_c.mutation.SetRiskReasons(v)
 	}
+	if _, ok := _c.mutation.LookedCount(); !ok {
+		v := user.DefaultLookedCount
+		_c.mutation.SetLookedCount(v)
+	}
+	if _, ok := _c.mutation.TicketFlag(); !ok {
+		v := user.DefaultTicketFlag
+		_c.mutation.SetTicketFlag(v)
+	}
 	return nil
 }
 
@@ -947,6 +983,12 @@ func (_c *UserCreate) check() error {
 		if err := user.RiskReasonsValidator(v); err != nil {
 			return &ValidationError{Name: "risk_reasons", err: fmt.Errorf(`ent: validator failed for field "User.risk_reasons": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.LookedCount(); !ok {
+		return &ValidationError{Name: "looked_count", err: errors.New(`ent: missing required field "User.looked_count"`)}
+	}
+	if _, ok := _c.mutation.TicketFlag(); !ok {
+		return &ValidationError{Name: "ticket_flag", err: errors.New(`ent: missing required field "User.ticket_flag"`)}
 	}
 	return nil
 }
@@ -1094,6 +1136,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RiskUpdatedAt(); ok {
 		_spec.SetField(user.FieldRiskUpdatedAt, field.TypeTime, value)
 		_node.RiskUpdatedAt = &value
+	}
+	if value, ok := _c.mutation.LookedCount(); ok {
+		_spec.SetField(user.FieldLookedCount, field.TypeInt, value)
+		_node.LookedCount = value
+	}
+	if value, ok := _c.mutation.TicketFlag(); ok {
+		_spec.SetField(user.FieldTicketFlag, field.TypeBool, value)
+		_node.TicketFlag = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1849,6 +1899,36 @@ func (u *UserUpsert) ClearRiskUpdatedAt() *UserUpsert {
 	return u
 }
 
+// SetLookedCount sets the "looked_count" field.
+func (u *UserUpsert) SetLookedCount(v int) *UserUpsert {
+	u.Set(user.FieldLookedCount, v)
+	return u
+}
+
+// UpdateLookedCount sets the "looked_count" field to the value that was provided on create.
+func (u *UserUpsert) UpdateLookedCount() *UserUpsert {
+	u.SetExcluded(user.FieldLookedCount)
+	return u
+}
+
+// AddLookedCount adds v to the "looked_count" field.
+func (u *UserUpsert) AddLookedCount(v int) *UserUpsert {
+	u.Add(user.FieldLookedCount, v)
+	return u
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (u *UserUpsert) SetTicketFlag(v bool) *UserUpsert {
+	u.Set(user.FieldTicketFlag, v)
+	return u
+}
+
+// UpdateTicketFlag sets the "ticket_flag" field to the value that was provided on create.
+func (u *UserUpsert) UpdateTicketFlag() *UserUpsert {
+	u.SetExcluded(user.FieldTicketFlag)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2388,6 +2468,41 @@ func (u *UserUpsertOne) UpdateRiskUpdatedAt() *UserUpsertOne {
 func (u *UserUpsertOne) ClearRiskUpdatedAt() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearRiskUpdatedAt()
+	})
+}
+
+// SetLookedCount sets the "looked_count" field.
+func (u *UserUpsertOne) SetLookedCount(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLookedCount(v)
+	})
+}
+
+// AddLookedCount adds v to the "looked_count" field.
+func (u *UserUpsertOne) AddLookedCount(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddLookedCount(v)
+	})
+}
+
+// UpdateLookedCount sets the "looked_count" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateLookedCount() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLookedCount()
+	})
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (u *UserUpsertOne) SetTicketFlag(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTicketFlag(v)
+	})
+}
+
+// UpdateTicketFlag sets the "ticket_flag" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateTicketFlag() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTicketFlag()
 	})
 }
 
@@ -3096,6 +3211,41 @@ func (u *UserUpsertBulk) UpdateRiskUpdatedAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearRiskUpdatedAt() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearRiskUpdatedAt()
+	})
+}
+
+// SetLookedCount sets the "looked_count" field.
+func (u *UserUpsertBulk) SetLookedCount(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLookedCount(v)
+	})
+}
+
+// AddLookedCount adds v to the "looked_count" field.
+func (u *UserUpsertBulk) AddLookedCount(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddLookedCount(v)
+	})
+}
+
+// UpdateLookedCount sets the "looked_count" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateLookedCount() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLookedCount()
+	})
+}
+
+// SetTicketFlag sets the "ticket_flag" field.
+func (u *UserUpsertBulk) SetTicketFlag(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTicketFlag(v)
+	})
+}
+
+// UpdateTicketFlag sets the "ticket_flag" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateTicketFlag() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTicketFlag()
 	})
 }
 

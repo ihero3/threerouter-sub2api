@@ -78,6 +78,8 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		RestrictPublicGroups: u.RestrictPublicGroups,
 		RiskLevel:            u.RiskLevel,
 		RiskReasons:          u.RiskReasons,
+		LookedCount:          u.LookedCount,
+		TicketFlag:           u.TicketFlag,
 	}
 }
 

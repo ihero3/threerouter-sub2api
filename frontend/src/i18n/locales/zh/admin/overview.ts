@@ -422,10 +422,18 @@ export default {
         depthLevel: '{n} 级',
         truncated: '结果已达到层数或行数上限，可能不完整',
         rebateHint: '金额 = 该用户为其直接上级贡献的返利（邀请返利 + 充值返利）。返利只向上走一级，只有一级的金额属于当前用户。',
+        marks: {
+          lookedButton: '看过',
+          looked: '看过+{count}',
+          ticketButton: '提过工单',
+          ticketUnmark: '取消工单标记'
+        },
         columns: {
           depth: '层级',
           user: '用户',
           createdAt: '注册时间',
+          lastUsedAt: '最后使用时间',
+          neverUsed: '从未使用',
           rebate: '贡献返利',
           actions: '操作'
         },
@@ -563,6 +571,10 @@ export default {
           chain_contagion: '关联链路中存在异常账号'
         },
         tooltipFallback: '账号存在风险，请人工核查'
+      },
+      marks: {
+        looked: '看过+{count}',
+        ticket: '提过工单'
       },
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       searchPlaceholder: '用户 ID/邮箱/用户名/备注/API Key 模糊搜索...',

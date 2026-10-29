@@ -3064,6 +3064,14 @@ func init() {
 	user.DefaultRiskReasons = userDescRiskReasons.Default.(string)
 	// user.RiskReasonsValidator is a validator for the "risk_reasons" field. It is called by the builders before save.
 	user.RiskReasonsValidator = userDescRiskReasons.Validators[0].(func(string) error)
+	// userDescLookedCount is the schema descriptor for looked_count field.
+	userDescLookedCount := userFields[27].Descriptor()
+	// user.DefaultLookedCount holds the default value on creation for the looked_count field.
+	user.DefaultLookedCount = userDescLookedCount.Default.(int)
+	// userDescTicketFlag is the schema descriptor for ticket_flag field.
+	userDescTicketFlag := userFields[28].Descriptor()
+	// user.DefaultTicketFlag holds the default value on creation for the ticket_flag field.
+	user.DefaultTicketFlag = userDescTicketFlag.Default.(bool)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

@@ -2536,6 +2536,8 @@ var (
 		{Name: "risk_level", Type: field.TypeString, Size: 16, Default: ""},
 		{Name: "risk_reasons", Type: field.TypeString, Size: 255, Default: ""},
 		{Name: "risk_updated_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "looked_count", Type: field.TypeInt, Default: 0},
+		{Name: "ticket_flag", Type: field.TypeBool, Default: false},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

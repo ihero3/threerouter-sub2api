@@ -205,6 +205,16 @@ func RiskUpdatedAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRiskUpdatedAt, v))
 }
 
+// LookedCount applies equality check predicate on the "looked_count" field. It's identical to LookedCountEQ.
+func LookedCount(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLookedCount, v))
+}
+
+// TicketFlag applies equality check predicate on the "ticket_flag" field. It's identical to TicketFlagEQ.
+func TicketFlag(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTicketFlag, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1733,6 +1743,56 @@ func RiskUpdatedAtIsNil() predicate.User {
 // RiskUpdatedAtNotNil applies the NotNil predicate on the "risk_updated_at" field.
 func RiskUpdatedAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldRiskUpdatedAt))
+}
+
+// LookedCountEQ applies the EQ predicate on the "looked_count" field.
+func LookedCountEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLookedCount, v))
+}
+
+// LookedCountNEQ applies the NEQ predicate on the "looked_count" field.
+func LookedCountNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLookedCount, v))
+}
+
+// LookedCountIn applies the In predicate on the "looked_count" field.
+func LookedCountIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLookedCount, vs...))
+}
+
+// LookedCountNotIn applies the NotIn predicate on the "looked_count" field.
+func LookedCountNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLookedCount, vs...))
+}
+
+// LookedCountGT applies the GT predicate on the "looked_count" field.
+func LookedCountGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLookedCount, v))
+}
+
+// LookedCountGTE applies the GTE predicate on the "looked_count" field.
+func LookedCountGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLookedCount, v))
+}
+
+// LookedCountLT applies the LT predicate on the "looked_count" field.
+func LookedCountLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLookedCount, v))
+}
+
+// LookedCountLTE applies the LTE predicate on the "looked_count" field.
+func LookedCountLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLookedCount, v))
+}
+
+// TicketFlagEQ applies the EQ predicate on the "ticket_flag" field.
+func TicketFlagEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTicketFlag, v))
+}
+
+// TicketFlagNEQ applies the NEQ predicate on the "ticket_flag" field.
+func TicketFlagNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldTicketFlag, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

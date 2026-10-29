@@ -947,6 +947,8 @@ func userEntityToService(u *dbent.User) *service.User {
 		RiskLevel:                  u.RiskLevel,
 		RiskReasons:                u.RiskReasons,
 		RiskUpdatedAt:              u.RiskUpdatedAt,
+		LookedCount:                u.LookedCount,
+		TicketFlag:                 u.TicketFlag,
 		LastLoginAt:                u.LastLoginAt,
 		LastActiveAt:               u.LastActiveAt,
 		TotpSecretEncrypted:        u.TotpSecretEncrypted,

@@ -77,6 +77,10 @@ type User struct {
 	RiskReasons string `json:"risk_reasons,omitempty"`
 	// RiskUpdatedAt holds the value of the "risk_updated_at" field.
 	RiskUpdatedAt *time.Time `json:"risk_updated_at,omitempty"`
+	// LookedCount holds the value of the "looked_count" field.
+	LookedCount int `json:"looked_count,omitempty"`
+	// TicketFlag holds the value of the "ticket_flag" field.
+	TicketFlag bool `json:"ticket_flag,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -293,11 +297,11 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled, user.FieldRestrictPublicGroups:
+		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled, user.FieldRestrictPublicGroups, user.FieldTicketFlag:
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged, user.FieldFrozenBalance:
 			values[i] = new(sql.NullFloat64)
-		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
+		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit, user.FieldLookedCount:
 			values[i] = new(sql.NullInt64)
 		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails, user.FieldRegisterIP, user.FieldRegisterCountry, user.FieldRiskLevel, user.FieldRiskReasons:
 			values[i] = new(sql.NullString)
@@ -510,6 +514,18 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RiskUpdatedAt = new(time.Time)
 				*_m.RiskUpdatedAt = value.Time
+			}
+		case user.FieldLookedCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field looked_count", values[i])
+			} else if value.Valid {
+				_m.LookedCount = int(value.Int64)
+			}
+		case user.FieldTicketFlag:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field ticket_flag", values[i])
+			} else if value.Valid {
+				_m.TicketFlag = value.Bool
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -740,6 +756,12 @@ func (_m *User) String() string {
 		builder.WriteString("risk_updated_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("looked_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LookedCount))
+	builder.WriteString(", ")
+	builder.WriteString("ticket_flag=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TicketFlag))
 	builder.WriteByte(')')
 	return builder.String()
 }

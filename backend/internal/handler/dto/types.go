@@ -59,6 +59,10 @@ type AdminUser struct {
 	// 空串 = 正常；suspect = 存疑；abnormal = 异常。RiskReasons 为逗号分隔的原因 key。
 	RiskLevel   string `json:"risk_level"`
 	RiskReasons string `json:"risk_reasons"`
+	// LookedCount / TicketFlag 为管理员人工跟进标记（仅管理端展示，不参与业务逻辑）：
+	// 看过次数只增不减；提过工单为可切换的布尔标记。
+	LookedCount int  `json:"looked_count"`
+	TicketFlag  bool `json:"ticket_flagged"`
 }
 
 type APIKey struct {

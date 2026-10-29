@@ -612,6 +612,25 @@ func (s *adminServiceImpl) BatchUpdateLimits(ctx context.Context, userIDs []int6
 	return affected, nil
 }
 
+// IncrementUserLookedCount 把管理员「看过」该账号的次数加一，返回累加后的值。
+// 该标记只用于管理端展示，不改变任何业务行为。
+func (s *adminServiceImpl) IncrementUserLookedCount(ctx context.Context, userID int64) (int, error) {
+	repo, ok := s.userRepo.(UserFollowUpMarkRepository)
+	if !ok {
+		return 0, fmt.Errorf("user repository does not support follow-up marks")
+	}
+	return repo.IncrementLookedCount(ctx, userID)
+}
+
+// SetUserTicketFlag 设置该账号的「提过工单」标记。
+func (s *adminServiceImpl) SetUserTicketFlag(ctx context.Context, userID int64, flagged bool) error {
+	repo, ok := s.userRepo.(UserFollowUpMarkRepository)
+	if !ok {
+		return fmt.Errorf("user repository does not support follow-up marks")
+	}
+	return repo.SetTicketFlag(ctx, userID, flagged)
+}
+
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {
 	// 余额调整必须走原子接口：先读后整行写回会把并发的计费扣款覆盖掉。
 	var (
