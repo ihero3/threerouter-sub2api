@@ -16,7 +16,7 @@
             v-model="filters.status"
             :options="statusFilterOptions"
             class="w-40"
-            @change="loadBlogs"
+            @change="handleStatusChange"
           />
 
           <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -80,6 +80,17 @@
             </div>
           </template>
         </DataTable>
+      </template>
+
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
+        />
       </template>
     </TablePageLayout>
 
@@ -223,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, shallowRef, computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
@@ -232,9 +243,11 @@ import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/edit
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminBlogAPI } from '@/api'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import type { Blog, BlogStatus } from '@/types'
 
@@ -257,6 +270,12 @@ const saving = ref(false)
 const searchQuery = ref('')
 const filters = ref<{ status: '' | BlogStatus }>({ status: '' })
 const editing = ref<EditingBlog | null>(null)
+
+const pagination = reactive({
+  page: 1,
+  page_size: getPersistedPageSize(),
+  total: 0
+})
 
 // ============ 富文本编辑器 ============
 // 编辑器实例必须用 shallowRef，否则 Vue 的深层响应式会破坏 wangEditor 内部结构
@@ -505,23 +524,51 @@ async function loadBlogs() {
   loading.value = true
   try {
     const result = await adminBlogAPI.list({
-      page: 1,
-      page_size: 50,
+      page: pagination.page,
+      page_size: pagination.page_size,
       status: filters.value.status || undefined,
       search: searchQuery.value.trim() || undefined
     })
     blogs.value = result.items as Blog[]
+    pagination.total = result.total
+    // 删除末页最后一条后当前页可能越界，回退到最后一页重新拉取
+    const totalPages = Math.max(1, Math.ceil(result.total / pagination.page_size))
+    if (pagination.page > totalPages) {
+      pagination.page = totalPages
+      await loadBlogs()
+      return
+    }
   } catch (err) {
     console.error('Failed to load blogs', err)
     blogs.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
 }
 
+function handlePageChange(page: number) {
+  pagination.page = page
+  loadBlogs()
+}
+
+function handlePageSizeChange(pageSize: number) {
+  pagination.page_size = pageSize
+  pagination.page = 1
+  loadBlogs()
+}
+
+function handleStatusChange() {
+  pagination.page = 1
+  loadBlogs()
+}
+
 function handleSearch() {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadBlogs, 300)
+  searchTimer = setTimeout(() => {
+    pagination.page = 1
+    loadBlogs()
+  }, 300)
 }
 
 function toDatetimeLocal(iso?: string | null) {
@@ -604,6 +651,7 @@ async function saveBlog() {
   saving.value = true
   try {
     const publishedAt = fromDatetimeLocal(editing.value.publishedAtInput)
+    const isCreate = !editing.value.id
     if (editing.value.id) {
       await adminBlogAPI.update(editing.value.id, {
         title: editing.value.title,
@@ -626,6 +674,8 @@ async function saveBlog() {
       })
     }
     closeDialog()
+    // 新建的文章按 created_at 倒序排在首页，直接回到第 1 页便于确认
+    if (isCreate) pagination.page = 1
     await loadBlogs()
   } catch (err: any) {
     console.error('Failed to save blog', err)
