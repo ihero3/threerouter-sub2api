@@ -21,6 +21,7 @@ import (
 //  2. chain_depth       上溯/下溯链深超阈值
 //  3. disposable_email  注册邮箱命中一次性邮箱域名
 //  4. random_local_part 邮箱本地部分为无意义随机串
+//  5. email_alias_stuffing 邮箱点号别名填充（Gmail 忽略点号，一个邮箱可派生无限地址）
 //  6. shared_password   多个账号使用完全相同的密码
 // 10. chain_contagion   链路上下两跳内存在已判异常的账号
 //
@@ -93,6 +94,12 @@ func evaluateAffiliateRisk(sig AffiliateRiskSignal) (string, []string) {
 	// 规则 4：邮箱本地部分为随机串 —— 弱特征（也可能是无意义用户名），只判存疑。
 	if isRandomLocalPart(sig.Email) {
 		reasons = append(reasons, AffiliateRiskReasonRandomLocalPart)
+		raise(AffiliateRiskLevelSuspect)
+	}
+
+	// 规则 5：点号别名填充 —— Gmail 忽略点号，同一邮箱可派生无限地址，只判存疑。
+	if isStuffedEmailAlias(sig.Email) {
+		reasons = append(reasons, AffiliateRiskReasonEmailAliasStuffing)
 		raise(AffiliateRiskLevelSuspect)
 	}
 
@@ -189,6 +196,51 @@ func isRandomLocalPart(email string) bool {
 		return false
 	}
 	return float64(vowels)/float64(letters) <= 0.2
+}
+
+// isStuffedEmailAlias 判断邮箱是否为点号别名填充。
+//
+// Gmail / Googlemail 会丢弃本地部分的点号，因此
+// "a.b.c.d@gmail.com" 与 "abcd@gmail.com" 是同一个邮箱，
+// 一个邮箱可派生无限个"新"地址，是小号刷邀请的典型手法。
+//
+// 判定口径（四项同时满足，尽量压低误报）：
+//   - 域名属于忽略点号的服务商（AffiliateRiskDotAliasingDomains）；
+//   - 本地部分的点号数 >= AffiliateRiskAliasStuffingMinDots；
+//   - 存在一个点号分隔段长度为 1（如 ".i."、".e." 这类单字符填充）；
+//   - 本地部分总长 >= AffiliateRiskAliasStuffingMinLength。
+//
+// 这样 firstname.lastname（1 个点）与 john.q.public（总长 13）这类真实姓名不受影响。
+func isStuffedEmailAlias(email string) bool {
+	domain := emailDomain(email)
+	if domain == "" {
+		return false
+	}
+	matched := false
+	for _, d := range AffiliateRiskDotAliasingDomains {
+		if domain == d {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+
+	local := strings.ToLower(strings.TrimSpace(email[:strings.IndexByte(email, '@')]))
+	if len(local) < AffiliateRiskAliasStuffingMinLength {
+		return false
+	}
+	segments := strings.Split(local, ".")
+	if len(segments)-1 < AffiliateRiskAliasStuffingMinDots {
+		return false
+	}
+	for _, seg := range segments {
+		if len(seg) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // emailDomain 提取小写域名；无 @ 或 @ 在末尾时返回空串。

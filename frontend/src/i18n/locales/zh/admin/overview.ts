@@ -559,6 +559,7 @@ export default {
       deleteUser: '删除用户',
       risk: {
         level: {
+          all: '全部',
           suspect: '账号存疑',
           abnormal: '账号异常'
         },
@@ -567,6 +568,7 @@ export default {
           chain_depth: '邀请链路过深',
           disposable_email: '使用一次性邮箱',
           random_local_part: '邮箱账号随机生成',
+          email_alias_stuffing: '邮箱点号别名填充（同一 Gmail 派生多个账号）',
           shared_password: '多个账号使用相同密码',
           chain_contagion: '关联链路中存在异常账号'
         },

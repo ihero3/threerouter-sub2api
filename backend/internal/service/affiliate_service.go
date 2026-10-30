@@ -283,10 +283,13 @@ type AffiliateRelationUser struct {
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_at"`
-	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
+	// LastUsedAt 用户最后调用时间（usage_logs.created_at 最大值），与用户管理列表口径一致。
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	// LookedCount / TicketFlag 管理员人工跟进标记（见迁移 246）。
+	LookedCount int  `json:"looked_count"`
+	TicketFlag  bool `json:"ticket_flagged"`
 }
 
 // AffiliateRelationNode 关系图上的一个节点。
@@ -295,7 +298,7 @@ type AffiliateRelationNode struct {
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_at"`
-	// LastUsedAt 用户最后活跃时间（users.last_active_at），登录时刷新。
+	// LastUsedAt 用户最后调用时间（usage_logs.created_at 最大值），与用户管理列表口径一致。
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// DeletedAt 非空表示该账号已被软删除。
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`

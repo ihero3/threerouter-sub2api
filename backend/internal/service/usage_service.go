@@ -54,6 +54,21 @@ type UsageStats struct {
 	AverageDurationMs        float64 `json:"average_duration_ms"`
 }
 
+// UsageIPUser 是"某个 IP 使用过的用户"列表中的一行。
+type UsageIPUser struct {
+	UserID     int64      `json:"user_id"`
+	Email      string     `json:"email"`
+	Username   string     `json:"username"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}
+
+// UsageIPUsersRepository 是使用日志仓储为「按 IP 反查用户」提供的窄接口，
+// 单独声明以避免把新方法加进 UsageLogRepository 而影响既有测试桩。
+type UsageIPUsersRepository interface {
+	ListUsersByIP(ctx context.Context, ip string, params pagination.PaginationParams) ([]UsageIPUser, *pagination.PaginationResult, error)
+}
+
 // UsageService 使用统计服务
 type UsageService struct {
 	usageRepo            UsageLogRepository
@@ -70,6 +85,15 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
 	}
+}
+
+// ListUsersByIP 列出使用过指定 IP 的用户。
+func (s *UsageService) ListUsersByIP(ctx context.Context, ip string, params pagination.PaginationParams) ([]UsageIPUser, *pagination.PaginationResult, error) {
+	repo, ok := s.usageRepo.(UsageIPUsersRepository)
+	if !ok {
+		return nil, nil, fmt.Errorf("usage repository does not support listing users by IP")
+	}
+	return repo.ListUsersByIP(ctx, ip, params)
 }
 
 // Create 创建使用日志

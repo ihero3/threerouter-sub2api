@@ -555,6 +555,21 @@ export default {
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
+      clickToViewIpUsers: 'Click to view users of this IP',
+      ipUsers: {
+        title: 'Users of this IP',
+        description: 'Look up users who have used this IP address',
+        back: 'Back to usage records',
+        total: '{count} users',
+        empty: 'No usage records for this IP',
+        loadFailed: 'Failed to load user list',
+        columns: {
+          user: 'User',
+          userId: 'User ID',
+          lastUsedAt: 'Last Used',
+          registeredAt: 'Registered At'
+        }
+      },
       tokenRanking: {
         subtitle: 'Per-user token usage for the current filters and time range',
         rowHint: "Click to view this user's usage details",

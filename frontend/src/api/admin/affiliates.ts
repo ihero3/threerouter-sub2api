@@ -233,6 +233,10 @@ export interface AffiliateRelationUser {
   last_used_at?: string | null
   /** 非空表示该账号已被软删除 */
   deleted_at?: string | null
+  /** 管理员「看过」次数（只增不减，仅管理端展示） */
+  looked_count: number
+  /** 管理员「提过工单」标记（仅管理端展示） */
+  ticket_flagged: boolean
 }
 
 export interface AffiliateRelationNode {

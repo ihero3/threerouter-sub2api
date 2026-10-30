@@ -559,6 +559,7 @@ export default {
       deleteUser: 'Delete User',
       risk: {
         level: {
+          all: 'All',
           suspect: 'Suspect',
           abnormal: 'Abnormal'
         },
@@ -567,6 +568,7 @@ export default {
           chain_depth: 'Invite chain too deep',
           disposable_email: 'Disposable email domain',
           random_local_part: 'Randomized email local part',
+          email_alias_stuffing: 'Email dot-alias stuffing (one Gmail, many accounts)',
           shared_password: 'Shared password across accounts',
           chain_contagion: 'Linked to abnormal accounts'
         },

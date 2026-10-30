@@ -307,7 +307,13 @@
 
         <template #cell-ip_address="{ row }">
           <div v-if="row.ip_address">
-            <span class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.ip_address }}</span>
+            <button
+              class="font-mono text-sm text-primary-600 underline decoration-dashed underline-offset-2 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              :title="t('admin.usage.clickToViewIpUsers')"
+              @click="$emit('ipClick', row.ip_address)"
+            >
+              {{ row.ip_address }}
+            </button>
             <IpGeoCell :ip="row.ip_address" />
           </div>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -652,6 +658,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
+  ipClick: [ip: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
 }>()

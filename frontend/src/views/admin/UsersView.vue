@@ -61,6 +61,19 @@
               />
             </div>
 
+            <!-- Risk Filter: 用户异常筛选（全部/账号存疑/账号异常），始终显示 -->
+            <div class="w-full sm:w-36">
+              <Select
+                v-model="filters.risk"
+                :options="[
+                  { value: '', label: t('admin.users.risk.level.all') },
+                  { value: 'suspect', label: t('admin.users.risk.level.suspect') },
+                  { value: 'abnormal', label: t('admin.users.risk.level.abnormal') }
+                ]"
+                @change="applyFilter"
+              />
+            </div>
+
             <!-- API Key Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('apiKeyGroup')" class="w-full sm:w-44">
               <Select
@@ -1152,6 +1165,7 @@ const filters = reactive({
   role: '',
   status: '',
   group: '',  // group name for fuzzy match, '' = all
+  risk: '',   // invite risk mark: '' = all, 'suspect' | 'abnormal'
   apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
@@ -1201,6 +1215,7 @@ const loadSavedFilters = () => {
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
       if (parsed.group) filters.group = parsed.group
+      if (parsed.risk === 'suspect' || parsed.risk === 'abnormal') filters.risk = parsed.risk
       if (typeof parsed.apiKeyGroup === 'number') filters.apiKeyGroup = parsed.apiKeyGroup
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
@@ -1221,6 +1236,7 @@ const saveFiltersToStorage = () => {
       role: filters.role,
       status: filters.status,
       group: filters.group,
+      risk: filters.risk,
       apiKeyGroup: filters.apiKeyGroup,
       attributes: activeAttributeFilters
     }
@@ -1652,6 +1668,7 @@ const loadUsers = async () => {
         status: filters.status as any,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
+        risk_level: (filters.risk || undefined) as 'suspect' | 'abnormal' | undefined,
         api_key_group_id: filters.apiKeyGroup ?? undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         // 始终请求 subscriptions：列隐藏时仍需用于 UserPlatformQuotaModal 的 active-subscription 警示 banner

@@ -613,6 +613,10 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		))
 	}
 
+	if filters.RiskLevel != "" {
+		q = q.Where(dbuser.RiskLevelEQ(filters.RiskLevel))
+	}
+
 	// If attribute filters are specified, we need to filter by user IDs first
 	var allowedUserIDs []int64
 	if len(filters.Attributes) > 0 {

@@ -552,6 +552,21 @@ export default {
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
+      clickToViewIpUsers: '点击查看使用该 IP 的用户',
+      ipUsers: {
+        title: '该 IP 使用过的用户',
+        description: '按 IP 反查使用过该地址的用户',
+        back: '返回使用记录',
+        total: '共 {count} 位用户',
+        empty: '该 IP 暂无使用记录',
+        loadFailed: '加载用户列表失败',
+        columns: {
+          user: '用户名称',
+          userId: '用户 ID',
+          lastUsedAt: '最后使用时间',
+          registeredAt: '注册时间'
+        }
+      },
       tokenRanking: {
         subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
         rowHint: '点击查看该用户的用量明细',

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -218,6 +219,25 @@ func (h *UsageHandler) List(c *gin.Context) {
 		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+// ListIPUsers handles listing users who have used a given IP address.
+// GET /api/v1/admin/usage/ip-users?ip=1.2.3.4&page=1&page_size=20
+func (h *UsageHandler) ListIPUsers(c *gin.Context) {
+	ip := strings.TrimSpace(c.Query("ip"))
+	if ip == "" || net.ParseIP(ip) == nil {
+		response.BadRequest(c, "Invalid ip value")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+
+	users, result, err := h.usageService.ListUsersByIP(c.Request.Context(), ip, params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, users, result.Total, page, pageSize)
 }
 
 // Stats handles getting usage statistics with filters

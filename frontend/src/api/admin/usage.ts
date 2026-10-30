@@ -66,6 +66,14 @@ export interface UsageCleanupTask {
   updated_at: string
 }
 
+export interface UsageIPUser {
+  user_id: number
+  email: string
+  username: string
+  created_at: string
+  last_used_at?: string | null
+}
+
 export interface CreateUsageCleanupTaskRequest {
   start_date: string
   end_date: string
@@ -143,6 +151,23 @@ export async function getStats(params: {
 }
 
 /**
+ * 列出使用过指定 IP 的用户
+ * @param ip - IP 地址
+ */
+export async function listUsersByIP(
+  ip: string,
+  page = 1,
+  pageSize = 20,
+  options?: { signal?: AbortSignal }
+): Promise<PaginatedResponse<UsageIPUser>> {
+  const { data } = await apiClient.get<PaginatedResponse<UsageIPUser>>('/admin/usage/ip-users', {
+    params: { ip, page, page_size: pageSize },
+    signal: options?.signal
+  })
+  return data
+}
+
+/**
  * Search users by email keyword (admin only)
  * @param keyword - Email keyword to search
  * @returns List of matching users (max 30)
@@ -214,6 +239,7 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
 export const adminUsageAPI = {
   list,
   getStats,
+  listUsersByIP,
   searchUsers,
   searchApiKeys,
   listCleanupTasks,

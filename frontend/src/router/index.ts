@@ -799,6 +799,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/usage/ip',
+    name: 'AdminUsageIpUsers',
+    component: () => import('@/views/admin/UsageIpUsersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'IP Users',
+      titleKey: 'admin.usage.ipUsers.title',
+      descriptionKey: 'admin.usage.ipUsers.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },

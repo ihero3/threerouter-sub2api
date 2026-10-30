@@ -92,23 +92,46 @@
               {{ t('admin.users.deleteUser') }}
             </button>
           </div>
-          <div class="mt-2 text-sm">
-            <span v-if="relation.inviter" class="text-gray-600 dark:text-dark-300">
-              {{ t('admin.affiliates.relations.inviter') }}：
-              <button class="font-mono text-primary-600 underline dark:text-primary-400" @click="loadRelations(relation.inviter.user_id)">
-                #{{ relation.inviter.user_id }}
+          <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div>
+              <span v-if="relation.inviter" class="text-gray-600 dark:text-dark-300">
+                {{ t('admin.affiliates.relations.inviter') }}：
+                <button class="font-mono text-primary-600 underline dark:text-primary-400" @click="loadRelations(relation.inviter.user_id)">
+                  #{{ relation.inviter.user_id }}
+                </button>
+                {{ relation.inviter.email }}
+                <span v-if="relation.inviter.deleted_at" class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
+                  {{ t('admin.usage.userDeletedBadge') }}
+                </span>
+                <span v-if="relation.bound_at" class="ml-2 text-xs text-gray-400 dark:text-dark-500">
+                  {{ t('admin.affiliates.relations.boundAt') }} {{ formatDateTime(relation.bound_at) }}
+                </span>
+              </span>
+              <span v-else class="font-medium text-amber-600 dark:text-amber-400">
+                {{ t('admin.affiliates.relations.noInviter') }}
+              </span>
+            </div>
+            <div class="flex items-center gap-3 whitespace-nowrap">
+              <button
+                v-if="!relation.user.deleted_at"
+                class="text-xs text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400"
+                :disabled="markingUserId === relation.user.user_id"
+                @click="markLooked(relation.user)"
+              >
+                {{ t('admin.affiliates.relations.marks.lookedButton') }}
               </button>
-              {{ relation.inviter.email }}
-              <span v-if="relation.inviter.deleted_at" class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
-                {{ t('admin.usage.userDeletedBadge') }}
-              </span>
-              <span v-if="relation.bound_at" class="ml-2 text-xs text-gray-400 dark:text-dark-500">
-                {{ t('admin.affiliates.relations.boundAt') }} {{ formatDateTime(relation.bound_at) }}
-              </span>
-            </span>
-            <span v-else class="font-medium text-amber-600 dark:text-amber-400">
-              {{ t('admin.affiliates.relations.noInviter') }}
-            </span>
+              <button
+                v-if="!relation.user.deleted_at"
+                class="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                :class="relation.user.ticket_flagged
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-gray-600 dark:text-dark-300'"
+                :disabled="markingUserId === relation.user.user_id"
+                @click="toggleTicketFlag(relation.user)"
+              >
+                {{ relation.user.ticket_flagged ? t('admin.affiliates.relations.marks.ticketUnmark') : t('admin.affiliates.relations.marks.ticketButton') }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -534,7 +557,10 @@ function requestDeleteDescendant(node: AffiliateRelationNode) {
 // 管理员人工标记：看过次数（+1）与提过工单（开关），均只用于管理端展示。
 const markingUserId = ref<number | null>(null)
 
-async function markLooked(node: AffiliateRelationNode) {
+// 查询用户本人（AffiliateRelationUser）与下游节点（AffiliateRelationNode）都可标记。
+type MarkableUser = { user_id: number; looked_count: number; ticket_flagged: boolean }
+
+async function markLooked(node: MarkableUser) {
   if (markingUserId.value !== null) return
   markingUserId.value = node.user_id
   try {
@@ -547,7 +573,7 @@ async function markLooked(node: AffiliateRelationNode) {
   }
 }
 
-async function toggleTicketFlag(node: AffiliateRelationNode) {
+async function toggleTicketFlag(node: MarkableUser) {
   if (markingUserId.value !== null) return
   const next = !node.ticket_flagged
   markingUserId.value = node.user_id

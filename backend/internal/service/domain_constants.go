@@ -813,6 +813,8 @@ const (
 	AffiliateRiskReasonDisposableEmail = "disposable_email"
 	// 规则 4：邮箱本地部分为无意义随机串（机器批量注册的典型特征）。
 	AffiliateRiskReasonRandomLocalPart = "random_local_part"
+	// 规则 5：邮箱点号别名填充——Gmail 忽略点号，一个邮箱可派生无限地址。
+	AffiliateRiskReasonEmailAliasStuffing = "email_alias_stuffing"
 	// 规则 6：密码哈希复用——多个账号使用完全相同的密码。
 	AffiliateRiskReasonSharedPassword = "shared_password"
 	// 规则 10：链路传染——链上（向上或向下两跳内）存在已判异常的账号。
@@ -832,6 +834,9 @@ const (
 	AffiliateRiskSharedPasswordAbnormal = 5
 	// 规则 10：链路传染的扫描半径（向上/向下各几跳）。
 	AffiliateRiskContagionRadius = 2
+	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
+	AffiliateRiskAliasStuffingMinDots   = 2
+	AffiliateRiskAliasStuffingMinLength = 16
 
 	// 存量扫描每批处理的用户数，避免一次性写满事务。
 	AffiliateRiskScanBatchSize = 500
@@ -857,6 +862,13 @@ var AffiliateRiskDisposableEmailDomains = []string{
 	"sharklasers.com",
 	"getnada.com",
 	"dropmail.me",
+}
+
+// 忽略点号的邮箱服务商：本地部分的 "." 会被服务端丢弃，
+// 同一邮箱可通过插入点号派生出无数个"不同"地址（小号刷邀请的典型手法）。
+var AffiliateRiskDotAliasingDomains = []string{
+	"gmail.com",
+	"googlemail.com",
 }
 
 // SettingKeyDisableFailedAccountOnFailover 出错后是否在 failover 时禁用失败账号（默认 false）。

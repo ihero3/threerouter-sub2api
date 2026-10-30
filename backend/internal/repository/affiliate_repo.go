@@ -870,6 +870,8 @@ func (r *affiliateRepository) GetInviteRelations(ctx context.Context, userID int
 		inviterJoined sql.NullTime
 		inviterDelAt  sql.NullTime
 		inviterLastAt sql.NullTime
+		inviterLooked sql.NullInt64
+		inviterTicket sql.NullBool
 		boundAt       sql.NullTime
 	)
 	var userDelAt sql.NullTime
@@ -879,15 +881,19 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
-       u.last_active_at,
+       (SELECT MAX(ul.created_at) FROM usage_logs ul WHERE ul.user_id = u.id),
        u.deleted_at,
+       u.looked_count,
+       u.ticket_flag,
        ua.inviter_id,
        ua.created_at,
        iu.email,
        iu.username,
        iu.created_at,
-       iu.last_active_at,
-       iu.deleted_at
+       (SELECT MAX(il.created_at) FROM usage_logs il WHERE il.user_id = iu.id),
+       iu.deleted_at,
+       iu.looked_count,
+       iu.ticket_flag
 FROM users u
 LEFT JOIN user_affiliates ua ON ua.user_id = u.id
 LEFT JOIN users iu ON iu.id = ua.inviter_id
@@ -900,7 +906,9 @@ LIMIT 1`, userID)
 	if found {
 		err = rows.Scan(
 			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userLastAt, &userDelAt,
+			&rel.User.LookedCount, &rel.User.TicketFlag,
 			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterLastAt, &inviterDelAt,
+			&inviterLooked, &inviterTicket,
 		)
 	}
 	scanErr := rows.Err()
@@ -938,12 +946,14 @@ LIMIT 1`, userID)
 			lastPtr = &t
 		}
 		rel.Inviter = &service.AffiliateRelationUser{
-			UserID:     inviterID.Int64,
-			Email:      inviterEmail.String,
-			Username:   inviterName.String,
-			CreatedAt:  inviterJoined.Time,
-			LastUsedAt: lastPtr,
-			DeletedAt:  delPtr,
+			UserID:      inviterID.Int64,
+			Email:       inviterEmail.String,
+			Username:    inviterName.String,
+			CreatedAt:   inviterJoined.Time,
+			LastUsedAt:  lastPtr,
+			DeletedAt:   delPtr,
+			LookedCount: int(inviterLooked.Int64),
+			TicketFlag:  inviterTicket.Bool,
 		}
 	}
 
@@ -963,7 +973,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
-       u.last_active_at,
+       (SELECT MAX(ul.created_at) FROM usage_logs ul WHERE ul.user_id = u.id),
        u.deleted_at,
        up.depth
 FROM up
@@ -1019,7 +1029,7 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
-       u.last_active_at,
+       (SELECT MAX(ul.created_at) FROM usage_logs ul WHERE ul.user_id = u.id),
        u.deleted_at,
        d.depth,
        COALESCE(r.rebate_total, 0)::double precision,
