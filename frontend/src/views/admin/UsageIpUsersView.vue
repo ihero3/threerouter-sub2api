@@ -90,6 +90,17 @@
       :show="showBalanceHistoryModal"
       :user="balanceHistoryUser"
       @close="closeBalanceHistory"
+      @deposit="handleDeposit"
+      @withdraw="handleWithdraw"
+      @deleted="handleUserDeleted"
+    />
+
+    <UserBalanceModal
+      :show="showBalanceModal"
+      :user="balanceUser"
+      :operation="balanceOperation"
+      @close="closeBalanceModal"
+      @success="handleBalanceSuccess"
     />
   </AppLayout>
 </template>
@@ -102,6 +113,8 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
+import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
+import type { AdminUser } from '@/types'
 import { adminAPI } from '@/api/admin'
 import { adminUsageAPI, type UsageIPUser } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -120,7 +133,12 @@ const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total:
 
 // 余额历史弹窗：与使用记录页点击用户一致的效果
 const showBalanceHistoryModal = ref(false)
-const balanceHistoryUser = ref<any>(null)
+const balanceHistoryUser = ref<AdminUser | null>(null)
+
+// 充值 / 退款弹窗
+const showBalanceModal = ref(false)
+const balanceUser = ref<AdminUser | null>(null)
+const balanceOperation = ref<'add' | 'subtract'>('add')
 
 const load = async () => {
   loading.value = true
@@ -150,6 +168,42 @@ const openBalanceHistory = async (userId: number) => {
 const closeBalanceHistory = () => {
   showBalanceHistoryModal.value = false
   balanceHistoryUser.value = null
+}
+
+// 充值 / 退款：由余额历史弹窗触发，打开余额调整弹窗
+const handleDeposit = () => {
+  if (!balanceHistoryUser.value) return
+  balanceUser.value = balanceHistoryUser.value
+  balanceOperation.value = 'add'
+  showBalanceModal.value = true
+}
+
+const handleWithdraw = () => {
+  if (!balanceHistoryUser.value) return
+  balanceUser.value = balanceHistoryUser.value
+  balanceOperation.value = 'subtract'
+  showBalanceModal.value = true
+}
+
+const closeBalanceModal = () => {
+  showBalanceModal.value = false
+  balanceUser.value = null
+}
+
+// 调整成功后刷新列表，并同步弹窗里展示的余额
+const handleBalanceSuccess = async () => {
+  load()
+  if (!balanceHistoryUser.value) return
+  try {
+    balanceHistoryUser.value = await adminAPI.users.getById(balanceHistoryUser.value.id, true)
+  } catch {
+    // 忽略刷新失败，保留原有展示
+  }
+}
+
+// 删除用户成功后刷新列表
+const handleUserDeleted = () => {
+  load()
 }
 
 const handlePageChange = (page: number) => {

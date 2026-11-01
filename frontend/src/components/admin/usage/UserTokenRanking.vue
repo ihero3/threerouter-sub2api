@@ -114,6 +114,7 @@ const limitOptions = [
   { value: 50, label: 'Top 50' },
   { value: 100, label: 'Top 100' },
   { value: 200, label: 'Top 200' },
+  { value: 500, label: 'Top 500' },
 ]
 
 // 前三名金/银/铜徽章

@@ -885,6 +885,7 @@ SELECT u.id,
        u.deleted_at,
        u.looked_count,
        u.ticket_flag,
+       u.total_recharged::double precision,
        ua.inviter_id,
        ua.created_at,
        iu.email,
@@ -906,7 +907,7 @@ LIMIT 1`, userID)
 	if found {
 		err = rows.Scan(
 			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userLastAt, &userDelAt,
-			&rel.User.LookedCount, &rel.User.TicketFlag,
+			&rel.User.LookedCount, &rel.User.TicketFlag, &rel.User.TotalRecharged,
 			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterLastAt, &inviterDelAt,
 			&inviterLooked, &inviterTicket,
 		)

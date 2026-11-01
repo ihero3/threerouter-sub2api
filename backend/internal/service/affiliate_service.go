@@ -290,6 +290,8 @@ type AffiliateRelationUser struct {
 	// LookedCount / TicketFlag 管理员人工跟进标记（见迁移 246）。
 	LookedCount int  `json:"looked_count"`
 	TicketFlag  bool `json:"ticket_flagged"`
+	// TotalRecharged 累计充值金额；> 0 表示充过钱（付费用户）。
+	TotalRecharged float64 `json:"total_recharged"`
 }
 
 // AffiliateRelationNode 关系图上的一个节点。

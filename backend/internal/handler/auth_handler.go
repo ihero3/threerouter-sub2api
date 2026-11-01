@@ -56,7 +56,9 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
 	Email                 string `json:"email" binding:"required,email"`
-	Password              string `json:"password" binding:"required,min=6"`
+	// 下限 8 位（NIST SP 800-63B 最低要求）；上限 72 字节是 bcrypt 硬限制，
+	// 超过会导致 HashPassword 直接报错并让注册返回 500。
+	Password              string `json:"password" binding:"required,min=8,max=72"`
 	VerifyCode            string `json:"verify_code"`
 	ClickCaptchaToken     string `json:"click_captcha_token"`
 	TurnstileToken        string `json:"turnstile_token"`
@@ -212,14 +214,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 注册前非破坏性校验点击验证 token（不消费，失败重试无需重新人机验证）；
-	// 注册成功后才一次性消费 token，防止成功后重放。
+	// 注册前原子消费点击验证 token：并发请求中只有一个能取到载荷，
+	// 杜绝同一个 token 被并发用于注册多个账号。
+	var consumedCaptcha *service.ClickCaptchaTokenPayloadRef
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
-		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
+		payload, err := h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
+		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
+		consumedCaptcha = payload
 	}
 
 	_, user, err := h.authService.RegisterWithVerification(
@@ -235,14 +240,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）
 		slog.Error("[Register] RegisterWithVerification failed", "error_type", fmt.Sprintf("%T", err), "error", err)
+		// 建号失败归还已消费的 token，避免用户重新做一次人机验证
+		if consumedCaptcha != nil {
+			_ = h.clickCaptcha.RestoreToken(c.Request.Context(), req.ClickCaptchaToken, consumedCaptcha)
+		}
 		response.ErrorFrom(c, err)
 		return
-	}
-
-	// 注册成功后一次性消费 token，防止同一个人用同一 token 注册多个账号
-	if h.enforceClickCaptchaForRegistration(c) {
-		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
-		_, _ = h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
 	}
 
 	h.respondWithTokenPair(c, user)
@@ -689,7 +692,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 type ResetPasswordRequest struct {
 	Email       string `json:"email" binding:"required,email"`
 	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,min=8,max=72"`
 }
 
 // ResetPasswordResponse 重置密码响应

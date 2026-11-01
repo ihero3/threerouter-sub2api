@@ -410,6 +410,8 @@ export default {
         currentUser: '当前',
         inviter: '邀请来源',
         noInviter: '无邀请来源（来路不明）',
+        paidBadge: '充过钱 {amount}',
+        paidBadgeTooltip: '累计充值大于 0，即该用户曾经充值付费',
         boundAt: '关系建立于',
         chainUp: '邀请链路（向上）',
         chainTop: '链路顶端 · 无上级',

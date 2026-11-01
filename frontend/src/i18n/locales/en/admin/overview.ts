@@ -410,6 +410,8 @@ export default {
         currentUser: 'current',
         inviter: 'Invited by',
         noInviter: 'No invite source (origin unknown)',
+        paidBadge: 'Has paid {amount}',
+        paidBadgeTooltip: 'Cumulative recharge is greater than 0, i.e. this user has paid before',
         boundAt: 'bound at',
         chainUp: 'Invite chain (upward)',
         chainTop: 'Top of chain, no inviter',

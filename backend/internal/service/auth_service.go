@@ -427,7 +427,10 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		return ErrServiceUnavailable
 	}
 	if existsEmail {
-		return ErrEmailExists
+		// 与忘记密码一致：已注册邮箱不回显差异，避免接口被用来枚举平台用户。
+		// 不发信，直接返回与正常路径相同的响应形态。
+		logger.LegacyPrintf("service.auth", "[Auth] Email already registered, skip sending verify code: %s", email)
+		return nil
 	}
 	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return err
@@ -467,8 +470,12 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return nil, ErrServiceUnavailable
 	}
 	if existsEmail {
-		logger.LegacyPrintf("service.auth", "[Auth] Email already exists: %s", email)
-		return nil, ErrEmailExists
+		// 与忘记密码一致：已注册邮箱不回显差异，避免接口被用来枚举平台用户。
+		// 不发信，直接返回与正常路径相同的倒计时，攻击者无法从响应区分。
+		logger.LegacyPrintf("service.auth", "[Auth] Email already registered, skip sending verify code: %s", email)
+		return &SendVerifyCodeResult{
+			Countdown: 60,
+		}, nil
 	}
 	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return nil, err
@@ -669,106 +676,6 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	return token, user, nil
 }
 
-// LoginOrRegisterOAuth 用于第三方 OAuth/SSO 登录：
-// - 如果邮箱已存在：直接登录（不需要本地密码）
-// - 如果邮箱不存在：创建新用户并登录
-//
-// 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
-// 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
-func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
-	email = strings.TrimSpace(email)
-	if email == "" || len(email) > 255 {
-		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
-	}
-	if _, err := mail.ParseAddress(email); err != nil {
-		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
-	}
-
-	username = strings.TrimSpace(username)
-	if len([]rune(username)) > 100 {
-		username = string([]rune(username)[:100])
-	}
-
-	user, err := s.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			// OAuth 首次登录视为注册（fail-close：settingService 未配置时不允许注册）
-			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
-				return "", nil, ErrRegDisabled
-			}
-
-			randomPassword, err := randomHexString(32)
-			if err != nil {
-				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
-				return "", nil, ErrServiceUnavailable
-			}
-			hashedPassword, err := s.HashPassword(randomPassword)
-			if err != nil {
-				return "", nil, fmt.Errorf("hash password: %w", err)
-			}
-
-			signupSource := inferLegacySignupSource(email)
-			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
-			var defaultRPMLimit int
-			if s.settingService != nil {
-				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
-			}
-
-			newUser := &User{
-				Email:        email,
-				Username:     username,
-				PasswordHash: hashedPassword,
-				Role:         RoleUser,
-				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
-				RPMLimit:     defaultRPMLimit,
-				Status:       StatusActive,
-				SignupSource: signupSource,
-			}
-
-			if err := s.userRepo.Create(ctx, newUser); err != nil {
-				if errors.Is(err, ErrEmailExists) {
-					// 并发场景：GetByEmail 与 Create 之间用户被创建。
-					user, err = s.userRepo.GetByEmail(ctx, email)
-					if err != nil {
-						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
-						return "", nil, ErrServiceUnavailable
-					}
-				} else {
-					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-					return "", nil, ErrServiceUnavailable
-				}
-			} else {
-				user = newUser
-				s.postAuthUserBootstrap(ctx, user, signupSource, false)
-				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
-				// snapshot user × platform quota（fail-open）
-				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-			}
-		} else {
-			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
-			return "", nil, ErrServiceUnavailable
-		}
-	}
-
-	if !user.IsActive() {
-		return "", nil, ErrUserNotActive
-	}
-
-	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
-	if user.Username == "" && username != "" {
-		user.Username = username
-		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Username: true}); err != nil {
-			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
-		}
-	}
-	token, err := s.GenerateToken(ctx, user)
-	if err != nil {
-		return "", nil, fmt.Errorf("generate token: %w", err)
-	}
-	return token, user, nil
-}
-
 // canBypassRegistrationDisabledForOAuth 在钉钉企业模式（internal_only）且
 // dingtalk_connect_bypass_registration=true 时，允许跳过全局 registration_enabled 检查。
 func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context, signupSource string) bool {
@@ -783,7 +690,6 @@ func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context,
 }
 
 // LoginOrRegisterOAuthWithTokenPair 用于第三方 OAuth/SSO 登录，返回完整的 TokenPair。
-// 与 LoginOrRegisterOAuth 功能相同，但返回 TokenPair 而非单个 token。
 // invitationCode 仅在邀请码注册模式下新用户注册时使用；已有账号登录时忽略。
 // affiliateCode 用于邀请返利绑定，仅在新用户注册时使用。
 // signupSource 标识来源渠道（"dingtalk"/"linuxdo"/"wechat"/"oidc" 等），仅用于豁免检查。

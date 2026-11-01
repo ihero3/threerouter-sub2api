@@ -313,6 +313,20 @@ func (s *RegistrationClickCaptchaService) ConsumeToken(ctx context.Context, toke
 	return payload, nil
 }
 
+// RestoreToken 归还已消费的一次性 token，用于建号后续步骤失败时
+// 避免用户重新做一次人机验证。仅当 ConsumeToken 成功取到载荷后才应调用。
+// 归还保留原 ExpiresAt；若 token 已过期则自然失效，返回 nil。
+func (s *RegistrationClickCaptchaService) RestoreToken(ctx context.Context, token string, payload *ClickCaptchaTokenPayloadRef) error {
+	if s == nil || s.cache == nil || payload == nil {
+		return ErrRegistrationClickCaptchaDisabled
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ErrRegistrationClickCaptchaTokenInvalid
+	}
+	return s.cache.SetToken(ctx, token, payload)
+}
+
 // ValidateToken 非破坏性校验一次性 token（不消费），
 // 用于服务端强制"发送邮箱验证码前必须通过真人验证"：仅校验存在性、有效期与指纹，
 // 不改变 token 状态，后续注册时仍由 ConsumeToken 做一次性消费。

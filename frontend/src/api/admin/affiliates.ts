@@ -237,6 +237,8 @@ export interface AffiliateRelationUser {
   looked_count: number
   /** 管理员「提过工单」标记（仅管理端展示） */
   ticket_flagged: boolean
+  /** 累计充值金额；> 0 表示充过钱（付费用户），仅查询用户本人返回 */
+  total_recharged?: number
 }
 
 export interface AffiliateRelationNode {

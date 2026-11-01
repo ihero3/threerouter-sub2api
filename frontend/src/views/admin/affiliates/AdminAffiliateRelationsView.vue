@@ -82,15 +82,25 @@
                 {{ t('admin.usage.userDeletedBadge') }}
               </span>
             </div>
-            <button
-              v-if="!relation.user.deleted_at"
-              class="btn btn-danger btn-sm"
-              :disabled="deletingUser"
-              @click="requestDeleteCurrentUser"
-            >
-              <Icon name="trash" size="sm" :stroke-width="2" class="mr-1" />
-              {{ t('admin.users.deleteUser') }}
-            </button>
+            <div class="flex items-center gap-2">
+              <!-- 付费用户标记：累计充值 > 0 即认为充过钱 -->
+              <span
+                v-if="relation.user.total_recharged && relation.user.total_recharged > 0"
+                class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-500/30"
+                :title="t('admin.affiliates.relations.paidBadgeTooltip')"
+              >
+                {{ t('admin.affiliates.relations.paidBadge', { amount: `$${formatAmount(relation.user.total_recharged)}` }) }}
+              </span>
+              <button
+                v-if="!relation.user.deleted_at"
+                class="btn btn-danger btn-sm"
+                :disabled="deletingUser"
+                @click="requestDeleteCurrentUser"
+              >
+                <Icon name="trash" size="sm" :stroke-width="2" class="mr-1" />
+                {{ t('admin.users.deleteUser') }}
+              </button>
+            </div>
           </div>
           <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
             <div>
