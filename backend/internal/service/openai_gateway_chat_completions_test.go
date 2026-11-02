@@ -89,6 +89,192 @@ func TestHandleChatStreamingResponse_ClassifiesHTTP2ReadError(t *testing.T) {
 	require.NotContains(t, message, "INTERNAL_ERROR")
 }
 
+func newOpenAIChatStreamFailoverTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	return c, rec
+}
+
+func TestHandleChatStreamingResponse_ReadErrorBeforeClientOutputFailsOver(t *testing.T) {
+	for _, keepaliveInterval := range []int{0, 1} {
+		c, _ := newOpenAIChatStreamFailoverTestContext(t)
+		cfg := &config.Config{}
+		cfg.Gateway.StreamKeepaliveInterval = keepaliveInterval
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"x-request-id": []string{"upstream-rid"},
+			},
+			Body: &openAIChatStreamReadErrorCloser{
+				err: errors.New("stream error: stream ID 5; INTERNAL_ERROR; received from peer"),
+			},
+		}
+		svc := &OpenAIGatewayService{cfg: cfg}
+
+		result, err := svc.handleChatStreamingResponse(
+			resp,
+			c,
+			&Account{ID: 2, Name: "mimo", Platform: PlatformOpenAI},
+			"deepseek-v4-pro",
+			"deepseek-v4-pro",
+			"deepseek-v4-pro",
+			time.Now(),
+			0,
+		)
+
+		// 未向客户端写出任何字节：必须交出 failover 错误（result=nil，避免重复计费），
+		// 由 handler 透明换号，而不是把 502 直接抛给客户端。
+		require.Nil(t, result)
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr)
+		require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+		require.False(t, failoverErr.RetryableOnSameAccount, "broken transport must switch account instead of retrying it")
+		require.True(t, failoverErr.ShouldRetryNextAccount())
+		require.False(t, c.Writer.Written(), "failover requires an uncommitted response")
+		// 一个字节都没写出：不置位 SafeToFailoverAfterWrite，让这次请求保留完整的
+		// 换号预算（置位会被 handler 的首包换号上限约束为 1 次）。
+		require.False(t, failoverErr.SafeToFailoverAfterWrite)
+		_, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
+		require.False(t, ok, "failover error must not masquerade as the client-facing read error")
+		require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamHTTP2StreamErrorCode)
+	}
+}
+
+// TestHandleChatStreamingResponse_KeepaliveCommentThenReadErrorFailsOver 覆盖线上
+// 事故形态：上游长时间没有语义输出，网关先写出一条 SSE 注释 keepalive（`:\n\n`，
+// 已把响应头提交为 200），随后上游连接被 reset。
+//
+// 此时"已经写过字节"不代表"已经开始向客户端输出内容"——注释帧不含任何模型输出，
+// 换号重放不会让客户端看到两条拼起来的回答。若按 writer size 判定，这个请求会
+// 被判定为不可换号，直接把 502 抛给客户端；客户端重试后再次被调度到同一个坏账号，
+// 于是出现"重试 5 次全部失败、每次都命中同一个上游源"。
+func TestHandleChatStreamingResponse_KeepaliveCommentThenReadErrorFailsOver(t *testing.T) {
+	c, _ := newOpenAIChatStreamFailoverTestContext(t)
+	// 模拟 keepalive ticker 已经写出的注释帧（并像真实 ticker 一样登记字节数）。
+	require.NoError(t, writeStringAndFlush(c, ":\n\n"))
+	recordOpenAIStreamKeepaliveBytes(c, len(":\n\n"))
+	require.True(t, c.Writer.Written(), "keepalive comment commits the response as 200")
+	// 登记后"扣除非语义字节"的口径回到未写出状态：handler 的
+	// openAIForwardMayFailover 即使不看 SafeToFailoverAfterWrite 也允许换号。
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c),
+		"keepalive 注释字节必须从换号判定口径中扣除")
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"x-request-id": []string{"upstream-rid"},
+		},
+		Body: &openAIChatStreamReadErrorCloser{
+			err: errors.New("read tcp: connection reset by peer"),
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp,
+		c,
+		&Account{ID: 2, Name: "mimo", Platform: PlatformOpenAI},
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		time.Now(),
+		0,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite,
+		"keepalive-only bytes must not block a transparent account switch")
+	require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamStreamReadErrorCode)
+}
+
+// TestHandleChatStreamingResponse_IntervalTimeoutBeforeClientOutputFailsOver：上游
+// 卡住不回数据（而不是连接被 reset）是同一类失效：没有语义输出时同样必须换号，
+// 否则客户端每个重试都要先等满一个数据间隔超时，再拿到 502。
+func TestHandleChatStreamingResponse_IntervalTimeoutBeforeClientOutputFailsOver(t *testing.T) {
+	c, _ := newOpenAIChatStreamFailoverTestContext(t)
+	cfg := &config.Config{}
+	cfg.Gateway.StreamDataIntervalTimeout = 1
+
+	pr, pw := io.Pipe()
+	t.Cleanup(func() { _ = pw.Close(); _ = pr.Close() })
+	// 上游只发一条注释帧就卡住（不关闭连接）。
+	go func() { _, _ = pw.Write([]byte(": waiting\n\n")) }()
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp,
+		c,
+		&Account{ID: 2, Name: "mimo", Platform: PlatformOpenAI},
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		time.Now(),
+		0,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr, "a stalled upstream must fail over, not 502")
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamStreamReadErrorCode)
+}
+
+// writeStringAndFlush 模拟 keepalive ticker 的一次写出。
+func writeStringAndFlush(c *gin.Context, s string) error {
+	if _, err := c.Writer.WriteString(s); err != nil {
+		return err
+	}
+	c.Writer.Flush()
+	return nil
+}
+
+func TestHandleChatStreamingResponse_CleanEOFBeforeClientOutputFailsOver(t *testing.T) {
+	c, _ := newOpenAIChatStreamFailoverTestContext(t)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"x-request-id": []string{"upstream-rid"},
+		},
+		Body: io.NopCloser(strings.NewReader("")),
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp,
+		c,
+		&Account{ID: 2, Name: "mimo", Platform: PlatformOpenAI},
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		time.Now(),
+		0,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, c.Writer.Written())
+	require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamStreamTruncatedCode)
+}
+
 func TestNormalizeResponsesRequestServiceTier(t *testing.T) {
 	t.Parallel()
 
@@ -1071,11 +1257,12 @@ func TestForwardAsChatCompletions_DoneSentinelWithoutTerminalReturnsError(t *tes
 	}
 
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing terminal event")
-	require.NotNil(t, result)
-	require.Zero(t, result.Usage.InputTokens)
-	require.Zero(t, result.Usage.OutputTokens)
+	// [DONE] 而没有终止事件属于上游截断；未向客户端输出任何字节时按 failover
+	// 处理（result=nil 以避免重复计费），由 handler 换号重试。
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamStreamTruncatedCode)
 }
 
 func TestForwardAsChatCompletions_UpstreamRequestIgnoresClientCancel(t *testing.T) {
@@ -1130,4 +1317,106 @@ func TestBuildChatStreamErrorSSE(t *testing.T) {
 	require.Equal(t, "invalid_request_error", gjson.Get(payload, "error.type").String())
 	require.Equal(t, "cyber_policy", gjson.Get(payload, "error.code").String())
 	require.Equal(t, "blocked by policy", gjson.Get(payload, "error.message").String())
+}
+
+// chatStreamTruncationCounterStub 只统计"账号截断计数"被递增的次数：
+// 返回 1 表示首帧不触发窗口降权，测试不需要账号库。
+type chatStreamTruncationCounterStub struct {
+	increments int
+}
+
+func (s *chatStreamTruncationCounterStub) IncrementStreamTruncationCount(_ context.Context, _ int64, _ int) (int64, error) {
+	s.increments++
+	return 1, nil
+}
+
+func (s *chatStreamTruncationCounterStub) ResetStreamTruncationCount(_ context.Context, _ int64) error {
+	return nil
+}
+
+// chatStreamSchedulingBlockerStub 记录"客户端已看到语义输出后才断流"触发的
+// 立即调度冷却。
+type chatStreamSchedulingBlockerStub struct {
+	reasons []string
+}
+
+func (b *chatStreamSchedulingBlockerStub) BlockAccountScheduling(_ *Account, _ time.Time, reason string) {
+	b.reasons = append(b.reasons, reason)
+}
+
+func (b *chatStreamSchedulingBlockerStub) ClearAccountSchedulingBlock(int64) {}
+
+// newChatStreamPenaltyService 构造只带降权依赖的 service：用 stub 证明
+// "截断一定会降权""客户端可见截断一定立即冷却"，不依赖 Redis / 账号库。
+func newChatStreamPenaltyService(counter *chatStreamTruncationCounterStub, blocker *chatStreamSchedulingBlockerStub) *OpenAIGatewayService {
+	rl := NewRateLimitService(nil, nil, nil, nil, nil)
+	rl.SetStreamTruncationCounterCache(counter)
+	rl.SetAccountRuntimeBlocker(blocker)
+	return &OpenAIGatewayService{cfg: &config.Config{}, rateLimitService: rl}
+}
+
+// TestHandleChatStreamingResponse_PreOutputTruncationPenalizesWithoutCooldown：
+// 尚未写出语义内容时截断 → 换号错误 + 账号截断计数（窗口降权），但不做立即冷却
+// （本请求还能自愈，不该把账号从本进程摘掉）。
+func TestHandleChatStreamingResponse_PreOutputTruncationPenalizesWithoutCooldown(t *testing.T) {
+	c, _ := newOpenAIChatStreamFailoverTestContext(t)
+	counter := &chatStreamTruncationCounterStub{}
+	blocker := &chatStreamSchedulingBlockerStub{}
+	svc := newChatStreamPenaltyService(counter, blocker)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: &openAIChatStreamReadErrorCloser{
+			err: errors.New("read tcp: connection reset by peer"),
+		},
+	}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp, c,
+		&Account{ID: 7, Name: "mimo", Platform: PlatformOpenAI},
+		"deepseek-v4-pro", "deepseek-v4-pro", "deepseek-v4-pro",
+		time.Now(), 0,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, 1, counter.increments, "账号级截断计数必须递增")
+	require.Empty(t, blocker.reasons, "可换号的截断不做立即冷却")
+}
+
+// TestHandleChatStreamingResponse_ClientVisibleTruncationCoolsDownAccount：
+// 语义输出已下发后才断流 → 客户端必然立刻重试，必须立即把账号移出本进程调度，
+// 并同时记窗口降权。这是"用户重试 5 次全部命中同一个坏源"的直接防线。
+func TestHandleChatStreamingResponse_ClientVisibleTruncationCoolsDownAccount(t *testing.T) {
+	c, _ := newOpenAIChatStreamFailoverTestContext(t)
+	counter := &chatStreamTruncationCounterStub{}
+	blocker := &chatStreamSchedulingBlockerStub{}
+	svc := newChatStreamPenaltyService(counter, blocker)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: &openAIChatStreamReadErrorCloser{
+			payload: []byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"),
+			err:     errors.New("read tcp: connection reset by peer"),
+		},
+	}
+
+	result, err := svc.handleChatStreamingResponse(
+		resp, c,
+		&Account{ID: 7, Name: "mimo", Platform: PlatformOpenAI},
+		"deepseek-v4-pro", "deepseek-v4-pro", "deepseek-v4-pro",
+		time.Now(), 0,
+	)
+
+	// 已写出语义内容：不能再换号，但必须交出稳定的截断错误码。
+	require.NotNil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "已输出的流不得重新播放")
+	code, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
+	require.True(t, ok)
+	require.Equal(t, OpenAIUpstreamStreamReadErrorCode, code)
+	require.Equal(t, 1, counter.increments)
+	require.Equal(t, []string{clientVisibleStreamTruncationReason}, blocker.reasons,
+		"客户端可见截断必须立即把账号移出本进程调度")
 }

@@ -94,7 +94,7 @@ func newOpenAIRawStreamTruncatedFailoverError(
 	}
 	return &UpstreamFailoverError{
 		StatusCode:      http.StatusBadGateway,
-		ResponseBody:    openAIRawStreamTruncatedErrorBody(cause),
+		ResponseBody:    openAIUpstreamStreamReadErrorBody(cause),
 		ResponseHeaders: headers,
 	}
 }
@@ -144,9 +144,10 @@ func openAIRawStreamTruncatedMessage(cause error) string {
 	return openAIRawStreamTruncatedUpstreamMessage + ": " + cause.Error()
 }
 
-// openAIRawStreamTruncatedErrorBody 构造 failover 错误体，code/message 与
-// 写出后走 openAIUpstreamStreamReadError 的客户端分类保持一致。
-func openAIRawStreamTruncatedErrorBody(cause error) []byte {
+// openAIUpstreamStreamReadErrorBody 构造 failover 错误体，code/message 与
+// 写出后走 openAIUpstreamStreamReadError 的客户端分类保持一致。raw CC 直转与
+// 标准 CC→Responses 两条路径共用。
+func openAIUpstreamStreamReadErrorBody(cause error) []byte {
 	code, message := classifyOpenAIUpstreamStreamReadError(cause)
 	body, err := json.Marshal(map[string]any{
 		"error": map[string]any{

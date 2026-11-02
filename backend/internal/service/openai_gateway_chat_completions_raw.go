@@ -408,18 +408,18 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			zap.Bool("saw_sse_data", terminal.sawDataLine),
 			zap.Bool("client_output_started", clientOutputStarted),
 		)
-		// P0: 账号级截断降权——同一账号 5 分钟内累计 2 次截断 → 降权 2 分钟。
-		// 用 WithoutCancel + 短超时：客户端断开后 c.Request.Context() 也会被取消，
-		// 如果沿用原 context 会把降权写库一并取消，导致降权从未生效。
-		if s.rateLimitService != nil {
-			penaltyCtx, penaltyCancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
-			s.rateLimitService.HandleStreamTruncation(penaltyCtx, account, upstreamModel)
-			penaltyCancel()
-		}
 		if !clientOutputStarted {
+			// P0: 账号级截断降权——同一账号 5 分钟内累计 2 次截断 → 降权 2 分钟。
+			// 用 WithoutCancel + 短超时：客户端断开后 c.Request.Context() 也会被取消，
+			// 如果沿用原 context 会把降权写库一并取消，导致降权从未生效。
+			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel)
 			// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, cause)
 		}
+		// 已向客户端下发了语义输出才断流：用户看到的是被截断的回答，客户端几乎必然
+		// 立刻用同样的内容重试，粘性会话会把它绑回同一个坏账号。这里用"可见截断"
+		// 降权：立刻做一次进程内冷却 + 常规窗口计数，让紧跟其后的重试换源。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
 		// 已写出语义字节：无法再 failover，改为带类型的上游错误。handler 会据此
 		// 补发 SSE error 帧并把本次请求计入 SLA 失败。
 		recordOpenAIRawStreamTruncation(c, account, requestID, cause, "http_error")

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -1163,15 +1164,74 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			)
 		}
 	}
+	// semanticOutputStarted 判断本次转发是否已经向客户端写出语义内容（模型事件）。
+	// 只写出过 keepalive/ping 帧不算：这些帧不含任何模型输出，换号重放不会让客户端
+	// 看到两条拼接起来的回答。线上事故：同一个坏的上游中转账号反复返回 200 + 半截
+	// SSE，网关按 writer size 判定"已经开始输出"而拒绝换号，客户端 5 次重试全部被
+	// 调度到同一个账号，用户重试一直错。
+	semanticOutputStarted := func() bool {
+		return openAIStreamClientOutputStarted(c, clientOutputStarted)
+	}
+	requestCtx := ginRequestContext(c)
+	// upstreamTruncationMessage 拼出落 Ops 的截断描述：干净 EOF 没有底层错误可带，
+	// 传输层错误（connection reset / http2 stream error）保留原因以便定位。
+	upstreamTruncationMessage := func(cause error) string {
+		message := "Upstream response stream ended before completion"
+		if cause != nil && !errors.Is(cause, ErrOpenAIUpstreamStreamTruncated) {
+			message += ": " + cause.Error()
+		}
+		return message
+	}
+	// streamReadTruncated 统一收尾"上游 SSE 流在终止信号之前结束"（读失败或干净 EOF）：
+	//   - 客户端已断开/请求已取消：断开与截断在传输层不可区分，按已收到的 usage 正常
+	//     收尾，不换号、不降权（保持既有语义）；
+	//   - 尚未写出语义内容：返回 502 + upstream_stream_read_error/_truncated 的换号错误，
+	//     由 handler 透明切到下一个账号；换号前同样给账号记一次截断降权，避免客户端
+	//     重试继续命中同一个坏账号；
+	//   - 已写出语义内容：换号会把两个上游的回答拼进同一条流，只能降权并返回稳定的
+	//     截断错误码，让 Ops 与客户端都能识别这是上游截断，而不是网关泛化故障。
+	streamReadTruncated := func(cause error) (*OpenAIForwardResult, error) {
+		result := resultWithUsage()
+		// bufio.ErrTooLong 是"单行超过 MaxLineSize"的本地限制，与上游账号健康无关：
+		// 换号只会用同样的限额再失败一次，保持既有直返错误的语义。
+		if clientDisconnected || errors.Is(cause, bufio.ErrTooLong) ||
+			!shouldClassifyOpenAIUpstreamStreamReadError(cause, requestCtx) {
+			return result, fmt.Errorf("stream usage incomplete: %w", cause)
+		}
+		var accountID int64
+		if account != nil {
+			accountID = account.ID
+		}
+		outputStarted := semanticOutputStarted()
+		logger.L().Warn("openai messages stream: upstream stream truncated before terminal event",
+			zap.Error(cause),
+			zap.String("request_id", requestID),
+			zap.Int64("account_id", accountID),
+			zap.String("upstream_model", upstreamModel),
+			zap.Bool("client_output_started", outputStarted),
+		)
+		if !outputStarted {
+			return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, cause)
+		}
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_truncated", upstreamTruncationMessage(cause))
+		return result, newOpenAIUpstreamStreamReadError(cause)
+	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		result := resultWithUsage()
 		if clientDisconnected {
 			return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		message := "OpenAI messages stream ended before a terminal event"
-		if !clientOutputStarted {
+		if !semanticOutputStarted() {
+			// 尚未写出语义内容：先给账号记一次截断降权再透明换号，否则客户端重试
+			// 会被再次调度到同一个坏账号（线上事故根因：重试 5 次全部命中同一源）。
+			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel)
 			return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
 		}
+		// 已写出语义内容：用户已经看到半截回答，客户端几乎必然立刻重试，而重试通常
+		// 被粘性会话绑回同一账号——用"客户端已可见"降权（额外进程内冷却）。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
 		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_missing_terminal", message)
 		return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
@@ -1204,7 +1264,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+			return streamReadTruncated(err)
 		}
 		if frame, ok := parser.Finish(); ok {
 			if strings.TrimSpace(frame.Data) == "[DONE]" {
@@ -1277,7 +1337,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 			if ev.err != nil {
 				handleScanErr(ev.err)
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
+				return streamReadTruncated(ev.err)
 			}
 			lastDataAt = time.Now()
 			line := ev.line
@@ -1315,8 +1375,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				continue
 			}
 			// Send Anthropic-format ping event
+			const pingFrame = "event: ping\ndata: {\"type\":\"ping\"}\n\n"
 			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, "event: ping\ndata: {\"type\":\"ping\"}\n\n"); err != nil {
+			if _, err := fmt.Fprint(c.Writer, pingFrame); err != nil {
 				// Client disconnected
 				logger.L().Info("openai messages stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
@@ -1324,7 +1385,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				clientDisconnected = true
 				continue
 			}
-			clientOutputStarted = true
+			// ping 帧不含模型内容：不能据此判定"已开始向客户端输出"——否则上游只要先
+			// 静默一个心跳周期，一帧心跳就会永久锁死换号预算，把本可自愈的截断变成
+			// 502（线上事故：客户端重试 5 次全部命中同一个坏账号）。同时把字节数记账，
+			// 使 handler 侧 openAIForwardMayFailover 按扣除非语义字节后的 writer size
+			// 判定时仍允许切号。
+			recordOpenAIStreamKeepaliveBytes(c, len(pingFrame))
 			c.Writer.Flush()
 		}
 	}
@@ -1376,4 +1442,13 @@ func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUs
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens
 	}
 	return result
+}
+
+// ginRequestContext 返回 gin 请求的 context；测试构造的 context 可能没有 Request，
+// 此时返回 nil，调用方（shouldClassifyOpenAIUpstreamStreamReadError）只按错误本身判定。
+func ginRequestContext(c *gin.Context) context.Context {
+	if c == nil || c.Request == nil {
+		return nil
+	}
+	return c.Request.Context()
 }

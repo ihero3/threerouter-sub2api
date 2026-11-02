@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -128,7 +129,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(c, account, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -176,6 +177,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
+	account *Account,
 	resp *http.Response,
 	originalModel string,
 	customTools map[string]bool,
@@ -197,6 +199,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.ToolSearchDeclared = toolSearch
 	state.NamespaceTools = namespaceTools
 	clientDisconnected := false
+	clientOutputStarted := false
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
@@ -220,6 +223,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 				)
 				return
 			}
+			clientOutputStarted = true
 		}
 		c.Writer.Flush()
 	}
@@ -231,7 +235,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	})
 
 	if scan.Err != nil {
-		return &OpenAIForwardResult{
+		result := &OpenAIForwardResult{
 			RequestID:                   requestID,
 			Usage:                       scan.Usage,
 			Model:                       originalModel,
@@ -243,7 +247,24 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
-		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		}
+		// 客户端断开/取消、本地行长限制（bufio.ErrTooLong）、响应体超限都与上游账号
+		// 健康无关：保持既有直返错误语义，不换号也不降权。
+		if clientDisconnected || errors.Is(scan.Err, bufio.ErrTooLong) ||
+			!shouldClassifyOpenAIUpstreamStreamReadError(scan.Err, ginRequestContext(c)) {
+			return result, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		}
+		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+			// 尚未向客户端写出语义事件：可以透明换号。此前这里一律直返普通错误，
+			// 于是"上游 200 + 半截 SSE"的同一个坏账号会被客户端重试反复命中
+			// （线上事故：重试 5 次全部命中同一个上游源）。
+			return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, scan.Err)
+		}
+		// 已写出语义事件：换号会把两个上游的回答拼进同一条流，只能返回稳定的截断
+		// 错误码；但必须降权（用户已看到半截回答，客户端几乎必然立刻重试），否则
+		// 客户端重试会继续被调度到同一个坏账号。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		return result, newOpenAIUpstreamStreamReadError(scan.Err)
 	}
 	if err := state.ValidateToolCallArguments(); err != nil {
 		return &OpenAIForwardResult{

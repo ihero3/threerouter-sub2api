@@ -2218,12 +2218,17 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if errText := strings.TrimSpace(err.Error()); errText != "" {
 				msg += ": " + errText
 			}
+			s.penalizeOpenAIStreamTruncation(c, account, mappedModel)
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg)
 		}
 		if clientDisconnected {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
 		}
+		// 语义输出已经下发后才断流：用户看到被截断的回答，重试几乎必然发生。
+		// 只隔离代理对直连账号毫无作用，必须同时给账号记一次"可见截断"降权
+		// （进程内立即冷却 + 常规窗口计数），否则重试会被粘性会话绑回同一个坏源。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel)
 		s.recordOpenAIProxyStreamDisconnect(account, err, upstreamRequestID)
 		logger.LegacyPrintf("service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
@@ -2243,9 +2248,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			zap.String("upstream_request_id", upstreamRequestID),
 		).Info("OpenAI passthrough 上游流在未收到 [DONE] 时结束，疑似断流")
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+			s.penalizeOpenAIStreamTruncation(c, account, mappedModel)
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, "OpenAI stream ended before a terminal event")
 		}
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel)
 		s.recordOpenAIProxyStreamDisconnect(account, errors.New("stream ended before terminal event"), upstreamRequestID)
 		return resultWithUsage(), errors.New("stream usage incomplete: missing terminal event")
 	}

@@ -81,6 +81,9 @@
               <span v-if="relation.user.deleted_at" class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30">
                 {{ t('admin.usage.userDeletedBadge') }}
               </span>
+              <span v-if="userMarkLabelsUser(relation.user).length" class="text-xs text-amber-600 dark:text-amber-400">
+                （{{ userMarkLabelsUser(relation.user).join('、') }}）
+              </span>
             </div>
             <div class="flex items-center gap-2">
               <!-- 付费用户标记：累计充值 > 0 即认为充过钱 -->
@@ -116,9 +119,15 @@
                 <span v-if="relation.bound_at" class="ml-2 text-xs text-gray-400 dark:text-dark-500">
                   {{ t('admin.affiliates.relations.boundAt') }} {{ formatDateTime(relation.bound_at) }}
                 </span>
+                <span v-if="userMarkLabelsUser(relation.inviter).length" class="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                  （{{ userMarkLabelsUser(relation.inviter).join('、') }}）
+                </span>
               </span>
               <span v-else class="font-medium text-amber-600 dark:text-amber-400">
                 {{ t('admin.affiliates.relations.noInviter') }}
+                <span v-if="userMarkLabelsUser(relation.user).length" class="ml-1 text-xs text-amber-500 dark:text-amber-400">
+                  （{{ userMarkLabelsUser(relation.user).join('、') }}）
+                </span>
               </span>
             </div>
             <div class="flex items-center gap-3 whitespace-nowrap">
@@ -165,6 +174,9 @@
                 <div class="text-xs text-gray-600 dark:text-dark-300">{{ node.email || '-' }}</div>
                 <div class="text-xs text-gray-400 dark:text-dark-500">
                   {{ ancestorLabel(node, index) }}
+                  <span v-if="userMarkLabel(node)" class="ml-1 text-amber-600 dark:text-amber-400">
+                    （{{ userMarkLabel(node) }}）
+                  </span>
                 </div>
               </button>
               <span class="text-gray-400 dark:text-dark-500">→</span>
@@ -172,6 +184,9 @@
             <div class="rounded-lg bg-primary-50 px-3 py-2 dark:bg-primary-500/10">
               <div class="font-mono text-xs text-gray-900 dark:text-white">#{{ relation.user.user_id }} {{ t('admin.affiliates.relations.currentUser') }}</div>
               <div class="text-xs text-gray-600 dark:text-dark-300">{{ relation.user.email || '-' }}</div>
+              <div v-if="userMarkLabelsUser(relation.user).length" class="text-xs text-amber-600 dark:text-amber-400">
+                （{{ userMarkLabelsUser(relation.user).join('、') }}）
+              </div>
             </div>
           </div>
         </div>
@@ -599,6 +614,9 @@ async function toggleTicketFlag(node: MarkableUser) {
 
 function userMarkLabel(node: AffiliateRelationNode): string {
   const labels: string[] = []
+  if (node.recharged) {
+    labels.push(t('admin.affiliates.relations.marks.recharged'))
+  }
   if (node.looked_count > 0) {
     labels.push(t('admin.affiliates.relations.marks.looked', { count: node.looked_count }))
   }
@@ -606,6 +624,21 @@ function userMarkLabel(node: AffiliateRelationNode): string {
     labels.push(t('admin.affiliates.relations.marks.ticketButton'))
   }
   return labels.join('、')
+}
+
+// 顶部用户卡片 / 邀请人使用的文本标记（AffiliateRelationUser）。
+function userMarkLabelsUser(user: { recharged?: boolean; looked_count?: number; ticket_flagged?: boolean }): string[] {
+  const labels: string[] = []
+  if (user.recharged) {
+    labels.push(t('admin.affiliates.relations.marks.recharged'))
+  }
+  if ((user.looked_count ?? 0) > 0) {
+    labels.push(t('admin.affiliates.relations.marks.looked', { count: user.looked_count }))
+  }
+  if (user.ticket_flagged) {
+    labels.push(t('admin.affiliates.relations.marks.ticketButton'))
+  }
+  return labels
 }
 
 async function confirmDeleteUser() {

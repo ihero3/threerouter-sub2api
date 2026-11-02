@@ -428,7 +428,8 @@ export default {
           lookedButton: '看过',
           looked: '看过+{count}',
           ticketButton: '提过工单',
-          ticketUnmark: '取消工单标记'
+          ticketUnmark: '取消工单标记',
+          recharged: '充过值'
         },
         columns: {
           depth: '层级',

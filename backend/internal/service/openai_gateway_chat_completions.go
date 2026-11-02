@@ -1025,7 +1025,18 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
-		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
+		// 上游在终止事件前结束（干净 EOF 或只发了 [DONE]）属于流截断。尚未向客户端
+		// 写出任何语义字节时响应头未提交，可以透明换号重试，而不是把截断当成普通错误。
+		if !clientOutputStarted {
+			return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, ErrOpenAIUpstreamStreamTruncated)
+		}
+		// 已写出语义字节：不能换号（会把两个上游的回答拼在一条流里），但必须给账号
+		// 记一次降权，并让客户端拿到稳定的截断错误码，而不是泛化的 "Upstream request
+		// failed"——后者会让调用方无法区分"上游截断"与"网关自身故障"。
+		// 用户已看到被截断的回答，客户端会立刻重试：用"可见截断"降权，立刻把该账号
+		// 移出本进程调度，避免秒级重试被粘性会话绑回同一个坏源。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		return resultWithUsage(), newOpenAIUpstreamStreamReadError(ErrOpenAIUpstreamStreamTruncated)
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
@@ -1062,6 +1073,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 			}
+			if !clientOutputStarted {
+				// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
+				return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, err)
+			}
+			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
 			return resultWithUsage(), newOpenAIUpstreamStreamReadError(err)
 		}
 		if frame, ok := parser.Finish(); ok {
@@ -1137,6 +1153,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if clientDisconnected || errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
 					return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
 				}
+				if !clientOutputStarted {
+					// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
+					return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, ev.err)
+				}
+				s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
 				return resultWithUsage(), newOpenAIUpstreamStreamReadError(ev.err)
 			}
 			lastDataAt = time.Now()
@@ -1165,7 +1186,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				zap.String("model", originalModel),
 				zap.Duration("interval", streamInterval),
 			)
-			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+			// 上游卡住不回数据与"流被截断"是同一类故障：尚未向客户端写出语义字节
+			// 时响应头未提交，透明换号重试是安全且必要的；已写出时同样要给账号记
+			// 一次降权，避免客户端重试继续命中同一个卡死的上游。
+			if !clientOutputStarted {
+				return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID,
+					fmt.Errorf("upstream stream data interval timeout after %s", streamInterval))
+			}
+			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+			return resultWithUsage(), newOpenAIUpstreamStreamReadError(
+				fmt.Errorf("upstream stream data interval timeout after %s", streamInterval))
 
 		case <-keepaliveCh:
 			if clientDisconnected {
@@ -1178,14 +1208,23 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				continue
 			}
 			// Send SSE comment as keepalive
+			//
+			// 必须登记这几个字节：注释帧不含任何语义输出，但会把响应头提交为 200。
+			// 不登记的话 openAIForwardMayFailover 的 writer-size 判定会把它当成
+			// "已经开始向客户端输出"，一次 keepalive 就永久关闭了本请求的换号窗口，
+			// 上游随后断流时只能把 502 抛给客户端（线上事故形态）。登记后
+			// OpenAICompactKeepaliveAdjustedWrittenSize 会把它们扣掉，换号判定恢复
+			// 到"有没有真正写出内容"这个本来语义。
 			writeStreamHeaders()
-			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
+			const keepaliveFrame = ":\n\n"
+			if _, err := fmt.Fprint(c.Writer, keepaliveFrame); err != nil {
 				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
 				clientDisconnected = true
 				continue
 			}
+			recordOpenAIStreamKeepaliveBytes(c, len(keepaliveFrame))
 			c.Writer.Flush()
 		}
 	}

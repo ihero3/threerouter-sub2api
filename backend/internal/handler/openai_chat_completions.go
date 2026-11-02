@@ -156,8 +156,23 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 
+	// clearSessionOnFailure 只在本次请求最终以失败收场时调用：解除该会话的粘性
+	// 绑定，让客户端的重试重新参与选号。会话哈希由请求内容派生，客户端重试通常
+	// 原样重发同一份 body，不清绑定的话重试会被粘性路径直接送回刚刚失败的上游
+	// 账号（换源的降权/冷却也可能因为跨实例而尚未生效）。成功的请求不清理绑定，
+	// 缓存亲和与成本都依赖它。
+	clearSessionOnFailure := func(reason string) {
+		h.gatewayService.ClearOpenAIStickySessionAfterStreamFailure(c.Request.Context(), apiKey.GroupID, sessionHash)
+		reqLog.Info("openai_chat_completions.sticky_session_cleared_on_failure",
+			zap.String("reason", reason),
+		)
+	}
+
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
+	// firstOutputSwitchCount 限制"响应已提交但只有非语义字节"时的换号次数，
+	// 与 /v1/responses 入口的 maxOpenAIFirstOutputTimeoutSwitches 对齐。
+	firstOutputSwitchCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -205,6 +220,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			} else {
+				clearSessionOnFailure("selection_exhausted")
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -247,7 +263,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		writerSizeBeforeForward := c.Writer.Size()
+		// 与 openAIForwardMayFailover / openAIForwardErrorAlreadyCommunicated 的
+		// 判定同口径：排除 compact/stream keepalive 注释字节，否则一次 SSE 注释
+		// keepalive 就会被误判成"已经向客户端输出"，把可换号的截断变成 502。
+		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -337,15 +356,33 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						)
 						return
 					}
-					if c.Writer.Size() != writerSizeBeforeForward {
+					// 与 /v1/responses 入口同口径（openAIForwardMayFailover）：只有
+					// 写出的字节不含语义输出时才允许换号。仅按 writer size 判定会把
+					// "只写了 SSE 注释 keepalive" 误判成已开始输出，从而拒绝换号、
+					// 直接给客户端 502——同一坏账号于是被客户端重试一次次命中。
+					if !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
+						clearSessionOnFailure("not_safe_to_failover_after_write")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
+					}
+					if c.Writer.Written() {
+						// 响应头已被非语义字节提交为 200：后续任何错误都必须以流内
+						// 错误帧收尾，不能再用 HTTP 状态码表达。
+						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						clearSessionOnFailure("failover_not_retryable")
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					// 已提交响应（仅注释字节）的换号机会只给一次：连续多次切换会把
+					// 单个请求拖成分钟级，客户端也无法区分是哪个上游出的问题。
+					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputSwitchCount) {
+						clearSessionOnFailure("first_output_switch_budget_exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -374,11 +411,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						clearSessionOnFailure("switch_budget_exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						clearSessionOnFailure("oauth429_failover_stopped")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -392,6 +431,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, nil), false, nil, err)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				if _, _, classified := service.OpenAIUpstreamStreamReadErrorDetails(err); classified {
+					// 上游流被截断、且已无法换号：本次请求对用户是失败的，解除绑定，
+					// 保证客户端重试时能重新选号而不是回到同一个坏源。
+					clearSessionOnFailure("stream_read_error")
+				}
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureOpenAIStreamReadErrorResponse(c, err, streamStarted)

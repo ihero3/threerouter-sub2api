@@ -292,6 +292,8 @@ type AffiliateRelationUser struct {
 	TicketFlag  bool `json:"ticket_flagged"`
 	// TotalRecharged 累计充值金额；> 0 表示充过钱（付费用户）。
 	TotalRecharged float64 `json:"total_recharged"`
+	// Recharged 派生标记：充过值（含历史充值记录，口径同 users.total_recharged + redeem_codes）。
+	Recharged bool `json:"recharged"`
 }
 
 // AffiliateRelationNode 关系图上的一个节点。
@@ -313,6 +315,8 @@ type AffiliateRelationNode struct {
 	// LookedCount / TicketFlag 管理员人工跟进标记（见迁移 246），仅下游后代查询返回。
 	LookedCount int  `json:"looked_count"`
 	TicketFlag  bool `json:"ticket_flagged"`
+	// Recharged 派生标记：充过值（含历史充值记录），便于前端直接展示。
+	Recharged bool `json:"recharged"`
 }
 
 // AffiliateInviteRelation 一个用户的完整邀请关系（上游链路 + 下游树）。

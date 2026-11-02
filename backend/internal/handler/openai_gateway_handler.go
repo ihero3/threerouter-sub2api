@@ -603,6 +603,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
 
+	// clearSessionOnFailure 只在请求最终失败时解除会话粘性绑定：客户端重试通常原样
+	// 重发同一份 body（会话哈希由内容派生），不清绑定就会把重试直接送回刚刚断流的
+	// 同一个上游账号。成功的请求不清理——缓存亲和与成本都依赖绑定。
+	clearSessionOnFailure := func(reason string) {
+		h.gatewayService.ClearOpenAIStickySessionAfterStreamFailure(c.Request.Context(), apiKey.GroupID, sessionHash)
+		reqLog.Info("openai.sticky_session_cleared_on_failure",
+			zap.String("reason", reason),
+		)
+	}
+
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
@@ -852,6 +862,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					}
 					if !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
+						clearSessionOnFailure("not_safe_to_failover_after_write")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -864,10 +875,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						clearSessionOnFailure("failover_not_retryable")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
+						clearSessionOnFailure("first_output_switch_budget_exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -901,11 +914,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.gatewayService.ClearOpenAIStickySessionOnUnsupportedFeature(c.Request.Context(), apiKey.GroupID, sessionHash)
 					}
 					if switchCount >= maxAccountSwitches {
+						clearSessionOnFailure("switch_budget_exhausted")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						clearSessionOnFailure("oauth429_failover_stopped")
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1236,6 +1251,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	// clearSessionOnFailure 只在请求最终失败时解除会话粘性绑定：客户端重试通常原样
+	// 重发同一份 body（会话哈希由内容派生），不清绑定就会把重试直接送回刚刚断流的
+	// 同一个上游账号。成功的请求不清理——缓存亲和与成本都依赖绑定。
+	clearSessionOnFailure := func(reason string) {
+		h.gatewayService.ClearOpenAIStickySessionAfterStreamFailure(c.Request.Context(), apiKey.GroupID, sessionHash)
+		reqLog.Info("openai_messages.sticky_session_cleared_on_failure",
+			zap.String("reason", reason),
+		)
+	}
+
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	profitVetoCount := 0
@@ -1291,6 +1316,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 			} else {
+				clearSessionOnFailure("selection_exhausted")
 				if lastFailoverErr != nil {
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -1347,7 +1373,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
-		writerSizeBeforeForward := c.Writer.Size()
+		// 用扣除非语义心跳字节的口径快照（与 /v1/responses 主循环一致）：上游只要先
+		// 静默一个心跳周期，本路径就会写出 event: ping 帧，若按裸 writer size 判断，
+		// 一帧心跳就会永久锁死换号预算，把本可自愈的上游截断变成 502——线上事故：
+		// 客户端重试 5 次全部被调度到同一个坏账号。
+		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -1441,8 +1471,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						)
 						return
 					}
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
+						clearSessionOnFailure("not_safe_to_failover_after_write")
 						h.handleAnthropicFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -1450,6 +1481,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
+						clearSessionOnFailure("failover_not_retryable")
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1483,11 +1515,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.gatewayService.ClearOpenAIStickySessionOnUnsupportedFeature(c.Request.Context(), apiKey.GroupID, sessionHash)
 					}
 					if switchCount >= maxAccountSwitches {
+						clearSessionOnFailure("switch_budget_exhausted")
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						clearSessionOnFailure("oauth429_failover_stopped")
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}

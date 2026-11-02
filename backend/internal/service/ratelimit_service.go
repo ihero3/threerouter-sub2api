@@ -2900,7 +2900,45 @@ const (
 
 	// 出现在 TempUnschedState.MatchedKeyword 里，前端/日志可据此区分触发原因。
 	streamTruncationMatchedKeyword = "upstream_stream_truncated"
+
+	// clientVisibleStreamTruncationCooldown 是"客户端已经看到语义输出后才断流"
+	// 形态的立即冷却时长。
+	//
+	// 这一形态与"还没写出任何内容就被截断"有本质区别：用户已经看到被截断的回答，
+	// 客户端几乎必然立刻重试；而重试请求通常带着完全相同的内容指纹（会话哈希由
+	// 内容派生），调度层会优先命中同一条粘性绑定，于是同一个坏上游被反复命中——
+	// 线上表现为"用户重试 5 次，5 次都落在同一个源上全部失败"。
+	//
+	// 所以这种形态不再等第二次命中：单次可见截断就足以证明该账号此刻不能承接这条
+	// 请求，而客户端重试发生在秒级，2 次/5 分钟的窗口阈值赶不上它。冷却只做进程内
+	// runtime block（不依赖 Redis/DB，降权通道本身故障时依然生效），常规的
+	// 2 次窗口降权（DB + 集群可见）照常叠加。
+	clientVisibleStreamTruncationCooldown = 60 * time.Second
+	clientVisibleStreamTruncationReason   = "upstream_stream_truncated_client_visible"
 )
+
+// PenalizeClientVisibleStreamTruncation 处理"语义输出已经下发给客户端、随后上游断流"
+// 的形态：先立即把账号移出本进程调度（客户端秒级重试会落到其他上游源），再走常规的
+// 账号级截断降权（5 分钟 2 次 → 2 分钟集群级临时不可调度）。
+func (s *RateLimitService) PenalizeClientVisibleStreamTruncation(ctx context.Context, account *Account, model string) {
+	if s == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	// 1) 进程内立即冷却：不依赖 Redis/DB，降权通道故障时也生效。
+	if s.runtimeBlocker != nil {
+		s.runtimeBlocker.BlockAccountScheduling(
+			account,
+			time.Now().Add(clientVisibleStreamTruncationCooldown),
+			clientVisibleStreamTruncationReason,
+		)
+	}
+	// 2) 集群级立即冷却：单次阈值直接落库（SetTempUnschedulable 只延长不缩短，
+	//    不会把已有的更长冷却改短），让其它实例承接的重试同样换源。落库失败时
+	//    第 1 步的进程内冷却仍然有效。
+	s.triggerStreamTruncationTempUnschedFor(ctx, account, model, 1, clientVisibleStreamTruncationCooldown, 1)
+	// 3) 常规窗口计数照常累加：短时间内反复可见截断会升级成 2 分钟降权。
+	s.HandleStreamTruncation(ctx, account, model)
+}
 
 // HandleStreamTruncation 处理"上游 SSE 流在任何终止信号（[DONE]/usage/finish_reason）
 // 出现之前被切断"。与 HandleStreamTimeout 的差别：超时是"长时间无数据"，截断是
@@ -2937,11 +2975,27 @@ func (s *RateLimitService) HandleStreamTruncation(ctx context.Context, account *
 
 // triggerStreamTruncationTempUnsched 把账号临时标记为不可调度，并清零计数。
 func (s *RateLimitService) triggerStreamTruncationTempUnsched(ctx context.Context, account *Account, model string, count int64) bool {
+	return s.triggerStreamTruncationTempUnschedFor(
+		ctx, account, model, count,
+		time.Duration(streamTruncationTempUnschedMinutes)*time.Minute,
+		streamTruncationCountThreshold,
+	)
+}
+
+// triggerStreamTruncationTempUnschedFor 是带时长/阈值参数的实现：窗口降权用 2 分钟
+// + 2 次阈值，"客户端已看到截断"的立即降权用 60 秒 + 1 次阈值。
+func (s *RateLimitService) triggerStreamTruncationTempUnschedFor(ctx context.Context, account *Account, model string, count int64, duration time.Duration, threshold int) bool {
 	if s.accountRepo == nil {
 		return false
 	}
+	if duration <= 0 {
+		duration = time.Duration(streamTruncationTempUnschedMinutes) * time.Minute
+	}
+	if threshold <= 0 {
+		threshold = streamTruncationCountThreshold
+	}
 	now := time.Now()
-	until := now.Add(time.Duration(streamTruncationTempUnschedMinutes) * time.Minute)
+	until := now.Add(duration)
 
 	state := &TempUnschedState{
 		UntilUnix:            until.Unix(),
@@ -2951,7 +3005,7 @@ func (s *RateLimitService) triggerStreamTruncationTempUnsched(ctx context.Contex
 		RuleIndex:            -1, // 系统级规则，不是用户自定义规则
 		ErrorMessage:         "Upstream stream truncated before terminal chunk for model: " + model,
 		TriggerCount:         count,
-		TriggerThreshold:     streamTruncationCountThreshold,
+		TriggerThreshold:     threshold,
 		TriggerWindowMinutes: streamTruncationCountWindowMinutes,
 	}
 	reason := ""

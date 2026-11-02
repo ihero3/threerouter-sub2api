@@ -230,3 +230,17 @@ func (s *OpenAIGatewayService) ClearOpenAIStickySessionOnUnsupportedFeature(ctx 
 	}
 	_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 }
+
+// ClearOpenAIStickySessionAfterStreamFailure 在"本次请求因上游流式响应异常中断而
+// 失败"时清除会话粘性绑定：会话哈希由请求内容派生，客户端重试通常原样重发同一
+// 份 body，粘性路径会把重试直接送回刚刚断流的同一个上游账号——即使该账号因为
+// 其它原因没被降权。清掉绑定后，重试请求重新参与选号，才能换到别的可用源。
+//
+// 只在请求最终以失败收场时调用；成功的请求必须保留绑定（缓存亲和与成本都依赖它）。
+func (s *OpenAIGatewayService) ClearOpenAIStickySessionAfterStreamFailure(ctx context.Context, groupID *int64, sessionHash string) {
+	if s == nil || strings.TrimSpace(sessionHash) == "" {
+		return
+	}
+	// 清绑定失败不影响主流程（重试仍可能被账号级降权挡住），只记日志。
+	_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+}

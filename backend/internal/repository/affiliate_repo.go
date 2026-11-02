@@ -876,6 +876,7 @@ func (r *affiliateRepository) GetInviteRelations(ctx context.Context, userID int
 	)
 	var userDelAt sql.NullTime
 	var userLastAt sql.NullTime
+	var userRecharged, inviterRecharged sql.NullBool
 	rows, err := client.QueryContext(ctx, `
 SELECT u.id,
        COALESCE(u.email, ''),
@@ -886,6 +887,8 @@ SELECT u.id,
        u.looked_count,
        u.ticket_flag,
        u.total_recharged::double precision,
+       (COALESCE(u.total_recharged, 0) > 0
+        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged,
        ua.inviter_id,
        ua.created_at,
        iu.email,
@@ -894,7 +897,9 @@ SELECT u.id,
        (SELECT MAX(il.created_at) FROM usage_logs il WHERE il.user_id = iu.id),
        iu.deleted_at,
        iu.looked_count,
-       iu.ticket_flag
+       iu.ticket_flag,
+       (COALESCE(iu.total_recharged, 0) > 0
+        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = iu.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS inviter_recharged
 FROM users u
 LEFT JOIN user_affiliates ua ON ua.user_id = u.id
 LEFT JOIN users iu ON iu.id = ua.inviter_id
@@ -907,10 +912,13 @@ LIMIT 1`, userID)
 	if found {
 		err = rows.Scan(
 			&rel.User.UserID, &rel.User.Email, &rel.User.Username, &rel.User.CreatedAt, &userLastAt, &userDelAt,
-			&rel.User.LookedCount, &rel.User.TicketFlag, &rel.User.TotalRecharged,
+			&rel.User.LookedCount, &rel.User.TicketFlag, &rel.User.TotalRecharged, &userRecharged,
 			&inviterID, &boundAt, &inviterEmail, &inviterName, &inviterJoined, &inviterLastAt, &inviterDelAt,
-			&inviterLooked, &inviterTicket,
+			&inviterLooked, &inviterTicket, &inviterRecharged,
 		)
+		if userRecharged.Valid {
+			rel.User.Recharged = userRecharged.Bool
+		}
 	}
 	scanErr := rows.Err()
 	_ = rows.Close()
@@ -955,6 +963,7 @@ LIMIT 1`, userID)
 			DeletedAt:   delPtr,
 			LookedCount: int(inviterLooked.Int64),
 			TicketFlag:  inviterTicket.Bool,
+			Recharged:   inviterRecharged.Bool,
 		}
 	}
 
@@ -976,7 +985,11 @@ SELECT u.id,
        u.created_at,
        (SELECT MAX(ul.created_at) FROM usage_logs ul WHERE ul.user_id = u.id),
        u.deleted_at,
-       up.depth
+       up.depth,
+       u.looked_count,
+       u.ticket_flag,
+       (COALESCE(u.total_recharged, 0) > 0
+        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged
 FROM up
 JOIN users u ON u.id = up.user_id
 ORDER BY up.depth DESC`, userID, maxDepth)
@@ -986,7 +999,7 @@ ORDER BY up.depth DESC`, userID, maxDepth)
 	for ancestorRows.Next() {
 		var node service.AffiliateRelationNode
 		var delAt, lastAt sql.NullTime
-		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth); err != nil {
+		if err := ancestorRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.LookedCount, &node.TicketFlag, &node.Recharged); err != nil {
 			_ = ancestorRows.Close()
 			return nil, err
 		}
@@ -1035,7 +1048,9 @@ SELECT u.id,
        d.depth,
        COALESCE(r.rebate_total, 0)::double precision,
        u.looked_count,
-       u.ticket_flag
+       u.ticket_flag,
+       (COALESCE(u.total_recharged, 0) > 0
+        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged
 FROM down d
 JOIN users u ON u.id = d.user_id
 LEFT JOIN (
@@ -1053,7 +1068,7 @@ LIMIT $3`, userID, maxDepth, affiliateRelationDescendantRowCap)
 	for descendantRows.Next() {
 		var node service.AffiliateRelationNode
 		var delAt, lastAt sql.NullTime
-		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.RebateAmount, &node.LookedCount, &node.TicketFlag); err != nil {
+		if err := descendantRows.Scan(&node.UserID, &node.Email, &node.Username, &node.CreatedAt, &lastAt, &delAt, &node.Depth, &node.RebateAmount, &node.LookedCount, &node.TicketFlag, &node.Recharged); err != nil {
 			_ = descendantRows.Close()
 			return nil, err
 		}

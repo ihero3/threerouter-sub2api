@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -134,7 +135,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 5. Convert response
 	if clientStream {
-		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsAnthropic(c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -177,6 +178,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	c *gin.Context,
+	account *Account,
 	resp *http.Response,
 	originalModel string,
 	billingModel string,
@@ -190,6 +192,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 
 	anthropicState := apicompat.NewChatCompletionsToAnthropicStreamState(originalModel)
 	clientDisconnected := false
+	clientOutputStarted := false
 
 	// 与 responses 兄弟不同：客户端断开后仍继续做事件转换（喂 anthropicState），
 	// 仅跳过写出，保证 finalize 阶段的 usage 汇总不受断开影响。
@@ -209,6 +212,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				clientDisconnected = true
 				break
 			}
+			clientOutputStarted = true
 		}
 		if !clientDisconnected && len(anthropicEvents) > 0 {
 			c.Writer.Flush()
@@ -222,7 +226,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		// Broken upstream read: skip finalization so no synthetic message_stop
 		// masks the truncation, and surface the error to flag usage incomplete
 		// (mirrors forwardResponsesViaRawChatCompletions).
-		return &OpenAIForwardResult{
+		result := &OpenAIForwardResult{
 			RequestID:                   requestID,
 			Usage:                       usage,
 			Model:                       originalModel,
@@ -235,7 +239,24 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
 			ClientDisconnect:            clientDisconnected,
-		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		}
+		// 客户端断开/取消、本地行长限制（bufio.ErrTooLong）、响应体超限都与上游账号
+		// 健康无关：保持既有直返错误语义，不换号也不降权。
+		if clientDisconnected || errors.Is(scan.Err, bufio.ErrTooLong) ||
+			!shouldClassifyOpenAIUpstreamStreamReadError(scan.Err, ginRequestContext(c)) {
+			return result, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+		}
+		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+			// 尚未写出语义内容：响应头最多只被心跳提交，透明换号是安全的。此前这里
+			// 一律直返普通错误，于是"上游 200 + 半截 SSE"的同一个坏账号会被客户端
+			// 的重试反复命中（线上事故：重试 5 次全部命中同一个上游源）。
+			return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, scan.Err)
+		}
+		// 已写出语义内容：换号会把两个上游的回答拼进同一条流，只能返回稳定的截断
+		// 错误码；但必须降权（用户已看到半截回答，客户端几乎必然立刻重试，且重试
+		// 通常被粘性会话绑回同一账号），否则客户端重试会继续被调度到同一个坏账号。
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		return result, newOpenAIUpstreamStreamReadError(scan.Err)
 	}
 
 	// Finalize: close open blocks + emit message_delta/message_stop.

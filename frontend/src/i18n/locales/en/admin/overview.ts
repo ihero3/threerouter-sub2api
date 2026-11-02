@@ -428,7 +428,8 @@ export default {
           lookedButton: 'Viewed',
           looked: 'Viewed +{count}',
           ticketButton: 'Has ticket',
-          ticketUnmark: 'Clear ticket mark'
+          ticketUnmark: 'Clear ticket mark',
+          recharged: 'Recharged'
         },
         columns: {
           depth: 'Depth',
