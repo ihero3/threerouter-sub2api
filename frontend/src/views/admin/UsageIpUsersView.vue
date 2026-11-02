@@ -56,6 +56,13 @@
                     {{ row.email || row.username || '-' }}
                   </button>
                   <span v-if="row.username" class="ml-1 text-xs text-gray-500 dark:text-dark-400">{{ row.username }}</span>
+                  <!-- 用户属性标记：已删除 / 充过值 / 看过次数 / 提过工单，仅管理端展示 -->
+                  <span
+                    v-if="userMarkLabels(row).length > 0"
+                    class="ml-1 text-xs text-amber-600 dark:text-amber-400"
+                  >
+                    （{{ userMarkLabels(row).join('、') }}）
+                  </span>
                 </td>
                 <td class="px-4 py-2">
                   <button
@@ -215,6 +222,24 @@ const handlePageSizeChange = (size: number) => {
   pagination.page_size = size
   pagination.page = 1
   load()
+}
+
+// 用户名称后面的属性标记：已删除、充过值、看过次数、提过工单，用顿号分隔。
+const userMarkLabels = (row: UsageIPUser): string[] => {
+  const labels: string[] = []
+  if (row.deleted) {
+    labels.push(t('admin.usage.ipUsers.marks.deleted'))
+  }
+  if (row.recharged) {
+    labels.push(t('admin.usage.ipUsers.marks.recharged'))
+  }
+  if (row.looked_count > 0) {
+    labels.push(t('admin.usage.ipUsers.marks.looked', { count: row.looked_count }))
+  }
+  if (row.ticket_flagged) {
+    labels.push(t('admin.usage.ipUsers.marks.ticket'))
+  }
+  return labels
 }
 
 const goBack = () => {

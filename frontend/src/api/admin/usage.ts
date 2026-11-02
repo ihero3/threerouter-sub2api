@@ -72,6 +72,10 @@ export interface UsageIPUser {
   username: string
   created_at: string
   last_used_at?: string | null
+  deleted: boolean
+  recharged: boolean
+  looked_count: number
+  ticket_flagged: boolean
 }
 
 export interface CreateUsageCleanupTaskRequest {

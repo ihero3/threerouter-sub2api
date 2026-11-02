@@ -45,6 +45,9 @@ type User struct {
 	// 仅用于管理端展示，不参与鉴权、限流或返利结算。
 	LookedCount  int
 	TicketFlag   bool
+	// Recharged 表示「充过值」：累计充值金额 > 0，或历史上存在成功的正数充值记录。
+	// 由仓储层在列表查询时按充值记录判定，仅用于管理端标注与筛选，不参与业务逻辑。
+	Recharged    bool
 	LastLoginAt  *time.Time
 	LastActiveAt *time.Time
 	LastUsedAt   *time.Time

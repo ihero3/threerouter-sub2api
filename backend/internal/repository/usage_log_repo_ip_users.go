@@ -39,7 +39,13 @@ SELECT u.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        u.created_at,
-       (SELECT MAX(l.created_at) FROM usage_logs l WHERE l.user_id = u.id) AS last_used_at
+       (SELECT MAX(l.created_at) FROM usage_logs l WHERE l.user_id = u.id) AS last_used_at,
+       u.deleted_at IS NOT NULL AS deleted,
+       (COALESCE(u.total_recharged, 0) > 0
+        OR EXISTS (SELECT 1 FROM redeem_codes rc
+                   WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged,
+       u.looked_count,
+       u.ticket_flag
 FROM users u
 WHERE ` + where + `
 ORDER BY last_used_at DESC NULLS LAST, u.id DESC
@@ -57,7 +63,8 @@ LIMIT $2 OFFSET $3`
 			item       service.UsageIPUser
 			lastUsedAt sql.NullTime
 		)
-		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &item.CreatedAt, &lastUsedAt); err != nil {
+		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &item.CreatedAt, &lastUsedAt,
+			&item.Deleted, &item.Recharged, &item.LookedCount, &item.TicketFlagged); err != nil {
 			return nil, nil, err
 		}
 		if lastUsedAt.Valid {

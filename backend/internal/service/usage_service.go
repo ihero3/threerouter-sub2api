@@ -61,6 +61,13 @@ type UsageIPUser struct {
 	Username   string     `json:"username"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	// 以下属性仅用于管理端列表展示：
+	// Deleted 用户已被删除；Recharged 充过值（含管理员调整）；
+	// LookedCount 管理员「看过」次数；TicketFlagged 提过工单标记。
+	Deleted       bool `json:"deleted"`
+	Recharged     bool `json:"recharged"`
+	LookedCount   int  `json:"looked_count"`
+	TicketFlagged bool `json:"ticket_flagged"`
 }
 
 // UsageIPUsersRepository 是使用日志仓储为「按 IP 反查用户」提供的窄接口，

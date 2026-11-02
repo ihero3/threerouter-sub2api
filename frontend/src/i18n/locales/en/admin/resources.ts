@@ -568,6 +568,12 @@ export default {
           userId: 'User ID',
           lastUsedAt: 'Last Used',
           registeredAt: 'Registered At'
+        },
+        marks: {
+          deleted: 'Deleted',
+          recharged: 'Recharged',
+          looked: 'Viewed +{count}',
+          ticket: 'Has ticket'
         }
       },
       tokenRanking: {

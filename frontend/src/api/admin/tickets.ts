@@ -15,6 +15,8 @@ export interface AdminTicketListParams {
   status?: TicketStatus | ''
   category?: TicketCategory | ''
   search?: string
+  sort_by?: 'created_at' | 'updated_at'
+  sort_order?: 'asc' | 'desc'
 }
 
 export async function list(params: AdminTicketListParams = {}): Promise<BasePaginationResponse<Ticket>> {

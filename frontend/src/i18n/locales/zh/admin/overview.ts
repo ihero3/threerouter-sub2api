@@ -577,8 +577,10 @@ export default {
         tooltipFallback: '账号存在风险，请人工核查'
       },
       marks: {
+        filterLabel: '标注',
         looked: '看过+{count}',
-        ticket: '提过工单'
+        ticket: '提过工单',
+        recharged: '充过值'
       },
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       searchPlaceholder: '用户 ID/邮箱/用户名/备注/API Key 模糊搜索...',

@@ -80,6 +80,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		RiskReasons:          u.RiskReasons,
 		LookedCount:          u.LookedCount,
 		TicketFlag:           u.TicketFlag,
+		Recharged:            u.Recharged,
 	}
 }
 

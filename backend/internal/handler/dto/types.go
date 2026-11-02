@@ -63,6 +63,8 @@ type AdminUser struct {
 	// 看过次数只增不减；提过工单为可切换的布尔标记。
 	LookedCount int  `json:"looked_count"`
 	TicketFlag  bool `json:"ticket_flagged"`
+	// Recharged 为「充过值」标注：存在成功的正数充值记录即为 true。
+	Recharged bool `json:"recharged"`
 }
 
 type APIKey struct {

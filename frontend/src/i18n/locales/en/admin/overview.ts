@@ -577,8 +577,10 @@ export default {
         tooltipFallback: 'Account risk detected, please review manually'
       },
       marks: {
+        filterLabel: 'Marks',
         looked: 'Viewed +{count}',
-        ticket: 'Has ticket'
+        ticket: 'Has ticket',
+        recharged: 'Recharged'
       },
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",
       searchPlaceholder: 'Search by user ID, email, username, notes, or API key...',

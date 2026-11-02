@@ -123,6 +123,7 @@ type BindUserAuthIdentityChannelRequest struct {
 //   - group_name: fuzzy filter by allowed group name
 //   - api_key_group_id: filter by the exact group bound to the user's API keys
 //   - risk_level: filter by invite risk mark (suspect | abnormal)
+//   - mark: filter by admin mark (suspect | abnormal | recharged | ticket)
 func (h *UserHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 
@@ -133,12 +134,17 @@ func (h *UserHandler) List(c *gin.Context) {
 		search = string(runes[:100])
 	}
 
+	mark := parseUserMarkFilter(c.Query("mark"))
+	if mark == "" {
+		// 兼容旧参数：前端历史上用 risk_level 传风险筛选。
+		mark = parseRiskLevelFilter(c.Query("risk_level"))
+	}
 	filters := service.UserListFilters{
 		Status:     c.Query("status"),
 		Role:       c.Query("role"),
 		Search:     search,
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
-		RiskLevel:  parseRiskLevelFilter(c.Query("risk_level")),
+		Mark:       mark,
 		Attributes: parseAttributeFilters(c),
 	}
 	if raw := strings.TrimSpace(c.Query("api_key_group_id")); raw != "" {
@@ -190,6 +196,17 @@ func (h *UserHandler) List(c *gin.Context) {
 func parseRiskLevelFilter(raw string) string {
 	switch strings.TrimSpace(raw) {
 	case "suspect", "abnormal":
+		return strings.TrimSpace(raw)
+	default:
+		return ""
+	}
+}
+
+// parseUserMarkFilter 校验管理端「标注」筛选项，非法值一律按"全部"处理。
+func parseUserMarkFilter(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case service.UserMarkSuspect, service.UserMarkAbnormal,
+		service.UserMarkRecharged, service.UserMarkTicket:
 		return strings.TrimSpace(raw)
 	default:
 		return ""

@@ -161,6 +161,8 @@ export interface AdminUser extends User {
   // looked_count 为「看过」次数（只增不减），ticket_flagged 为「提过工单」开关。
   looked_count?: number
   ticket_flagged?: boolean
+  // 「充过值」标注：存在成功的正数充值记录即为 true（列表接口计算）。
+  recharged?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }

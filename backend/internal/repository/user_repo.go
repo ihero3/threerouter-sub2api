@@ -613,8 +613,15 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		))
 	}
 
-	if filters.RiskLevel != "" {
-		q = q.Where(dbuser.RiskLevelEQ(filters.RiskLevel))
+	if filters.Mark != "" {
+		switch filters.Mark {
+		case service.UserMarkSuspect, service.UserMarkAbnormal:
+			q = q.Where(dbuser.RiskLevelEQ(filters.Mark))
+		case service.UserMarkRecharged:
+			q = q.Where(userRechargedPredicate())
+		case service.UserMarkTicket:
+			q = q.Where(dbuser.TicketFlagEQ(true))
+		}
 	}
 
 	// If attribute filters are specified, we need to filter by user IDs first
@@ -694,7 +701,61 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		}
 	}
 
+	// 「充过值」标注：users.total_recharged 只统计迁移上线后的充值，
+	// 再叠加历史充值记录，避免老用户被误判为未充值。
+	rechargedByUser, err := r.loadRechargedUserIDs(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		u.Recharged = u.TotalRecharged > 0 || rechargedByUser[id]
+	}
+
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
+}
+
+// loadRechargedUserIDs 返回给定用户中「存在成功正数充值记录」的集合。
+// 口径与余额历史弹窗的累计充值一致：redeem_codes 中 balance / admin_balance 且 value > 0。
+func (r *userRepository) loadRechargedUserIDs(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	if client == nil {
+		return out, nil
+	}
+	rows, err := client.QueryContext(ctx, `
+SELECT DISTINCT used_by
+FROM redeem_codes
+WHERE used_by = ANY($1) AND value > 0 AND type IN ('balance', 'admin_balance')`, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// userRechargedPredicate 匹配「充过值」的用户：
+// 累计充值 > 0，或 redeem_codes 中存在成功的正数充值记录。
+func userRechargedPredicate() predicate.User {
+	return predicate.User(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("(COALESCE(").
+				Ident(s.C(dbuser.FieldTotalRecharged)).
+				WriteString(", 0) > 0 OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = ").
+				Ident(s.C(dbuser.FieldID)).
+				WriteString(" AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance')))")
+		}))
+	})
 }
 
 func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

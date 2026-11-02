@@ -48,7 +48,10 @@
                 :title="sidebarCollapsed ? item.label : undefined"
                 @click="handleGroupClick(item)"
               >
-                <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                <span class="relative flex-shrink-0">
+                  <component :is="item.icon" class="h-5 w-5" />
+                  <span v-if="hasNavNotice(item)" class="sidebar-notice-dot" aria-hidden="true"></span>
+                </span>
                 <span
                   class="sidebar-label sidebar-label-flex"
                   :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
@@ -94,8 +97,11 @@
               "
               @click="handleMenuItemClick(item.path)"
             >
-              <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
-              <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+              <span class="relative flex-shrink-0">
+                <span v-if="item.iconSvg" class="h-5 w-5 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+                <component v-else :is="item.icon" class="h-5 w-5" />
+                <span v-if="hasNavNotice(item)" class="sidebar-notice-dot" aria-hidden="true"></span>
+              </span>
               <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
             </router-link>
           </template>
@@ -296,6 +302,11 @@ import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import adminTicketsAPI from '@/api/admin/tickets'
+import adminPaymentAPI from '@/api/admin/payment'
+
+/** 侧边栏红点提醒的菜单标识：新订单 / 新工单。 */
+type NavNoticeKey = 'orders' | 'tickets'
 
 interface NavItem {
   path: string
@@ -316,6 +327,8 @@ interface NavItem {
    * 开关切换时菜单自动更新。
    */
   featureFlag?: () => boolean | undefined
+  /** 有新记录时挂红点提醒的标识（仅管理端使用）。 */
+  notice?: NavNoticeKey
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -982,13 +995,14 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       featureFlag: flagAdminPayment,
+      notice: 'orders',
       children: [
         { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
         { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
-    { path: '/admin/tickets', label: t('nav.ticketManagement'), icon: TicketIcon, hideInSimpleMode: true },
+    { path: '/admin/tickets', label: t('nav.ticketManagement'), icon: TicketIcon, hideInSimpleMode: true, notice: 'tickets' },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/media-tasks', label: t('admin.mediaTasks.title'), icon: VideoIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
@@ -1013,6 +1027,101 @@ const adminNavItems = computed((): NavItem[] => {
   }
   return visible
 })
+
+// ===== 新订单 / 新工单红点提醒 =====
+// 只要「有新记录」的红点，不做精确计数：列表接口按 created_at 倒序，取第一条即最新记录，
+// 与本地记录的上次已看时间比较即可，不用新增后端接口。
+// 基准存的是「最新记录的 created_at」而不是浏览器当前时间，避免前后端时钟偏差导致误报。
+const NAV_NOTICE_POLL_INTERVAL = 60 * 1000
+const unseenNavNotices = ref<Record<NavNoticeKey, boolean>>({ orders: false, tickets: false })
+let navNoticeTimer: ReturnType<typeof setInterval> | null = null
+
+function navNoticeStorageKey(key: NavNoticeKey): string {
+  return `nav-notice-seen:${authStore.user?.id ?? 'anon'}:${key}`
+}
+
+function hasNavNotice(item: NavItem): boolean {
+  return !!item.notice && unseenNavNotices.value[item.notice]
+}
+
+function parseTimestamp(value?: string | null): number {
+  const ts = value ? Date.parse(value) : NaN
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function isViewingOrders(): boolean {
+  // 只有订单列表页算「看过了」；支付看板/套餐页不展示最新订单，不能清红点。
+  return route.path === '/admin/orders'
+}
+
+function isViewingTickets(): boolean {
+  return route.path === '/admin/tickets'
+}
+
+// 返回 true 表示出现了比上次已看更新的记录。
+function hasNewSinceSeen(key: NavNoticeKey, latestAt: number): boolean {
+  const storageKey = navNoticeStorageKey(key)
+  const raw = localStorage.getItem(storageKey)
+  // 首次没有基准：把当前最新记录视为已看，避免给历史数据误报红点。
+  if (raw === null) {
+    localStorage.setItem(storageKey, String(latestAt))
+    return false
+  }
+  return latestAt > (Number(raw) || 0)
+}
+
+function markNavNoticeSeen(key: NavNoticeKey, latestAt: number) {
+  localStorage.setItem(navNoticeStorageKey(key), String(latestAt))
+}
+
+async function refreshOrdersNotice() {
+  if (!flagAdminPayment()) {
+    unseenNavNotices.value.orders = false
+    return
+  }
+  let latestAt = 0
+  try {
+    const res = await adminPaymentAPI.getOrders({ page: 1, page_size: 1 })
+    latestAt = parseTimestamp(res.data?.items?.[0]?.created_at)
+  } catch {
+    unseenNavNotices.value.orders = false
+    return
+  }
+  // 正在看订单列表：把最新记录当成已看。
+  if (isViewingOrders()) {
+    markNavNoticeSeen('orders', latestAt)
+    unseenNavNotices.value.orders = false
+    return
+  }
+  unseenNavNotices.value.orders = hasNewSinceSeen('orders', latestAt)
+}
+
+async function refreshTicketsNotice() {
+  let latestAt = 0
+  try {
+    // 工单列表默认按 updated_at 排序，这里必须显式按创建时间，否则老工单有人回复也会被当成「新工单」。
+    const res = await adminTicketsAPI.list({ page: 1, page_size: 1, sort_by: 'created_at', sort_order: 'desc' })
+    latestAt = parseTimestamp(res.items?.[0]?.created_at)
+  } catch {
+    unseenNavNotices.value.tickets = false
+    return
+  }
+  if (isViewingTickets()) {
+    markNavNoticeSeen('tickets', latestAt)
+    unseenNavNotices.value.tickets = false
+    return
+  }
+  unseenNavNotices.value.tickets = hasNewSinceSeen('tickets', latestAt)
+}
+
+function refreshNavNotices() {
+  if (!isAdmin.value || authStore.isSimpleMode) {
+    unseenNavNotices.value = { orders: false, tickets: false }
+    return
+  }
+  void refreshOrdersNotice()
+  void refreshTicketsNotice()
+}
 
 function toggleSidebar() {
   appStore.toggleSidebar()
@@ -1118,11 +1227,34 @@ watch(
   { immediate: true }
 )
 
+// 新订单/新工单红点：登录状态或支付开关变化时先刷新一次，其余时间按 60s 轮询。
+// 进入对应页面时立刻清掉红点，不用等下一次轮询。
+watch(
+  [isAdmin, () => adminSettingsStore.paymentEnabled],
+  () => refreshNavNotices(),
+  { immediate: true }
+)
+
+watch(
+  () => route.path,
+  () => {
+    if (isViewingOrders()) {
+      unseenNavNotices.value.orders = false
+      void refreshOrdersNotice()
+    } else if (isViewingTickets()) {
+      unseenNavNotices.value.tickets = false
+      void refreshTicketsNotice()
+    }
+  }
+)
+
 onMounted(() => {
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
   }
+  refreshNavNotices()
+  navNoticeTimer = setInterval(refreshNavNotices, NAV_NOTICE_POLL_INTERVAL)
   // Restore sidebar scroll position after route change re-mounts the component
   if (appStore.sidebarScrollTop > 0 && sidebarNavRef.value) {
     void nextTick(() => {
@@ -1134,6 +1266,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (navNoticeTimer) {
+    clearInterval(navNoticeTimer)
+    navNoticeTimer = null
+  }
   if (sidebarNavRef.value) {
     appStore.sidebarScrollTop = sidebarNavRef.value.scrollTop
   }
@@ -1260,6 +1396,23 @@ onBeforeUnmount(() => {
 /* Custom SVG icon in sidebar: constrain size without overriding uploaded SVG colors */
 .sidebar-svg-icon {
   color: currentColor;
+}
+
+/* 新记录红点：挂在菜单图标右上角，折叠态下也可见 */
+.sidebar-notice-dot {
+  position: absolute;
+  top: -0.125rem;
+  right: -0.25rem;
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
+  background-color: rgb(239 68 68);
+  box-shadow: 0 0 0 2px rgb(255 255 255);
+  pointer-events: none;
+}
+
+.dark .sidebar-notice-dot {
+  box-shadow: 0 0 0 2px rgb(17 24 39);
 }
 
 .sidebar-svg-icon :deep(svg) {

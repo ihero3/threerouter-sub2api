@@ -61,14 +61,16 @@
               />
             </div>
 
-            <!-- Risk Filter: 用户异常筛选（全部/账号存疑/账号异常），始终显示 -->
+            <!-- Mark Filter: 按管理端标注筛选（标注/账号存疑/账号异常/充过值/提过工单），始终显示 -->
             <div class="w-full sm:w-36">
               <Select
-                v-model="filters.risk"
+                v-model="filters.mark"
                 :options="[
-                  { value: '', label: t('admin.users.risk.level.all') },
+                  { value: '', label: t('admin.users.marks.filterLabel') },
                   { value: 'suspect', label: t('admin.users.risk.level.suspect') },
-                  { value: 'abnormal', label: t('admin.users.risk.level.abnormal') }
+                  { value: 'abnormal', label: t('admin.users.risk.level.abnormal') },
+                  { value: 'recharged', label: t('admin.users.marks.recharged') },
+                  { value: 'ticket', label: t('admin.users.marks.ticket') }
                 ]"
                 @change="applyFilter"
               />
@@ -1165,7 +1167,7 @@ const filters = reactive({
   role: '',
   status: '',
   group: '',  // group name for fuzzy match, '' = all
-  risk: '',   // invite risk mark: '' = all, 'suspect' | 'abnormal'
+  mark: '',   // 管理端标注筛选：'' = 标注（全部），'suspect' | 'abnormal' | 'recharged' | 'ticket'
   apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
@@ -1215,7 +1217,12 @@ const loadSavedFilters = () => {
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
       if (parsed.group) filters.group = parsed.group
-      if (parsed.risk === 'suspect' || parsed.risk === 'abnormal') filters.risk = parsed.risk
+      if (parsed.mark === 'suspect' || parsed.mark === 'abnormal' || parsed.mark === 'recharged' || parsed.mark === 'ticket') {
+        filters.mark = parsed.mark
+      } else if (parsed.risk === 'suspect' || parsed.risk === 'abnormal') {
+        // 兼容旧版本的持久化字段 risk
+        filters.mark = parsed.risk
+      }
       if (typeof parsed.apiKeyGroup === 'number') filters.apiKeyGroup = parsed.apiKeyGroup
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
@@ -1236,7 +1243,7 @@ const saveFiltersToStorage = () => {
       role: filters.role,
       status: filters.status,
       group: filters.group,
-      risk: filters.risk,
+      mark: filters.mark,
       apiKeyGroup: filters.apiKeyGroup,
       attributes: activeAttributeFilters
     }
@@ -1379,11 +1386,14 @@ const riskTooltip = (reasons?: string) => {
   return labels.length > 0 ? labels.join(' / ') : t('admin.users.risk.tooltipFallback')
 }
 
-// 用户名字下方的标记列表：风险等级、看过次数、提过工单，用顿号分隔。
+// 用户名字下方的标记列表：风险等级、充过值、看过次数、提过工单，用顿号分隔。
 const userMarkLabels = (row: AdminUser): string[] => {
   const labels: string[] = []
   if (row.risk_level) {
     labels.push(t(`admin.users.risk.level.${row.risk_level}`))
+  }
+  if (row.recharged) {
+    labels.push(t('admin.users.marks.recharged'))
   }
   if ((row.looked_count ?? 0) > 0) {
     labels.push(t('admin.users.marks.looked', { count: row.looked_count }))
@@ -1668,7 +1678,7 @@ const loadUsers = async () => {
         status: filters.status as any,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
-        risk_level: (filters.risk || undefined) as 'suspect' | 'abnormal' | undefined,
+        mark: (filters.mark || undefined) as 'suspect' | 'abnormal' | 'recharged' | 'ticket' | undefined,
         api_key_group_id: filters.apiKeyGroup ?? undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         // 始终请求 subscriptions：列隐藏时仍需用于 UserPlatformQuotaModal 的 active-subscription 警示 banner

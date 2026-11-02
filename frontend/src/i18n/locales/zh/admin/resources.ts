@@ -565,6 +565,12 @@ export default {
           userId: '用户 ID',
           lastUsedAt: '最后使用时间',
           registeredAt: '注册时间'
+        },
+        marks: {
+          deleted: '已删除',
+          recharged: '充过值',
+          looked: '看过+{count}',
+          ticket: '提过工单'
         }
       },
       tokenRanking: {

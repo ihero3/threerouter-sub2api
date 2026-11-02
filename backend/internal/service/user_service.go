@@ -64,6 +64,14 @@ var (
 	avatarQualitySteps = []int{88, 80, 72, 64, 56, 48, 40, 32}
 )
 
+// 管理端「标注」筛选的取值（用户列表 mark 参数）。
+const (
+	UserMarkSuspect   = "suspect"
+	UserMarkAbnormal  = "abnormal"
+	UserMarkRecharged = "recharged"
+	UserMarkTicket    = "ticket"
+)
+
 // UserListFilters contains all filter options for listing users
 type UserListFilters struct {
 	Status    string // User status filter
@@ -74,8 +82,9 @@ type UserListFilters struct {
 	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
 	// group types since it matches the key's group directly, not allowed_groups.
 	APIKeyGroupID int64
-	// RiskLevel 按邀请风险标记筛选：空串 = 全部；suspect = 账号存疑；abnormal = 账号异常。
-	RiskLevel string
+	// Mark 按管理端「标注」筛选：空串 = 全部；suspect = 账号存疑；abnormal = 账号异常；
+	// recharged = 充过值；ticket = 提过工单。取值见 UserMark* 常量。
+	Mark string
 	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
