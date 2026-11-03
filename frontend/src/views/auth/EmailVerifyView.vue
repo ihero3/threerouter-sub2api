@@ -589,9 +589,7 @@ async function sendCode(): Promise<void> {
 
     showResendTurnstile.value = false
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.sendCodeFailed'))
-
-    appStore.showError(errorMessage.value)
+    handleRegistrationError(error, t('auth.sendCodeFailed'))
   } finally {
     if (captchaProofUsed) {
       clearStoredCaptchaProof()
@@ -753,9 +751,7 @@ async function handleVerify(): Promise<void> {
     // Redirect to dashboard
     await router.push(pendingRedirect.value || '/dashboard')
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.verifyFailed'))
-
-    appStore.showError(errorMessage.value)
+    handleRegistrationError(error, t('auth.verifyFailed'))
   } finally {
     initialTurnstileToken.value = ''
     initialTencentCaptchaRandstr.value = ''
@@ -807,6 +803,22 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
     return t('auth.clickCaptchaDisabled')
   }
   return buildAuthErrorMessage(error, { fallback })
+}
+
+// 统一注册链路错误处理：提示错误；当人机验证 token 已无法使用
+// （过期/已消费/校验失败）时，本页没有重新验证的入口，停留在原地是死路，
+// 清空暂存数据并回到注册页让用户重做一次人机验证。OAuth 补全流程不走注册页，
+// 不做跳转。
+function handleRegistrationError(error: unknown, fallback: string): void {
+  errorMessage.value = buildRegistrationErrorMessage(error, fallback)
+  appStore.showError(errorMessage.value)
+  if (
+    !isPendingOAuthFlow() &&
+    extractApiErrorCode(error) === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID'
+  ) {
+    sessionStorage.removeItem('register_data')
+    void router.push('/register')
+  }
 }
 </script>
 
