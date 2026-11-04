@@ -127,7 +127,7 @@ const RANK_BADGE_CLASSES = [
 const items = ref<UserBreakdownItem[]>([])
 const loading = ref(false)
 const sortBy = ref<SortKey>('total_tokens')
-const limit = ref(50)
+const limit = ref(500)
 let reqSeq = 0
 
 const fmtTokens = (v: number) => formatCompactNumber(v)

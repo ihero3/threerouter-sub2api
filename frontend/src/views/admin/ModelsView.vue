@@ -597,8 +597,6 @@ const models = computed<Model[]>(() => {
     { id: '3', name: 'kimi-k3', provider: 'kimi-k3', vendor: 'moonshot', category: 'text', icon: '' },
     { id: '4', name: 'qwen3.8-max', provider: 'qwen3.8-max', vendor: 'alibaba', category: 'text', icon: '' },
     { id: '5', name: 'glm-5.3', provider: 'glm-5.3', vendor: 'zhipu', category: 'text', icon: '' },
-    { id: '6', name: 'seedance-2.0', provider: 'seedance-2.0', vendor: 'bytedance', category: 'multimodal', icon: '' },
-    { id: '8', name: 'gpt-image-2', provider: 'gpt-image-2', vendor: 'openai', category: 'image', icon: '' },
   ]
 
   // Claude >4.5 和 OpenAI GPT >5.4 仅在非 threerouter 域名时显示
