@@ -80,19 +80,45 @@ func (c *ClickCaptchaCache) SetToken(ctx context.Context, token string, payload 
 	return c.rdb.Set(ctx, clickCaptchaTokenKeyPrefix+token, raw, ttl).Err()
 }
 
-// TakeToken 原子消费 token（GETDEL 防重放）。
+// takeTokenScript 原子取一次性 token（GET+DEL）。早于 Redis 6.2 的实例以及
+// 部分集群代理不支持 GETDEL 命令，而 Lua EVAL 自 Redis 2.6 起可用、兼容面广得多。
+var takeTokenScript = redis.NewScript(`
+local v = redis.call('GET', KEYS[1])
+if v then
+	redis.call('DEL', KEYS[1])
+end
+return v
+`)
+
+// TakeToken 原子消费 token（防重放）。
+// 优先走 Lua 脚本；脚本不可用时退化为 GET+DEL：宁可短暂放宽防重放窗口，
+// 也不能让注册因 Redis 能力差异被整体阻断（见 2026-11 线上注册故障）。
 func (c *ClickCaptchaCache) TakeToken(ctx context.Context, token string) (*service.ClickCaptchaTokenPayloadRef, error) {
 	if c == nil || c.rdb == nil {
 		return nil, fmt.Errorf("click captcha cache not configured")
 	}
-	raw, err := c.rdb.GetDel(ctx, clickCaptchaTokenKeyPrefix+token).Result()
+	key := clickCaptchaTokenKeyPrefix + token
+	raw, err := takeTokenScript.Run(ctx, c.rdb, []string{key}).Result()
 	if err == redis.Nil {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
+	if err == nil {
+		s, _ := raw.(string)
+		if s == "" {
+			return nil, nil
+		}
+		return service.UnmarshalClickCaptchaTokenPayload(s)
 	}
-	return service.UnmarshalClickCaptchaTokenPayload(raw)
+	// 脚本执行失败（受限代理不支持 EVAL 等）：GET+DEL 兜底。
+	rawGet, getErr := c.rdb.Get(ctx, key).Result()
+	if getErr != nil {
+		if getErr == redis.Nil {
+			return nil, nil
+		}
+		return nil, getErr
+	}
+	_ = c.rdb.Del(ctx, key).Err()
+	return service.UnmarshalClickCaptchaTokenPayload(rawGet)
 }
 
 // PeekToken 读取 token 但不消费（发送验证码前的非破坏性校验）。

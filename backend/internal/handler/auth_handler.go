@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -55,7 +56,7 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
-	Email                 string `json:"email" binding:"required,email"`
+	Email string `json:"email" binding:"required,email"`
 	// 下限 8 位（NIST SP 800-63B 最低要求）；上限 72 字节是 bcrypt 硬限制，
 	// 超过会导致 HashPassword 直接报错并让注册返回 500。
 	Password              string `json:"password" binding:"required,min=8,max=72"`
@@ -240,9 +241,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		// 精确记录注册失败原因，便于定位 500 根因（ApplicationError 会映射为 4xx/5xx，裸 error 映射为 500）
 		slog.Error("[Register] RegisterWithVerification failed", "error_type", fmt.Sprintf("%T", err), "error", err)
-		// 建号失败归还已消费的 token，避免用户重新做一次人机验证
+		// 建号失败归还已消费的 token，避免用户重新做一次人机验证。
+		// 归还必须脱离请求上下文：客户端超时/取消会连带取消 c.Request.Context()，
+		// 用被取消的上下文写 Redis 会让归还静默失败，token 被永久消费掉。
 		if consumedCaptcha != nil {
-			_ = h.clickCaptcha.RestoreToken(c.Request.Context(), req.ClickCaptchaToken, consumedCaptcha)
+			restoreCtx, restoreCancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
+			_ = h.clickCaptcha.RestoreToken(restoreCtx, req.ClickCaptchaToken, consumedCaptcha)
+			restoreCancel()
 		}
 		response.ErrorFrom(c, err)
 		return

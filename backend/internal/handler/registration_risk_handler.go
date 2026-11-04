@@ -3,8 +3,8 @@ package handler
 import (
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -34,7 +34,7 @@ func (h *RegistrationClickCaptchaHandler) Challenge(c *gin.Context) {
 		response.InternalError(c, "Click captcha service not configured")
 		return
 	}
-	ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+	ipHash := service.HashFingerprint(middleware2.SecurityClientIP(c), c.Request.UserAgent())
 	challenge, err := h.clickCaptcha.CreateChallenge(c.Request.Context(), ipHash, ipHash)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -58,7 +58,7 @@ func (h *RegistrationClickCaptchaHandler) Verify(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: challenge_id is required")
 		return
 	}
-	ipHash := service.HashFingerprint(ip.GetClientIP(c), c.Request.UserAgent())
+	ipHash := service.HashFingerprint(middleware2.SecurityClientIP(c), c.Request.UserAgent())
 	proof := service.CaptchaVerifyProof{
 		Clicks:     req.Clicks,
 		DropX:      req.DropX,
