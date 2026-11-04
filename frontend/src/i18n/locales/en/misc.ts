@@ -6,10 +6,10 @@ export default {
     title: 'More Credits, Less Spend',
     cta: 'Top Up Now',
     items: {
-      newUser: 'New users: $10 free',
-      refer: 'Refer a friend: $6',
-      topUp1: 'Top up $1 → get $10 free ($11)',
-      topUp10: 'Top up $10 → get $100 free ($110)',
+      newUser: 'New users: $6 free',
+      refer: 'Refer a friend: $1',
+      topUp1: 'Top up $1 → get $5 free ($6)',
+      topUp10: 'Top up $10 → get $50 free ($60)',
       deepseek: 'DeepSeek open model: $1 ≈ 30M tokens',
       freedom: '~$3/month = token freedom'
     }
@@ -632,6 +632,11 @@ export default {
         expired: 'Expired',
         revoked: 'Revoked',
       },
+    },
+    ticketHelp: {
+      title: 'Need help with your payment?',
+      desc: 'If you encounter any issues during the recharge process, please submit a ticket. Our team will handle it promptly.',
+      submit: 'Submit Ticket'
     },
   },
 

@@ -6,10 +6,10 @@ export default {
     title: '充值越多，送得越多',
     cta: '立即充值',
     items: {
-      newUser: '新用户注册：送 $10',
-      refer: '邀请好友：送 $6',
-      topUp1: '充值 $1 → 送 $10（共 $11）',
-      topUp10: '充值 $10 → 送 $100（共 $110）',
+      newUser: '新用户注册：送 $6',
+      refer: '邀请好友：送 $1',
+      topUp1: '充值 $1 → 送 $5（共 $6）',
+      topUp10: '充值 $10 → 送 $50（共 $60）',
       deepseek: 'DeepSeek 开源模型：$1 ≈ 3000 万 tokens',
       freedom: '每月约 $3 = 实现 Token 自由'
     }
@@ -656,6 +656,11 @@ export default {
         expired: '已过期',
         revoked: '已撤销',
       },
+    },
+    ticketHelp: {
+      title: '充值遇到问题？',
+      desc: '若您充值过程中遇到任何问题，请提交工单，工作人员将立即处理。',
+      submit: '提交工单'
     },
   },
 

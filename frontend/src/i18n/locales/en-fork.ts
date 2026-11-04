@@ -15,7 +15,7 @@ export default {
     viewDocs: 'Docs',
     enterprise: 'Enterprise',
     models: 'Models',
-    getStarted: 'Get $10 ≈ 330M Free Tokens',
+    getStarted: 'Get $6 ≈ 180M Free Tokens',
     heroDescription: 'Access DeepSeek, Qwen, Kimi, GLM and more with a single API key — at 1/33 the cost of GPT-5.5',
     tags: {
       subscriptionToApi: 'OpenAI-Compatible',
@@ -25,7 +25,7 @@ export default {
       slogan: 'DeepSeek, Qwen, Kimi, GLM — the lowest price is just 1/33 of GPT',
       title: 'Three Router',
       subtitle: 'Top-tier Open Source LLMs with Unbeatable Value,Enterprise-Grade LLM',
-      cta: 'Get $10 ≈ 330M Free Tokens →',
+      cta: 'Get $6 ≈ 180M Free Tokens →',
       codeHint: 'Change one URL, keep everything else.',
       coreDiff: 'US Local Deployment + up to 97% Cost Cut',
       priceAdvantage: 'Pay 1/33. Never full price.',
@@ -33,7 +33,7 @@ export default {
       tags: {
         discount: 'DeepSeek V4-Pro from $0.42/M',
         deployment: 'US Local Deployment',
-        freeTokens: 'New Users Get $10 ≈ 330M Free Tokens'
+        freeTokens: 'New Users Get $6 ≈ 180M Free Tokens'
       },
       costChart: {
         eyebrow: 'US vs Open Source model cost',

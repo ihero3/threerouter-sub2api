@@ -115,7 +115,7 @@
             <svg class="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span class="text-sm font-medium text-orange-700">🎁LIMITED TIME: $10 Free Credits (≈ 330M DeepSeek Tokens)</span>
+            <span class="text-sm font-medium text-orange-700">🎁LIMITED TIME: $6 Free Credits (≈ 180M DeepSeek Tokens)</span>
           </router-link>
 
           <!-- Nav Links -->
@@ -1071,7 +1071,7 @@ const homeJsonLd = computed(() => [
       '@type': 'Offer',
       'price': '0',
       'priceCurrency': 'USD',
-      'description': 'New users get $10 in free credits'
+      'description': 'New users get $6 in free credits'
     }
   },
   // 防御：faqPageJsonLd 理论上始终返回对象，但过滤防空值以防 Safari 崩溃
