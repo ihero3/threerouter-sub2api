@@ -98,6 +98,12 @@ func classifySelectionFailureError(err error, fallback noAccountErrorClassificat
 // required because Anthropic/Gemini routes additionally surface
 // mixed-scheduled Antigravity accounts; passing the wrong platform would
 // flip a legitimate 503 to a misleading 404 (or vice versa).
+//
+// 503 fallback 分两种根因：
+//   - HasAccountsInPool=true + HasModelSupport=true → 配置本身没问题，账号池全被瞬态
+//     移出（临时不可调度/限流/并发槽满）。message 带 "try again later" 提示。
+//   - HasAccountsInPool=false → 分组没有任何活跃账号 / 账号全被禁用。message 带
+//     组名 + 平台，运营一眼能看出需要补账号。
 func classifyNoAccountError(
 	ctx context.Context,
 	diag service.ModelAvailabilityDiagnoser,
@@ -106,19 +112,17 @@ func classifyNoAccountError(
 	displayModel string,
 	platform string,
 ) noAccountErrorClassification {
-	fallback := noAccountErrorClassification{
-		Status:  http.StatusServiceUnavailable,
-		ErrType: "api_error",
-		Message: "Service temporarily unavailable",
-	}
-
 	routingModel = strings.TrimSpace(routingModel)
 	displayModel = strings.TrimSpace(displayModel)
 	if displayModel == "" {
 		displayModel = routingModel
 	}
 	if diag == nil || apiKey == nil || apiKey.GroupID == nil || routingModel == "" {
-		return fallback
+		return noAccountErrorClassification{
+			Status:  http.StatusServiceUnavailable,
+			ErrType: "api_error",
+			Message: "Service temporarily unavailable, please try again later",
+		}
 	}
 
 	result := diag.DiagnoseModelAvailabilityForPlatform(ctx, apiKey.GroupID, routingModel, platform)
@@ -130,7 +134,18 @@ func classifyNoAccountError(
 			ModelNotFound: true,
 		}
 	}
-	return fallback
+	if !result.HasAccountsInPool {
+		return noAccountErrorClassification{
+			Status:  http.StatusServiceUnavailable,
+			ErrType: "api_error",
+			Message: fmt.Sprintf("Group has no active schedulable accounts on %s for model %q — please contact the administrator", platform, displayModel),
+		}
+	}
+	return noAccountErrorClassification{
+		Status:  http.StatusServiceUnavailable,
+		ErrType: "api_error",
+		Message: fmt.Sprintf("All available accounts for model %q are temporarily busy or blocked, please try again later", displayModel),
+	}
 }
 
 // classifyNoAccountErrorFromGin is a thin wrapper that forwards the gin

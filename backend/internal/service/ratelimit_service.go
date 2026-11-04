@@ -2895,8 +2895,10 @@ const (
 	// 2 分钟的窗口刚好覆盖客户端常见的自动重试周期（重试 1~3 次、间隔 1~2s），
 	// 让重试天然落到其他账号上。
 	streamTruncationCountWindowMinutes = 5
-	streamTruncationCountThreshold     = 2
-	streamTruncationTempUnschedMinutes = 2
+	streamTruncationCountThreshold     = 3
+	streamTruncationTempUnschedMinutes = 1 // 降权期超过 30s 就会把整个分组打空（分组只有 1-2 个账号时尤其致命），
+	                                       // 这里降到 1min 让账号更快回到调度；太短会失去"避免客户端反复命中同一坏源"的作用，
+	                                       // 折中取 1min。超过阈值的重复命中走"客户端已看到截断"路径（60s 立即降权）。
 
 	// 出现在 TempUnschedState.MatchedKeyword 里，前端/日志可据此区分触发原因。
 	streamTruncationMatchedKeyword = "upstream_stream_truncated"
@@ -2982,9 +2984,16 @@ func (s *RateLimitService) triggerStreamTruncationTempUnsched(ctx context.Contex
 	)
 }
 
-// triggerStreamTruncationTempUnschedFor 是带时长/阈值参数的实现：窗口降权用 2 分钟
-// + 2 次阈值，"客户端已看到截断"的立即降权用 60 秒 + 1 次阈值。
+// triggerStreamTruncationTempUnschedFor 是带时长/阈值参数的实现：窗口降权用 1 分钟
+// + 3 次阈值，"客户端已看到截断"的立即降权用 60 秒 + 1 次阈值。
+//
+// 如果分组内只有这一个持久态可调度账号，跳过移出。否则把唯一账号移出会让分组
+// 直接掉到"没有可用账号"，新请求会看到 503。单次抖动降权应优先保护"分组有请求
+// 能通"，而不是"这个账号不能接请求"。
 func (s *RateLimitService) triggerStreamTruncationTempUnschedFor(ctx context.Context, account *Account, model string, count int64, duration time.Duration, threshold int) bool {
+	if s == nil || account == nil || account.ID <= 0 {
+		return false
+	}
 	if s.accountRepo == nil {
 		return false
 	}
@@ -2994,6 +3003,25 @@ func (s *RateLimitService) triggerStreamTruncationTempUnschedFor(ctx context.Con
 	if threshold <= 0 {
 		threshold = streamTruncationCountThreshold
 	}
+
+	// 单一账号分组保护：如果分组内只有这一个可调度账号，降权等于自杀。
+	// Account 可能同时属于多个分组，这里用第一个分组做保护判定——目的不是精确
+	// 覆盖所有分组，而是防止"唯一账号被移出→所有同分组新请求直接 503"的最差情况。
+	if len(account.GroupIDs) > 0 {
+		groupID := account.GroupIDs[0]
+		candidates, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, []string{account.Platform}, false)
+		if err != nil {
+			slog.Warn("stream_truncation_single_account_check_failed",
+				"account_id", account.ID, "group_id", groupID, "error", err)
+			// 查失败时保守放行：不做 skip，让后面正常降权
+		} else if len(candidates) <= 1 {
+			slog.Info("stream_truncation_skip_single_account_group",
+				"account_id", account.ID, "group_id", groupID,
+				"candidate_count", len(candidates), "count", count)
+			return false
+		}
+	}
+
 	now := time.Now()
 	until := now.Add(duration)
 

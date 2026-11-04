@@ -1,6 +1,6 @@
 <template>
   <section
-    class="promo-banner group relative cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#04285f] via-[#0757b8] to-[#0a7fc4] p-6 text-white shadow-2xl shadow-[#0757b8]/30 transition-transform duration-200 hover:scale-[1.01] sm:p-8"
+    class="promo-banner group relative cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#0f766e] via-[#0d9488] to-[#14b8a6] p-6 text-white shadow-2xl shadow-[#0d9488]/30 transition-transform duration-200 hover:scale-[1.01] sm:p-8"
     role="button"
     tabindex="0"
     @click="goRecharge"
@@ -8,14 +8,14 @@
     @keydown.space.prevent="goRecharge"
   >
     <!-- Decorative glows -->
-    <div class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-[#20f5b4]/30 blur-3xl"></div>
-    <div class="pointer-events-none absolute -bottom-24 -left-12 h-56 w-56 rounded-full bg-[#20f5b4]/20 blur-3xl"></div>
-    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(32,245,180,0.18),transparent_55%)]"></div>
+    <div class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-[#5eead4]/30 blur-3xl"></div>
+    <div class="pointer-events-none absolute -bottom-24 -left-12 h-56 w-56 rounded-full bg-[#2dd4bf]/25 blur-3xl"></div>
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(94,234,212,0.22),transparent_55%)]"></div>
 
     <div class="relative">
       <div class="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-[#20f5b4] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#04285f]">
-          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#04285f]"></span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-[#5eead4] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#042f2e]">
+          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#042f2e]"></span>
           {{ t('promo.badge') }}
         </span>
         <h2 class="text-xl font-black leading-tight sm:text-2xl">{{ t('promo.title') }}</h2>
@@ -56,10 +56,8 @@ function goRecharge() {
 const items = [
   { key: 'newUser', emoji: '🎁' },
   { key: 'refer', emoji: '👥' },
-  { key: 'topUp1', emoji: '💸' },
   { key: 'topUp10', emoji: '💸' },
   { key: 'deepseek', emoji: '⚡' },
-  { key: 'freedom', emoji: '🔥' },
 ] as const
 </script>
 
