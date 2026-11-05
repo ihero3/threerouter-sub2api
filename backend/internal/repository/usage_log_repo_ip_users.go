@@ -41,9 +41,9 @@ SELECT u.id,
        u.created_at,
        (SELECT MAX(l.created_at) FROM usage_logs l WHERE l.user_id = u.id) AS last_used_at,
        u.deleted_at IS NOT NULL AS deleted,
-       (COALESCE(u.total_recharged, 0) > 0
-        OR EXISTS (SELECT 1 FROM redeem_codes rc
-                   WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged,
+       EXISTS (SELECT 1 FROM payment_orders po
+               WHERE po.user_id = u.id AND po.paid_at IS NOT NULL
+                 AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS recharged,
        u.looked_count,
        u.ticket_flag
 FROM users u

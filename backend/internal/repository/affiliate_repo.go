@@ -328,10 +328,11 @@ FROM cleared`, userID)
 			return service.ErrAffiliateQuotaEmpty
 		}
 
+		// 邀请返利提现只是把已赚取的佣金转到余额，不是用户充值：
+		// 不要累加到 total_recharged，否则会被误判为「充过值」。
 		affected, err := txClient.User.Update().
 			Where(user.IDEQ(userID)).
 			AddBalance(transferred).
-			AddTotalRecharged(transferred).
 			Save(txCtx)
 		if err != nil {
 			return fmt.Errorf("credit user balance by affiliate quota: %w", err)
@@ -887,8 +888,7 @@ SELECT u.id,
        u.looked_count,
        u.ticket_flag,
        u.total_recharged::double precision,
-       (COALESCE(u.total_recharged, 0) > 0
-        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged,
+       EXISTS (SELECT 1 FROM payment_orders po WHERE po.user_id = u.id AND po.paid_at IS NOT NULL AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS recharged,
        ua.inviter_id,
        ua.created_at,
        iu.email,
@@ -898,8 +898,7 @@ SELECT u.id,
        iu.deleted_at,
        iu.looked_count,
        iu.ticket_flag,
-       (COALESCE(iu.total_recharged, 0) > 0
-        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = iu.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS inviter_recharged
+       EXISTS (SELECT 1 FROM payment_orders po WHERE po.user_id = iu.id AND po.paid_at IS NOT NULL AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS inviter_recharged
 FROM users u
 LEFT JOIN user_affiliates ua ON ua.user_id = u.id
 LEFT JOIN users iu ON iu.id = ua.inviter_id
@@ -988,8 +987,7 @@ SELECT u.id,
        up.depth,
        u.looked_count,
        u.ticket_flag,
-       (COALESCE(u.total_recharged, 0) > 0
-        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged
+       EXISTS (SELECT 1 FROM payment_orders po WHERE po.user_id = u.id AND po.paid_at IS NOT NULL AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS recharged
 FROM up
 JOIN users u ON u.id = up.user_id
 ORDER BY up.depth DESC`, userID, maxDepth)
@@ -1049,8 +1047,7 @@ SELECT u.id,
        COALESCE(r.rebate_total, 0)::double precision,
        u.looked_count,
        u.ticket_flag,
-       (COALESCE(u.total_recharged, 0) > 0
-        OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = u.id AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance'))) AS recharged
+       EXISTS (SELECT 1 FROM payment_orders po WHERE po.user_id = u.id AND po.paid_at IS NOT NULL AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS recharged
 FROM down d
 JOIN users u ON u.id = d.user_id
 LEFT JOIN (

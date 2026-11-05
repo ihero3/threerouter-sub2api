@@ -13,11 +13,12 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// 验证码模式：random = 两种随机出现；image_click / slider = 固定为对应模式。
+// 验证码模式：random = 三种随机出现；image_click / slider / rotation = 固定为对应模式。
 const (
 	RegistrationCaptchaModeRandom     = "random"
 	RegistrationCaptchaModeImageClick = "image_click"
 	RegistrationCaptchaModeSlider     = "slider"
+	RegistrationCaptchaModeRotation   = "rotation"
 )
 
 // 验证码难度。
@@ -27,13 +28,15 @@ const (
 	RegistrationCaptchaDifficultyHigh   = "high"
 )
 
-// 归一化模式：非法/空值回退 random（安全默认，两种并存）。
+// 归一化模式：非法/空值回退 random（安全默认，三种并存）。
 func normalizeRegistrationCaptchaMode(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case RegistrationCaptchaModeImageClick:
 		return RegistrationCaptchaModeImageClick
 	case RegistrationCaptchaModeSlider:
 		return RegistrationCaptchaModeSlider
+	case RegistrationCaptchaModeRotation:
+		return RegistrationCaptchaModeRotation
 	default:
 		return RegistrationCaptchaModeRandom
 	}
@@ -60,13 +63,14 @@ var ErrRegistrationClickCaptchaInvalid = infraerrors.BadRequest("REGISTRATION_CL
 // ErrRegistrationClickCaptchaTokenInvalid 一次性 token 无效、过期或已使用。
 var ErrRegistrationClickCaptchaTokenInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID", "registration click captcha token invalid or expired, please complete the verification again")
 
-// RegistrationClickCaptchaChallenge 一次验证题（判别联合：按 mode 二选一）。
+// RegistrationClickCaptchaChallenge 一次验证题（判别联合：按 mode 三选一）。
 type RegistrationClickCaptchaChallenge struct {
 	ChallengeID string               `json:"challenge_id"`
-	Mode        string               `json:"mode"` // image_click | slider
+	Mode        string               `json:"mode"` // image_click | slider | rotation
 	ExpiresIn   int                  `json:"expires_in"`
 	ImageClick  *ImageClickChallenge `json:"image_click,omitempty"`
 	Slider      *SliderChallenge     `json:"slider,omitempty"`
+	Rotation    *RotationChallenge   `json:"rotation,omitempty"`
 }
 
 // ImageClickChallenge 图片点选题面：只含图片与"颜色+形状"提示，不含任何坐标。
@@ -94,10 +98,11 @@ type SliderChallenge struct {
 	PieceSize  int    `json:"piece_size"`
 }
 
-// CaptchaVerifyProof 客户端回传的原始输入（点选坐标 / 滑块落点与轨迹）。
+// CaptchaVerifyProof 客户端回传的原始输入（点选坐标 / 滑块落点 / 旋转角度 + 轨迹）。
 type CaptchaVerifyProof struct {
 	Clicks     []ClickPoint      `json:"clicks"`
 	DropX      float64           `json:"drop_x"`
+	Angle      float64           `json:"angle"`
 	Trajectory []TrajectoryPoint `json:"trajectory"`
 }
 
@@ -113,12 +118,13 @@ type clickCaptchaCacheStore interface {
 }
 
 // ClickCaptchaChallengePayloadRef 存入 Redis 的 challenge 内部数据（repository 跨包引用）。
-// 答案（坐标 / 缺口位置）只存于此，绝不下发。
+// 答案（坐标 / 缺口位置 / 目标角度）只存于此，绝不下发。
 type ClickCaptchaChallengePayloadRef struct {
 	Mode       string            `json:"mode"`
 	Difficulty string            `json:"difficulty"`
 	ImageClick *ImageClickAnswer `json:"image_click,omitempty"`
 	Slider     *SliderAnswer     `json:"slider,omitempty"`
+	Rotation   *RotationAnswer   `json:"rotation,omitempty"`
 	IPHash     string            `json:"ip_hash"`
 	UAHash     string            `json:"ua_hash"`
 	CreatedAt  int64             `json:"created_at"`
@@ -140,22 +146,28 @@ const (
 	clickCaptchaChallengeTTL = 120 * time.Second
 )
 
-// resolveMode 依据后台设置决定本次题目模式；random 时用 crypto/rand 等权二选一。
+// resolveMode 依据后台设置决定本次题目模式；random 时用 crypto/rand 等权三选一。
 func (s *RegistrationClickCaptchaService) resolveMode(mode string) (string, error) {
 	switch normalizeRegistrationCaptchaMode(mode) {
 	case RegistrationCaptchaModeImageClick:
 		return RegistrationCaptchaModeImageClick, nil
 	case RegistrationCaptchaModeSlider:
 		return RegistrationCaptchaModeSlider, nil
+	case RegistrationCaptchaModeRotation:
+		return RegistrationCaptchaModeRotation, nil
 	default:
-		idx, err := cryptoRandomInts(2, 1)
+		idx, err := cryptoRandomInts(3, 1)
 		if err != nil {
 			return "", err
 		}
-		if idx[0] == 0 {
+		switch idx[0] {
+		case 0:
 			return RegistrationCaptchaModeImageClick, nil
+		case 1:
+			return RegistrationCaptchaModeSlider, nil
+		default:
+			return RegistrationCaptchaModeRotation, nil
 		}
-		return RegistrationCaptchaModeSlider, nil
 	}
 }
 
@@ -212,6 +224,13 @@ func (s *RegistrationClickCaptchaService) CreateChallenge(ctx context.Context, i
 		}
 		payload.Slider = answer
 		challenge.Slider = sl
+	case RegistrationCaptchaModeRotation:
+		rt, answer, err := buildRotationChallenge(difficulty)
+		if err != nil {
+			return nil, err
+		}
+		payload.Rotation = answer
+		challenge.Rotation = rt
 	default:
 		return nil, ErrRegistrationClickCaptchaInvalid
 	}
@@ -256,6 +275,11 @@ func (s *RegistrationClickCaptchaService) VerifyChallenge(ctx context.Context, c
 	case RegistrationCaptchaModeSlider:
 		params := sliderParamsFor(payload.Difficulty)
 		if err := verifySlider(payload.Slider, proof.DropX, proof.Trajectory, params.trajectory); err != nil {
+			return "", 0, err
+		}
+	case RegistrationCaptchaModeRotation:
+		params := rotationParamsFor(payload.Difficulty)
+		if err := verifyRotation(payload.Rotation, proof.Angle, proof.Trajectory, params.trajectory); err != nil {
 			return "", 0, err
 		}
 	default:

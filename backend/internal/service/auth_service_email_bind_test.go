@@ -872,6 +872,18 @@ func (s *emailBindCacheStub) IncrNotifyCodeUserRate(context.Context, int64, time
 	return 0, nil
 }
 
+func (s *emailBindCacheStub) IncrEmailDailySendCount(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (s *emailBindCacheStub) IsSMTPAccountInCooldown(context.Context, string) bool {
+	return false
+}
+
+func (s *emailBindCacheStub) SetSMTPAccountCooldown(context.Context, string, time.Duration) error {
+	return nil
+}
+
 type emailBindRefreshTokenCacheStub struct {
 	mu       sync.Mutex
 	tokens   map[string]*service.RefreshTokenData

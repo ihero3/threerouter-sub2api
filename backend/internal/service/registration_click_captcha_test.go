@@ -90,9 +90,22 @@ func validProofFor(payload *ClickCaptchaChallengePayloadRef) CaptchaVerifyProof 
 		return CaptchaVerifyProof{Clicks: clicks}
 	case RegistrationCaptchaModeSlider:
 		return CaptchaVerifyProof{DropX: float64(payload.Slider.TargetX), Trajectory: naturalTrajectory()}
+	case RegistrationCaptchaModeRotation:
+		return CaptchaVerifyProof{Angle: payload.Rotation.TargetAngle, Trajectory: naturalRotationTrajectory()}
 	default:
 		return CaptchaVerifyProof{}
 	}
+}
+
+// naturalRotationTrajectory 拟人旋转轨迹 fixture：X 为累计旋转角（度），速度有起伏。
+func naturalRotationTrajectory() []TrajectoryPoint {
+	angles := []float64{0, 8, 22, 40, 55, 70, 88, 102, 112, 118, 120}
+	ts := []int64{0, 40, 90, 150, 230, 320, 420, 530, 640, 760, 880}
+	points := make([]TrajectoryPoint, 0, len(angles))
+	for i := range angles {
+		points = append(points, TrajectoryPoint{X: angles[i], Y: 0, T: ts[i]})
+	}
+	return points
 }
 
 func TestRegistrationClickCaptcha_Lifecycle(t *testing.T) {
@@ -154,6 +167,34 @@ func TestRegistrationClickCaptcha_SliderLifecycle(t *testing.T) {
 
 	payload := store.challenges[ch.ChallengeID]
 	require.NotNil(t, payload)
+	token, _, err := svc.VerifyChallenge(ctx, ch.ChallengeID, validProofFor(payload), "ip-a", "ua-a")
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+}
+
+func TestRegistrationClickCaptcha_RotationLifecycle(t *testing.T) {
+	store := &clickCaptchaMemoryStore{}
+	svc := captchaServiceForMode(store, RegistrationCaptchaModeRotation, RegistrationCaptchaDifficultyMedium)
+	ctx := context.Background()
+
+	ch, err := svc.CreateChallenge(ctx, "ip-a", "ua-a")
+	require.NoError(t, err)
+	require.Equal(t, RegistrationCaptchaModeRotation, ch.Mode)
+	require.NotNil(t, ch.Rotation)
+	require.NotEmpty(t, ch.Rotation.Image)
+	require.Equal(t, ch.Rotation.Width, ch.Rotation.Height)
+
+	payload := store.challenges[ch.ChallengeID]
+	require.NotNil(t, payload)
+	require.NotNil(t, payload.Rotation)
+
+	// 错误角度应失败
+	_, _, err = svc.VerifyChallenge(ctx, ch.ChallengeID, CaptchaVerifyProof{
+		Angle:      payload.Rotation.TargetAngle + 90,
+		Trajectory: naturalRotationTrajectory(),
+	}, "ip-a", "ua-a")
+	require.ErrorIs(t, err, ErrRegistrationClickCaptchaInvalid)
+
 	token, _, err := svc.VerifyChallenge(ctx, ch.ChallengeID, validProofFor(payload), "ip-a", "ua-a")
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
@@ -242,20 +283,21 @@ func TestRegistrationClickCaptcha_AttemptLimit(t *testing.T) {
 	require.Nil(t, store.challenges[ch.ChallengeID])
 }
 
-// TestRegistrationClickCaptcha_ModeDistribution random 模式下两种验证码都会出现。
+// TestRegistrationClickCaptcha_ModeDistribution random 模式下三种验证码都会出现。
 func TestRegistrationClickCaptcha_ModeDistribution(t *testing.T) {
 	store := &clickCaptchaMemoryStore{}
 	svc := captchaServiceForMode(store, RegistrationCaptchaModeRandom, RegistrationCaptchaDifficultyLow)
 	ctx := context.Background()
 
 	seen := map[string]int{}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 300; i++ {
 		ch, err := svc.CreateChallenge(ctx, "ip-a", "ua-a")
 		require.NoError(t, err)
 		seen[ch.Mode]++
 	}
 	require.Positive(t, seen[RegistrationCaptchaModeImageClick], "image_click should appear")
 	require.Positive(t, seen[RegistrationCaptchaModeSlider], "slider should appear")
+	require.Positive(t, seen[RegistrationCaptchaModeRotation], "rotation should appear")
 }
 
 func TestRegistrationClickCaptcha_HashFingerprint(t *testing.T) {

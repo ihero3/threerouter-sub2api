@@ -358,8 +358,8 @@ export interface AuthResponse {
   user: User & { run_mode?: 'standard' | 'simple' }
 }
 
-// 自建注册验证码：判别联合（按 mode 二选一）
-export type RegistrationCaptchaMode = 'image_click' | 'slider'
+// 自建注册验证码：判别联合（按 mode 三选一）
+export type RegistrationCaptchaMode = 'image_click' | 'slider' | 'rotation'
 
 export interface ImageClickTargetHint {
   shape: string
@@ -385,12 +385,20 @@ export interface SliderChallenge {
   piece_size: number
 }
 
+// 旋转题面：一张被随机旋转过的圆形图片（不含目标角度）。
+export interface RotationChallenge {
+  image: string
+  width: number
+  height: number
+}
+
 export interface RegistrationCaptchaChallenge {
   challenge_id: string
   mode: RegistrationCaptchaMode
   expires_in: number
   image_click?: ImageClickChallenge
   slider?: SliderChallenge
+  rotation?: RotationChallenge
 }
 
 // 点选坐标（图片像素坐标）

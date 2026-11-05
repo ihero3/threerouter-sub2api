@@ -153,6 +153,12 @@ export default {
           "仅允许使用指定域名的邮箱注册账号；留空则不限制（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
+        emailSuffixBlacklist: '邮箱域名黑名单',
+        emailSuffixBlacklistHint:
+          '命中黑名单的邮箱域名直接拒绝注册，且不会下发验证码（不消耗发信额度）',
+        emailSuffixBlacklistPlaceholder: "{'@'}example.com, my.id",
+        emailSuffixBlacklistInputHint:
+          '黑名单按「域名及其所有子域名」匹配：填写 my.id 会同时拦截 abc.my.id、x.abc.my.id，可用来封堵随机子域名批量注册。',
         emailDomainQuota: '非白名单域名限量注册',
         emailDomainQuotaHint:
           '开启后，白名单非空时，其他可注册主域名各限注册指定数量账户；关闭时非白名单域名直接拒绝注册。白名单为空时本开关无效果',
@@ -169,10 +175,11 @@ export default {
         clickCaptchaHint:
           '开启并启用邮箱验证后，用户注册前必须完成自建人机验证（图片点选 / 拼图滑块），无需第三方验证码服务',
         captchaMode: '验证码模式',
-        captchaModeHint: '随机：两种验证码交替出现（推荐，抗脚本能力最强）；也可固定为某一种',
-        captchaModeRandom: '随机（点选 + 滑块）',
+        captchaModeHint: '随机：三种验证码交替出现（推荐，抗脚本能力最强）；也可固定为某一种',
+        captchaModeRandom: '随机（点选 + 滑块 + 旋转）',
         captchaModeImageClick: '仅图片点选',
         captchaModeSlider: '仅拼图滑块',
+        captchaModeRotation: '仅图片旋转',
         captchaDifficulty: '验证码难度',
         captchaDifficultyHint: '难度越高，机器越难破解，但也可能略微增加真人操作成本',
         captchaDifficultyLow: '低',
@@ -958,6 +965,31 @@ export default {
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
         useTlsHint: '为 SMTP 连接启用 TLS 加密'
+      },
+      smtpAccounts: {
+        title: '多账号轮换',
+        description: '配置多个 SMTP 账号，发送时自动轮换并切换故障账号；配置后优先于上面的单账号设置。',
+        empty: '暂未配置多账号，当前使用上方单账号配置发信。',
+        add: '添加账号',
+        remove: '删除',
+        host: 'SMTP 主机',
+        hostPlaceholder: 'smtp.gmail.com',
+        port: '端口',
+        username: '用户名',
+        usernamePlaceholder: "user{'@'}gmail.com",
+        password: '密码',
+        passwordPlaceholder: '账号密码',
+        passwordConfiguredHint: '密码已配置，留空即可保持不变',
+        fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: '留空则使用用户名',
+        fromName: '发件人名称',
+        fromNamePlaceholder: 'Sub2API',
+        dailyLimit: '每日上限',
+        dailyLimitHint: '该账号每天最多发信数，默认 500',
+        enabled: '启用',
+        useTls: '使用 TLS',
+        accountIndex: '账号 {index}',
+        failoverHint: '某个账号额度用尽或报错时会自动切换到下一个账号，并在冷却期内跳过该账号。'
       },
       testEmail: {
         title: '发送测试邮件',

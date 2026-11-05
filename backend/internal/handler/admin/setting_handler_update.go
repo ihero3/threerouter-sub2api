@@ -29,6 +29,7 @@ type UpdateSettingsRequest struct {
 	RegistrationCaptchaMode             string                       `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider（省略=保持现值）
 	RegistrationCaptchaDifficulty       string                       `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high（省略=保持现值）
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailSuffixBlacklist    []string                     `json:"registration_email_suffix_blacklist"`
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
 	RegistrationEmailDomainQuotaLimit   *int                         `json:"registration_email_domain_quota_limit"`   // 非白名单域名每域配额（省略=保持现值）
 	RegistrationEmailDomainQuotaWindow  *string                      `json:"registration_email_domain_quota_window"`  // 配额统计窗口：total | daily（省略=保持现值）
@@ -56,6 +57,8 @@ type UpdateSettingsRequest struct {
 	SMTPFrom     string `json:"smtp_from_email"`
 	SMTPFromName string `json:"smtp_from_name"`
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	// 多账号轮换：非空时优先使用该列表发信，为空则回落到上面的单账号配置。
+	SMTPAccounts []dto.SMTPAccount `json:"smtp_accounts"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -1565,6 +1568,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationCaptchaMode:             req.RegistrationCaptchaMode,
 		RegistrationCaptchaDifficulty:       req.RegistrationCaptchaDifficulty,
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailSuffixBlacklist:    req.RegistrationEmailSuffixBlacklist,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
 		RegistrationEmailDomainQuotaLimit:   registrationEmailDomainQuotaLimit,
 		RegistrationEmailDomainQuotaWindow:  registrationEmailDomainQuotaWindow,
@@ -1590,6 +1594,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                            req.SMTPFrom,
 		SMTPFromName:                        req.SMTPFromName,
 		SMTPUseTLS:                          req.SMTPUseTLS,
+		SMTPAccounts:                        smtpAccountsFromDTO(req.SMTPAccounts),
 		TurnstileEnabled:                    req.TurnstileEnabled,
 		TurnstileSiteKey:                    req.TurnstileSiteKey,
 		TurnstileSecretKey:                  req.TurnstileSecretKey,
@@ -2216,6 +2221,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationCaptchaDifficulty:                          updatedSettings.RegistrationCaptchaDifficulty,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailSuffixBlacklist:                       updatedSettings.RegistrationEmailSuffixBlacklist,
 		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
 		RegistrationEmailDomainQuotaLimit:                      updatedSettings.RegistrationEmailDomainQuotaLimit,
 		RegistrationEmailDomainQuotaWindow:                     updatedSettings.RegistrationEmailDomainQuotaWindow,
@@ -2245,6 +2251,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                                               updatedSettings.SMTPFrom,
 		SMTPFromName:                                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                                             updatedSettings.SMTPUseTLS,
+		SMTPAccounts:                                           smtpAccountsToDTO(updatedSettings.SMTPAccounts),
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,

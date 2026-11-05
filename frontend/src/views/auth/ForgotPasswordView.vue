@@ -85,10 +85,17 @@
           />
         </div>
 
+        <!-- 自建点击验证码：与注册一致，发信前必须通过人机验证 -->
+        <RegistrationCaptcha
+          v-if="clickCaptchaEnabled"
+          data-testid="forgot-password-click-captcha"
+          @verified="onClickCaptchaVerified"
+        />
+
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
+          :disabled="isLoading || (turnstileEnabled && !turnstileToken) || (clickCaptchaEnabled && !clickCaptchaToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -138,6 +145,7 @@ import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
+import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { useAppStore } from '@/stores'
 import { getPublicSettings, forgotPassword } from '@/api/auth'
 
@@ -167,6 +175,13 @@ const aliyunCaptchaRegion = ref<string>('cn')
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
+// 自建点击验证码：开启后发信前必须通过人机验证，防止接口被刷爆邮件配额。
+const clickCaptchaEnabled = ref<boolean>(false)
+const clickCaptchaToken = ref<string>('')
+
+function onClickCaptchaVerified(token: string): void {
+  clickCaptchaToken.value = token
+}
 const tencentCaptchaRandstr = ref<string>('')
 const aliyunCaptchaReady = computed(
   () =>
@@ -216,6 +231,7 @@ onMounted(async () => {
     aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
+    clickCaptchaEnabled.value = settings.registration_click_captcha_enabled === true
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -282,6 +298,12 @@ function validateForm(): boolean {
     isValid = false
   }
 
+  // 自建点击验证码：必须先通过人机验证才能发送重置邮件
+  if (clickCaptchaEnabled.value && !clickCaptchaToken.value) {
+    errors.turnstile = t('auth.completeVerification')
+    isValid = false
+  }
+
   return isValid
 }
 
@@ -303,6 +325,7 @@ async function handleSubmit(): Promise<void> {
   try {
     await forgotPassword({
       email: formData.email,
+      click_captcha_token: clickCaptchaEnabled.value ? clickCaptchaToken.value : undefined,
       turnstile_token:
         turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,

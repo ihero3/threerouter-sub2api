@@ -1610,6 +1610,75 @@
                 <Toggle v-model="form.registration_ip_quota_enabled" />
               </div>
 
+              <!-- Email Suffix Blacklist -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t("admin.settings.registration.emailSuffixBlacklist")
+                }}</label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    t("admin.settings.registration.emailSuffixBlacklistHint")
+                  }}
+                </p>
+                <div
+                  class="mt-3 rounded-lg border border-gray-300 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
+                >
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span
+                      v-for="suffix in registrationEmailSuffixBlacklistTags"
+                      :key="suffix"
+                      class="inline-flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-xs font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                    >
+                      <span>{{ suffix }}</span>
+                      <button
+                        type="button"
+                        class="rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 dark:text-red-300 dark:hover:bg-red-900/50 dark:hover:text-red-200"
+                        @click="
+                          removeRegistrationEmailSuffixBlacklistTag(suffix)
+                        "
+                      >
+                        <Icon
+                          name="x"
+                          size="xs"
+                          class="h-3.5 w-3.5"
+                          :stroke-width="2"
+                        />
+                      </button>
+                    </span>
+
+                    <div
+                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                    >
+                      <input
+                        v-model="registrationEmailSuffixBlacklistDraft"
+                        type="text"
+                        class="w-full bg-transparent text-sm font-mono text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+                        :placeholder="
+                          t(
+                            'admin.settings.registration.emailSuffixBlacklistPlaceholder',
+                          )
+                        "
+                        @input="
+                          handleRegistrationEmailSuffixBlacklistDraftInput
+                        "
+                        @keydown="
+                          handleRegistrationEmailSuffixBlacklistDraftKeydown
+                        "
+                        @blur="commitRegistrationEmailSuffixBlacklistDraft"
+                        @paste="handleRegistrationEmailSuffixBlacklistPaste"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.registration.emailSuffixBlacklistInputHint",
+                    )
+                  }}
+                </p>
+              </div>
+
               <!-- 自建顺序点击验证码 -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -1652,6 +1721,9 @@
                   </option>
                   <option value="slider">
                     {{ t("admin.settings.registration.captchaModeSlider") }}
+                  </option>
+                  <option value="rotation">
+                    {{ t("admin.settings.registration.captchaModeRotation") }}
                   </option>
                 </select>
               </div>
@@ -8833,6 +8905,138 @@
             </div>
           </div>
 
+          <!-- Multi-account SMTP rotation -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.settings.smtpAccounts.title') }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.smtpAccounts.description') }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <p v-if="!form.smtp_accounts.length" class="text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.smtpAccounts.empty') }}
+              </p>
+              <div
+                v-for="(account, index) in form.smtp_accounts"
+                :key="account.id || index"
+                class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t('admin.settings.smtpAccounts.accountIndex', { index: index + 1 }) }}
+                  </span>
+                  <div class="flex items-center gap-4">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <Toggle v-model="account.enabled" />
+                      {{ t('admin.settings.smtpAccounts.enabled') }}
+                    </label>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      @click="removeSMTPAccount(index)"
+                    >
+                      {{ t('admin.settings.smtpAccounts.remove') }}
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.host') }}
+                    </label>
+                    <input
+                      v-model="account.host"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.smtpAccounts.hostPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.port') }}
+                    </label>
+                    <input v-model.number="account.port" type="number" class="input" placeholder="587" />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.username') }}
+                    </label>
+                    <input
+                      v-model="account.username"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.smtpAccounts.usernamePlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.password') }}
+                    </label>
+                    <input
+                      v-model="account.password"
+                      type="password"
+                      class="input"
+                      autocomplete="new-password"
+                      :placeholder="
+                        account.password_configured
+                          ? t('admin.settings.smtpAccounts.passwordConfiguredHint')
+                          : t('admin.settings.smtpAccounts.passwordPlaceholder')
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.fromEmail') }}
+                    </label>
+                    <input
+                      v-model="account.from_email"
+                      type="email"
+                      class="input"
+                      :placeholder="t('admin.settings.smtpAccounts.fromEmailPlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.fromName') }}
+                    </label>
+                    <input
+                      v-model="account.from_name"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.smtpAccounts.fromNamePlaceholder')"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.dailyLimit') }}
+                    </label>
+                    <input v-model.number="account.daily_limit" type="number" class="input" placeholder="500" />
+                    <p class="mt-1 text-xs text-gray-400">
+                      {{ t('admin.settings.smtpAccounts.dailyLimitHint') }}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2 pt-5">
+                    <Toggle v-model="account.use_tls" />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.smtpAccounts.useTls') }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <button type="button" class="btn btn-secondary" @click="addSMTPAccount">
+                  {{ t('admin.settings.smtpAccounts.add') }}
+                </button>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.smtpAccounts.failoverHint') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Send Test Email - Only show when email verification is enabled -->
           <div v-if="form.email_verify_enabled" class="card">
             <div
@@ -9176,6 +9380,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+  SMTPAccount,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -9331,6 +9536,8 @@ const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
+const registrationEmailSuffixBlacklistTags = ref<string[]>([]);
+const registrationEmailSuffixBlacklistDraft = ref("");
 const forwardedClientIpHeaderDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
 
@@ -9925,6 +10132,7 @@ const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
+  registration_email_suffix_blacklist: [],
   registration_email_domain_quota_enabled: false,
   registration_email_domain_quota_limit: 1,
   registration_email_domain_quota_window: "total",
@@ -10022,6 +10230,7 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  smtp_accounts: [] as SMTPAccount[],
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -10618,7 +10827,7 @@ const defaultSubscriptionGroupOptions = computed<
   })),
 );
 
-const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
+const registrationEmailSuffixSeparatorKeys = new Set([
   " ",
   ",",
   "，",
@@ -10626,67 +10835,71 @@ const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
   "Tab",
 ]);
 
-function removeRegistrationEmailSuffixWhitelistTag(suffix: string) {
-  registrationEmailSuffixWhitelistTags.value =
-    registrationEmailSuffixWhitelistTags.value.filter(
-      (item) => item !== suffix,
-    );
+// 白名单/黑名单共用的 tag 输入逻辑（按 ref 操作，避免重复实现）。
+function removeRegistrationEmailSuffixTag(
+  tagsRef: { value: string[] },
+  suffix: string,
+) {
+  tagsRef.value = tagsRef.value.filter((item) => item !== suffix);
 }
 
-function addRegistrationEmailSuffixWhitelistTag(raw: string) {
+function addRegistrationEmailSuffixTag(
+  tagsRef: { value: string[] },
+  raw: string,
+) {
   const suffix = normalizeRegistrationEmailSuffixDomain(raw);
   if (
     !isRegistrationEmailSuffixDomainValid(suffix) ||
-    registrationEmailSuffixWhitelistTags.value.includes(suffix)
+    tagsRef.value.includes(suffix)
   ) {
     return;
   }
-  registrationEmailSuffixWhitelistTags.value = [
-    ...registrationEmailSuffixWhitelistTags.value,
-    suffix,
-  ];
+  tagsRef.value = [...tagsRef.value, suffix];
 }
 
-function commitRegistrationEmailSuffixWhitelistDraft() {
-  if (!registrationEmailSuffixWhitelistDraft.value) {
+function commitRegistrationEmailSuffixDraft(
+  tagsRef: { value: string[] },
+  draftRef: { value: string },
+) {
+  if (!draftRef.value) {
     return;
   }
-  addRegistrationEmailSuffixWhitelistTag(
-    registrationEmailSuffixWhitelistDraft.value,
-  );
-  registrationEmailSuffixWhitelistDraft.value = "";
+  addRegistrationEmailSuffixTag(tagsRef, draftRef.value);
+  draftRef.value = "";
 }
 
-function handleRegistrationEmailSuffixWhitelistDraftInput() {
-  registrationEmailSuffixWhitelistDraft.value =
-    normalizeRegistrationEmailSuffixDomain(
-      registrationEmailSuffixWhitelistDraft.value,
-    );
+function normalizeRegistrationEmailSuffixDraft(draftRef: { value: string }) {
+  draftRef.value = normalizeRegistrationEmailSuffixDomain(draftRef.value);
 }
 
-function handleRegistrationEmailSuffixWhitelistDraftKeydown(
+function handleRegistrationEmailSuffixDraftKeydown(
   event: KeyboardEvent,
+  tagsRef: { value: string[] },
+  draftRef: { value: string },
 ) {
   if (event.isComposing) {
     return;
   }
 
-  if (registrationEmailSuffixWhitelistSeparatorKeys.has(event.key)) {
+  if (registrationEmailSuffixSeparatorKeys.has(event.key)) {
     event.preventDefault();
-    commitRegistrationEmailSuffixWhitelistDraft();
+    commitRegistrationEmailSuffixDraft(tagsRef, draftRef);
     return;
   }
 
   if (
     event.key === "Backspace" &&
-    !registrationEmailSuffixWhitelistDraft.value &&
-    registrationEmailSuffixWhitelistTags.value.length > 0
+    !draftRef.value &&
+    tagsRef.value.length > 0
   ) {
-    registrationEmailSuffixWhitelistTags.value.pop();
+    tagsRef.value.pop();
   }
 }
 
-function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
+function handleRegistrationEmailSuffixPaste(
+  event: ClipboardEvent,
+  tagsRef: { value: string[] },
+) {
   const text = event.clipboardData?.getData("text") || "";
   if (!text.trim()) {
     return;
@@ -10694,8 +10907,66 @@ function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
   event.preventDefault();
   const tokens = parseRegistrationEmailSuffixWhitelistInput(text);
   for (const token of tokens) {
-    addRegistrationEmailSuffixWhitelistTag(token);
+    addRegistrationEmailSuffixTag(tagsRef, token);
   }
+}
+
+function removeRegistrationEmailSuffixWhitelistTag(suffix: string) {
+  removeRegistrationEmailSuffixTag(registrationEmailSuffixWhitelistTags, suffix);
+}
+
+function commitRegistrationEmailSuffixWhitelistDraft() {
+  commitRegistrationEmailSuffixDraft(
+    registrationEmailSuffixWhitelistTags,
+    registrationEmailSuffixWhitelistDraft,
+  );
+}
+
+function handleRegistrationEmailSuffixWhitelistDraftInput() {
+  normalizeRegistrationEmailSuffixDraft(registrationEmailSuffixWhitelistDraft);
+}
+
+function handleRegistrationEmailSuffixWhitelistDraftKeydown(
+  event: KeyboardEvent,
+) {
+  handleRegistrationEmailSuffixDraftKeydown(
+    event,
+    registrationEmailSuffixWhitelistTags,
+    registrationEmailSuffixWhitelistDraft,
+  );
+}
+
+function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
+  handleRegistrationEmailSuffixPaste(event, registrationEmailSuffixWhitelistTags);
+}
+
+function removeRegistrationEmailSuffixBlacklistTag(suffix: string) {
+  removeRegistrationEmailSuffixTag(registrationEmailSuffixBlacklistTags, suffix);
+}
+
+function commitRegistrationEmailSuffixBlacklistDraft() {
+  commitRegistrationEmailSuffixDraft(
+    registrationEmailSuffixBlacklistTags,
+    registrationEmailSuffixBlacklistDraft,
+  );
+}
+
+function handleRegistrationEmailSuffixBlacklistDraftInput() {
+  normalizeRegistrationEmailSuffixDraft(registrationEmailSuffixBlacklistDraft);
+}
+
+function handleRegistrationEmailSuffixBlacklistDraftKeydown(
+  event: KeyboardEvent,
+) {
+  handleRegistrationEmailSuffixDraftKeydown(
+    event,
+    registrationEmailSuffixBlacklistTags,
+    registrationEmailSuffixBlacklistDraft,
+  );
+}
+
+function handleRegistrationEmailSuffixBlacklistPaste(event: ClipboardEvent) {
+  handleRegistrationEmailSuffixPaste(event, registrationEmailSuffixBlacklistTags);
 }
 
 const forwardedClientIpHeaderSeparatorKeys = new Set([
@@ -11163,6 +11434,26 @@ function removeCodexWhitelistRow(i: number): void {
   codexWhitelistRows.value.splice(i, 1);
 }
 
+function addSMTPAccount(): void {
+  form.smtp_accounts.push({
+    id: "",
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    password_configured: false,
+    from_email: "",
+    from_name: "",
+    use_tls: true,
+    enabled: true,
+    daily_limit: 500,
+  });
+}
+
+function removeSMTPAccount(index: number): void {
+  form.smtp_accounts.splice(index, 1);
+}
+
 const codexSyncedVersionLabel = computed(() => {
   const synced = form.openai_codex_client_version_synced?.trim();
   if (!synced) return "";
@@ -11237,6 +11528,10 @@ async function loadSettings() {
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
       );
+    registrationEmailSuffixBlacklistTags.value =
+      normalizeRegistrationEmailSuffixDomains(
+        settings.registration_email_suffix_blacklist,
+      );
     form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
       settings.forwarded_client_ip_headers,
     );
@@ -11247,8 +11542,18 @@ async function loadSettings() {
         : [10, 20, 50, 100],
     );
     registrationEmailSuffixWhitelistDraft.value = "";
+    registrationEmailSuffixBlacklistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    // 多账号轮换：后端不回传明文密码，清空输入并保留“已配置”标记
+    form.smtp_accounts = (settings.smtp_accounts || []).map((account) => ({
+      ...account,
+      id: account.id || "",
+      password: "",
+      password_configured: account.password_configured ?? false,
+      port: account.port || 587,
+      daily_limit: account.daily_limit || 500,
+    }));
     form.turnstile_secret_key = "";
     form.tencent_captcha_app_secret_key = "";
     form.tencent_captcha_cloud_secret_id = "";
@@ -11569,6 +11874,10 @@ async function saveSettings() {
         registrationEmailSuffixWhitelistTags.value.map((suffix) =>
           suffix.startsWith("*.") ? suffix : `@${suffix}`,
         ),
+      registration_email_suffix_blacklist:
+        registrationEmailSuffixBlacklistTags.value.map((suffix) =>
+          suffix.startsWith("*.") ? suffix : `@${suffix}`,
+        ),
       registration_email_domain_quota_enabled:
         form.registration_email_domain_quota_enabled,
       registration_email_domain_quota_limit:
@@ -11643,6 +11952,18 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_accounts: form.smtp_accounts.map((account) => ({
+        id: account.id,
+        host: account.host,
+        port: account.port,
+        username: account.username,
+        password: account.password || undefined,
+        from_email: account.from_email,
+        from_name: account.from_name,
+        use_tls: account.use_tls,
+        enabled: account.enabled,
+        daily_limit: account.daily_limit,
+      })),
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
@@ -11958,6 +12279,10 @@ async function saveSettings() {
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,
       );
+    registrationEmailSuffixBlacklistTags.value =
+      normalizeRegistrationEmailSuffixDomains(
+        updated.registration_email_suffix_blacklist,
+      );
     form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
       updated.forwarded_client_ip_headers,
     );
@@ -11968,8 +12293,18 @@ async function saveSettings() {
         : [10, 20, 50, 100],
     );
     registrationEmailSuffixWhitelistDraft.value = "";
+    registrationEmailSuffixBlacklistDraft.value = "";
     form.smtp_password = "";
     smtpPasswordManuallyEdited.value = false;
+    // 多账号轮换：后端不回传明文密码，清空输入并保留“已配置”标记
+    form.smtp_accounts = (updated.smtp_accounts || []).map((account) => ({
+      ...account,
+      id: account.id || "",
+      password: "",
+      password_configured: account.password_configured ?? false,
+      port: account.port || 587,
+      daily_limit: account.daily_limit || 500,
+    }));
     form.turnstile_secret_key = "";
     form.aliyun_captcha_access_key_secret = "";
     form.linuxdo_connect_client_secret = "";

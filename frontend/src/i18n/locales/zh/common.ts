@@ -258,6 +258,8 @@ export default {
       imageClickPrompt: '请依次点击：',
       sliderPrompt: '拖动拼图块，使其对齐缺口',
       sliderHint: '按住并拖动拼图块到缺口处',
+      rotationPrompt: '拖动图片，把箭头旋到正上方',
+      rotationHint: '按住并左右拖动旋转图片',
       refresh: '看不清？换一张',
       refreshing: '加载中...',
       invalid: '验证失败，请重新完成人机验证',
@@ -282,6 +284,7 @@ export default {
     clickCaptchaDisabled: '人机验证服务暂不可用，请联系管理员',
     emailDomainRegistrationLimit:
       '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
+    emailDomainBlacklisted: '该邮箱域名已被禁止注册，请更换其他邮箱',
     emailDomainRegistrationLimitDaily:
       '此邮箱域名今日注册数量已超过当天上限，请明天再试。你也可以换用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',

@@ -9,10 +9,11 @@ import type {
   TrajectoryPoint,
 } from '@/types'
 
-// 客户端回传的原始输入：按题目模式二选一携带点选坐标或滑块落点+轨迹。
+// 客户端回传的原始输入：按题目模式三选一携带点选坐标 / 滑块落点 / 旋转角度+轨迹。
 export interface CaptchaVerifyProof {
   clicks?: ClickPoint[]
   drop_x?: number
+  angle?: number
   trajectory?: TrajectoryPoint[]
 }
 

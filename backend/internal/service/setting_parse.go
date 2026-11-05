@@ -58,6 +58,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationEnabled:                       "true",
 		SettingKeyEmailVerifyEnabled:                        "false",
 		SettingKeyRegistrationEmailSuffixWhitelist:          "[]",
+		SettingKeyRegistrationEmailSuffixBlacklist:          "[]",
 		SettingKeyRegistrationEmailDomainQuotaEnabled:       "false",
 		SettingKeyRegistrationEmailDomainQuotaLimit:         strconv.Itoa(RegistrationEmailDomainQuotaLimitDefault),
 		SettingKeyRegistrationEmailDomainQuotaWindow:        RegistrationEmailDomainQuotaWindowDefault,
@@ -328,6 +329,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		RegistrationCaptchaMode:                normalizeRegistrationCaptchaMode(settings[SettingKeyRegistrationCaptchaMode]),
 		RegistrationCaptchaDifficulty:          normalizeRegistrationCaptchaDifficulty(settings[SettingKeyRegistrationCaptchaDifficulty]),
 		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
+		RegistrationEmailSuffixBlacklist:       ParseRegistrationEmailSuffixBlacklist(settings[SettingKeyRegistrationEmailSuffixBlacklist]),
 		RegistrationEmailDomainQuotaEnabled:    settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
 		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:                   emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
@@ -347,6 +349,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFrom:                               settings[SettingKeySMTPFrom],
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
+		SMTPAccounts:                           parseSMTPAccounts(settings[SettingKeySMTPAccounts]),
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],

@@ -29,6 +29,27 @@ func TestParseRegistrationEmailSuffixWhitelist(t *testing.T) {
 	require.Equal(t, []string{"@example.com", "@foo.bar", "*.edu.cn"}, got)
 }
 
+func TestIsRegistrationEmailDomainBlacklisted(t *testing.T) {
+	blacklist := []string{"@my.id", "@spam.com", "*.bad.org"}
+	// 精确域名
+	require.True(t, IsRegistrationEmailDomainBlacklisted("user@my.id", blacklist))
+	// 随机子域名：配置 my.id 即可拦截 abc.my.id 及其更深的子域名
+	require.True(t, IsRegistrationEmailDomainBlacklisted("user@abc.my.id", blacklist))
+	require.True(t, IsRegistrationEmailDomainBlacklisted("user@x.abc.my.id", blacklist))
+	require.True(t, IsRegistrationEmailDomainBlacklisted("user@sub.bad.org", blacklist))
+	// 近似域名不能误伤
+	require.False(t, IsRegistrationEmailDomainBlacklisted("user@notmy.id", blacklist))
+	require.False(t, IsRegistrationEmailDomainBlacklisted("user@my.id.com", blacklist))
+	require.False(t, IsRegistrationEmailDomainBlacklisted("user@example.com", blacklist))
+	// 空黑名单放行
+	require.False(t, IsRegistrationEmailDomainBlacklisted("user@my.id", nil))
+}
+
+func TestParseRegistrationEmailSuffixBlacklist(t *testing.T) {
+	got := ParseRegistrationEmailSuffixBlacklist(`["my.id","@SPAM.COM","*.BAD.ORG","@invalid_domain",""]`)
+	require.Equal(t, []string{"@my.id", "@spam.com", "*.bad.org"}, got)
+}
+
 func TestIsRegistrationEmailSuffixAllowed(t *testing.T) {
 	require.True(t, IsRegistrationEmailSuffixAllowed("user@example.com", []string{"@example.com"}))
 	require.True(t, IsRegistrationEmailSuffixAllowed("user@example.com.", []string{"@example.com"}))

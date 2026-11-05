@@ -17,6 +17,8 @@ const (
 	passwordResetKeyPrefix       = "password_reset:"
 	passwordResetSentAtKeyPrefix = "password_reset_sent:"
 	notifyCodeUserRateKeyPrefix  = "notify_code_user_rate:"
+	emailDailySendKeyPrefix      = "email_daily_send:"
+	smtpAccountCooldownKeyPrefix = "email_smtp_account_cooldown:"
 )
 
 // verifyCodeKey generates the Redis key for email verification code.
@@ -174,4 +176,35 @@ func (c *emailCache) GetNotifyCodeUserRate(ctx context.Context, userID int64) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+// IncrEmailDailySendCount 递增当日发信计数（scopeKey 为 global 或收件人维度），返回累计值。
+// 首次计数时把过期时间设到次日凌晨后 1 小时，避免跨天时计数提前失效。
+func (c *emailCache) IncrEmailDailySendCount(ctx context.Context, scopeKey string) (int64, error) {
+	now := time.Now()
+	key := fmt.Sprintf("%s%s:%s", emailDailySendKeyPrefix, scopeKey, now.Format("20060102"))
+	count, err := c.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if count == 1 {
+		expireAt := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).
+			Add(24*time.Hour + time.Hour)
+		if err := c.rdb.ExpireAt(ctx, key, expireAt).Err(); err != nil {
+			return count, fmt.Errorf("expire email daily send key: %w", err)
+		}
+	}
+	return count, nil
+}
+
+// IsSMTPAccountInCooldown 判断某个 SMTP 账号是否处于失败冷却期。
+func (c *emailCache) IsSMTPAccountInCooldown(ctx context.Context, accountKey string) bool {
+	ok, err := c.rdb.Exists(ctx, smtpAccountCooldownKeyPrefix+accountKey).Result()
+	// Redis 故障时返回 false（视为可用），与发信计数的可用性优先策略一致。
+	return err == nil && ok > 0
+}
+
+// SetSMTPAccountCooldown 给某个 SMTP 账号设置失败冷却。
+func (c *emailCache) SetSMTPAccountCooldown(ctx context.Context, accountKey string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, smtpAccountCooldownKeyPrefix+accountKey, "1", ttl).Err()
 }

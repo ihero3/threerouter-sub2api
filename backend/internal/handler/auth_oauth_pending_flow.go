@@ -80,6 +80,7 @@ type createPendingOAuthAccountRequest struct {
 
 type sendPendingOAuthVerifyCodeRequest struct {
 	Email                 string `json:"email" binding:"required,email"`
+	ClickCaptchaToken     string `json:"click_captcha_token,omitempty"`
 	TurnstileToken        string `json:"turnstile_token,omitempty"`
 	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
@@ -571,6 +572,10 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, middleware2.SecurityClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

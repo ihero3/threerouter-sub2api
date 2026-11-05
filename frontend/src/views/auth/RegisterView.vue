@@ -355,6 +355,7 @@ import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   buildOAuthLoginStartURL,
+  checkRegistrationEmail,
   getPublicSettings,
   isWeChatWebOAuthEnabled,
   startOAuthLogin,
@@ -1027,6 +1028,16 @@ async function handleRegister(): Promise<void> {
 
     // If email verification is enabled, redirect to verification page
     if (emailVerifyEnabled.value) {
+      // 邮箱风险预检：必须在发送验证码之前完成，命中高危规则直接拒绝并停留当前页。
+      // 后端在发码与最终注册时还会再校验一次，这里是第一层阻断（双层防线）。
+      try {
+        await checkRegistrationEmail(formData.email.trim())
+      } catch (error: unknown) {
+        errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
+        appStore.showError(errorMessage.value)
+        return
+      }
+
       // Store registration data in sessionStorage
       sessionStorage.setItem(
         'register_data',
@@ -1085,6 +1096,9 @@ async function handleRegister(): Promise<void> {
 
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
   const code = extractApiErrorCode(error)
+  if (code === 'EMAIL_DOMAIN_BLACKLISTED') {
+    return t('auth.emailDomainBlacklisted')
+  }
   if (code === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return emailDomainQuotaWindow.value === 'daily'
       ? t('auth.emailDomainRegistrationLimitDaily')

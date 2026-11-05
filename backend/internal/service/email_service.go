@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -27,6 +28,9 @@ var (
 	ErrInvalidVerifyCode     = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
 	ErrVerifyCodeTooFrequent = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
 	ErrVerifyCodeMaxAttempts = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
+
+	// 每日发信额度已用尽：防止公开接口被刷导致 SMTP 服务商配额（如 Gmail 500/天）被打爆。
+	ErrEmailDailyLimitReached = infraerrors.TooManyRequests("EMAIL_DAILY_LIMIT_REACHED", "daily email sending limit reached, please try again later")
 
 	// Password reset errors
 	ErrInvalidResetToken = infraerrors.BadRequest("INVALID_RESET_TOKEN", "invalid or expired password reset token")
@@ -56,6 +60,14 @@ type EmailCache interface {
 	// Notify code rate limiting per user
 	IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error)
 	GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error)
+
+	// 每日发信计数（按 scopeKey 区分全局/单个收件人），返回当日累计次数。
+	// 用于给公开邮件接口兜底，避免 SMTP 配额被刷爆。
+	IncrEmailDailySendCount(ctx context.Context, scopeKey string) (int64, error)
+
+	// SMTP 账号失败冷却：多账号轮换时跳过冷却中的账号。
+	IsSMTPAccountInCooldown(ctx context.Context, accountKey string) bool
+	SetSMTPAccountCooldown(ctx context.Context, accountKey string, ttl time.Duration) error
 }
 
 // VerificationCodeData represents verification code data
@@ -82,6 +94,22 @@ const (
 
 	// Password reset email cooldown (prevent email bombing)
 	passwordResetEmailCooldown = 30 * time.Second
+
+	// 每日发信总量上限，防止公开接口被刷导致 SMTP 服务商日配额被打爆：
+	// 单个收件人每天最多 10 封（验证码/重置邮件足够），全站每天最多 500 封
+	// （对齐个人 Gmail 的 500/天；改用 Google Workspace 或专业 ESP 后可上调）。
+	emailDailyRecipientSendLimit = 10
+	emailDailyGlobalSendLimit    = 500
+
+	// 多账号轮换相关：
+	// - 每个账号默认 500 封/天（个人 Gmail 额度），可在后台按账号调整。
+	// - 命中服务商额度/限流错误后冷却 6 小时；认证或连接错误冷却 15 分钟，
+	//   冷却期内轮换直接跳过该账号，避免每次发信都先撞一次坏账号。
+	smtpAccountDefaultDailyLimit = 500
+	smtpAccountDailyLimitMin     = 1
+	smtpAccountDailyLimitMax     = 5000
+	smtpAccountQuotaCooldown     = 6 * time.Hour
+	smtpAccountFailureCooldown   = 15 * time.Minute
 )
 
 // SMTPConfig SMTP配置
@@ -93,6 +121,36 @@ type SMTPConfig struct {
 	From     string
 	FromName string
 	UseTLS   bool
+}
+
+// SMTPAccountSetting 一组可参与轮换的 SMTP 账号配置。
+// 持久化为 smtp_accounts（JSON 数组）；非空时优先于单账号配置。
+type SMTPAccountSetting struct {
+	ID         string
+	Host       string
+	Port       int
+	Username   string
+	Password   string
+	From       string
+	FromName   string
+	UseTLS     bool
+	Enabled    bool
+	DailyLimit int
+}
+
+// smtpAccountJSON 是 smtp_accounts 的持久化格式。
+// Disabled 取反存储，保证老数据缺少该字段时默认启用。
+type smtpAccountJSON struct {
+	ID         string `json:"id,omitempty"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	From       string `json:"from"`
+	FromName   string `json:"from_name"`
+	UseTLS     bool   `json:"use_tls"`
+	Disabled   bool   `json:"disabled"`
+	DailyLimit int    `json:"daily_limit"`
 }
 
 // EmailService 邮件服务
@@ -174,13 +232,274 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 	}, nil
 }
 
-// SendEmail 发送邮件（使用数据库中保存的配置）
+// SendEmail 发送邮件（使用数据库中保存的配置）。
+// 配置了 smtp_accounts 时按账号轮换发信；否则回落到单账号配置。
 func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) error {
-	config, err := s.GetSMTPConfig(ctx)
+	accounts, err := s.GetSMTPAccounts(ctx)
 	if err != nil {
 		return err
 	}
-	return s.SendEmailWithConfig(config, to, subject, body)
+	enabled := enabledSMTPAccounts(accounts)
+	if len(enabled) == 0 {
+		config, err := s.GetSMTPConfig(ctx)
+		if err != nil {
+			return err
+		}
+		if err := s.checkEmailDailySendQuota(ctx, to, emailDailyGlobalSendLimit); err != nil {
+			return err
+		}
+		return s.SendEmailWithConfig(config, to, subject, body)
+	}
+
+	// 多账号时全站上限取各账号日额度的总和，既保留总量兜底，
+	// 又不会因为固定的 500 把多账号的总容量压回单账号水平。
+	globalLimit := 0
+	for _, acc := range enabled {
+		globalLimit += acc.DailyLimit
+	}
+	if err := s.checkEmailDailySendQuota(ctx, to, globalLimit); err != nil {
+		return err
+	}
+	return s.sendEmailWithRotation(ctx, enabled, to, subject, body)
+}
+
+// GetSMTPAccounts 读取多账号轮换配置。未配置或解析失败时返回空切片，
+// 调用方自动回落到单账号配置。
+func (s *EmailService) GetSMTPAccounts(ctx context.Context) ([]SMTPAccountSetting, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeySMTPAccounts)
+	if err != nil {
+		if !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("get smtp accounts failed; fallback to single smtp config", "error", err)
+		}
+		return nil, nil
+	}
+	return parseSMTPAccounts(raw), nil
+}
+
+// parseSMTPAccounts 解析 smtp_accounts JSON，并补全端口/额度默认值。
+func parseSMTPAccounts(raw string) []SMTPAccountSetting {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "null" || trimmed == "[]" {
+		return nil
+	}
+	var rows []smtpAccountJSON
+	if err := json.Unmarshal([]byte(trimmed), &rows); err != nil {
+		slog.Warn("parse smtp accounts failed", "error", err)
+		return nil
+	}
+	accounts := make([]SMTPAccountSetting, 0, len(rows))
+	for _, row := range rows {
+		host := strings.TrimSpace(row.Host)
+		if host == "" {
+			continue
+		}
+		accounts = append(accounts, SMTPAccountSetting{
+			ID:         strings.TrimSpace(row.ID),
+			Host:       host,
+			Port:       normalizeSMTPPort(row.Port),
+			Username:   strings.TrimSpace(row.Username),
+			Password:   strings.TrimSpace(row.Password),
+			From:       strings.TrimSpace(row.From),
+			FromName:   strings.TrimSpace(row.FromName),
+			UseTLS:     row.UseTLS,
+			Enabled:    !row.Disabled,
+			DailyLimit: normalizeSMTPAccountDailyLimit(row.DailyLimit),
+		})
+	}
+	return accounts
+}
+
+// marshalSMTPAccounts 序列化多账号配置，空列表序列化为 []。
+func marshalSMTPAccounts(accounts []SMTPAccountSetting) (string, error) {
+	rows := make([]smtpAccountJSON, 0, len(accounts))
+	for _, acc := range accounts {
+		host := strings.TrimSpace(acc.Host)
+		if host == "" {
+			continue
+		}
+		rows = append(rows, smtpAccountJSON{
+			ID:         strings.TrimSpace(acc.ID),
+			Host:       host,
+			Port:       normalizeSMTPPort(acc.Port),
+			Username:   strings.TrimSpace(acc.Username),
+			Password:   strings.TrimSpace(acc.Password),
+			From:       strings.TrimSpace(acc.From),
+			FromName:   strings.TrimSpace(acc.FromName),
+			UseTLS:     acc.UseTLS,
+			Disabled:   !acc.Enabled,
+			DailyLimit: normalizeSMTPAccountDailyLimit(acc.DailyLimit),
+		})
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func normalizeSMTPPort(port int) int {
+	if port <= 0 || port > 65535 {
+		return 587
+	}
+	return port
+}
+
+func normalizeSMTPAccountDailyLimit(limit int) int {
+	if limit <= 0 {
+		return smtpAccountDefaultDailyLimit
+	}
+	if limit > smtpAccountDailyLimitMax {
+		return smtpAccountDailyLimitMax
+	}
+	return limit
+}
+
+func enabledSMTPAccounts(accounts []SMTPAccountSetting) []SMTPAccountSetting {
+	enabled := make([]SMTPAccountSetting, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.Enabled && strings.TrimSpace(acc.Host) != "" {
+			enabled = append(enabled, acc)
+		}
+	}
+	return enabled
+}
+
+// cacheKey 生成稳定的账号标识，用于按账号计数与冷却。
+func (acc SMTPAccountSetting) cacheKey() string {
+	if id := strings.TrimSpace(acc.ID); id != "" {
+		return id
+	}
+	raw := HashFingerprint(acc.Host, acc.Username)
+	if len(raw) > 16 {
+		return raw[:16]
+	}
+	return raw
+}
+
+func (acc SMTPAccountSetting) toSMTPConfig() *SMTPConfig {
+	from := acc.From
+	if from == "" {
+		from = acc.Username
+	}
+	return &SMTPConfig{
+		Host:     strings.TrimSpace(acc.Host),
+		Port:     normalizeSMTPPort(acc.Port),
+		Username: strings.TrimSpace(acc.Username),
+		Password: strings.TrimSpace(acc.Password),
+		From:     from,
+		FromName: strings.TrimSpace(acc.FromName),
+		UseTLS:   acc.UseTLS,
+	}
+}
+
+// sendEmailWithRotation 从游标位置开始轮询账号：
+// 跳过冷却中的账号与额度已用尽的账号，失败自动切换到下一个。
+func (s *EmailService) sendEmailWithRotation(ctx context.Context, accounts []SMTPAccountSetting, to, subject, body string) error {
+	start := 0
+	if s.cache != nil && len(accounts) > 0 {
+		if seq, err := s.cache.IncrEmailDailySendCount(ctx, "smtp_rotation_cursor"); err == nil {
+			start = int(seq % int64(len(accounts)))
+		}
+	}
+
+	var lastErr error
+	for i := 0; i < len(accounts); i++ {
+		acc := accounts[(start+i)%len(accounts)]
+		key := acc.cacheKey()
+		if s.cache != nil {
+			if s.cache.IsSMTPAccountInCooldown(ctx, key) {
+				continue
+			}
+			if count, err := s.cache.IncrEmailDailySendCount(ctx, "smtp_account:"+key); err == nil && count > int64(acc.DailyLimit) {
+				lastErr = ErrEmailDailyLimitReached
+				continue
+			}
+		}
+		if err := s.SendEmailWithConfig(acc.toSMTPConfig(), to, subject, body); err != nil {
+			lastErr = err
+			s.markSMTPAccountFailure(ctx, key, err)
+			continue
+		}
+		return nil
+	}
+	if lastErr == nil {
+		// 所有账号都在冷却或额度耗尽。
+		lastErr = ErrEmailDailyLimitReached
+	}
+	return lastErr
+}
+
+// markSMTPAccountFailure 按错误类型给账号设置冷却，避免持续撞同一个坏账号：
+// 服务商额度/限流错误冷却 6 小时；认证/连接类错误冷却 15 分钟。
+// 收件人被拒（RCPT）等单封邮件问题不冷却账号，以免误伤正常账号。
+func (s *EmailService) markSMTPAccountFailure(ctx context.Context, accountKey string, sendErr error) {
+	if s == nil || s.cache == nil || sendErr == nil {
+		return
+	}
+	ttl := smtpAccountCooldownFor(sendErr)
+	if ttl <= 0 {
+		return
+	}
+	_ = s.cache.SetSMTPAccountCooldown(ctx, accountKey, ttl)
+}
+
+func smtpAccountCooldownFor(sendErr error) time.Duration {
+	if sendErr == nil {
+		return 0
+	}
+	msg := strings.ToLower(sendErr.Error())
+	for _, marker := range []string{
+		"5.4.5",
+		"daily user sending limit",
+		"sending limit exceeded",
+		"too many messages",
+		"quota exceeded",
+		"rate limit",
+		"throttl",
+	} {
+		if strings.Contains(msg, marker) {
+			return smtpAccountQuotaCooldown
+		}
+	}
+	for _, marker := range []string{
+		"smtp auth",
+		"smtp dial",
+		"tls dial",
+		"starttls",
+		"new smtp client",
+		"connect",
+	} {
+		if strings.Contains(msg, marker) {
+			return smtpAccountFailureCooldown
+		}
+	}
+	return 0
+}
+
+// checkEmailDailySendQuota 在真正投递前校验每日发信额度。
+// 目的：即使有人绕过前端直接调用公开邮件接口，也不能把 SMTP 服务商日配额打爆。
+// globalLimit <= 0 时使用单账号默认上限；计数失败（Redis 不可用）时放行，优先保证邮件通道可用。
+func (s *EmailService) checkEmailDailySendQuota(ctx context.Context, recipient string, globalLimit int) error {
+	if s == nil || s.cache == nil {
+		return nil
+	}
+	if globalLimit <= 0 {
+		globalLimit = emailDailyGlobalSendLimit
+	}
+	if count, err := s.cache.IncrEmailDailySendCount(ctx, "global"); err == nil && count > int64(globalLimit) {
+		return ErrEmailDailyLimitReached
+	}
+	normalized := strings.ToLower(strings.TrimSpace(recipient))
+	if normalized == "" {
+		return nil
+	}
+	if count, err := s.cache.IncrEmailDailySendCount(ctx, "recipient:"+normalized); err == nil && count > emailDailyRecipientSendLimit {
+		return ErrEmailDailyLimitReached
+	}
+	return nil
 }
 
 const smtpDialTimeout = 10 * time.Second

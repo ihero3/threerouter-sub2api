@@ -33,6 +33,14 @@
           @submit="onSliderSubmit"
           @refresh="onUserRefresh"
         />
+        <RotationCaptcha
+          v-else-if="challenge.mode === 'rotation' && challenge.rotation"
+          :challenge="challenge.rotation"
+          :submitting="submitting"
+          :refreshing="refreshing"
+          @submit="onRotationSubmit"
+          @refresh="onUserRefresh"
+        />
         <!-- 后端返回了无法识别的题面（如后端未重启/版本不匹配）时，给出可见错误而不是静默空白 -->
         <p v-else class="mt-2 text-center text-sm text-red-500">
           {{ t('auth.clickCaptcha.initFailed') }}
@@ -48,6 +56,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ImageClickCaptcha from '@/components/ImageClickCaptcha.vue'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
+import RotationCaptcha from '@/components/RotationCaptcha.vue'
 import {
   createRegistrationCaptchaChallenge,
   verifyRegistrationCaptcha,
@@ -131,5 +140,9 @@ function onImageClickSubmit(clicks: ClickPoint[]) {
 
 function onSliderSubmit(payload: { drop_x: number; trajectory: TrajectoryPoint[] }) {
   void submitProof({ drop_x: payload.drop_x, trajectory: payload.trajectory })
+}
+
+function onRotationSubmit(payload: { angle: number; trajectory: TrajectoryPoint[] }) {
+  void submitProof({ angle: payload.angle, trajectory: payload.trajectory })
 }
 </script>

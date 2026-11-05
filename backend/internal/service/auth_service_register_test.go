@@ -224,6 +224,18 @@ func (s *emailCacheStub) IncrNotifyCodeUserRate(ctx context.Context, userID int6
 	return 0, nil
 }
 
+func (s *emailCacheStub) IncrEmailDailySendCount(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (s *emailCacheStub) IsSMTPAccountInCooldown(context.Context, string) bool {
+	return false
+}
+
+func (s *emailCacheStub) SetSMTPAccountCooldown(context.Context, string, time.Duration) error {
+	return nil
+}
+
 func newAuthService(repo *userRepoStub, settings map[string]string, emailCache EmailCache, quotaRepo UserPlatformQuotaRepository) *AuthService {
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -466,7 +478,7 @@ func TestAuthService_Register_DailyQuotaWindowCountsOnlyToday(t *testing.T) {
 	repo := &userRepoStub{
 		nextID:            9,
 		domainCounts:      map[string]int{"custom.example": 50}, // 累计已很多
-		domainCountsToday: map[string]int{"custom.example": 2},   // 但今天只有 2 个
+		domainCountsToday: map[string]int{"custom.example": 2},  // 但今天只有 2 个
 	}
 	svc := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:                 "true",

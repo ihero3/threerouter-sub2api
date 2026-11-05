@@ -110,6 +110,14 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	normalizedBlacklist, err := NormalizeRegistrationEmailSuffixBlacklist(settings.RegistrationEmailSuffixBlacklist)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_EMAIL_SUFFIX_BLACKLIST", err.Error())
+	}
+	if normalizedBlacklist == nil {
+		normalizedBlacklist = []string{}
+	}
+	settings.RegistrationEmailSuffixBlacklist = normalizedBlacklist
 	normalizedForwardedClientIPHeaders, err := config.NormalizeForwardedClientIPHeaders(settings.ForwardedClientIPHeaders)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_FORWARDED_CLIENT_IP_HEADERS", err.Error())
@@ -172,6 +180,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
 	}
 	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
+	registrationEmailSuffixBlacklistJSON, err := json.Marshal(settings.RegistrationEmailSuffixBlacklist)
+	if err != nil {
+		return nil, fmt.Errorf("marshal registration email suffix blacklist: %w", err)
+	}
+	updates[SettingKeyRegistrationEmailSuffixBlacklist] = string(registrationEmailSuffixBlacklistJSON)
 	updates[SettingKeyRegistrationEmailDomainQuotaEnabled] = strconv.FormatBool(settings.RegistrationEmailDomainQuotaEnabled)
 	settings.RegistrationEmailDomainQuotaLimit = clampRegistrationEmailDomainQuotaLimit(settings.RegistrationEmailDomainQuotaLimit)
 	updates[SettingKeyRegistrationEmailDomainQuotaLimit] = strconv.Itoa(settings.RegistrationEmailDomainQuotaLimit)
@@ -213,6 +226,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	smtpAccountsJSON, err := s.buildSMTPAccountsUpdate(ctx, settings.SMTPAccounts)
+	if err != nil {
+		return nil, err
+	}
+	updates[SettingKeySMTPAccounts] = smtpAccountsJSON
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -867,4 +885,44 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 	}
 
 	return nil
+}
+
+// buildSMTPAccountsUpdate 序列化多账号 SMTP 配置。
+// 出于安全考虑，接口不回传账号密码；编辑已有账号时密码留空表示沿用原密码，
+// 因此这里按 ID 与已存配置合并。新增账号必须显式提供密码。
+func (s *SettingService) buildSMTPAccountsUpdate(ctx context.Context, incoming []SMTPAccountSetting) (string, error) {
+	storedByID := map[string]SMTPAccountSetting{}
+	if s.settingRepo != nil {
+		if raw, err := s.settingRepo.GetValue(ctx, SettingKeySMTPAccounts); err == nil {
+			for _, acc := range parseSMTPAccounts(raw) {
+				if acc.ID != "" {
+					storedByID[acc.ID] = acc
+				}
+			}
+		}
+	}
+
+	merged := make([]SMTPAccountSetting, 0, len(incoming))
+	for i, acc := range incoming {
+		host := strings.TrimSpace(acc.Host)
+		if host == "" {
+			// 空行视为未填写，直接忽略，避免前端"添加后未填"导致保存失败。
+			continue
+		}
+		acc.ID = strings.TrimSpace(acc.ID)
+		if acc.ID == "" {
+			acc.ID = fmt.Sprintf("smtp-%d-%d", time.Now().UnixNano(), i)
+		}
+		acc.Password = strings.TrimSpace(acc.Password)
+		if acc.Password == "" {
+			existing, ok := storedByID[acc.ID]
+			if !ok {
+				return "", infraerrors.BadRequest("SMTP_ACCOUNT_PASSWORD_REQUIRED", "SMTP account password is required for new accounts")
+			}
+			acc.Password = existing.Password
+		}
+		merged = append(merged, acc)
+	}
+
+	return marshalSMTPAccounts(merged)
 }

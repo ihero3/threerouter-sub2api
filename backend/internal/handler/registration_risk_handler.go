@@ -20,12 +20,13 @@ func NewRegistrationClickCaptchaHandler(clickCaptcha *service.RegistrationClickC
 	return &RegistrationClickCaptchaHandler{clickCaptcha: clickCaptcha}
 }
 
-// captchaVerifyRequestBody 请求体：按题目模式二选一携带点选坐标或滑块落点+轨迹。
+// captchaVerifyRequestBody 请求体：按题目模式三选一携带点选坐标 / 滑块落点 / 旋转角度 + 轨迹。
 type captchaVerifyRequestBody struct {
 	ChallengeID string                    `json:"challenge_id"`
 	Clicks      []service.ClickPoint      `json:"clicks"`     // image_click
 	DropX       float64                   `json:"drop_x"`     // slider
-	Trajectory  []service.TrajectoryPoint `json:"trajectory"` // slider
+	Angle       float64                   `json:"angle"`      // rotation
+	Trajectory  []service.TrajectoryPoint `json:"trajectory"` // slider / rotation
 }
 
 // Challenge POST /api/v1/auth/captcha/challenge
@@ -62,6 +63,7 @@ func (h *RegistrationClickCaptchaHandler) Verify(c *gin.Context) {
 	proof := service.CaptchaVerifyProof{
 		Clicks:     req.Clicks,
 		DropX:      req.DropX,
+		Angle:      req.Angle,
 		Trajectory: req.Trajectory,
 	}
 	token, ttl, err := h.clickCaptcha.VerifyChallenge(c.Request.Context(), req.ChallengeID, proof, ipHash, ipHash)

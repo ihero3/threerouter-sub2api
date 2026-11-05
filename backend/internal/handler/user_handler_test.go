@@ -511,6 +511,18 @@ func (s *userHandlerEmailCacheStub) IncrNotifyCodeUserRate(context.Context, int6
 	return 0, nil
 }
 
+func (s *userHandlerEmailCacheStub) IncrEmailDailySendCount(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (s *userHandlerEmailCacheStub) IsSMTPAccountInCooldown(context.Context, string) bool {
+	return false
+}
+
+func (s *userHandlerEmailCacheStub) SetSMTPAccountCooldown(context.Context, string, time.Duration) error {
+	return nil
+}
+
 func TestUserHandlerBindEmailIdentityReturnsProfileResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

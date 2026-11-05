@@ -222,6 +222,9 @@ const (
 	SettingKeyRegistrationEnabled              = "registration_enabled"                // 是否开放注册
 	SettingKeyEmailVerifyEnabled               = "email_verify_enabled"                // 是否开启邮件验证
 	SettingKeyRegistrationEmailSuffixWhitelist = "registration_email_suffix_whitelist" // 注册邮箱后缀白名单（JSON 数组）
+	// 注册邮箱域名黑名单（JSON 数组）：命中后直接拒绝注册且不下发验证码。
+	// 匹配规则为「域名及其子域名」，例如 my.id 会同时拦截 abc.my.id。
+	SettingKeyRegistrationEmailSuffixBlacklist = "registration_email_suffix_blacklist"
 	// 白名单非空时，是否放行非白名单域名按主域名限量注册。
 	// 默认 false：非白名单域名直接拒绝（白名单严格模式）。
 	SettingKeyRegistrationEmailDomainQuotaEnabled = "registration_email_domain_quota_enabled"
@@ -233,14 +236,14 @@ const (
 	SettingKeyRegistrationIPQuotaEnabled = "registration_ip_quota_enabled"
 	// 同一注册 IP 每天可注册的账户数（仅在上面的开关开启时生效）。
 	SettingKeyRegistrationIPQuotaLimit = "registration_ip_quota_limit"
-	SettingKeyPromoCodeEnabled                    = "promo_code_enabled"      // 是否启用优惠码功能
-	SettingKeyPasswordResetEnabled                = "password_reset_enabled"  // 是否启用忘记密码功能（需要先开启邮件验证）
-	SettingKeyFrontendURL                         = "frontend_url"            // 前端基础URL，用于生成邮件中的重置密码链接
-	SettingKeyInvitationCodeEnabled               = "invitation_code_enabled" // 是否启用邀请码注册
-	SettingKeyAffiliateEnabled                    = "affiliate_enabled"       // 邀请返利功能总开关
+	SettingKeyPromoCodeEnabled         = "promo_code_enabled"      // 是否启用优惠码功能
+	SettingKeyPasswordResetEnabled     = "password_reset_enabled"  // 是否启用忘记密码功能（需要先开启邮件验证）
+	SettingKeyFrontendURL              = "frontend_url"            // 前端基础URL，用于生成邮件中的重置密码链接
+	SettingKeyInvitationCodeEnabled    = "invitation_code_enabled" // 是否启用邀请码注册
+	SettingKeyAffiliateEnabled         = "affiliate_enabled"       // 邀请返利功能总开关
 	// 注册前自建顺序点击验证码。仅在邮箱验证开启时强制生效，默认关闭（向后兼容）。
 	SettingKeyRegistrationClickCaptchaEnabled = "registration_click_captcha_enabled"
-	// 自建验证码模式：random（两种随机出现）| image_click（图片点选）| slider（拼图滑块）
+	// 自建验证码模式：random（三种随机出现）| image_click（图片点选）| slider（拼图滑块）| rotation（图片旋转）
 	SettingKeyRegistrationCaptchaMode = "registration_captcha_mode"
 	// 自建验证码难度：low | medium | high
 	SettingKeyRegistrationCaptchaDifficulty = "registration_captcha_difficulty"
@@ -266,6 +269,9 @@ const (
 	SettingKeySMTPFrom     = "smtp_from"      // 发件人地址
 	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
 	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
+	// 多账号轮换配置（JSON 数组）。配置后优先使用该列表轮换发信；
+	// 为空时回落到上面的单账号 smtp_host 配置。
+	SettingKeySMTPAccounts = "smtp_accounts"
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证

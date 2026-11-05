@@ -258,6 +258,8 @@ export default {
       imageClickPrompt: 'Click in order: ',
       sliderPrompt: 'Drag the puzzle piece to fit the notch',
       sliderHint: 'Hold and drag the piece into the notch',
+      rotationPrompt: 'Drag the image to rotate the arrow to the top',
+      rotationHint: 'Hold and drag left/right to rotate',
       refresh: 'Not clear? Try another',
       refreshing: 'Loading...',
       invalid: 'Verification failed. Please complete the human verification again',
@@ -282,6 +284,8 @@ export default {
     clickCaptchaDisabled: 'Human verification is currently unavailable. Please contact support',
     emailDomainRegistrationLimit:
       'This email domain cannot register another account. Please use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
+    emailDomainBlacklisted:
+      "This email domain is blocked from registration. Please use another email.",
     emailDomainRegistrationLimitDaily:
       'This email domain has exceeded today’s registration limit. Please try again tomorrow. You can also use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',

@@ -39,6 +39,14 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
 	}
+	// 邮箱风险校验：与注册流程一致，发信前拦截高危邮箱。
+	if err := ValidateRegistrationEmailRisk(email); err != nil {
+		return nil, err
+	}
+	// 域名黑名单：命中直接拒绝，不发验证码。
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return nil, err
+	}
 	if s == nil || s.emailService == nil {
 		return nil, ErrServiceUnavailable
 	}

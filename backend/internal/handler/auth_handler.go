@@ -197,6 +197,56 @@ func (h *AuthHandler) enforceClickCaptchaForRegistration(c *gin.Context) bool {
 	return h.settingSvc.IsRegistrationClickCaptchaEnabled(c.Request.Context())
 }
 
+// validateClickCaptchaForEmailSending 对所有会触发发信的公开接口统一做自建点击验证码校验
+// （非消费式校验，token 仍由后续提交动作消费）。开启自建验证码即强制生效，
+// 防止机器人绕过前端直接调用接口刷邮件、打爆 SMTP 日配额。
+func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token string) error {
+	if h == nil || h.clickCaptcha == nil || h.settingSvc == nil {
+		return nil
+	}
+	if !h.settingSvc.IsRegistrationClickCaptchaEnabled(c.Request.Context()) {
+		return nil
+	}
+	clientIP := middleware2.SecurityClientIP(c)
+	ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
+	return h.clickCaptcha.ValidateToken(c.Request.Context(), token, ipHash, ipHash)
+}
+
+// enforceRegistrationIPHourlyRisk 同一 IP 1 小时内最多注册 2 个账号，
+// 超出后直接拦截后续注册与发码请求。统计失败时放行，避免误伤正常用户。
+func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP string) bool {
+	if h == nil || h.authService == nil {
+		return true
+	}
+	count, err := h.authService.CountRecentRegistrationsByIP(c.Request.Context(), clientIP)
+	if err != nil {
+		slog.Warn("[Register] count recent registrations by IP failed", "ip", clientIP, "error", err)
+		return true
+	}
+	if count >= service.RegistrationIPHourlyLimit {
+		response.ErrorFrom(c, service.ErrRegistrationIPHourlyLimit)
+		return false
+	}
+	return true
+}
+
+// CheckRegistrationEmail 注册邮箱风险预检：只做规则校验，不发送验证码。
+// 前端在点击“继续”后调用，命中高危规则时直接提示并停留当前页。
+func (h *AuthHandler) CheckRegistrationEmail(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.authService.ValidateRegistrationEmailForSignup(c.Request.Context(), req.Email); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"valid": true})
+}
+
 // Register handles user registration
 // POST /api/v1/auth/register
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -212,6 +262,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, clientIP, req.VerifyCode); err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
 		return
 	}
 
@@ -280,6 +333,11 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
+	}
+
+	// 同一 IP 1 小时内注册超过上限时不再下发验证码。
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
 	}
 
 	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
@@ -649,6 +707,7 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 // ForgotPasswordRequest 忘记密码请求
 type ForgotPasswordRequest struct {
 	Email                 string `json:"email" binding:"required,email"`
+	ClickCaptchaToken     string `json:"click_captcha_token"`
 	TurnstileToken        string `json:"turnstile_token"`
 	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
@@ -670,6 +729,10 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

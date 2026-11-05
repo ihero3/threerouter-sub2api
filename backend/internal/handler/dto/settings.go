@@ -33,6 +33,7 @@ type SystemSettings struct {
 	RegistrationCaptchaDifficulty       string                   `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailSuffixBlacklist    []string                 `json:"registration_email_suffix_blacklist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
 	RegistrationEmailDomainQuotaLimit   int                      `json:"registration_email_domain_quota_limit"`
 	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
@@ -56,13 +57,14 @@ type SystemSettings struct {
 	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments             []LoginAgreementDocument `json:"login_agreement_documents"`
 
-	SMTPHost               string `json:"smtp_host"`
-	SMTPPort               int    `json:"smtp_port"`
-	SMTPUsername           string `json:"smtp_username"`
-	SMTPPasswordConfigured bool   `json:"smtp_password_configured"`
-	SMTPFrom               string `json:"smtp_from_email"`
-	SMTPFromName           string `json:"smtp_from_name"`
-	SMTPUseTLS             bool   `json:"smtp_use_tls"`
+	SMTPHost               string        `json:"smtp_host"`
+	SMTPPort               int           `json:"smtp_port"`
+	SMTPUsername           string        `json:"smtp_username"`
+	SMTPPasswordConfigured bool          `json:"smtp_password_configured"`
+	SMTPFrom               string        `json:"smtp_from_email"`
+	SMTPFromName           string        `json:"smtp_from_name"`
+	SMTPUseTLS             bool          `json:"smtp_use_tls"`
+	SMTPAccounts           []SMTPAccount `json:"smtp_accounts"`
 
 	TurnstileEnabled                       bool     `json:"turnstile_enabled"`
 	TurnstileSiteKey                       string   `json:"turnstile_site_key"`
@@ -445,6 +447,23 @@ type PublicSettings struct {
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 
+// SMTPAccount 多账号轮换中的单个 SMTP 账号。
+// 出于安全考虑，读取配置时不返回明文密码，只返回 password_configured；
+// 更新时密码留空表示沿用原密码。
+type SMTPAccount struct {
+	ID                 string `json:"id"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	Username           string `json:"username"`
+	Password           string `json:"password,omitempty"`
+	PasswordConfigured bool   `json:"password_configured"`
+	From               string `json:"from_email"`
+	FromName           string `json:"from_name"`
+	UseTLS             bool   `json:"use_tls"`
+	Enabled            bool   `json:"enabled"`
+	DailyLimit         int    `json:"daily_limit"`
+}
+
 type LoginAgreementDocument struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -478,8 +497,8 @@ type PanelRateLimitSettings struct {
 
 // GatewayIPRateLimitSettings 网关 API 按客户端 IP 限流配置 DTO
 type GatewayIPRateLimitSettings struct {
-	Enabled   bool     `json:"enabled"`
-	RPM       int      `json:"rpm"`
+	Enabled bool `json:"enabled"`
+	RPM     int  `json:"rpm"`
 	// Blacklist 命中即 403 Forbidden，所有未命中黑名单的 IP 一视同仁参与限流。
 	Blacklist []string `json:"blacklist"`
 }

@@ -120,6 +120,15 @@ func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context
 	return ParseRegistrationEmailSuffixWhitelist(value)
 }
 
+// GetRegistrationEmailSuffixBlacklist returns normalized registration email domain blacklist.
+func (s *SettingService) GetRegistrationEmailSuffixBlacklist(ctx context.Context) []string {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationEmailSuffixBlacklist)
+	if !found {
+		return []string{}
+	}
+	return ParseRegistrationEmailSuffixBlacklist(value)
+}
+
 // IsRegistrationIPQuotaEnabled 检查是否限制同一 IP 每天的注册账户数。
 // 安全默认：设置缺失或查询出错时按关闭处理（不改变历史行为）。
 func (s *SettingService) IsRegistrationIPQuotaEnabled(ctx context.Context) bool {

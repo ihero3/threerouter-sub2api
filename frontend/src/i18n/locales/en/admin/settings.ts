@@ -153,6 +153,12 @@ export default {
           "Only email addresses from the specified domains can register; leave empty for no restriction (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn)",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
+        emailSuffixBlacklist: 'Email Domain Blacklist',
+        emailSuffixBlacklistHint:
+          'Emails from blacklisted domains are rejected right away and no verification code is sent (saving mail quota)',
+        emailSuffixBlacklistPlaceholder: "{'@'}example.com, my.id",
+        emailSuffixBlacklistInputHint:
+          'Matches the domain and all of its subdomains: adding my.id blocks abc.my.id and x.abc.my.id, which stops bulk signups on random subdomains.',
         emailDomainQuota: 'Non-allowlist Domain Quota',
         emailDomainQuotaHint:
           'When enabled and the allowlist is not empty, every other registrable domain can register up to the configured number of accounts. When disabled, non-allowlist domains are rejected. Has no effect while the allowlist is empty',
@@ -169,10 +175,11 @@ export default {
         clickCaptchaHint:
           'When enabled with email verification, users must complete the built-in human verification (image click / puzzle slider) before registration. No third-party captcha service needed',
         captchaMode: 'Captcha Mode',
-        captchaModeHint: 'Random: both captchas appear alternately (recommended, strongest anti-bot); or pin to one type',
-        captchaModeRandom: 'Random (click + slider)',
+        captchaModeHint: 'Random: all three captchas appear alternately (recommended, strongest anti-bot); or pin to one type',
+        captchaModeRandom: 'Random (click + slider + rotation)',
         captchaModeImageClick: 'Image click only',
         captchaModeSlider: 'Puzzle slider only',
+        captchaModeRotation: 'Image rotation only',
         captchaDifficulty: 'Captcha Difficulty',
         captchaDifficultyHint: 'Higher difficulty makes bots harder to pass, but may slightly increase effort for real users',
         captchaDifficultyLow: 'Low',
@@ -963,6 +970,31 @@ export default {
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
         useTlsHint: 'Enable TLS encryption for SMTP connection'
+      },
+      smtpAccounts: {
+        title: 'Account Rotation',
+        description: 'Configure multiple SMTP accounts. Outgoing mail rotates across them and fails over automatically. When configured, this takes priority over the single account above.',
+        empty: 'No accounts configured. The single account above is used for sending.',
+        add: 'Add Account',
+        remove: 'Remove',
+        host: 'SMTP Host',
+        hostPlaceholder: 'smtp.gmail.com',
+        port: 'Port',
+        username: 'Username',
+        usernamePlaceholder: "user{'@'}gmail.com",
+        password: 'Password',
+        passwordPlaceholder: 'Account password',
+        passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
+        fromEmail: 'From Email',
+        fromEmailPlaceholder: 'Defaults to username',
+        fromName: 'From Name',
+        fromNamePlaceholder: 'Sub2API',
+        dailyLimit: 'Daily Limit',
+        dailyLimitHint: 'Max emails this account can send per day. Defaults to 500.',
+        enabled: 'Enabled',
+        useTls: 'Use TLS',
+        accountIndex: 'Account {index}',
+        failoverHint: 'When an account hits its quota or errors, the next account is used and the failed one is skipped during cooldown.'
       },
       testEmail: {
         title: 'Send Test Email',

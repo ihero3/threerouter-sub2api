@@ -18,11 +18,12 @@ type SystemSettings struct {
 	RegistrationCaptchaMode             string // 自建验证码模式：random | image_click | slider
 	RegistrationCaptchaDifficulty       string // 自建验证码难度：low | medium | high
 	RegistrationEmailSuffixWhitelist    []string
-	RegistrationEmailDomainQuotaEnabled bool   // 白名单非空时放行非白名单域名限量注册（默认关闭）
-	RegistrationEmailDomainQuotaLimit   int    // 白名单外每个主域名允许注册的账户数（默认 1）
-	RegistrationEmailDomainQuotaWindow  string // 上面配额的统计窗口：total（默认）| daily
-	RegistrationIPQuotaEnabled          bool   // 同一 IP 每日注册数限制开关（默认关闭）
-	RegistrationIPQuotaLimit            int    // 同一 IP 每天允许注册的账户数
+	RegistrationEmailSuffixBlacklist    []string // 注册邮箱域名黑名单（命中即拒绝，匹配域名及其子域名）
+	RegistrationEmailDomainQuotaEnabled bool     // 白名单非空时放行非白名单域名限量注册（默认关闭）
+	RegistrationEmailDomainQuotaLimit   int      // 白名单外每个主域名允许注册的账户数（默认 1）
+	RegistrationEmailDomainQuotaWindow  string   // 上面配额的统计窗口：total（默认）| daily
+	RegistrationIPQuotaEnabled          bool     // 同一 IP 每日注册数限制开关（默认关闭）
+	RegistrationIPQuotaLimit            int      // 同一 IP 每天允许注册的账户数
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string
@@ -45,6 +46,8 @@ type SystemSettings struct {
 	SMTPFrom               string
 	SMTPFromName           string
 	SMTPUseTLS             bool
+	// SMTPAccounts 多账号轮换配置；非空时优先于上面的单账号配置。
+	SMTPAccounts []SMTPAccountSetting
 
 	TurnstileEnabled                       bool
 	TurnstileSiteKey                       string

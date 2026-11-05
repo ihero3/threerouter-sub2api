@@ -26,20 +26,25 @@ import (
 )
 
 var (
-	ErrInvalidCredentials           = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive                = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists                  = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved                = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken                 = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired                 = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrAccessTokenExpired           = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
-	ErrTokenTooLarge                = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked                 = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrRefreshTokenInvalid          = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
-	ErrRefreshTokenExpired          = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
-	ErrRefreshTokenReused           = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
-	ErrEmailVerifyRequired          = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrEmailSuffixNotAllowed        = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrInvalidCredentials    = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	ErrUserNotActive         = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists           = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved         = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidToken          = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired          = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired    = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
+	ErrTokenTooLarge         = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked          = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid   = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired   = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused    = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
+	ErrEmailVerifyRequired   = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	// ErrEmailDomainBlacklisted 邮箱域名命中注册黑名单：直接拒绝，且不发验证码。
+	ErrEmailDomainBlacklisted = infraerrors.BadRequest(
+		"EMAIL_DOMAIN_BLACKLISTED",
+		"该邮箱域名已被禁止注册，请更换其他邮箱",
+	)
 	ErrEmailDomainRegistrationLimit = infraerrors.BadRequest(
 		"EMAIL_DOMAIN_REGISTRATION_LIMIT",
 		"this email domain has reached its registration limit; use a mainstream email or contact support to add the enterprise domain",
@@ -47,6 +52,11 @@ var (
 	ErrRegistrationIPLimit = infraerrors.BadRequest(
 		"REGISTRATION_IP_LIMIT",
 		"too many accounts have been registered from this IP address today; try again tomorrow",
+	)
+	// ErrRegistrationIPHourlyLimit 同一 IP 1 小时内注册账号数超过上限。
+	ErrRegistrationIPHourlyLimit = infraerrors.TooManyRequests(
+		"REGISTRATION_IP_HOURLY_LIMIT",
+		"同一 IP 注册过于频繁，请稍后再试",
 	)
 	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
@@ -315,6 +325,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if existsEmail {
 		return "", nil, ErrEmailExists
 	}
+	// 邮箱风险校验：命中高危规则直接拒绝注册（不发验证码、不入库）。
+	if err := ValidateRegistrationEmailRisk(email); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
+		return "", nil, err
+	}
+	// 域名黑名单：命中直接拒绝，不发验证码。
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return "", nil, err
+	}
 	if err := s.validateRegistrationEmailQuota(ctx, email, registerIP); err != nil {
 		return "", nil, err
 	}
@@ -432,6 +451,15 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		logger.LegacyPrintf("service.auth", "[Auth] Email already registered, skip sending verify code: %s", email)
 		return nil
 	}
+	// 邮箱风险校验：必须在发信前完成，命中高危规则直接拒绝且不下发验证码。
+	if err := ValidateRegistrationEmailRisk(email); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
+		return err
+	}
+	// 域名黑名单：命中直接拒绝，不发验证码。
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return err
+	}
 	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return err
 	}
@@ -476,6 +504,15 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return &SendVerifyCodeResult{
 			Countdown: 60,
 		}, nil
+	}
+	// 邮箱风险校验：必须在发信前完成，命中高危规则直接拒绝且不入队发信。
+	if err := ValidateRegistrationEmailRisk(email); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
+		return nil, err
+	}
+	// 域名黑名单：必须在入队发信之前拦截。
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return nil, err
 	}
 	if err := s.validateRegistrationEmailQuota(ctx, email, ""); err != nil {
 		return nil, err
@@ -1199,6 +1236,9 @@ func inferLegacySignupSource(email string) string {
 }
 
 func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email string) error {
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return err
+	}
 	if s.settingService == nil {
 		return nil
 	}
@@ -1207,6 +1247,29 @@ func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email
 		return buildEmailSuffixNotAllowedError(whitelist)
 	}
 	return nil
+}
+
+// validateRegistrationEmailBlacklist 校验邮箱域名黑名单；命中直接拒绝，
+// 必须在发送验证码之前调用，避免浪费 SMTP 发信额度。
+func (s *AuthService) validateRegistrationEmailBlacklist(ctx context.Context, email string) error {
+	if s == nil || s.settingService == nil {
+		return nil
+	}
+	blacklist := s.settingService.GetRegistrationEmailSuffixBlacklist(ctx)
+	if IsRegistrationEmailDomainBlacklisted(email, blacklist) {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected blacklisted registration email domain: %s", email)
+		return ErrEmailDomainBlacklisted
+	}
+	return nil
+}
+
+// ValidateRegistrationEmailForSignup 注册邮箱预检：格式风险 + 域名黑名单。
+// 供前端“继续”按钮提前提示，不发送验证码。
+func (s *AuthService) ValidateRegistrationEmailForSignup(ctx context.Context, email string) error {
+	if err := ValidateRegistrationEmailRisk(email); err != nil {
+		return err
+	}
+	return s.validateRegistrationEmailBlacklist(ctx, email)
 }
 
 // registrationEmailDomainQuotaWindowAndSince 返回域名配额的统计窗口及其起始时间。
@@ -1288,6 +1351,27 @@ func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string
 		return 0, time.Time{}
 	}
 	return s.settingService.GetRegistrationIPQuotaLimit(ctx), timezone.Today()
+}
+
+// RegistrationIPHourlyLimit 同一 IP 每小时允许注册的账号数上限。
+// 超过后直接拦截后续注册请求（辅助风控规则，固定生效）。
+const RegistrationIPHourlyLimit = 2
+
+// CountRecentRegistrationsByIP 统计该 IP 最近一小时内成功注册的账号数。
+// 仓储不支持统计时返回 0（不阻塞），统计错误由调用方决定是否放行。
+func (s *AuthService) CountRecentRegistrationsByIP(ctx context.Context, registerIP string) (int, error) {
+	if s == nil || s.userRepo == nil {
+		return 0, nil
+	}
+	repo, ok := s.userRepo.(RegistrationIPQuotaRepository)
+	if !ok {
+		return 0, nil
+	}
+	registerIP = strings.TrimSpace(registerIP)
+	if registerIP == "" {
+		return 0, nil
+	}
+	return repo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-time.Hour))
 }
 
 // validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 当天超额的注册请求。

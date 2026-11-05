@@ -393,11 +393,28 @@ export function deriveWeChatConnectStoredMode(
 /**
  * System settings interface
  */
+// 多账号轮换中的单个 SMTP 账号。
+// 读取时不返回明文密码，只返回 password_configured；保存时密码留空表示沿用原密码。
+export interface SMTPAccount {
+  id: string;
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  password_configured?: boolean;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+  enabled: boolean;
+  daily_limit: number;
+}
+
 export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean;
   email_verify_enabled: boolean;
   registration_email_suffix_whitelist: string[];
+  registration_email_suffix_blacklist: string[];
   registration_email_domain_quota_enabled: boolean;
   registration_email_domain_quota_limit: number;
   registration_email_domain_quota_window: string;
@@ -502,6 +519,8 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  // 多账号轮换：非空时优先使用该列表发信
+  smtp_accounts: SMTPAccount[];
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -756,6 +775,7 @@ export interface UpdateSettingsRequest {
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
   registration_email_suffix_whitelist?: string[];
+  registration_email_suffix_blacklist?: string[];
   registration_email_domain_quota_enabled?: boolean;
   registration_email_domain_quota_limit?: number;
   registration_email_domain_quota_window?: string;
@@ -853,6 +873,7 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  smtp_accounts?: SMTPAccount[];
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;

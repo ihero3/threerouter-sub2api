@@ -34,6 +34,12 @@
         @error="onTurnstileError"
       />
     </div>
+    <!-- 自建点击验证码：发信前必须通过人机验证，防止接口被刷爆邮件配额 -->
+    <RegistrationCaptcha
+      v-if="clickCaptchaEnabled"
+      :data-testid="`${testIdPrefix}-create-account-click-captcha`"
+      @verified="onClickCaptchaVerified"
+    />
     <div v-if="emailVerifyEnabled" class="flex gap-3">
       <input
         v-model="verifyCode"
@@ -49,7 +55,7 @@
         :data-testid="`${testIdPrefix}-create-account-send-code`"
         type="button"
         class="btn btn-secondary shrink-0"
-        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (turnstileEnabled && !turnstileToken)"
+        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (turnstileEnabled && !turnstileToken) || (clickCaptchaEnabled && !clickCaptchaToken)"
         @click="handleSendCode"
       >
         {{
@@ -100,6 +106,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
+import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
 
@@ -148,6 +155,9 @@ const aliyunCaptchaSceneId = ref('')
 const aliyunCaptchaPrefix = ref('')
 const aliyunCaptchaRegion = ref('cn')
 const turnstileToken = ref('')
+// 自建点击验证码：开启后发信前必须通过人机验证，防止接口被刷爆邮件配额。
+const clickCaptchaEnabled = ref(false)
+const clickCaptchaToken = ref('')
 const tencentCaptchaRandstr = ref('')
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const aliyunCaptchaReady = computed(
@@ -238,6 +248,10 @@ function onTurnstileVerify(token: string, randstr = '') {
   sendCodeError.value = ''
 }
 
+function onClickCaptchaVerified(token: string) {
+  clickCaptchaToken.value = token
+}
+
 function onTurnstileExpire() {
   turnstileToken.value = ''
   tencentCaptchaRandstr.value = ''
@@ -272,6 +286,12 @@ async function handleSendCode() {
     return
   }
 
+  // 自建点击验证码：必须先通过人机验证才能发送验证码邮件
+  if (clickCaptchaEnabled.value && !clickCaptchaToken.value) {
+    sendCodeError.value = t('auth.completeVerification')
+    return
+  }
+
   if (!(await acquireActionProof())) {
     return
   }
@@ -283,6 +303,7 @@ async function handleSendCode() {
   try {
     const response = await sendPendingOAuthVerifyCode({
       email: trimmedEmail,
+      click_captcha_token: clickCaptchaEnabled.value ? clickCaptchaToken.value : undefined,
       turnstile_token:
         turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
@@ -357,6 +378,7 @@ onMounted(async () => {
     aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
+    clickCaptchaEnabled.value = settings.registration_click_captcha_enabled === true
   } catch {
     invitationCodeEnabled.value = false
     emailVerifyEnabled.value = true

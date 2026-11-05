@@ -701,21 +701,22 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		}
 	}
 
-	// 「充过值」标注：users.total_recharged 只统计迁移上线后的充值，
-	// 再叠加历史充值记录，避免老用户被误判为未充值。
+	// 「充过值」标注：以订单管理里存在「支付成功」的支付订单为准。
+	// 不再参考 users.total_recharged —— 它会被兑换码、管理员调账和邀请返利提现一起累加，
+	// 会把"提现返利"的用户误标成充过值。
 	rechargedByUser, err := r.loadRechargedUserIDs(ctx, userIDs)
 	if err != nil {
 		return nil, nil, err
 	}
 	for id, u := range userMap {
-		u.Recharged = u.TotalRecharged > 0 || rechargedByUser[id]
+		u.Recharged = rechargedByUser[id]
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
 }
 
-// loadRechargedUserIDs 返回给定用户中「存在成功正数充值记录」的集合。
-// 口径与余额历史弹窗的累计充值一致：redeem_codes 中 balance / admin_balance 且 value > 0。
+// loadRechargedUserIDs 返回给定用户中「有支付成功的支付订单」的集合。
+// 口径只看订单管理（payment_orders），不再把兑换码、管理员调账或邀请返利提现算作充值。
 func (r *userRepository) loadRechargedUserIDs(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
 	out := make(map[int64]bool, len(userIDs))
 	if len(userIDs) == 0 {
@@ -726,9 +727,11 @@ func (r *userRepository) loadRechargedUserIDs(ctx context.Context, userIDs []int
 		return out, nil
 	}
 	rows, err := client.QueryContext(ctx, `
-SELECT DISTINCT used_by
-FROM redeem_codes
-WHERE used_by = ANY($1) AND value > 0 AND type IN ('balance', 'admin_balance')`, pq.Array(userIDs))
+SELECT DISTINCT user_id
+FROM payment_orders
+WHERE user_id = ANY($1)
+  AND paid_at IS NOT NULL
+  AND status IN ('PAID', 'RECHARGING', 'COMPLETED')`, pq.Array(userIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -745,15 +748,13 @@ WHERE used_by = ANY($1) AND value > 0 AND type IN ('balance', 'admin_balance')`,
 }
 
 // userRechargedPredicate 匹配「充过值」的用户：
-// 累计充值 > 0，或 redeem_codes 中存在成功的正数充值记录。
+// 订单管理（payment_orders）中存在支付成功的支付订单。
 func userRechargedPredicate() predicate.User {
 	return predicate.User(func(s *entsql.Selector) {
 		s.Where(entsql.P(func(b *entsql.Builder) {
-			b.WriteString("(COALESCE(").
-				Ident(s.C(dbuser.FieldTotalRecharged)).
-				WriteString(", 0) > 0 OR EXISTS (SELECT 1 FROM redeem_codes rc WHERE rc.used_by = ").
+			b.WriteString("EXISTS (SELECT 1 FROM payment_orders po WHERE po.user_id = ").
 				Ident(s.C(dbuser.FieldID)).
-				WriteString(" AND rc.value > 0 AND rc.type IN ('balance', 'admin_balance')))")
+				WriteString(" AND po.paid_at IS NOT NULL AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED'))")
 		}))
 	})
 }

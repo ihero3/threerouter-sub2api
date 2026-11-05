@@ -139,6 +139,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RegistrationCaptchaDifficulty:                          settings.RegistrationCaptchaDifficulty,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailSuffixBlacklist:                       settings.RegistrationEmailSuffixBlacklist,
 		RegistrationEmailDomainQuotaEnabled:                    settings.RegistrationEmailDomainQuotaEnabled,
 		RegistrationEmailDomainQuotaLimit:                      settings.RegistrationEmailDomainQuotaLimit,
 		RegistrationEmailDomainQuotaWindow:                     settings.RegistrationEmailDomainQuotaWindow,
@@ -168,6 +169,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SMTPFrom:                                               settings.SMTPFrom,
 		SMTPFromName:                                           settings.SMTPFromName,
 		SMTPUseTLS:                                             settings.SMTPUseTLS,
+		SMTPAccounts:                                           smtpAccountsToDTO(settings.SMTPAccounts),
 		TurnstileEnabled:                                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           settings.TurnstileSecretKeyConfigured,
@@ -541,4 +543,43 @@ func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults 
 	data["force_email_on_third_party_signup"] = authSourceDefaults.ForceEmailOnThirdPartySignup
 
 	return data
+}
+
+// smtpAccountsToDTO 转换多账号 SMTP 配置；密码只返回是否已配置，不回传明文。
+func smtpAccountsToDTO(accounts []service.SMTPAccountSetting) []dto.SMTPAccount {
+	result := make([]dto.SMTPAccount, 0, len(accounts))
+	for _, acc := range accounts {
+		result = append(result, dto.SMTPAccount{
+			ID:                 acc.ID,
+			Host:               acc.Host,
+			Port:               acc.Port,
+			Username:           acc.Username,
+			PasswordConfigured: strings.TrimSpace(acc.Password) != "",
+			From:               acc.From,
+			FromName:           acc.FromName,
+			UseTLS:             acc.UseTLS,
+			Enabled:            acc.Enabled,
+			DailyLimit:         acc.DailyLimit,
+		})
+	}
+	return result
+}
+
+func smtpAccountsFromDTO(accounts []dto.SMTPAccount) []service.SMTPAccountSetting {
+	result := make([]service.SMTPAccountSetting, 0, len(accounts))
+	for _, acc := range accounts {
+		result = append(result, service.SMTPAccountSetting{
+			ID:         acc.ID,
+			Host:       acc.Host,
+			Port:       acc.Port,
+			Username:   acc.Username,
+			Password:   acc.Password,
+			From:       acc.From,
+			FromName:   acc.FromName,
+			UseTLS:     acc.UseTLS,
+			Enabled:    acc.Enabled,
+			DailyLimit: acc.DailyLimit,
+		})
+	}
+	return result
 }

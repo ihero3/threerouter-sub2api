@@ -477,6 +477,14 @@ export async function sendVerifyCode(
   return data
 }
 
+/**
+ * 注册邮箱风险预检：只校验规则，不发送验证码。
+ * 命中高危规则时后端返回错误，前端提示并停留当前页。
+ */
+export async function checkRegistrationEmail(email: string): Promise<void> {
+  await apiClient.post('/auth/registration/email-check', { email })
+}
+
 export async function sendPendingOAuthVerifyCode(
   request: SendVerifyCodeRequest
 ): Promise<PendingOAuthSendVerifyCodeResponse> {
@@ -530,6 +538,7 @@ export async function validateInvitationCode(code: string): Promise<ValidateInvi
  */
 export interface ForgotPasswordRequest {
   email: string
+  click_captcha_token?: string
   turnstile_token?: string
   tencent_captcha_ticket?: string
   tencent_captcha_randstr?: string

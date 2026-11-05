@@ -69,6 +69,55 @@ func IsRegistrationEmailSuffixAllowed(email string, whitelist []string) bool {
 	return false
 }
 
+// IsRegistrationEmailDomainBlacklisted 判断邮箱是否命中域名黑名单。
+// 匹配规则为「域名及其所有子域名」：配置 my.id 会同时拦截 a.my.id、b.a.my.id，
+// 用于应对动态注册子域名（如随机前缀 + my.id）绕过白名单的场景。
+func IsRegistrationEmailDomainBlacklisted(email string, blacklist []string) bool {
+	if len(blacklist) == 0 {
+		return false
+	}
+	_, domain, ok := splitEmailForPolicy(email)
+	if !ok {
+		return false
+	}
+	for _, blocked := range blacklist {
+		base := strings.TrimSpace(strings.ToLower(blocked))
+		base = strings.TrimPrefix(base, "@")
+		base = strings.TrimPrefix(base, "*.")
+		base = strings.TrimRight(base, ".")
+		if base == "" || !isValidRegistrationEmailDomain(base) {
+			continue
+		}
+		if domain == base || strings.HasSuffix(domain, "."+base) {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizeRegistrationEmailSuffixBlacklist normalizes and validates domain blacklist items.
+func NormalizeRegistrationEmailSuffixBlacklist(raw []string) ([]string, error) {
+	return normalizeRegistrationEmailSuffixWhitelist(raw, true)
+}
+
+// ParseRegistrationEmailSuffixBlacklist parses persisted JSON into normalized suffixes.
+// Invalid entries are ignored to keep old misconfigurations from breaking runtime reads.
+func ParseRegistrationEmailSuffixBlacklist(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []string{}
+	}
+	normalized, _ := normalizeRegistrationEmailSuffixWhitelist(items, false)
+	if len(normalized) == 0 {
+		return []string{}
+	}
+	return normalized
+}
+
 // IsRegistrationEmailSuffixLimited 判断非空白名单是否对该邮箱域名启用单账户额度。
 func IsRegistrationEmailSuffixLimited(email string, whitelist []string) bool {
 	return len(whitelist) > 0 && !IsRegistrationEmailSuffixAllowed(email, whitelist)
