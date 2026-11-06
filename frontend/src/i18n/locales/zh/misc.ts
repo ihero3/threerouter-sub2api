@@ -325,6 +325,10 @@ export default {
   // Payment System
   payment: {
     title: '充值/订阅',
+    refundNotice: {
+      title: '服务与退款声明',
+      body: '本站提供的是按 Token 用量计费的 AI 大模型 API 数字服务，我们已为您免费提供试用额度，建议在充值前先完成可用性与兼容性测试。充值成功后额度即时到账，除服务不可用、重复扣款等本站原因外，已充值金额不支持退款、提现或转让。请确认服务符合需求后再行充值。'
+    },
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
     creditedBalance: '到账余额',

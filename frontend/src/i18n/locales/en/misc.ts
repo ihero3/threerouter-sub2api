@@ -301,6 +301,10 @@ export default {
   // Payment System
   payment: {
     title: 'Recharge / Subscription',
+    refundNotice: {
+      title: 'Service & Refund Notice',
+      body: 'This site provides AI model API services billed by token usage. A free trial credit has been provided so you can verify availability and compatibility before paying. Once a top-up is completed, credits are added to your account immediately and, except where the issue is caused by us (e.g. service unavailability or duplicate charges), are non-refundable, non-withdrawable and non-transferable. Please confirm the service meets your needs before topping up.'
+    },
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
     creditedBalance: 'Credited Balance',
