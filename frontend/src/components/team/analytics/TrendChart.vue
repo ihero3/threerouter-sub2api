@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,6 +58,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 const chartRef = ref<ChartComponentRef | null>(null)
 
+const { t } = useI18n()
+
 const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
 
 const colors = computed(() => ({
@@ -76,7 +79,7 @@ const chartData = computed(() => {
     labels,
     datasets: [
       {
-        label: '请求量',
+        label: t('team.analytics.requests'),
         data: props.data.map((d) => d.requests),
         borderColor: colors.value.requests,
         backgroundColor: colors.value.requestsAlpha,
@@ -89,7 +92,7 @@ const chartData = computed(() => {
         pointBorderWidth: 2,
       },
       {
-        label: 'Token 数',
+        label: t('team.analytics.tokens'),
         data: props.data.map((d) => d.tokens),
         borderColor: colors.value.tokens,
         backgroundColor: colors.value.tokensAlpha,
@@ -103,7 +106,7 @@ const chartData = computed(() => {
         yAxisID: 'y1',
       },
       {
-        label: '成本 ($)',
+        label: t('team.analytics.cost'),
         data: props.data.map((d) => d.cost),
         borderColor: colors.value.cost,
         backgroundColor: colors.value.costAlpha,
@@ -153,7 +156,7 @@ const options = computed(() => {
             if (label) label += ': '
             const val = context.parsed.y
             if (val !== null && val !== undefined) {
-              if (context.dataset.label === '成本 ($)') {
+              if (context.dataset.label === t('team.analytics.cost')) {
                 label += '$' + val.toFixed(4)
               } else {
                 label += val.toLocaleString()
@@ -217,21 +220,21 @@ const barChartData = computed(() => {
     labels,
     datasets: [
       {
-        label: '请求量',
+        label: t('team.analytics.requests'),
         data: props.data.map((d) => d.requests),
         backgroundColor: colors.value.requests,
         borderRadius: 4,
         barPercentage: 0.7,
       },
       {
-        label: 'Token 数',
+        label: t('team.analytics.tokens'),
         data: props.data.map((d) => d.tokens),
         backgroundColor: colors.value.tokens,
         borderRadius: 4,
         barPercentage: 0.7,
       },
       {
-        label: '成本 ($)',
+        label: t('team.analytics.cost'),
         data: props.data.map((d) => d.cost),
         backgroundColor: colors.value.cost,
         borderRadius: 4,
@@ -274,7 +277,7 @@ const barOptions = computed(() => {
             if (label) label += ': '
             const val = context.parsed.y
             if (val !== null && val !== undefined) {
-              if (context.dataset.label === '成本 ($)') {
+              if (context.dataset.label === t('team.analytics.cost')) {
                 label += '$' + val.toFixed(4)
               } else {
                 label += val.toLocaleString()

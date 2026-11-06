@@ -1526,8 +1526,30 @@ export default {
         nameRequired: '名称为必填项',
         typeRequired: '类型为必填项',
         departmentRequired: '部门为必填项'
+      },
+      quota: {
+        title: '月度额度',
+        edit: '编辑额度',
+        editTitle: '编辑月度额度',
+        monthlyLimit: '月度额度',
+        monthlyLimitLabel: '月度额度（USD）',
+        monthlyLimitPlaceholder: '请输入月度额度',
+        used: '已用',
+        remaining: '剩余',
+        usageRate: '使用率',
+        nearLimit: '接近上限',
+        history: '额度变更历史'
       }
-    }
+    },
+    analytics: {
+      requests: '请求量',
+      tokens: 'Token 数',
+      cost: '成本 ($)'
+    },
+    yourTeams: '我的团队',
+    noTeam: '未选择团队',
+    noTeams: '暂无团队',
+    createNewTeam: '创建新团队'
   },
   payment: {
     admin: {

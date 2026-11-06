@@ -1443,8 +1443,30 @@ export default {
         nameRequired: 'Name is required',
         typeRequired: 'Type is required',
         departmentRequired: 'Department is required'
+      },
+      quota: {
+        title: 'Monthly quota',
+        edit: 'Edit quota',
+        editTitle: 'Edit monthly quota',
+        monthlyLimit: 'Monthly quota',
+        monthlyLimitLabel: 'Monthly quota (USD)',
+        monthlyLimitPlaceholder: 'Enter monthly quota',
+        used: 'Used',
+        remaining: 'Remaining',
+        usageRate: 'Usage',
+        nearLimit: 'Near limit',
+        history: 'Quota change history'
       }
-    }
+    },
+    analytics: {
+      requests: 'Requests',
+      tokens: 'Tokens',
+      cost: 'Cost ($)'
+    },
+    yourTeams: 'Your teams',
+    noTeam: 'No team selected',
+    noTeams: 'No teams yet',
+    createNewTeam: 'Create team'
   },
   onboarding: {
     admin: {

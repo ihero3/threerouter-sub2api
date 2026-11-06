@@ -78,7 +78,7 @@
               :class="member.status === 'active' ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'"
             >
               <Icon :name="member.status === 'active' ? 'ban' : 'checkCircle'" size="sm" />
-              {{ member.status === 'active' ? t('common.disable') : t('common.enable') }}
+              {{ member.status === 'active' ? t('common.disabled') : t('common.enabled') }}
             </button>
             <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
             <button
