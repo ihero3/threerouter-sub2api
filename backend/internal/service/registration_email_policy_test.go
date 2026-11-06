@@ -45,9 +45,26 @@ func TestIsRegistrationEmailDomainBlacklisted(t *testing.T) {
 	require.False(t, IsRegistrationEmailDomainBlacklisted("user@my.id", nil))
 }
 
+// TestIsRegistrationEmailBlacklisted_FullEmail 完整邮箱条目只精确拦截该地址，
+// 即使其域名在白名单中放行。
+func TestIsRegistrationEmailBlacklisted_FullEmail(t *testing.T) {
+	blacklist := []string{"test@gmail.com"}
+	whitelist := []string{"@gmail.com"}
+
+	require.True(t, IsRegistrationEmailDomainBlacklisted("Test@Gmail.com", blacklist))
+	require.True(t, IsRegistrationEmailDomainBlacklisted("test@gmail.com.", blacklist))
+	// 同域名其他邮箱不受影响，且仍可正常通过白名单
+	require.False(t, IsRegistrationEmailDomainBlacklisted("other@gmail.com", blacklist))
+	require.True(t, IsRegistrationEmailSuffixAllowed("other@gmail.com", whitelist))
+	// 完整邮箱不按域名后缀匹配子域名
+	require.False(t, IsRegistrationEmailDomainBlacklisted("test@sub.gmail.com", blacklist))
+}
+
 func TestParseRegistrationEmailSuffixBlacklist(t *testing.T) {
-	got := ParseRegistrationEmailSuffixBlacklist(`["my.id","@SPAM.COM","*.BAD.ORG","@invalid_domain",""]`)
-	require.Equal(t, []string{"@my.id", "@spam.com", "*.bad.org"}, got)
+	got := ParseRegistrationEmailSuffixBlacklist(
+		`["my.id","@SPAM.COM","*.BAD.ORG","Test@Gmail.com","@invalid_domain",""]`,
+	)
+	require.Equal(t, []string{"@my.id", "@spam.com", "*.bad.org", "test@gmail.com"}, got)
 }
 
 func TestIsRegistrationEmailSuffixAllowed(t *testing.T) {

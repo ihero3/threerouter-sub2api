@@ -53,6 +53,12 @@ func (h *AsyncImageHandler) pollable() bool {
 // Submit accepts the same payload as the synchronous Images endpoint and
 // returns before the upstream image generation begins.
 func (h *AsyncImageHandler) Submit(c *gin.Context) {
+	if c != nil && c.Request != nil {
+		// 异步端点的本地语义：提交一旦被接受就必须留下可找回的任务，客户端在提交
+		// 瞬间断开（超时/502）也应继续完成落库与幂等占位。上游在读取请求体时新增了
+		// 请求 context 已取消即提前返回的保护，这里在入口脱离取消链，保留本地行为。
+		c.Request = c.Request.WithContext(context.WithoutCancel(c.Request.Context()))
+	}
 	if !h.enabled() {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
 		return
@@ -81,6 +87,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
+		if handleRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return

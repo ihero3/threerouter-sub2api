@@ -86,6 +86,7 @@ type sendPendingOAuthVerifyCodeRequest struct {
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
 	PendingAuthToken      string `json:"pending_auth_token,omitempty"`
 	PendingOAuthToken     string `json:"pending_oauth_token,omitempty"`
+	CompanyWebsite        string `json:"company_website,omitempty"` // 蜜罐：非空即拦截
 }
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {
@@ -567,6 +568,15 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 	var req sendPendingOAuthVerifyCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	// 蜜罐命中：假装流程正常，不做任何实际动作。
+	if honeypotFilled(req.CompanyWebsite) {
+		response.Success(c, SendVerifyCodeResponse{
+			Message:   "Verification code sent successfully",
+			Countdown: 60,
+		})
 		return
 	}
 

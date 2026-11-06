@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -24,13 +25,13 @@ import (
 //     比本地猜测更安全。
 
 // dispatchModelFromBody 读取并还原请求体，返回其中的 model。
-// 复用 compositeRequestModelFromBody 以兼容 multipart（图片 edits 场景）。
+// 复用 requestmodel.FromBody 以兼容 multipart（图片 edits 场景）。
 func dispatchModelFromBody(c *gin.Context) string {
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil || len(body) == 0 {
 		return ""
 	}
-	model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
+	model := requestmodel.FromBody(c.GetHeader("Content-Type"), body)
 	resetRequestBody(c, body)
 	return model
 }

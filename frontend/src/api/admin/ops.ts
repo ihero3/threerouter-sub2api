@@ -65,6 +65,14 @@ export interface OpsDashboardOverview {
     avg: number
   }
 
+  output_tps?: {
+    p5: number | null
+    p10: number | null
+    p50: number | null
+    avg: number | null
+    sample_count: number
+  } | null
+
   duration: OpsPercentiles
   ttft: OpsPercentiles
 }
@@ -109,7 +117,7 @@ export interface OpsThroughputTrendResponse {
 
 export type OpsRequestKind = 'success' | 'error'
 export type OpsRequestDetailsKind = OpsRequestKind | 'all'
-export type OpsRequestDetailsSort = 'created_at_desc' | 'duration_desc'
+export type OpsRequestDetailsSort = 'created_at_desc' | 'duration_desc' | 'ttft_desc'
 
 export interface OpsRequestDetail {
   kind: OpsRequestKind
@@ -119,6 +127,7 @@ export interface OpsRequestDetail {
   platform?: string
   model?: string
   duration_ms?: number | null
+  first_token_ms?: number | null
   status_code?: number | null
 
   error_id?: number | null
@@ -816,6 +825,7 @@ export interface OpsAggregationSettings {
 
 export interface OpsRuntimeLogConfig {
   level: 'debug' | 'info' | 'warn' | 'error'
+  persist_access_logs: boolean
   enable_sampling: boolean
   sampling_initial: number
   sampling_thereafter: number
@@ -823,6 +833,7 @@ export interface OpsRuntimeLogConfig {
   stacktrace_level: 'none' | 'error' | 'fatal'
   retention_days: number
   index_access_logs: boolean
+  request_retention_days: number
   source?: string
   updated_at?: string
   updated_by_user_id?: number

@@ -63,6 +63,7 @@
           {{ t('home.footer.compliance') }}
         </button>
         <button
+          v-if="showLanguageSwitcher"
           @click="toggleLanguage"
           class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
         >
@@ -87,16 +88,19 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale } from '@/i18n'
-import { useAppStore } from '@/stores'
+import { useAppStore, useAuthStore } from '@/stores'
 import type { CustomMenuItem } from '@/types'
 import { resolveContactHref } from '@/utils/contactLink'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const currentYear = computed(() => new Date().getFullYear())
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
+// 语言切换只对未登录访客和管理员展示，普通登录用户隐藏
+const showLanguageSwitcher = computed(() => !authStore.isAuthenticated || authStore.isAdmin)
 
 const contactInfo = computed(() => appStore.contactInfo)
 const contactHref = computed(() => resolveContactHref(contactInfo.value))

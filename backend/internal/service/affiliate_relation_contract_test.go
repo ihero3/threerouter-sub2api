@@ -50,10 +50,11 @@ func TestAffiliateInviteeJSONContract(t *testing.T) {
 // 管理端返利记录：注册奖励没有订单，订单相关字段必须可省略，且必须带 rebate_type，
 // 否则前端会把「无订单」误渲染成 #0 / $0.00。
 func TestAffiliateRebateRecordJSONContract(t *testing.T) {
+	inviteeID := int64(2)
 	inviteRebate := mustMarshal(t, AffiliateRebateRecord{
 		OutTradeNo:   "",
 		InviterID:    1,
-		InviteeID:    2,
+		InviteeID:    &inviteeID,
 		RebateType:   AffiliateRebateTypeInvite,
 		RebateAmount: 1,
 		CreatedAt:    time.Unix(0, 0).UTC(),

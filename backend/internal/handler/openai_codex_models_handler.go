@@ -2,10 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -17,6 +19,11 @@ import (
 // GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
 // here when the group platform is OpenAI; other platforms are served by
 // GatewayHandler.CodexModels with the same {"models":[…]} envelope.
+//
+// Pinned discovery takes precedence over local account model mappings;
+// when disabled, groups with explicit mappings are generated locally;
+// otherwise ChatGPT manifests are proxied verbatim and custom API key manifests
+// receive provider-compatibility normalization plus short-lived caching.
 //
 // OpenAI groups prefer the live upstream ChatGPT manifest so real upstream
 // metadata is preserved; groups with explicit account model mappings are
@@ -52,24 +59,64 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	// 返回陈旧/不匹配的清单）。取一次，全流程复用。
 	clientVersion := service.CodexClientVersionFromRequest(c.Request.URL.Query(), c.Request.Header)
 
-	configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
-		c.Request.Context(),
-		apiKey.Group,
-		ifNoneMatch,
-	)
-	if err != nil {
-		if c.Request.Context().Err() != nil {
+	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
+	// 全部不可用/全部失败时按 FallbackToScheduler 决定回退调度器或返回错误。
+	if apiKey.Group.Platform == service.PlatformOpenAI &&
+		apiKey.Group.CodexModelsManifestConfig.Enabled {
+		pinnedManifest, pinnedAccount, pinnedErr := h.gatewayService.FetchPinnedCodexModelsManifest(
+			c.Request.Context(),
+			apiKey.Group,
+			clientVersion,
+		)
+		if pinnedErr != nil {
+			if c.Request.Context().Err() != nil {
+				return
+			}
+			if !apiKey.Group.CodexModelsManifestConfig.FallbackToScheduler {
+				if errors.Is(pinnedErr, service.ErrNoPinnedCodexModelsAccounts) {
+					h.errorResponse(c, http.StatusServiceUnavailable, "upstream_error", "No available pinned OpenAI accounts")
+					return
+				}
+				h.errorResponse(c, infraerrors.Code(pinnedErr), "upstream_error", infraerrors.Message(pinnedErr))
+				return
+			}
+			// 回退开启：跌入下方调度器循环。
+		} else {
+			// 让 ops 错误日志携带实际拉取成功的首个固定账号。
+			setOpsSelectedAccount(c, pinnedAccount.ID, pinnedAccount.Name, pinnedAccount.Platform)
+			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ifNoneMatch); err != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+				return
+			}
+			if c.Request.Context().Err() != nil {
+				return
+			}
+			writeCodexModelsManifestResponse(c, pinnedManifest)
+			recordCodexCatalogDelivery(c, service.CodexCatalogSourceLive, pinnedManifest)
 			return
 		}
-		// 分组已显式配置模型但本地构建失败：仍要给客户端一份可用目录，
-		// 交由路由层的本地生成目录兜底。
-		signalCodexModelsLocalFallback(c)
-		return
 	}
-	if configured {
-		writeCodexModelsManifestResponse(c, configuredManifest)
-		recordCodexCatalogDelivery(c, service.CodexCatalogSourceConfigured, configuredManifest)
-		return
+
+	if !apiKey.Group.CodexModelsManifestConfig.Enabled {
+		configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
+			c.Request.Context(),
+			apiKey.Group,
+			ifNoneMatch,
+		)
+		if err != nil {
+			if c.Request.Context().Err() != nil {
+				return
+			}
+			// 分组已显式配置模型但本地构建失败：仍要给客户端一份可用目录，
+			// 交由路由层的本地生成目录兜底。
+			signalCodexModelsLocalFallback(c)
+			return
+		}
+		if configured {
+			writeCodexModelsManifestResponse(c, configuredManifest)
+			recordCodexCatalogDelivery(c, service.CodexCatalogSourceConfigured, configuredManifest)
+			return
+		}
 	}
 
 	maxAccountSwitches := h.maxAccountSwitches
@@ -124,6 +171,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			signalCodexModelsLocalFallback(c)
 			return
 		}
+		if err := service.ApplyPinnedCodexModelsMapping(manifest, account, apiKey.Group); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to apply model mappings")
+			return
+		}
 		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
 			signalCodexModelsLocalFallback(c)
 			return
@@ -142,7 +193,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 //
 // 只统计真正写出的响应：304 复用既有 ETag 不是新交付，空 body 也不是。
 // 平台取自分组，条目数直接数 body，因此与客户端实际拿到的内容一致。
-func recordCodexCatalogDelivery(c *gin.Context, source string, manifest *service.CodexModelsManifest) {
+func recordCodexCatalogDelivery(c *gin.Context, source string, manifest *service.OpenAIModelsResponse) {
 	if manifest == nil || manifest.NotModified || len(manifest.Body) == 0 {
 		return
 	}
@@ -185,7 +236,7 @@ func signalCodexModelsLocalFallback(c *gin.Context) {
 	c.Set(service.CodexModelsLocalFallbackContextKey, true)
 }
 
-func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.CodexModelsManifest) {
+func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.OpenAIModelsResponse) {
 	if manifest.ETag != "" {
 		c.Header("ETag", manifest.ETag)
 	}

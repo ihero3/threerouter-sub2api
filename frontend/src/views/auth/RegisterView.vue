@@ -28,6 +28,18 @@
 
       <!-- Registration Form -->
       <form v-else @submit.prevent="handleRegister" class="space-y-5">
+        <!-- 蜜罐字段：人类用户看不见且不会输入，bot 自动填表时会把该字段填上 -->
+        <!-- 故意用常规字段名（company_website），并用 CSS 视觉隐藏而非 display:none，降低被探测概率 -->
+        <input
+          type="text"
+          name="company_website"
+          tabindex="-1"
+          autocomplete="off"
+          aria-hidden="true"
+          class="pointer-events-none absolute -z-50 h-0 w-0 border-0 p-0 opacity-0"
+          style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;"
+        />
+
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -85,6 +97,38 @@
           <p class="input-hint">
             {{ t('auth.passwordHint') }}
           </p>
+        </div>
+
+        <!-- Confirm Password Input -->
+        <div>
+          <label for="confirmPassword" class="input-label">
+            {{ t('auth.confirmPassword') }}
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <input
+              id="confirmPassword"
+              v-model="confirmPassword"
+              :type="showConfirmPassword ? 'text' : 'password'"
+              required
+              autocomplete="new-password"
+              :disabled="registrationActionDisabled"
+              class="input pl-11 pr-11"
+              :class="{ 'input-error': errors.confirmPassword }"
+              :placeholder="t('auth.confirmPasswordPlaceholder')"
+            />
+            <button
+              type="button"
+              :disabled="registrationActionDisabled"
+              @click="showConfirmPassword = !showConfirmPassword"
+              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
+            >
+              <Icon v-if="showConfirmPassword" name="eyeOff" size="md" />
+              <Icon v-else name="eye" size="md" />
+            </button>
+          </div>
         </div>
 
         <!-- Invitation Code Input (Required when enabled) -->
@@ -365,6 +409,7 @@ import {
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
+import { getHoneypotValue } from '@/utils/honeypot'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -394,12 +439,20 @@ const settingsLoaded = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
 const clickCaptchaToken = ref<string>('')
+const showConfirmPassword = ref<boolean>(false)
+const confirmPassword = ref('')
 
 // Public settings
 const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const clickCaptchaEnabled = ref<boolean>(false)
-const promoCodeEnabled = ref<boolean>(true)
+// Public settings are injected into the app store before Vue mounts. Use that
+// value for the first render so a disabled promo-code field never flashes
+// while the async settings request is still in flight. If injection is
+// unavailable, fail closed until the request explicitly enables the field.
+const promoCodeEnabled = ref<boolean>(
+  appStore.cachedPublicSettings?.promo_code_enabled === true
+)
 const invitationCodeEnabled = ref<boolean>(false)
 const affiliateEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
@@ -482,6 +535,7 @@ const formData = reactive({
 const errors = reactive({
   email: '',
   password: '',
+  confirmPassword: '',
   turnstile: '',
   invitation_code: ''
 })
@@ -489,6 +543,7 @@ const errors = reactive({
 const validationToastMessage = computed(() =>
   errors.email ||
   errors.password ||
+  errors.confirmPassword ||
   (invitationValidation.invalid ? invitationValidation.message : '') ||
   errors.invitation_code ||
   (promoValidation.invalid ? promoValidation.message : '') ||
@@ -904,6 +959,7 @@ function validateForm(): boolean {
   // Reset errors
   errors.email = ''
   errors.password = ''
+  errors.confirmPassword = ''
   errors.turnstile = ''
   errors.invitation_code = ''
 
@@ -939,6 +995,15 @@ function validateForm(): boolean {
     isValid = false
   } else if (formData.password.length < 8) {
     errors.password = t('auth.passwordMinLength')
+    isValid = false
+  }
+
+  // Confirm password validation
+  if (!confirmPassword.value) {
+    errors.confirmPassword = t('auth.confirmPasswordRequired')
+    isValid = false
+  } else if (formData.password !== confirmPassword.value) {
+    errors.confirmPassword = t('auth.passwordsDoNotMatch')
     isValid = false
   }
 
@@ -1031,7 +1096,7 @@ async function handleRegister(): Promise<void> {
       // 邮箱风险预检：必须在发送验证码之前完成，命中高危规则直接拒绝并停留当前页。
       // 后端在发码与最终注册时还会再校验一次，这里是第一层阻断（双层防线）。
       try {
-        await checkRegistrationEmail(formData.email.trim())
+        await checkRegistrationEmail(formData.email.trim(), getHoneypotValue())
       } catch (error: unknown) {
         errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
         appStore.showError(errorMessage.value)
@@ -1051,6 +1116,7 @@ async function handleRegister(): Promise<void> {
           tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
+          company_website: getHoneypotValue() || undefined,
           ...(affCode ? { aff_code: affCode } : {})
         })
       )
@@ -1071,6 +1137,7 @@ async function handleRegister(): Promise<void> {
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
+      company_website: getHoneypotValue() || undefined,
       ...(affCode ? { aff_code: affCode } : {})
     })
     clearAffiliateReferralCode()
@@ -1112,6 +1179,9 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
   }
   if (code === 'REGISTRATION_CLICK_CAPTCHA_DISABLED') {
     return t('auth.clickCaptchaDisabled')
+  }
+  if (extractApiErrorCode(error) === 'EMAIL_BLOCKED') {
+    return t('auth.errors.EMAIL_BLOCKED')
   }
   return buildAuthErrorMessage(error, { fallback })
 }

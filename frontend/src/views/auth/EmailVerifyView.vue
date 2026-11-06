@@ -30,6 +30,17 @@
 
       <!-- Verification Form -->
       <form v-else @submit.prevent="handleVerify" class="space-y-5">
+        <!-- 蜜罐字段：人类看不见、bot 自动填表会填值 -->
+        <input
+          type="text"
+          name="company_website"
+          tabindex="-1"
+          autocomplete="off"
+          aria-hidden="true"
+          class="pointer-events-none absolute -z-50 h-0 w-0 border-0 p-0 opacity-0"
+          style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;"
+        />
+
         <!-- Verification Code Input -->
         <div>
           <label for="code" class="input-label text-center">
@@ -196,6 +207,7 @@ import {
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode } from '@/utils/apiError'
+import { getHoneypotValue } from '@/utils/honeypot'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -549,6 +561,7 @@ async function sendCode(): Promise<void> {
       email: email.value,
       click_captcha_token: clickCaptchaToken.value || undefined,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
+      company_website: getHoneypotValue() || undefined,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
       turnstile_token:
         turnstileEnabled.value || aliyunCaptchaEnabled.value
@@ -801,6 +814,9 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
   }
   if (code === 'REGISTRATION_CLICK_CAPTCHA_DISABLED') {
     return t('auth.clickCaptchaDisabled')
+  }
+  if (extractApiErrorCode(error) === 'EMAIL_BLOCKED') {
+    return t('auth.errors.EMAIL_BLOCKED')
   }
   return buildAuthErrorMessage(error, { fallback })
 }

@@ -69,20 +69,32 @@ func IsRegistrationEmailSuffixAllowed(email string, whitelist []string) bool {
 	return false
 }
 
-// IsRegistrationEmailDomainBlacklisted 判断邮箱是否命中域名黑名单。
-// 匹配规则为「域名及其所有子域名」：配置 my.id 会同时拦截 a.my.id、b.a.my.id，
-// 用于应对动态注册子域名（如随机前缀 + my.id）绕过白名单的场景。
+// IsRegistrationEmailDomainBlacklisted 判断邮箱是否命中黑名单。
+// 支持两种条目：
+//   - 域名条目（my.id / @my.id / *.my.id）：匹配该域名及其所有子域名；
+//   - 完整邮箱条目（test@gmail.com）：只精确拦截该邮箱，不受白名单影响。
 func IsRegistrationEmailDomainBlacklisted(email string, blacklist []string) bool {
 	if len(blacklist) == 0 {
 		return false
 	}
-	_, domain, ok := splitEmailForPolicy(email)
+	local, domain, ok := splitEmailForPolicy(email)
 	if !ok {
 		return false
 	}
+	normalizedEmail := local + "@" + domain
 	for _, blocked := range blacklist {
-		base := strings.TrimSpace(strings.ToLower(blocked))
-		base = strings.TrimPrefix(base, "@")
+		entry := strings.ToLower(strings.TrimSpace(blocked))
+		if entry == "" {
+			continue
+		}
+		// 完整邮箱：精确匹配单个地址。
+		if !strings.HasPrefix(entry, "@") && !strings.HasPrefix(entry, "*.") && strings.Contains(entry, "@") {
+			if entry == normalizedEmail {
+				return true
+			}
+			continue
+		}
+		base := strings.TrimPrefix(entry, "@")
 		base = strings.TrimPrefix(base, "*.")
 		base = strings.TrimRight(base, ".")
 		if base == "" || !isValidRegistrationEmailDomain(base) {
@@ -95,12 +107,13 @@ func IsRegistrationEmailDomainBlacklisted(email string, blacklist []string) bool
 	return false
 }
 
-// NormalizeRegistrationEmailSuffixBlacklist normalizes and validates domain blacklist items.
+// NormalizeRegistrationEmailSuffixBlacklist normalizes and validates blacklist items.
+// 条目可以是域名（my.id）、通配子域名（*.my.id）或完整邮箱（test@gmail.com）。
 func NormalizeRegistrationEmailSuffixBlacklist(raw []string) ([]string, error) {
-	return normalizeRegistrationEmailSuffixWhitelist(raw, true)
+	return normalizeRegistrationEmailBlacklist(raw, true)
 }
 
-// ParseRegistrationEmailSuffixBlacklist parses persisted JSON into normalized suffixes.
+// ParseRegistrationEmailSuffixBlacklist parses persisted JSON into normalized entries.
 // Invalid entries are ignored to keep old misconfigurations from breaking runtime reads.
 func ParseRegistrationEmailSuffixBlacklist(raw string) []string {
 	raw = strings.TrimSpace(raw)
@@ -111,7 +124,7 @@ func ParseRegistrationEmailSuffixBlacklist(raw string) []string {
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []string{}
 	}
-	normalized, _ := normalizeRegistrationEmailSuffixWhitelist(items, false)
+	normalized, _ := normalizeRegistrationEmailBlacklist(items, false)
 	if len(normalized) == 0 {
 		return []string{}
 	}
@@ -175,6 +188,59 @@ func normalizeRegistrationEmailSuffixWhitelist(raw []string, strict bool) ([]str
 		return nil, nil
 	}
 	return out, nil
+}
+
+func normalizeRegistrationEmailBlacklist(raw []string, strict bool) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		normalized, err := normalizeRegistrationEmailBlacklistEntry(item)
+		if err != nil {
+			if strict {
+				return nil, err
+			}
+			continue
+		}
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// normalizeRegistrationEmailBlacklistEntry 归一化黑名单条目。
+// 完整邮箱保持 local@domain 形式（仅转小写），域名条目归一为 @domain / *.domain。
+func normalizeRegistrationEmailBlacklistEntry(raw string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return "", nil
+	}
+
+	if !strings.HasPrefix(value, "*.") && !strings.HasPrefix(value, "@") && strings.Contains(value, "@") {
+		if strings.Count(value, "@") != 1 || strings.ContainsAny(value, " \t") {
+			return "", fmt.Errorf("invalid email blacklist entry: %q", raw)
+		}
+		local, domain, ok := splitEmailForPolicy(value)
+		if !ok || !isValidRegistrationEmailDomain(domain) {
+			return "", fmt.Errorf("invalid email blacklist entry: %q", raw)
+		}
+		return local + "@" + domain, nil
+	}
+
+	return normalizeRegistrationEmailSuffix(value)
 }
 
 func normalizeRegistrationEmailSuffix(raw string) (string, error) {

@@ -12,6 +12,12 @@ export default {
     delete: '删除',
     edit: '编辑',
     create: '创建',
+    apply: '应用',
+    clear: '清除',
+    creating: '创建中...',
+    required: '必填',
+    sending: '发送中...',
+    tryAgain: '请重试',
     update: '更新',
     confirm: '确认',
     reset: '重置',
@@ -194,6 +200,8 @@ export default {
     github: 'GitHub',
     mySubscriptions: '我的订阅',
     buySubscription: '充值/订阅',
+    recharge: '充值',
+    subscribe: '订阅',
     docs: '文档',
     myOrders: '我的订单',
     orderManagement: '订单管理',
@@ -206,7 +214,7 @@ export default {
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     securityAudit: '安全审计',
-    contentModeration: '内容审核',
+    contentModeration: '内容审计',
     promptAudit: '提示词审计',
     auditLogs: '操作日志',
   },
@@ -243,6 +251,7 @@ export default {
     loginFailed: '登录失败，请检查您的凭据后重试。',
     errors: {
       USER_NOT_ACTIVE: '账号已被禁用',
+      EMAIL_BLOCKED: '该邮箱不允许注册，请更换其他邮箱。',
     },
     registrationFailed: '注册失败，请重试。',
     clickCaptchaRequired: '请先完成人机验证后再继续',
@@ -502,6 +511,14 @@ export default {
 
   // Admin Blog
   admin: {
+    menuLock: {
+      title: '访问验证',
+      description: '「{menu}」需要输入访问密码后才能查看。',
+      passwordLabel: '访问密码',
+      passwordPlaceholder: '请输入访问密码',
+      incorrectPassword: '密码错误，请重试',
+      unlock: '解锁进入'
+    },
     blog: {
       title: '博客管理',
       description: '创建、编辑与管理博客文章',

@@ -147,7 +147,7 @@
               <button
                 @click="handleToggleStatus(row)"
                 class="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                :title="row.status === 'active' ? t('common.disable') : t('common.enable')"
+                :title="row.status === 'active' ? t('common.disabled') : t('common.enabled')"
               >
                 <Icon :name="row.status === 'active' ? 'ban' : 'checkCircle'" size="sm" />
               </button>

@@ -1,5 +1,16 @@
 <template>
   <form class="space-y-3" @submit.prevent="handleSubmit">
+    <!-- 蜜罐字段 -->
+    <input
+      type="text"
+      name="company_website"
+      tabindex="-1"
+      autocomplete="off"
+      aria-hidden="true"
+      pointer-events="none"
+      class="h-0 w-0 border-0 p-0 opacity-0"
+      style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;"
+    />
     <input
       v-model="email"
       :data-testid="`${testIdPrefix}-create-account-email`"
@@ -109,6 +120,7 @@ import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
+import { getHoneypotValue } from '@/utils/honeypot'
 
 export type PendingOAuthCreateAccountPayload = {
   email: string
@@ -178,6 +190,7 @@ const captchaEnabled = computed(
 )
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let disposed = false
 
 watch(
   () => props.initialEmail,
@@ -307,8 +320,10 @@ async function handleSendCode() {
       turnstile_token:
         turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
-      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
+      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
+      company_website: getHoneypotValue() || undefined
     })
+    if (disposed) return
     sendCodeSuccess.value = true
     startCountdown(response.countdown)
   } catch (error: unknown) {
@@ -395,6 +410,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposed = true
   clearCountdown()
 })
 </script>

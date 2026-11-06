@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -301,7 +302,16 @@ func (s *OpenAIGatewayService) retryOpenAIResponsesRejectedFieldOnce(
 	}
 	// readOpenAIUpstreamError 会把 body 回卷成可重读的副本，调用方随后照常读取，
 	// 这里先判定不会破坏它的错误处理。
-	respBody, _ := s.readOpenAIUpstreamError(resp)
+	// 本地自愈重发只在拿到完整错误体时才允许触发：截断/超限的 body 可能只保留了
+	// 半条 JSON，据此改写请求会误删字段；此时退回原响应，交给上层按原样处理。
+	respBody, _, complete := s.readOpenAIUpstreamErrorWithCompleteness(resp)
+	if !complete {
+		// 该 helper 已经把 body 回卷成"干净"的 NopCloser，主流程再读时会误判为完整
+		// 错误体而触发 raw chat completions 回退。这里还原"读到 payload 后报错"的
+		// 读取语义，让下游继续把该响应判定为不完整。
+		resp.Body = io.NopCloser(&openAIErrorBodyReplayReader{payload: respBody, err: io.ErrUnexpectedEOF})
+		return resp
+	}
 	retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, respBody)
 	if retryErr != nil || !changed {
 		return resp
@@ -622,4 +632,20 @@ func removeOpenAIResponsesRejectedNamespaceAtIndex(body []byte, index int) ([]by
 		return nil, "", false, fmt.Errorf("delete rejected namespace at input[%d]: %w", index, err)
 	}
 	return retryBody, "indexed namespace parameter rejection", true, nil
+}
+
+// openAIErrorBodyReplayReader 重放"先返回 payload、再返回读取错误"的上游错误体，
+// 用于在预先读取错误体做自愈判定后，仍让后续读取逻辑感知 body 不完整。
+type openAIErrorBodyReplayReader struct {
+	payload  []byte
+	err      error
+	replayed bool
+}
+
+func (r *openAIErrorBodyReplayReader) Read(p []byte) (int, error) {
+	if !r.replayed {
+		r.replayed = true
+		return copy(p, r.payload), nil
+	}
+	return 0, r.err
 }

@@ -160,6 +160,58 @@ function normalizeRegistrationEmailSuffixToken(value: string, strict: boolean): 
   return value.replace(/[*]/g, '').replace(EMAIL_SUFFIX_INVALID_CHAR_RE, '')
 }
 
+// 黑名单条目支持完整邮箱（test@gmail.com），用于在白名单放行域名下精确封禁单个地址。
+const EMAIL_BLACKLIST_FULL_EMAIL_PATTERN =
+  /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+export function normalizeRegistrationEmailBlacklistEntry(raw: string): string {
+  let value = String(raw || '').trim().toLowerCase()
+  if (!value) {
+    return ''
+  }
+  if (!value.startsWith('*.') && !value.startsWith('@') && value.includes('@')) {
+    return EMAIL_BLACKLIST_FULL_EMAIL_PATTERN.test(value) ? value : ''
+  }
+  value = value.replace(EMAIL_SUFFIX_PREFIX_RE, '')
+  return normalizeRegistrationEmailSuffixToken(value, false)
+}
+
+export function normalizeRegistrationEmailBlacklistEntries(
+  items: string[] | null | undefined
+): string[] {
+  if (!items || items.length === 0) {
+    return []
+  }
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const item of items) {
+    const entry = normalizeRegistrationEmailBlacklistEntry(item)
+    if (!entry || seen.has(entry)) {
+      continue
+    }
+    seen.add(entry)
+    normalized.push(entry)
+  }
+  return normalized
+}
+
+export function parseRegistrationEmailBlacklistInput(input: string): string[] {
+  if (!input || !input.trim()) {
+    return []
+  }
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const token of input.split(EMAIL_SUFFIX_TOKEN_SPLIT_RE)) {
+    const entry = normalizeRegistrationEmailBlacklistEntry(token)
+    if (!entry || seen.has(entry)) {
+      continue
+    }
+    seen.add(entry)
+    normalized.push(entry)
+  }
+  return normalized
+}
+
 function toCanonicalRegistrationEmailSuffix(domain: string): string {
   return domain.startsWith(EMAIL_SUFFIX_WILDCARD_PREFIX) ? domain : `@${domain}`
 }

@@ -13,11 +13,12 @@ import (
 
 // TestSMTPRequest 测试SMTP连接请求
 type TestSMTPRequest struct {
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPUseTLS   *bool  `json:"smtp_use_tls"`
+	SMTPHost               string `json:"smtp_host"`
+	SMTPPort               int    `json:"smtp_port"`
+	SMTPUsername           string `json:"smtp_username"`
+	SMTPPassword           string `json:"smtp_password"`
+	SMTPUseTLS             *bool  `json:"smtp_use_tls"`
+	SMTPSavedAccountIndex  int    `json:"smtp_saved_account_index"`
 }
 
 func resolveSMTPUseTLS(requested *bool, savedConfig *service.SMTPConfig) bool {
@@ -25,6 +26,32 @@ func resolveSMTPUseTLS(requested *bool, savedConfig *service.SMTPConfig) bool {
 		return *requested
 	}
 	return savedConfig != nil && savedConfig.UseTLS
+}
+
+// resolveSMTPFallback 确定 SMTP 测试时用于补空字段的回退配置。
+// SMTPSavedAccountIndex >= 0 时从多账号轮换配置里取对应下标；
+// 否则回退到单账号配置。找不到则返回 nil。
+func (h *SettingHandler) resolveSMTPFallback(c *gin.Context, index int) *service.SMTPConfig {
+	if index >= 0 {
+		accounts, err := h.emailService.GetSMTPAccounts(c.Request.Context())
+		if err == nil && index < len(accounts) {
+			acc := accounts[index]
+			return &service.SMTPConfig{
+				Host:     acc.Host,
+				Port:     acc.Port,
+				Username: acc.Username,
+				Password: acc.Password,
+				From:     acc.From,
+				FromName: acc.FromName,
+				UseTLS:   acc.UseTLS,
+			}
+		}
+	}
+	cfg, err := h.emailService.GetSMTPConfig(c.Request.Context())
+	if err != nil {
+		return nil
+	}
+	return cfg
 }
 
 // TestSMTPConnection 测试SMTP连接
@@ -39,10 +66,7 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
 	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
 
-	var savedConfig *service.SMTPConfig
-	if cfg, err := h.emailService.GetSMTPConfig(c.Request.Context()); err == nil && cfg != nil {
-		savedConfig = cfg
-	}
+	savedConfig := h.resolveSMTPFallback(c, req.SMTPSavedAccountIndex)
 
 	if req.SMTPHost == "" && savedConfig != nil {
 		req.SMTPHost = savedConfig.Host

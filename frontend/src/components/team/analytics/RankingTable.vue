@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 export interface RankingItem {
   name: string
@@ -29,6 +30,8 @@ const emit = defineEmits<{
 }>()
 
 const safeData = computed(() => (props.data ?? []).slice(0, props.maxItems))
+
+const { t } = useI18n()
 
 const typeConfig: Record<RankingType, { icon: string; iconBg: string; valueLabel: string }> = {
   department: {
@@ -131,7 +134,7 @@ const formatNumber = (num: number): string => {
           d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
         />
       </svg>
-      <p class="text-sm text-gray-500 dark:text-dark-400">暂无数据</p>
+      <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('common.noData') }}</p>
     </div>
 
     <!-- Ranking list -->
