@@ -301,6 +301,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 import adminTicketsAPI from '@/api/admin/tickets'
 import adminPaymentAPI from '@/api/admin/payment'
@@ -365,8 +366,11 @@ const currentLocale = ref(getLocale())
 
 const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 
-// Track which parent nav groups are expanded
-const expandedGroups = ref<Set<string>>(new Set())
+// Per-group expand/collapse overrides. A group with no entry follows the
+// automatic behavior (expanded while the active route is one of its children);
+// a chevron click records the user's choice, which wins over the automatic
+// state so an active group can still be collapsed manually.
+const groupExpandOverrides = ref<Map<string, boolean>>(new Map())
 
 // Site settings from appStore (cached, no flicker)
 const siteName = computed(() => appStore.siteName)
@@ -624,6 +628,10 @@ const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
 
+const MCPIcon = {
+  render: () => h(Icon, { name: 'mcp' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -850,9 +858,23 @@ const ChevronDownIcon = {
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
+const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
+
+// 购买入口文案随站点计费模式切换：仅充值 → 「充值」，仅订阅 → 「订阅」，否则「充值/订阅」。
+const purchaseNavLabel = computed(() => {
+  switch (resolveSiteBillingMode(appStore.cachedPublicSettings)) {
+    case 'recharge_only':
+      return t('nav.recharge')
+    case 'subscription_only':
+      return t('nav.subscribe')
+    default:
+      return t('nav.buySubscription')
+  }
+})
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPluginManagement = makeSidebarFlag(FeatureFlags.pluginManagement)
+const flagMCP = makeSidebarFlag(FeatureFlags.mcp)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
@@ -889,13 +911,14 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
         { path: '/team/settings', label: t('nav.teamSettings'), icon: CogIcon },
       ],
     },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
+    { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/governance', label: t('nav.governance'), icon: ShieldIcon },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
+    { path: '/settings/mcp', label: t('mcp.title'), icon: MCPIcon, featureFlag: flagMCP },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
@@ -941,7 +964,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/models', label: t('nav.models'), icon: BoxIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {
       path: '/admin/channels',
       label: t('nav.channelManagement'),
@@ -959,7 +982,8 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/blogs', label: t('nav.blog'), icon: BlogIcon },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
+    // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/governance', label: t('nav.governance'), icon: ShieldIcon, hideInSimpleMode: true },
@@ -1014,6 +1038,7 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+    if (flagMCP()) filtered.push({ path: '/settings/mcp', label: t('mcp.title'), icon: MCPIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
@@ -1173,15 +1198,13 @@ function isGroupActive(item: NavItem): boolean {
 }
 
 function isGroupExpanded(item: NavItem): boolean {
-  return expandedGroups.value.has(item.path) || isGroupActive(item)
+  const override = groupExpandOverrides.value.get(item.path)
+  if (override !== undefined) return override
+  return isGroupActive(item)
 }
 
 function toggleGroup(item: NavItem) {
-  if (expandedGroups.value.has(item.path)) {
-    expandedGroups.value.delete(item.path)
-  } else {
-    expandedGroups.value.add(item.path)
-  }
+  groupExpandOverrides.value.set(item.path, !isGroupExpanded(item))
 }
 
 /**
@@ -1201,9 +1224,7 @@ function handleGroupClick(item: NavItem) {
   if (route.path !== item.path) {
     router.push(item.path)
   }
-  if (!expandedGroups.value.has(item.path)) {
-    expandedGroups.value.add(item.path)
-  }
+  groupExpandOverrides.value.set(item.path, true)
 }
 
 // Initialize theme

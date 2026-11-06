@@ -35,9 +35,9 @@ func TestOpenAIMaxCompletionTokensExceeded_Detector(t *testing.T) {
 }
 
 func TestOpenAIMaxCompletionTokensExceeded_FailoverWorthy(t *testing.T) {
-	require.True(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", []byte(maxCompletionTokensRealBody)),
+	require.True(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(nil, http.StatusBadRequest, "", []byte(maxCompletionTokensRealBody)),
 		"shouldFailoverOpenAIUpstreamResponse 必须对该 400 返回 true（native 与 CC 路径共用）")
-	require.False(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", []byte(genericBadRequestBody)),
+	require.False(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(nil, http.StatusBadRequest, "", []byte(genericBadRequestBody)),
 		"普通 400 不应被视为可换号")
 }
 

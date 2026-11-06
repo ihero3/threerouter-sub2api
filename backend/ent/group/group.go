@@ -26,6 +26,8 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldI18n holds the string denoting the i18n field in the database.
+	FieldI18n = "i18n"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
@@ -46,6 +48,8 @@ const (
 	FieldDefaultValidityDays = "default_validity_days"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
 	FieldAllowImageGeneration = "allow_image_generation"
+	// FieldImageCountBilling holds the string denoting the image_count_billing field in the database.
+	FieldImageCountBilling = "image_count_billing"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
@@ -114,8 +118,10 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
-	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
-	FieldModelsListConfig = "models_list_config"
+	// FieldModelAllowlist holds the string denoting the model_allowlist field in the database.
+	FieldModelAllowlist = "model_allowlist"
+	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
+	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldAllowLive holds the string denoting the allow_live field in the database.
@@ -228,6 +234,7 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldDescription,
+	FieldI18n,
 	FieldRateMultiplier,
 	FieldIsExclusive,
 	FieldStatus,
@@ -238,6 +245,7 @@ var Columns = []string{
 	FieldMonthlyLimitUsd,
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
+	FieldImageCountBilling,
 	FieldImageRateIndependent,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
@@ -272,7 +280,8 @@ var Columns = []string{
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
-	FieldModelsListConfig,
+	FieldModelAllowlist,
+	FieldCodexModelsManifestConfig,
 	FieldRpmLimit,
 	FieldAllowLive,
 	FieldPeakRateEnabled,
@@ -326,6 +335,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultI18n holds the default value on creation for the "i18n" field.
+	DefaultI18n domain.GroupI18n
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
@@ -346,6 +357,8 @@ var (
 	DefaultDefaultValidityDays int
 	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
 	DefaultAllowImageGeneration bool
+	// DefaultImageCountBilling holds the default value on creation for the "image_count_billing" field.
+	DefaultImageCountBilling bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
@@ -384,8 +397,10 @@ var (
 	DefaultMappedModelValidator func(string) error
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
-	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
-	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultModelAllowlist holds the default value on creation for the "model_allowlist" field.
+	DefaultModelAllowlist domain.GroupModelAllowlist
+	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
+	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultAllowLive holds the default value on creation for the "allow_live" field.
@@ -507,6 +522,11 @@ func ByDefaultValidityDays(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowImageGeneration orders the results by the allow_image_generation field.
 func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowImageGeneration, opts...).ToFunc()
+}
+
+// ByImageCountBilling orders the results by the image_count_billing field.
+func ByImageCountBilling(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageCountBilling, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.

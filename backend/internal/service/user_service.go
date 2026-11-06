@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -84,8 +83,8 @@ type UserListFilters struct {
 	APIKeyGroupID int64
 	// Mark 按管理端「标注」筛选：空串 = 全部；suspect = 账号存疑；abnormal = 账号异常；
 	// recharged = 充过值；ticket = 提过工单。取值见 UserMark* 常量。
-	Mark string
-	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
+	Mark       string
+	Attributes map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).
@@ -1358,28 +1357,7 @@ func (s *UserService) VerifyAndAddNotifyEmail(ctx context.Context, userID int64,
 
 // verifyNotifyCode validates the verification code against the cached data.
 func verifyNotifyCode(ctx context.Context, cache EmailCache, email, code string) error {
-	data, err := cache.GetNotifyVerifyCode(ctx, email)
-	if err != nil || data == nil {
-		return ErrInvalidVerifyCode
-	}
-	if data.Attempts >= maxVerifyCodeAttempts {
-		return ErrVerifyCodeMaxAttempts
-	}
-	if subtle.ConstantTimeCompare([]byte(strings.ToUpper(data.Code)), []byte(strings.ToUpper(code))) != 1 {
-		data.Attempts++
-		remaining := time.Until(data.ExpiresAt)
-		if remaining <= 0 {
-			return ErrInvalidVerifyCode
-		}
-		if err := cache.SetNotifyVerifyCode(ctx, email, data, remaining); err != nil {
-			slog.Error("failed to update notify verify code attempts", "email", email, "error", err)
-		}
-		if data.Attempts >= maxVerifyCodeAttempts {
-			return ErrVerifyCodeMaxAttempts
-		}
-		return ErrInvalidVerifyCode
-	}
-	return nil
+	return verifyCodeWithAttempts(ctx, email, code, cache.GetNotifyVerifyCode, cache.IncrNotifyVerifyCodeAttempts, nil)
 }
 
 // addOrVerifyNotifyEmail adds the email to user's extra notification emails or marks it as verified.

@@ -55,6 +55,7 @@ type Handlers struct {
 	Auth                     *AuthHandler
 	RegistrationClickCaptcha *RegistrationClickCaptchaHandler
 	User                     *UserHandler
+	MCPOAuth                 *MCPOAuthHandler
 	APIKey                   *APIKeyHandler
 	Usage                    *UsageHandler
 	Redeem                   *RedeemHandler

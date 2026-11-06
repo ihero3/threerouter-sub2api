@@ -28,6 +28,22 @@
             :api-base-url="publicSettings?.api_base_url || ''"
             :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
+          <div v-if="selectedIds.length" class="flex flex-wrap items-center gap-3 text-sm">
+            <span class="text-gray-600 dark:text-gray-300">
+              {{ t('keys.bulkEdit.selectedCount', { count: selectedIds.length }) }}
+            </span>
+            <button
+              class="btn btn-primary btn-sm"
+              :disabled="loading"
+              data-test="bulk-edit-keys"
+              @click="showBulkEditModal = true"
+            >
+              {{ t('keys.bulkEdit.title') }}
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="selectedIds = []">
+              {{ t('keys.bulkEdit.clearSelection') }}
+            </button>
+          </div>
         </div>
       </template>
 
@@ -85,6 +101,11 @@
           :columns="columns"
           :data="apiKeys"
           :loading="loading"
+          selectable
+          row-key="id"
+          :selected-keys="selectedIds"
+          :selection-label="(key: ApiKey) => t('keys.bulkEdit.selectKey', { name: key.name })"
+          @update:selected-keys="handleSelectionChange"
           :server-side-sort="true"
           default-sort-key="created_at"
           default-sort-order="desc"
@@ -464,12 +485,64 @@
           />
         </div>
 
+        <fieldset v-if="!showEditModal" data-tour="key-form-provider">
+          <legend class="input-label">{{ t('keys.providerLabel') }}</legend>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <label
+              v-for="provider in createProviderOptions"
+              :key="provider.value"
+              class="relative min-w-0"
+              :class="provider.count === 0 ? 'cursor-not-allowed' : 'cursor-pointer'"
+            >
+              <input
+                type="radio"
+                name="key-provider"
+                :value="provider.value"
+                :checked="createProvider === provider.value"
+                :disabled="provider.count === 0"
+                class="peer sr-only"
+                @change="selectCreateProvider(provider.value)"
+              />
+              <span
+                class="flex h-full flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-3 text-center transition-colors peer-checked:border-primary-500 peer-checked:bg-primary-50/60 peer-checked:ring-1 peer-checked:ring-primary-500 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 peer-disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800 dark:peer-checked:border-primary-500 dark:peer-checked:bg-primary-500/10"
+                :class="provider.count > 0 && 'hover:border-primary-300 dark:hover:border-primary-700'"
+              >
+                <span class="flex h-8 items-center justify-center gap-1.5" aria-hidden="true">
+                  <span
+                    v-for="platform in KEY_GROUP_PROVIDER_ICONS[provider.value]"
+                    :key="platform"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg"
+                    :class="platformBadgeLightClass(platform)"
+                  >
+                    <PlatformIcon :platform="platform" size="lg" />
+                  </span>
+                </span>
+                <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ provider.label }}</span>
+              </span>
+              <span
+                v-if="createProvider === provider.value"
+                class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-white"
+                aria-hidden="true"
+              >
+                <Icon name="check" size="xs" :stroke-width="3" />
+              </span>
+            </label>
+          </div>
+          <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400" aria-live="polite">
+            {{ groups.length === 0 ? t('common.noGroupsAvailable') : t(`keys.providerHints.${createProvider}`) }}
+          </p>
+        </fieldset>
+
         <div>
-          <label class="input-label">{{ t('keys.groupLabel') }}</label>
+          <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
           <Select
+            :key="showEditModal ? 'edit' : createProvider"
+            id="key-form-group"
+            :aria-label="t('keys.groupLabel')"
             v-model="formData.group_id"
-            :options="groupOptions"
+            :options="formGroupOptions"
             :placeholder="t('keys.selectGroup')"
+            :empty-text="t('common.noGroupsAvailable')"
             :searchable="true"
             :search-placeholder="t('keys.searchGroup')"
             data-tour="key-form-group"
@@ -978,6 +1051,14 @@
       </template>
     </BaseDialog>
 
+    <BulkEditKeysModal
+      :show="showBulkEditModal"
+      :selected-keys="selectedApiKeys"
+      :groups="groups"
+      @close="showBulkEditModal = false"
+      @updated="handleBulkUpdated"
+    />
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -1020,8 +1101,9 @@
       :api-key="selectedKey?.key || ''"
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
+      :claude-code-only="selectedKey?.group?.claude_code_only || false"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
-      :model="selectedKey?.group?.models_list_config?.enabled && selectedKey?.group?.models_list_config?.models?.length > 0 ? selectedKey?.group?.models_list_config?.models[0] : undefined"
+      :model="selectedKey?.group?.model_allowlist?.enabled && selectedKey?.group?.model_allowlist?.models?.length > 0 ? selectedKey?.group?.model_allowlist?.models[0] : undefined"
       @close="closeUseKeyModal"
     />
 
@@ -1144,7 +1226,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
@@ -1156,6 +1238,7 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI, teamAPI } from '@/api'
 import { useTeamContext } from '@/composables/useTeamContext'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1175,7 +1258,11 @@ import type { Department, Consumer, DepartmentTreeNode } from '@/api/team'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { platformBadgeLightClass } from '@/utils/platformColors'
+import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
 import {
+  CC_SWITCH_USAGE_SCRIPT,
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
@@ -1209,7 +1296,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name'), sortable: true },
   { key: 'id', label: t('keys.id'), sortable: true },
   { key: 'key', label: t('keys.apiKey'), sortable: false },
-  { key: 'group', label: t('keys.group'), sortable: false },
+  { key: 'group', label: t('keys.group'), sortable: true },
   { key: 'current_concurrency', label: t('keys.currentConcurrency'), sortable: true },
   { key: 'usage', label: t('keys.usage'), sortable: false },
   { key: 'rate_limit', label: t('keys.rateLimitColumn'), sortable: false },
@@ -1300,6 +1387,21 @@ const columns = computed<Column[]>(() =>
 )
 
 const apiKeys = ref<ApiKey[]>([])
+const selectedIds = ref<number[]>([])
+const showBulkEditModal = ref(false)
+const selectedApiKeys = computed(() => apiKeys.value.filter((key) => selectedIds.value.includes(key.id)))
+
+const handleSelectionChange = (ids: Array<string | number>) => {
+  const visibleIds = new Set(apiKeys.value.map((key) => key.id))
+  selectedIds.value = [...new Set(ids.map(Number))].filter((id) => visibleIds.has(id))
+}
+
+const handleBulkUpdated = (succeededIds: number[]) => {
+  const succeeded = new Set(succeededIds)
+  selectedIds.value = selectedIds.value.filter((id) => !succeeded.has(id))
+  loadApiKeys()
+}
+
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -1432,6 +1534,7 @@ const statusFilterOptions = computed(() => [
 ])
 
 const onFilterChange = () => {
+  selectedIds.value = []
   pagination.value.page = 1
   loadApiKeys()
 }
@@ -1462,6 +1565,35 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const createProvider = ref<KeyGroupProvider>('anthropic')
+const createProviderOptions = computed(() => KEY_GROUP_PROVIDERS.map((value) => ({
+  value,
+  label: t(`keys.providers.${value}`),
+  count: groups.value.filter((group) => getKeyGroupProvider(group.platform) === value).length
+})))
+
+const formGroupOptions = computed(() => showEditModal.value
+  ? groupOptions.value
+  : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
+)
+
+const selectCreateProvider = (provider: KeyGroupProvider) => {
+  if (createProvider.value === provider) return
+  createProvider.value = provider
+  formData.value.group_id = null
+}
+
+// Also handles groups arriving after the create dialog has already opened.
+watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen]) => {
+  if (!isOpen) return
+  if (!wasOpen || !providers.some((provider) => provider.value === createProvider.value && provider.count > 0)) {
+    selectCreateProvider(providers.find((provider) => provider.count > 0)?.value ?? 'anthropic')
+  }
+  if (!formGroupOptions.value.some((group) => group.value === formData.value.group_id)) {
+    formData.value.group_id = null
+  }
+})
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1516,6 +1648,7 @@ const loadApiKeys = async () => {
     })
     if (signal.aborted) return
     apiKeys.value = response.items
+    handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
     pagination.value.pages = response.pages
 
@@ -1638,17 +1771,20 @@ const closeUseKeyModal = () => {
 }
 
 const handlePageChange = (page: number) => {
+  selectedIds.value = []
   pagination.value.page = page
   loadApiKeys()
 }
 
 const handlePageSizeChange = (pageSize: number) => {
+  selectedIds.value = []
   pagination.value.page_size = pageSize
   pagination.value.page = 1
   loadApiKeys()
 }
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  selectedIds.value = []
   sortState.value.sort_by = key
   sortState.value.sort_order = order
   pagination.value.page = 1
@@ -1949,14 +2085,18 @@ const setExpirationDays = (days: number) => {
 
 // Reset quota used for an API key
 const resetQuotaUsed = async () => {
-  if (!selectedKey.value) return
+  const key = selectedKey.value
+  if (!key) return
   showResetQuotaDialog.value = false
   try {
-    await keysAPI.update(selectedKey.value.id, { reset_quota: true })
+    const updatedKey = await keysAPI.update(key.id, { reset_quota: true })
     appStore.showSuccess(t('keys.quotaResetSuccess'))
-    // Update local state
-    if (selectedKey.value) {
-      selectedKey.value.quota_used = 0
+    key.quota_used = updatedKey.quota_used
+    if (key.status !== updatedKey.status) {
+      key.status = updatedKey.status
+      if (selectedKey.value?.id === key.id) {
+        formData.value.status = updatedKey.status === 'active' ? 'active' : 'inactive'
+      }
     }
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
@@ -2013,28 +2153,13 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
-  const usageScript = `({
-    request: {
-      url: "{{baseUrl}}/v1/usage",
-      method: "GET",
-      headers: { "Authorization": "Bearer {{apiKey}}" }
-    },
-    extractor: function(response) {
-      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
-      const unit = response?.unit ?? response?.quota?.unit ?? "USD";
-      return {
-        isValid: response?.is_active ?? response?.isValid ?? true,
-        remaining,
-        unit
-      };
-    }
-  })`
+  const usageScript = CC_SWITCH_USAGE_SCRIPT
   const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
   
-  // Get first model from group's models_list_config if available
-  const modelsListConfig = row.group?.models_list_config
-  const firstModel = modelsListConfig?.enabled && modelsListConfig.models?.length > 0 
-    ? modelsListConfig.models[0] 
+  // Get first model from group's model_allowlist if available
+  const modelAllowlist = row.group?.model_allowlist
+  const firstModel = modelAllowlist?.enabled && modelAllowlist.models?.length > 0 
+    ? modelAllowlist.models[0] 
     : undefined
   
   const deeplink = buildCcSwitchImportDeeplink({

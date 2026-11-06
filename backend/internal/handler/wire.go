@@ -54,9 +54,13 @@ func ProvideAdminHandlers(
 	mediaTaskAdminHandler *admin.MediaTaskAdminHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	opencodeGoUsage *service.OpenCodeGoUsageService,
+	claudeResetCredits *service.ClaudeResetCreditService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
+	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
@@ -121,11 +125,13 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	complianceService *service.ComplianceService,
 	coordinator *securityaudit.Coordinator,
+	geminiCachedContentService *service.GeminiCachedContentService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService, complianceService)
 	h.securityAuditCoordinator = coordinator
+	h.geminiCachedContentService = geminiCachedContentService
 	return h
 }
 
@@ -143,10 +149,12 @@ func ProvideOpenAIGatewayHandler(
 	cfg *config.Config,
 	complianceService *service.ComplianceService,
 	coordinator *securityaudit.Coordinator,
+	compositeResolver *service.CompositeRouteResolver,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg, complianceService)
+	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator
 	h.grokMediaEligibilityProber = grokQuotaService
 	return h
@@ -192,6 +200,7 @@ func ProvideHandlers(
 	authHandler *AuthHandler,
 	registrationClickCaptchaHandler *RegistrationClickCaptchaHandler,
 	userHandler *UserHandler,
+	mcpOAuthHandler *MCPOAuthHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
@@ -230,6 +239,7 @@ func ProvideHandlers(
 		Auth:                     authHandler,
 		RegistrationClickCaptcha: registrationClickCaptchaHandler,
 		User:                     userHandler,
+		MCPOAuth:                 mcpOAuthHandler,
 		APIKey:                   apiKeyHandler,
 		Usage:                    usageHandler,
 		Redeem:                   redeemHandler,
@@ -269,6 +279,7 @@ var ProviderSet = wire.NewSet(
 	NewAuthHandler,
 	NewRegistrationClickCaptchaHandler,
 	NewUserHandler,
+	NewMCPOAuthHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,
@@ -302,7 +313,7 @@ var ProviderSet = wire.NewSet(
 	// Admin handlers
 	admin.NewDashboardHandler,
 	admin.NewUserHandler,
-	admin.NewGroupHandler,
+	admin.NewGroupHandlerWithConfig,
 	admin.ProvideAccountHandler,
 	admin.NewAnnouncementHandler,
 	admin.NewBlogHandler,

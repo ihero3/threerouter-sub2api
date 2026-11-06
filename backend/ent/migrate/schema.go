@@ -697,7 +697,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "name", Type: field.TypeString, Size: 100},
-		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"}},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"}},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
 		{Name: "endpoint", Type: field.TypeString, Size: 500},
 		{Name: "api_key_encrypted", Type: field.TypeString},
@@ -845,7 +845,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "name", Type: field.TypeString, Size: 100},
-		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"}},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"}},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},
 		{Name: "extra_headers", Type: field.TypeJSON},
@@ -1109,6 +1109,7 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "i18n", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "is_exclusive", Type: field.TypeBool, Default: false},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
@@ -1119,6 +1120,7 @@ var (
 		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "default_validity_days", Type: field.TypeInt, Default: 30},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
+		{Name: "image_count_billing", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_independent", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -1153,7 +1155,8 @@ var (
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "model_allowlist", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "codex_models_manifest_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "allow_live", Type: field.TypeBool, Default: false},
 		{Name: "peak_rate_enabled", Type: field.TypeBool, Default: false},
@@ -1180,22 +1183,22 @@ var (
 			{
 				Name:    "group_status",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[8]},
+				Columns: []*schema.Column{GroupsColumns[9]},
 			},
 			{
 				Name:    "group_platform",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[9]},
+				Columns: []*schema.Column{GroupsColumns[10]},
 			},
 			{
 				Name:    "group_subscription_type",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[10]},
+				Columns: []*schema.Column{GroupsColumns[11]},
 			},
 			{
 				Name:    "group_is_exclusive",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[7]},
+				Columns: []*schema.Column{GroupsColumns[8]},
 			},
 			{
 				Name:    "group_deleted_at",
@@ -1205,7 +1208,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[44]},
+				Columns: []*schema.Column{GroupsColumns[46]},
 			},
 		},
 	}
@@ -1369,6 +1372,7 @@ var (
 		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "pay_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "fee_rate", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "bonus_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "recharge_code", Type: field.TypeString, Size: 64},
 		{Name: "out_trade_no", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "payment_type", Type: field.TypeString, Size: 30},
@@ -1411,7 +1415,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "payment_orders_users_payment_orders",
-				Columns:    []*schema.Column{PaymentOrdersColumns[39]},
+				Columns:    []*schema.Column{PaymentOrdersColumns[40]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1420,7 +1424,7 @@ var (
 			{
 				Name:    "paymentorder_out_trade_no",
 				Unique:  true,
-				Columns: []*schema.Column{PaymentOrdersColumns[8]},
+				Columns: []*schema.Column{PaymentOrdersColumns[9]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "out_trade_no <> ''",
 				},
@@ -1428,37 +1432,37 @@ var (
 			{
 				Name:    "paymentorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[39]},
+				Columns: []*schema.Column{PaymentOrdersColumns[40]},
 			},
 			{
 				Name:    "paymentorder_status",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[21]},
+				Columns: []*schema.Column{PaymentOrdersColumns[22]},
 			},
 			{
 				Name:    "paymentorder_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[29]},
+				Columns: []*schema.Column{PaymentOrdersColumns[30]},
 			},
 			{
 				Name:    "paymentorder_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[37]},
+				Columns: []*schema.Column{PaymentOrdersColumns[38]},
 			},
 			{
 				Name:    "paymentorder_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[30]},
+				Columns: []*schema.Column{PaymentOrdersColumns[31]},
 			},
 			{
 				Name:    "paymentorder_payment_type_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[9], PaymentOrdersColumns[30]},
+				Columns: []*schema.Column{PaymentOrdersColumns[10], PaymentOrdersColumns[31]},
 			},
 			{
 				Name:    "paymentorder_order_type",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[14]},
+				Columns: []*schema.Column{PaymentOrdersColumns[15]},
 			},
 		},
 	}
@@ -1654,7 +1658,7 @@ var (
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
 		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
-		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+		{Name: "backup_proxy_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
 	ProxiesTable = &schema.Table{

@@ -41,9 +41,9 @@ func TestOpenAIUnsupportedToolFeatureError_Detector(t *testing.T) {
 }
 
 func TestOpenAIUnsupportedToolFeatureError_FailoverWorthy(t *testing.T) {
-	require.True(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", []byte(unsupportedFeatureRealBody)),
+	require.True(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(nil, http.StatusBadRequest, "", []byte(unsupportedFeatureRealBody)),
 		"shouldFailoverOpenAIUpstreamResponse 必须对该 400 返回 true，网关才能自动换号重试")
-	require.False(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(http.StatusBadRequest, "", []byte(unsupportedFeatureGenericBody)),
+	require.False(t, (&OpenAIGatewayService{}).shouldFailoverOpenAIUpstreamResponse(nil, http.StatusBadRequest, "", []byte(unsupportedFeatureGenericBody)),
 		"普通 400 不应被视为可换号")
 }
 

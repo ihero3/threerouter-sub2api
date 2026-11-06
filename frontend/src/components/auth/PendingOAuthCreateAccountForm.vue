@@ -190,6 +190,7 @@ const captchaEnabled = computed(
 )
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let disposed = false
 
 watch(
   () => props.initialEmail,
@@ -322,6 +323,7 @@ async function handleSendCode() {
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
       company_website: getHoneypotValue() || undefined
     })
+    if (disposed) return
     sendCodeSuccess.value = true
     startCountdown(response.countdown)
   } catch (error: unknown) {
@@ -408,6 +410,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposed = true
   clearCountdown()
 })
 </script>
