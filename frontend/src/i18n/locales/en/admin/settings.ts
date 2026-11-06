@@ -178,7 +178,7 @@ export default {
           'Blacklisted emails/domains are rejected right away, no verification code is sent (saving mail quota); this overrides the whitelist',
         emailSuffixBlacklistPlaceholder: "test{'@'}gmail.com, my.id",
         emailSuffixBlacklistInputHint:
-          'Supports full addresses (e.g. test@gmail.com, blocking only that mailbox even on a whitelisted domain) and domains (e.g. my.id, which also blocks abc.my.id and x.abc.my.id).',
+          'Supports full addresses (e.g. test{\'@\'}gmail.com, blocking only that mailbox even on a whitelisted domain) and domains (e.g. my.id, which also blocks abc.my.id and x.abc.my.id).',
         emailDomainQuota: 'Non-allowlist Domain Quota',
         emailDomainQuotaHint:
           'When enabled and the allowlist is not empty, every other registrable domain can register up to the configured number of accounts. When disabled, non-allowlist domains are rejected. Has no effect while the allowlist is empty',

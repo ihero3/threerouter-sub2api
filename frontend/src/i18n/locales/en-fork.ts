@@ -1163,7 +1163,11 @@ export default {
         riskLevel: 'Risk Level',
         regulations: 'Applicable Regulations',
         measures: 'Required Measures',
-        actions: 'Recommended Actions'
+        actions: 'Recommended Actions',
+        fieldHelp: 'Field Help',
+        fieldHelpRegion: 'The business region where you operate, used to identify applicable data protection regulations (e.g., GDPR, China PIPL)',
+        fieldHelpIndustry: 'Your industry sector, which affects risk assessment levels and compliance requirements (e.g., healthcare, finance, education have special requirements)',
+        fieldHelpServiceType: 'The type of AI service you provide, helping the system identify specific compliance obligations and assessment criteria. Options: AI Chatbot (AI chatbot service), AI Analysis (AI data analysis service), AI Recommendation (AI recommendation service)'
       },
       dpa: {
         title: 'DPA Compliance Statement',
@@ -1220,6 +1224,31 @@ export default {
           audit_logging: 'Audit Logging',
           security_audits: 'Security Audits'
         }
+      },
+      audit: {
+        title: 'Audit Logs',
+        description: 'View your compliance operation audit logs, recording all compliance-related activities.',
+        empty: 'No audit logs yet',
+        operator: 'Operator',
+        page: 'Page',
+        prev: 'Previous',
+        next: 'Next'
+      },
+      risk: {
+        title: 'Risk Analysis',
+        description: 'View the risk tag catalog supported by the system, understand model risk and data risk classifications.',
+        modelTags: 'Model Tags',
+        riskTags: 'Risk Tags'
+      },
+      euAiAct: {
+        title: 'EU AI Act Assessment',
+        description: 'View the assessment report for your AI system\'s compliance with the EU AI Act.',
+        export: 'Export Assessment Report',
+        exportSuccess: 'Assessment report exported successfully.'
+      },
+      ropa: {
+        title: 'GDPR Processing Records',
+        description: 'View GDPR Art 30 records of processing activities (ROPA) to meet compliance audit requirements.'
       }
     },
     subscriptions: {
@@ -1262,7 +1291,47 @@ export default {
       imageTestHint: 'When an image model is selected, this test sends a real image-generation request and previews the returned image below.',
       openaiQuotaReset: {
         resetSuccess: 'Reset {windows} window(s)'
-      }
+      },
+      deleteConfirmMessage: 'Are you sure you want to delete account \'{name}\'?',
+      refreshCookie: 'Refresh Cookie',
+      testAccount: 'Test Account',
+      types: {
+        api_key: 'API Key',
+        cookie: 'Cookie'
+      },
+      form: {
+        nameLabel: 'Account Name',
+        namePlaceholder: 'Enter account name',
+        platformLabel: 'Platform',
+        selectPlatform: 'Select platform',
+        typeLabel: 'Type',
+        selectType: 'Select type',
+        credentialsLabel: 'Credentials',
+        credentialsPlaceholder: 'Enter Cookie or API Key',
+        priorityLabel: 'Priority',
+        priorityHint: 'Lower values indicate higher priority',
+        weightLabel: 'Weight',
+        weightHint: 'Weight used for load balancing',
+        statusLabel: 'Status'
+      },
+      filters: {
+        platform: 'Platform',
+        allPlatforms: 'All Platforms',
+        type: 'Type',
+        allTypes: 'All Types',
+        status: 'Status',
+        allStatuses: 'All Statuses'
+      },
+      saving: 'Saving...',
+      refreshing: 'Refreshing...',
+      noAccounts: 'No accounts yet',
+      noAccountsDescription: 'Add an AI platform account to start using the API gateway.',
+      accountCreatedSuccess: 'Account added successfully',
+      accountUpdatedSuccess: 'Account updated successfully',
+      accountDeletedSuccess: 'Account deleted successfully',
+      cookieRefreshedSuccess: 'Cookie refreshed successfully',
+      testSuccess: 'Account test passed',
+      failedToSave: 'Failed to save account'
     },
     proxies: {
       batchInputPlaceholder: 'Enter one proxy per line in the following formats:\nsocks5://user:pass 192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{\'@\'}proxy.example.com:443',

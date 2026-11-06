@@ -71,11 +71,19 @@ describe('locale key completeness', () => {
   })
 
   it('contains a non-empty message for every locale leaf', () => {
+    // Vue I18n list messages are arrays read through tm(), and separator keys
+    // may intentionally hold whitespace-only text (e.g. no space between CJK labels).
+    const isCompositeOrBlankByDesign = (key: string, value: unknown) =>
+      Array.isArray(value) || key === 'auth.clickCaptcha.hintSeparator'
+
     for (const [locale, messages] of Object.entries({ en, zh })) {
       const emptyKeys = flattenLeafKeys(messages).filter((key) => {
         let current: unknown = messages
         for (const segment of key.split('.')) {
           current = (current as LocaleValue)[segment]
+        }
+        if (isCompositeOrBlankByDesign(key, current)) {
+          return false
         }
         return typeof current !== 'string' || current.trim() === ''
       })

@@ -178,7 +178,7 @@ export default {
           '命中黑名单的邮箱/域名直接拒绝注册，且不会下发验证码（不消耗发信额度）；优先级高于白名单',
         emailSuffixBlacklistPlaceholder: "test{'@'}gmail.com, my.id",
         emailSuffixBlacklistInputHint:
-          '支持完整邮箱（如 test@gmail.com，仅拦截该地址，白名单放行的域名也能单独封禁）与域名（如 my.id，会同时拦截 abc.my.id、x.abc.my.id）。',
+          '支持完整邮箱（如 test{\'@\'}gmail.com，仅拦截该地址，白名单放行的域名也能单独封禁）与域名（如 my.id，会同时拦截 abc.my.id、x.abc.my.id）。',
         emailDomainQuota: '非白名单域名限量注册',
         emailDomainQuotaHint:
           '开启后，白名单非空时，其他可注册主域名各限注册指定数量账户；关闭时非白名单域名直接拒绝注册。白名单为空时本开关无效果',

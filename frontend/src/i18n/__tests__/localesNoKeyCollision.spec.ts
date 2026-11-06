@@ -72,6 +72,9 @@ describe.each(Object.keys(roots))('locale %s spread assembly', (locale) => {
 
   it('root modules do not shadow the explicit "admin" namespace', () => {
     for (const [name, mod] of Object.entries(roots[locale])) {
+      // common 里的 admin 段（admin.blog / admin.menuLock）由 locales/{locale}/index.ts
+      // 显式合并进 admin 命名空间（{ ...common.admin, ...admin }），不会覆盖。
+      if (name === 'common') continue
       expect(Object.keys(mod), `module ${name} must not define "admin"`).not.toContain('admin')
     }
   })
