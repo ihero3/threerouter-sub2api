@@ -8936,6 +8936,38 @@
                     <button
                       type="button"
                       class="btn btn-secondary btn-sm"
+                      :disabled="testingSmtpAccountIndex === index"
+                      @click="testIndividualSMTPAccount(index)"
+                    >
+                      <svg
+                        v-if="testingSmtpAccountIndex === index"
+                        class="h-4 w-4 animate-spin"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      {{
+                        testingSmtpAccountIndex === index
+                          ? t('admin.settings.smtpAccounts.testing')
+                          : t('admin.settings.smtpAccounts.testConnection')
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
                       @click="removeSMTPAccount(index)"
                     >
                       {{ t('admin.settings.smtpAccounts.remove') }}
@@ -9418,8 +9450,11 @@ import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
   isRegistrationEmailSuffixDomainValid,
+  normalizeRegistrationEmailBlacklistEntries,
+  normalizeRegistrationEmailBlacklistEntry,
   normalizeRegistrationEmailSuffixDomain,
   normalizeRegistrationEmailSuffixDomains,
+  parseRegistrationEmailBlacklistInput,
   parseRegistrationEmailSuffixWhitelistInput,
 } from "@/utils/registrationEmailPolicy";
 import {
@@ -9531,6 +9566,7 @@ const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
 const testingSmtp = ref(false);
+const testingSmtpAccountIndex = ref(-1);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
@@ -10944,29 +10980,62 @@ function removeRegistrationEmailSuffixBlacklistTag(suffix: string) {
   removeRegistrationEmailSuffixTag(registrationEmailSuffixBlacklistTags, suffix);
 }
 
+function appendRegistrationEmailBlacklistEntries(entries: string[]) {
+  const next = [...registrationEmailSuffixBlacklistTags.value];
+  for (const entry of entries) {
+    if (!next.includes(entry)) {
+      next.push(entry);
+    }
+  }
+  registrationEmailSuffixBlacklistTags.value = next;
+}
+
 function commitRegistrationEmailSuffixBlacklistDraft() {
-  commitRegistrationEmailSuffixDraft(
-    registrationEmailSuffixBlacklistTags,
-    registrationEmailSuffixBlacklistDraft,
+  const entry = normalizeRegistrationEmailBlacklistEntry(
+    registrationEmailSuffixBlacklistDraft.value,
   );
+  if (entry) {
+    appendRegistrationEmailBlacklistEntries([entry]);
+  }
+  registrationEmailSuffixBlacklistDraft.value = "";
 }
 
 function handleRegistrationEmailSuffixBlacklistDraftInput() {
-  normalizeRegistrationEmailSuffixDraft(registrationEmailSuffixBlacklistDraft);
+  // 黑名单允许完整邮箱（test@gmail.com），这里只做小写归一，不能像白名单那样剔除 @。
+  registrationEmailSuffixBlacklistDraft.value = registrationEmailSuffixBlacklistDraft.value
+    .trim()
+    .toLowerCase();
 }
 
 function handleRegistrationEmailSuffixBlacklistDraftKeydown(
   event: KeyboardEvent,
 ) {
-  handleRegistrationEmailSuffixDraftKeydown(
-    event,
-    registrationEmailSuffixBlacklistTags,
-    registrationEmailSuffixBlacklistDraft,
-  );
+  if (event.isComposing) {
+    return;
+  }
+
+  if (registrationEmailSuffixSeparatorKeys.has(event.key)) {
+    event.preventDefault();
+    commitRegistrationEmailSuffixBlacklistDraft();
+    return;
+  }
+
+  if (
+    event.key === "Backspace" &&
+    !registrationEmailSuffixBlacklistDraft.value &&
+    registrationEmailSuffixBlacklistTags.value.length > 0
+  ) {
+    registrationEmailSuffixBlacklistTags.value.pop();
+  }
 }
 
 function handleRegistrationEmailSuffixBlacklistPaste(event: ClipboardEvent) {
-  handleRegistrationEmailSuffixPaste(event, registrationEmailSuffixBlacklistTags);
+  const text = event.clipboardData?.getData("text") || "";
+  if (!text.trim()) {
+    return;
+  }
+  event.preventDefault();
+  appendRegistrationEmailBlacklistEntries(parseRegistrationEmailBlacklistInput(text));
 }
 
 const forwardedClientIpHeaderSeparatorKeys = new Set([
@@ -11454,6 +11523,32 @@ function removeSMTPAccount(index: number): void {
   form.smtp_accounts.splice(index, 1);
 }
 
+async function testIndividualSMTPAccount(index: number): Promise<void> {
+  const account = form.smtp_accounts[index];
+  if (!account) return;
+
+  testingSmtpAccountIndex.value = index;
+  try {
+    const result = await adminAPI.settings.testSmtpConnection({
+      smtp_host: account.host || "",
+      smtp_port: account.port || 587,
+      smtp_username: account.username || "",
+      smtp_password: account.password || "",
+      smtp_use_tls: !!account.use_tls,
+      smtp_saved_account_index: index,
+    });
+    appStore.showSuccess(
+      `${t('admin.settings.smtpAccounts.accountIndex', { index: index + 1 })}：${result.message || t('admin.settings.smtpConnectionSuccess')}`,
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      `${t('admin.settings.smtpAccounts.accountIndex', { index: index + 1 })}：${extractApiErrorMessage(error, t('admin.settings.failedToTestSmtp'))}`,
+    );
+  } finally {
+    testingSmtpAccountIndex.value = -1;
+  }
+}
+
 const codexSyncedVersionLabel = computed(() => {
   const synced = form.openai_codex_client_version_synced?.trim();
   if (!synced) return "";
@@ -11529,7 +11624,7 @@ async function loadSettings() {
         settings.registration_email_suffix_whitelist,
       );
     registrationEmailSuffixBlacklistTags.value =
-      normalizeRegistrationEmailSuffixDomains(
+      normalizeRegistrationEmailBlacklistEntries(
         settings.registration_email_suffix_blacklist,
       );
     form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(
@@ -11875,8 +11970,8 @@ async function saveSettings() {
           suffix.startsWith("*.") ? suffix : `@${suffix}`,
         ),
       registration_email_suffix_blacklist:
-        registrationEmailSuffixBlacklistTags.value.map((suffix) =>
-          suffix.startsWith("*.") ? suffix : `@${suffix}`,
+        registrationEmailSuffixBlacklistTags.value.map((entry) =>
+          entry.startsWith("*.") || entry.includes("@") ? entry : `@${entry}`,
         ),
       registration_email_domain_quota_enabled:
         form.registration_email_domain_quota_enabled,
@@ -12280,7 +12375,7 @@ async function saveSettings() {
         updated.registration_email_suffix_whitelist,
       );
     registrationEmailSuffixBlacklistTags.value =
-      normalizeRegistrationEmailSuffixDomains(
+      normalizeRegistrationEmailBlacklistEntries(
         updated.registration_email_suffix_blacklist,
       );
     form.forwarded_client_ip_headers = normalizeForwardedClientIpHeaders(

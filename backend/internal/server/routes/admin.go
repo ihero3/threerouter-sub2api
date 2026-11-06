@@ -2,12 +2,23 @@
 package routes
 
 import (
+	"crypto/subtle"
+	"os"
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	// adminMenuUnlockDefaultPassword 后台敏感菜单的默认访问密码。
+	adminMenuUnlockDefaultPassword = "Threerouter3"
+	// adminMenuUnlockPasswordEnv 可通过环境变量覆盖默认访问密码。
+	adminMenuUnlockPasswordEnv = "ADMIN_MENU_UNLOCK_PASSWORD"
 )
 
 // RegisterAdminRoutes 注册管理员路由
@@ -33,6 +44,9 @@ func RegisterAdminRoutes(
 	{
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
+
+		// 后台敏感菜单（账号管理/渠道管理/分组管理/系统设置）访问密码校验
+		registerAdminMenuLockRoutes(admin)
 
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
@@ -195,6 +209,40 @@ func registerAdminComplianceRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 		compliance.GET("", h.Admin.Compliance.GetStatus)
 		compliance.POST("/accept", h.Admin.Compliance.Accept)
 	}
+}
+
+// registerAdminMenuLockRoutes 注册后台敏感菜单的访问密码校验路由。
+// 密码只保存在服务端（可用 ADMIN_MENU_UNLOCK_PASSWORD 覆盖），前端仅记录本次会话是否已解锁。
+func registerAdminMenuLockRoutes(admin *gin.RouterGroup) {
+	admin.POST("/menu-unlock", handleAdminMenuUnlock)
+}
+
+type adminMenuUnlockRequest struct {
+	Menu     string `json:"menu"`
+	Password string `json:"password"`
+}
+
+func handleAdminMenuUnlock(c *gin.Context) {
+	var req adminMenuUnlockRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+
+	expected := adminMenuUnlockPassword()
+	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(expected)) != 1 {
+		response.Forbidden(c, "密码错误，请重试")
+		return
+	}
+
+	response.Success(c, gin.H{"unlocked": true})
+}
+
+func adminMenuUnlockPassword() string {
+	if value := strings.TrimSpace(os.Getenv(adminMenuUnlockPasswordEnv)); value != "" {
+		return value
+	}
+	return adminMenuUnlockDefaultPassword
 }
 
 // registerGovernanceRoutes 注册 AI 治理与合规管理端路由（/admin/governance/*）。

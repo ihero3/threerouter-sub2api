@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
+import AdminMenuUnlockModal from '@/components/admin/AdminMenuUnlockModal.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
+import {
+  ADMIN_MENU_UNLOCK_EVENT,
+  clearAdminMenuUnlockState,
+  markAdminMenuPathUnlocked,
+  type AdminMenuUnlockDetail,
+} from '@/utils/adminMenuLock'
 
 const router = useRouter()
 const route = useRoute()
@@ -64,6 +71,32 @@ function onAdminComplianceRequired(event: Event) {
   adminComplianceStore.requireAcknowledgement(detail)
 }
 
+// ===== 后台敏感菜单访问密码 =====
+const menuUnlock = reactive({ visible: false, pendingPath: '', menuPath: '' })
+
+function onAdminMenuUnlockRequired(event: Event) {
+  const detail = (event as CustomEvent<AdminMenuUnlockDetail>).detail
+  if (!detail?.path || !detail?.menuPath) return
+  menuUnlock.pendingPath = detail.path
+  menuUnlock.menuPath = detail.menuPath
+  menuUnlock.visible = true
+}
+
+function closeAdminMenuUnlock() {
+  menuUnlock.visible = false
+  menuUnlock.pendingPath = ''
+  menuUnlock.menuPath = ''
+}
+
+function onAdminMenuUnlocked() {
+  const { menuPath, pendingPath } = menuUnlock
+  closeAdminMenuUnlock()
+  markAdminMenuPathUnlocked(menuPath)
+  if (pendingPath) {
+    router.push(pendingPath)
+  }
+}
+
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated, oldValue) => {
@@ -96,6 +129,7 @@ watch(
       subscriptionStore.clear()
       announcementStore.reset()
       adminComplianceStore.reset()
+      clearAdminMenuUnlockState()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   },
@@ -112,10 +146,12 @@ router.afterEach(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('admin-compliance-required', onAdminComplianceRequired)
+  window.removeEventListener(ADMIN_MENU_UNLOCK_EVENT, onAdminMenuUnlockRequired)
 })
 
 onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
+  window.addEventListener(ADMIN_MENU_UNLOCK_EVENT, onAdminMenuUnlockRequired)
 
   // Check if setup is needed
   try {
@@ -142,4 +178,10 @@ onMounted(async () => {
   <Toast />
   <AnnouncementPopup />
   <AdminComplianceDialog />
+  <AdminMenuUnlockModal
+    :show="menuUnlock.visible"
+    :menu-path="menuUnlock.menuPath"
+    @close="closeAdminMenuUnlock"
+    @unlocked="onAdminMenuUnlocked"
+  />
 </template>

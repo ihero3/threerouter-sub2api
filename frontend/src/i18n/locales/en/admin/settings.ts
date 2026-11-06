@@ -155,10 +155,10 @@ export default {
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         emailSuffixBlacklist: 'Email Domain Blacklist',
         emailSuffixBlacklistHint:
-          'Emails from blacklisted domains are rejected right away and no verification code is sent (saving mail quota)',
-        emailSuffixBlacklistPlaceholder: "{'@'}example.com, my.id",
+          'Blacklisted emails/domains are rejected right away, no verification code is sent (saving mail quota); this overrides the whitelist',
+        emailSuffixBlacklistPlaceholder: "test{'@'}gmail.com, my.id",
         emailSuffixBlacklistInputHint:
-          'Matches the domain and all of its subdomains: adding my.id blocks abc.my.id and x.abc.my.id, which stops bulk signups on random subdomains.',
+          'Supports full addresses (e.g. test@gmail.com, blocking only that mailbox even on a whitelisted domain) and domains (e.g. my.id, which also blocks abc.my.id and x.abc.my.id).',
         emailDomainQuota: 'Non-allowlist Domain Quota',
         emailDomainQuotaHint:
           'When enabled and the allowlist is not empty, every other registrable domain can register up to the configured number of accounts. When disabled, non-allowlist domains are rejected. Has no effect while the allowlist is empty',
@@ -982,8 +982,10 @@ export default {
         port: 'Port',
         username: 'Username',
         usernamePlaceholder: "user{'@'}gmail.com",
-        password: 'Password',
-        passwordPlaceholder: 'Account password',
+        password: 'SMTP Password',
+        passwordPlaceholder: 'SMTP app password',
+        testConnection: 'Test Connection',
+        testing: 'Testing...',
         passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
         fromEmail: 'From Email',
         fromEmailPlaceholder: 'Defaults to username',

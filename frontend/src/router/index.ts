@@ -13,6 +13,11 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import {
+  isAdminMenuPathUnlocked,
+  matchAdminMenuLockedPath,
+  requestAdminMenuUnlock,
+} from '@/utils/adminMenuLock'
 
 /**
  * Route definitions with lazy loading
@@ -1204,6 +1209,16 @@ router.beforeEach(async (to, _from, next) => {
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
+  }
+
+  // 管理后台敏感菜单需要二次访问密码：未解锁时中止导航并由全局弹窗校验
+  if (requiresAdmin) {
+    const lockedMenuPath = matchAdminMenuLockedPath(to.path)
+    if (lockedMenuPath && !isAdminMenuPathUnlocked(lockedMenuPath)) {
+      requestAdminMenuUnlock(to.fullPath, lockedMenuPath)
+      next(false)
       return
     }
   }

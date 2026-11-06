@@ -502,6 +502,14 @@ export default {
 
   // Admin Blog
   admin: {
+    menuLock: {
+      title: '访问验证',
+      description: '「{menu}」需要输入访问密码后才能查看。',
+      passwordLabel: '访问密码',
+      passwordPlaceholder: '请输入访问密码',
+      incorrectPassword: '密码错误，请重试',
+      unlock: '解锁进入'
+    },
     blog: {
       title: '博客管理',
       description: '创建、编辑与管理博客文章',

@@ -504,6 +504,14 @@ export default {
 
   // Admin Blog
   admin: {
+    menuLock: {
+      title: 'Access Verification',
+      description: 'Enter the access password to view "{menu}".',
+      passwordLabel: 'Access password',
+      passwordPlaceholder: 'Enter access password',
+      incorrectPassword: 'Incorrect password, please try again',
+      unlock: 'Unlock'
+    },
     blog: {
       title: 'Blog Management',
       description: 'Create, edit, and manage blog posts',

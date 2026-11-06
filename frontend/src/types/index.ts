@@ -197,6 +197,8 @@ export interface RegisterRequest {
   promo_code?: string
   invitation_code?: string
   aff_code?: string
+  /** 蜜罐字段：人类始终传空字符串；非空即判定为机器人自动填表，后端静默拒绝 */
+  company_website?: string
 }
 
 /** 返利类型：invite=邀请返利（注册奖励），recharge=充值返利（充值/兑换按比例计提） */
@@ -243,6 +245,8 @@ export interface SendVerifyCodeRequest {
   tencent_captcha_randstr?: string
   pending_auth_token?: string
   pending_oauth_token?: string
+  /** 蜜罐字段：人类始终传空字符串；非空即判定为机器人自动填表 */
+  company_website?: string
 }
 
 export interface SendVerifyCodeResponse {

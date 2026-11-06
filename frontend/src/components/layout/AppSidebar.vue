@@ -953,11 +953,13 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/tickets', label: t('nav.ticketManagement'), icon: TicketIcon, hideInSimpleMode: true, notice: 'tickets' },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/blogs', label: t('nav.blog'), icon: BlogIcon },
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/governance', label: t('nav.governance'), icon: ShieldIcon, hideInSimpleMode: true },
@@ -1002,8 +1004,6 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
       ],
     },
-    { path: '/admin/tickets', label: t('nav.ticketManagement'), icon: TicketIcon, hideInSimpleMode: true, notice: 'tickets' },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/media-tasks', label: t('admin.mediaTasks.title'), icon: VideoIcon, hideInSimpleMode: true },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
@@ -1401,14 +1401,27 @@ onBeforeUnmount(() => {
 /* 新记录红点：挂在菜单图标右上角，折叠态下也可见 */
 .sidebar-notice-dot {
   position: absolute;
-  top: -0.125rem;
-  right: -0.25rem;
-  height: 0.5rem;
-  width: 0.5rem;
+  top: -0.25rem;
+  right: -0.375rem;
+  height: 0.75rem;
+  width: 0.75rem;
   border-radius: 9999px;
   background-color: rgb(239 68 68);
   box-shadow: 0 0 0 2px rgb(255 255 255);
+  animation: sidebar-notice-pulse 1.6s ease-in-out infinite;
   pointer-events: none;
+}
+
+@keyframes sidebar-notice-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.85;
+  }
 }
 
 .dark .sidebar-notice-dot {

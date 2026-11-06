@@ -481,8 +481,14 @@ export async function sendVerifyCode(
  * 注册邮箱风险预检：只校验规则，不发送验证码。
  * 命中高危规则时后端返回错误，前端提示并停留当前页。
  */
-export async function checkRegistrationEmail(email: string): Promise<void> {
-  await apiClient.post('/auth/registration/email-check', { email })
+export async function checkRegistrationEmail(
+  email: string,
+  companyWebsite = ''
+): Promise<void> {
+  await apiClient.post('/auth/registration/email-check', {
+    email,
+    company_website: companyWebsite,
+  })
 }
 
 export async function sendPendingOAuthVerifyCode(

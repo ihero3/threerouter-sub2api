@@ -1118,6 +1118,8 @@ export interface TestSmtpRequest {
   smtp_username: string;
   smtp_password: string;
   smtp_use_tls: boolean;
+  /** 多账号轮换配置下标（>=0 时后端用已保存的多账号配置补空字段） */
+  smtp_saved_account_index?: number;
 }
 
 /**

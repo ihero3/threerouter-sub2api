@@ -28,6 +28,18 @@
 
       <!-- Registration Form -->
       <form v-else @submit.prevent="handleRegister" class="space-y-5">
+        <!-- 蜜罐字段：人类用户看不见且不会输入，bot 自动填表时会把该字段填上 -->
+        <!-- 故意用常规字段名（company_website），并用 CSS 视觉隐藏而非 display:none，降低被探测概率 -->
+        <input
+          type="text"
+          name="company_website"
+          tabindex="-1"
+          autocomplete="off"
+          aria-hidden="true"
+          class="pointer-events-none absolute -z-50 h-0 w-0 border-0 p-0 opacity-0"
+          style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;"
+        />
+
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -365,6 +377,7 @@ import {
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
+import { getHoneypotValue } from '@/utils/honeypot'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -1031,7 +1044,7 @@ async function handleRegister(): Promise<void> {
       // 邮箱风险预检：必须在发送验证码之前完成，命中高危规则直接拒绝并停留当前页。
       // 后端在发码与最终注册时还会再校验一次，这里是第一层阻断（双层防线）。
       try {
-        await checkRegistrationEmail(formData.email.trim())
+        await checkRegistrationEmail(formData.email.trim(), getHoneypotValue())
       } catch (error: unknown) {
         errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
         appStore.showError(errorMessage.value)
@@ -1051,6 +1064,7 @@ async function handleRegister(): Promise<void> {
           tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
+          company_website: getHoneypotValue() || undefined,
           ...(affCode ? { aff_code: affCode } : {})
         })
       )
@@ -1071,6 +1085,7 @@ async function handleRegister(): Promise<void> {
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
+      company_website: getHoneypotValue() || undefined,
       ...(affCode ? { aff_code: affCode } : {})
     })
     clearAffiliateReferralCode()

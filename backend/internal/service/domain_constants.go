@@ -225,6 +225,10 @@ const (
 	// 注册邮箱域名黑名单（JSON 数组）：命中后直接拒绝注册且不下发验证码。
 	// 匹配规则为「域名及其子域名」，例如 my.id 会同时拦截 abc.my.id。
 	SettingKeyRegistrationEmailSuffixBlacklist = "registration_email_suffix_blacklist"
+	// 注册蜜罐字段名：贴近 SaaS/注册场景的常规字段，肉眼不可见，
+	// 被自动填充即视为机器人脚本，后端静默返回假成功（不发邮件、不建号）。
+	// 字段名故意避开 honeypot/bot/token 等关键词降低被脚本探测的概率。
+	RegistrationHoneypotField = "company_website"
 	// 白名单非空时，是否放行非白名单域名按主域名限量注册。
 	// 默认 false：非白名单域名直接拒绝（白名单严格模式）。
 	SettingKeyRegistrationEmailDomainQuotaEnabled = "registration_email_domain_quota_enabled"

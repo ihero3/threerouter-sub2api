@@ -48,8 +48,8 @@
           <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
         </router-link>
 
-        <!-- Language Switcher -->
-        <LocaleSwitcher />
+        <!-- Language Switcher（仅管理员可见，普通用户隐藏） -->
+        <LocaleSwitcher v-if="authStore.isAdmin" />
 
         <!-- Subscription Progress (for users with active subscriptions) -->
         <SubscriptionProgressMini v-if="user" />

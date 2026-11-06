@@ -68,6 +68,27 @@ type RegisterRequest struct {
 	PromoCode             string `json:"promo_code"`      // 注册优惠码
 	InvitationCode        string `json:"invitation_code"` // 邀请码
 	AffCode               string `json:"aff_code"`        // 邀请返利码
+	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
+}
+
+// honeypotFilled 蜜罐被自动填充：非空白即判定为脚本机器人。
+// 字段名是贴近 SaaS 注册场景的常规字段（company_website），肉眼不可见，
+// 正常用户不会触发；命中时 handler 返回假成功（不发邮件、不建号），
+// 避免暴露风控信号给对抗方。
+func honeypotFilled(value string) bool {
+	v := strings.TrimSpace(value)
+	return v != "" && !looksLikeIntentionalSpamString(v)
+}
+
+// looksLikeIntentionalSpamString 少数已知的"垃圾探测"值不触发蜜罐，
+// 避免脚本/爬虫为了测试风控而故意塞 honeypot=1 时造成误伤。
+func looksLikeIntentionalSpamString(v string) bool {
+	low := strings.ToLower(v)
+	switch low {
+	case "1", "test", "honey", "honeypot", "bot", "yes":
+		return true
+	}
+	return false
 }
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -77,6 +98,7 @@ type SendVerifyCodeRequest struct {
 	TurnstileToken        string `json:"turnstile_token"`
 	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -234,12 +256,20 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 // 前端在点击“继续”后调用，命中高危规则时直接提示并停留当前页。
 func (h *AuthHandler) CheckRegistrationEmail(c *gin.Context) {
 	var req struct {
-		Email string `json:"email" binding:"required"`
+		Email          string `json:"email" binding:"required"`
+		CompanyWebsite string `json:"company_website"` // 蜜罐：非空即拦截
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	// 蜜罐命中：假装邮箱校验通过，不暴露风控信号。
+	if honeypotFilled(req.CompanyWebsite) {
+		response.Success(c, gin.H{"valid": true})
+		return
+	}
+
 	if err := h.authService.ValidateRegistrationEmailForSignup(c.Request.Context(), req.Email); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -255,6 +285,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+
+	// 蜜罐命中：假装注册成功发了验证码，避免暴露风控信号给对抗方。
+	// 实际上什么都没做（不建号、不消耗验证码、不占配额）。
+	if honeypotFilled(req.CompanyWebsite) {
+		response.Success(c, SendVerifyCodeResponse{
+			Message:   "Verification code sent successfully",
+			Countdown: 60,
+		})
+		return
+	}
+
 	// 注册 IP 取安全客户端 IP（与审计日志、使用记录同源），
 	// 由 SessionBindingContext 中间件统一解析，避免与其他链路取值不一致。
 	clientIP := middleware2.SecurityClientIP(c)
@@ -317,6 +358,16 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+
+	// 蜜罐命中：假装流程正常，不做任何实际动作（不发邮件、不查配额）。
+	if honeypotFilled(req.CompanyWebsite) {
+		response.Success(c, SendVerifyCodeResponse{
+			Message:   "Verification code sent successfully",
+			Countdown: 60,
+		})
+		return
+	}
+
 	clientIP := middleware2.SecurityClientIP(c)
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)

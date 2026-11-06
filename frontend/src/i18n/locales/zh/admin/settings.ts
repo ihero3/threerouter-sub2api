@@ -155,10 +155,10 @@ export default {
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         emailSuffixBlacklist: '邮箱域名黑名单',
         emailSuffixBlacklistHint:
-          '命中黑名单的邮箱域名直接拒绝注册，且不会下发验证码（不消耗发信额度）',
-        emailSuffixBlacklistPlaceholder: "{'@'}example.com, my.id",
+          '命中黑名单的邮箱/域名直接拒绝注册，且不会下发验证码（不消耗发信额度）；优先级高于白名单',
+        emailSuffixBlacklistPlaceholder: "test{'@'}gmail.com, my.id",
         emailSuffixBlacklistInputHint:
-          '黑名单按「域名及其所有子域名」匹配：填写 my.id 会同时拦截 abc.my.id、x.abc.my.id，可用来封堵随机子域名批量注册。',
+          '支持完整邮箱（如 test@gmail.com，仅拦截该地址，白名单放行的域名也能单独封禁）与域名（如 my.id，会同时拦截 abc.my.id、x.abc.my.id）。',
         emailDomainQuota: '非白名单域名限量注册',
         emailDomainQuotaHint:
           '开启后，白名单非空时，其他可注册主域名各限注册指定数量账户；关闭时非白名单域名直接拒绝注册。白名单为空时本开关无效果',
@@ -977,8 +977,10 @@ export default {
         port: '端口',
         username: '用户名',
         usernamePlaceholder: "user{'@'}gmail.com",
-        password: '密码',
-        passwordPlaceholder: '账号密码',
+        password: 'SMTP 密码',
+        passwordPlaceholder: 'SMTP 应用专用密码',
+        testConnection: '测试连接',
+        testing: '测试中...',
         passwordConfiguredHint: '密码已配置，留空即可保持不变',
         fromEmail: '发件人邮箱',
         fromEmailPlaceholder: '留空则使用用户名',
