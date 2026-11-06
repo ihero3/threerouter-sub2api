@@ -83,15 +83,12 @@ func (s *Stripe) currency() string {
 	return currency
 }
 
-// stripePaymentMethodTypes maps our PaymentType to Stripe payment_method_types.
-var stripePaymentMethodTypes = map[string][]string{
-	payment.TypeCard:   {"card"},
-	payment.TypeAlipay: {"alipay"},
-	payment.TypeWxpay:  {"wechat_pay"},
-	payment.TypeLink:   {"link"},
-}
-
 // CreatePayment creates a Stripe PaymentIntent.
+//
+// Starting with Stripe's Dynamic Payment Methods migration (API version 2024-06-20),
+// payment_method_types is no longer accepted at creation time. Instead, the
+// available methods come from the Stripe Dashboard payment-methods settings
+// and Stripe auto-picks based on currency/amount/merchant capabilities.
 func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	s.ensureInit()
 
@@ -101,29 +98,18 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
 
-	// Collect all Stripe payment_method_types from the instance's configured sub-methods
-	methods := resolveStripeMethodTypes(req.InstanceSubMethods)
-
-	pmTypes := make([]*string, len(methods))
-	for i, m := range methods {
-		pmTypes[i] = stripe.String(m)
-	}
-
 	params := &stripe.PaymentIntentCreateParams{
-		Amount:             stripe.Int64(amountInMinorUnit),
-		Currency:           stripe.String(strings.ToLower(currency)),
-		PaymentMethodTypes: pmTypes,
-		Description:        stripe.String(req.Subject),
-		Metadata:           map[string]string{"orderId": req.OrderID},
+		Amount:      stripe.Int64(amountInMinorUnit),
+		Currency:    stripe.String(strings.ToLower(currency)),
+		Description: stripe.String(req.Subject),
+		Metadata:    map[string]string{"orderId": req.OrderID},
 	}
 
-	// WeChat Pay requires payment_method_options with client type
-	if hasStripeMethod(methods, "wechat_pay") {
-		params.PaymentMethodOptions = &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
-			WeChatPay: &stripe.PaymentIntentCreatePaymentMethodOptionsWeChatPayParams{
-				Client: stripe.String("web"),
-			},
-		}
+	// Default WeChat Pay client option. Frontend may override at confirm time.
+	params.PaymentMethodOptions = &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
+		WeChatPay: &stripe.PaymentIntentCreatePaymentMethodOptionsWeChatPayParams{
+			Client: stripe.String("web"),
+		},
 	}
 
 	params.SetIdempotencyKey(fmt.Sprintf("pi-%s", req.OrderID))
@@ -303,35 +289,6 @@ func stripeIntentCurrency(raw stripe.Currency, fallback string) string {
 		return payment.DefaultPaymentCurrency
 	}
 	return currency
-}
-
-// resolveStripeMethodTypes converts instance supported_types (comma-separated)
-// into Stripe API payment_method_types. Falls back to ["card"] if empty.
-func resolveStripeMethodTypes(instanceSubMethods string) []string {
-	if instanceSubMethods == "" {
-		return []string{"card"}
-	}
-	var methods []string
-	for _, t := range strings.Split(instanceSubMethods, ",") {
-		t = strings.TrimSpace(t)
-		if mapped, ok := stripePaymentMethodTypes[t]; ok {
-			methods = append(methods, mapped...)
-		}
-	}
-	if len(methods) == 0 {
-		return []string{"card"}
-	}
-	return methods
-}
-
-// hasStripeMethod checks if the given Stripe method list contains the target method.
-func hasStripeMethod(methods []string, target string) bool {
-	for _, m := range methods {
-		if m == target {
-			return true
-		}
-	}
-	return false
 }
 
 // CancelPayment cancels a pending PaymentIntent.
