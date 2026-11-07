@@ -1,0 +1,40 @@
+-- 将 175 号迁移引入的全局审核规则名称统一为英文，避免界面中英文混排。
+-- 仅作用于全局规则（user_id IS NULL），用户自定义规则保持不变。
+UPDATE moderation_rules
+SET rule_name = CASE rule_id
+    WHEN 'rule-008' THEN 'Toxic Content Detection'
+    WHEN 'rule-009' THEN 'Insult Detection'
+    WHEN 'rule-010' THEN 'Profanity Detection'
+    WHEN 'rule-011' THEN 'Derogatory Content Detection'
+    WHEN 'rule-012' THEN 'Death, Harm & Tragedy Detection'
+    WHEN 'rule-013' THEN 'Firearms & Weapons Detection'
+    WHEN 'rule-014' THEN 'Public Safety Detection'
+    WHEN 'rule-015' THEN 'Health Content Detection'
+    WHEN 'rule-016' THEN 'Religion & Belief Detection'
+    WHEN 'rule-017' THEN 'Illegal Drugs Detection'
+    WHEN 'rule-018' THEN 'War & Conflict Detection'
+    WHEN 'rule-019' THEN 'Financial Content Detection'
+    WHEN 'rule-020' THEN 'Legal Content Detection'
+    WHEN 'rule-021' THEN 'Classified Information Detection'
+    WHEN 'rule-022' THEN 'Military Content Detection'
+    WHEN 'rule-023' THEN 'Political Content Detection'
+    WHEN 'rule-024' THEN 'State Leaders Detection'
+    WHEN 'rule-025' THEN 'Terrorism Detection'
+    WHEN 'rule-026' THEN 'Gambling Detection'
+    WHEN 'rule-027' THEN 'Fraud & Scam Detection'
+    WHEN 'rule-028' THEN 'Misinformation & Rumor Detection'
+    WHEN 'rule-029' THEN 'Separatism Detection'
+    WHEN 'rule-030' THEN 'Extremism Detection'
+    WHEN 'rule-031' THEN 'Cyberbullying Detection'
+    WHEN 'rule-032' THEN 'Vulgar Content Detection'
+    WHEN 'rule-033' THEN 'IP Infringement Detection'
+    WHEN 'rule-034' THEN 'Illegal Fundraising & Pyramid Schemes'
+    WHEN 'rule-035' THEN 'Cybersecurity Threat Detection'
+    WHEN 'rule-036' THEN 'Illegal Organizations Detection'
+    WHEN 'rule-037' THEN 'Historical Nihilism Detection'
+    WHEN 'rule-038' THEN 'Sexism & Objectification Detection'
+    WHEN 'rule-039' THEN 'Cult Content Detection'
+    ELSE rule_name
+END
+WHERE rule_id BETWEEN 'rule-008' AND 'rule-039'
+  AND user_id IS NULL;
