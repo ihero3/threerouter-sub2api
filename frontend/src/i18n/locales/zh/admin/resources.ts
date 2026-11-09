@@ -566,9 +566,11 @@ export default {
         loadFailed: '加载用户列表失败',
         columns: {
           user: '用户名称',
+          balance: '当前余额',
           userId: '用户 ID',
           lastUsedAt: '最后使用时间',
-          registeredAt: '注册时间'
+          registeredAt: '注册时间',
+          actions: '操作'
         },
         marks: {
           deleted: '已删除',

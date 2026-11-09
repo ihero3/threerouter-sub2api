@@ -76,6 +76,12 @@ export interface UsageIPUser {
   recharged: boolean
   looked_count: number
   ticket_flagged: boolean
+  /** 当前余额 */
+  balance: number
+  /** 账号状态：active | disabled */
+  status: string
+  /** 角色：admin 不提供禁止操作 */
+  role: string
 }
 
 /** IP 排行的一行：某个 IP 及其上发起过 API 调用的账号数 */

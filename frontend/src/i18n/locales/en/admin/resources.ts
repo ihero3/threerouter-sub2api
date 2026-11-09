@@ -569,9 +569,11 @@ export default {
         loadFailed: 'Failed to load user list',
         columns: {
           user: 'User',
+          balance: 'Balance',
           userId: 'User ID',
           lastUsedAt: 'Last Used',
-          registeredAt: 'Registered At'
+          registeredAt: 'Registered At',
+          actions: 'Actions'
         },
         marks: {
           deleted: 'Deleted',

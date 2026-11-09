@@ -68,6 +68,11 @@ type UsageIPUser struct {
 	Recharged     bool `json:"recharged"`
 	LookedCount   int  `json:"looked_count"`
 	TicketFlagged bool `json:"ticket_flagged"`
+	// Balance 当前余额；Status/Role 供列表直接展示与「禁止/启用」按钮判断
+	// （admin 不能在此处被禁用，与用户管理页保持同一规则）。
+	Balance float64 `json:"balance"`
+	Status  string  `json:"status"`
+	Role    string  `json:"role"`
 }
 
 // UsageIPUsersRepository 是使用日志仓储为「按 IP 反查用户」提供的窄接口，

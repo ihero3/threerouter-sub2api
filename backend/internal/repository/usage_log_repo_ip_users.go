@@ -45,7 +45,11 @@ SELECT u.id,
                WHERE po.user_id = u.id AND po.paid_at IS NOT NULL
                  AND po.status IN ('PAID', 'RECHARGING', 'COMPLETED')) AS recharged,
        u.looked_count,
-       u.ticket_flag
+       u.ticket_flag,
+       -- balance 是 decimal(20,8)，显式转 double precision 以便稳定扫进 float64
+       u.balance::double precision,
+       COALESCE(u.status, ''),
+       COALESCE(u.role, '')
 FROM users u
 WHERE ` + where + `
 ORDER BY last_used_at DESC NULLS LAST, u.id DESC
@@ -64,7 +68,8 @@ LIMIT $2 OFFSET $3`
 			lastUsedAt sql.NullTime
 		)
 		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &item.CreatedAt, &lastUsedAt,
-			&item.Deleted, &item.Recharged, &item.LookedCount, &item.TicketFlagged); err != nil {
+			&item.Deleted, &item.Recharged, &item.LookedCount, &item.TicketFlagged,
+			&item.Balance, &item.Status, &item.Role); err != nil {
 			return nil, nil, err
 		}
 		if lastUsedAt.Valid {

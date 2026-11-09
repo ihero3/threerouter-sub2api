@@ -27,17 +27,19 @@
             <thead class="bg-gray-50 dark:bg-dark-800">
               <tr>
                 <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.user') }}</th>
+                <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.balance') }}</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.userId') }}</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.lastUsedAt') }}</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.registeredAt') }}</th>
+                <th class="px-4 py-3 text-left font-medium text-gray-700 dark:text-dark-200">{{ t('admin.usage.ipUsers.columns.actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td colspan="4" class="px-4 py-8 text-center text-gray-400 dark:text-dark-500">...</td>
+                <td colspan="6" class="px-4 py-8 text-center text-gray-400 dark:text-dark-500">...</td>
               </tr>
               <tr v-else-if="rows.length === 0">
-                <td colspan="4" class="px-4 py-8 text-center text-gray-400 dark:text-dark-500">
+                <td colspan="6" class="px-4 py-8 text-center text-gray-400 dark:text-dark-500">
                   {{ t('admin.usage.ipUsers.empty') }}
                 </td>
               </tr>
@@ -65,6 +67,14 @@
                   </span>
                 </td>
                 <td class="px-4 py-2">
+                  <span
+                    class="tabular-nums"
+                    :class="row.balance > 0 ? 'text-gray-700 dark:text-dark-200' : 'text-gray-400 dark:text-dark-500'"
+                  >
+                    ${{ (row.balance ?? 0).toFixed(2) }}
+                  </span>
+                </td>
+                <td class="px-4 py-2">
                   <button
                     class="font-mono text-gray-600 hover:underline dark:text-dark-300"
                     :title="t('admin.usage.clickToViewBalance')"
@@ -77,6 +87,23 @@
                   {{ row.last_used_at ? formatDateTime(row.last_used_at) : t('admin.affiliates.relations.columns.neverUsed') }}
                 </td>
                 <td class="px-4 py-2 text-gray-600 dark:text-dark-300">{{ formatDateTime(row.created_at) }}</td>
+                <td class="px-4 py-2">
+                  <!-- 与用户管理页的「禁止/启用」同一套接口与规则：admin 账号不可在此禁用 -->
+                  <button
+                    v-if="row.role !== 'admin'"
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    :class="row.status === 'active'
+                      ? 'border-orange-200 text-orange-600 hover:bg-orange-50 dark:border-orange-500/30 dark:text-orange-400 dark:hover:bg-orange-500/10'
+                      : 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10'"
+                    :disabled="togglingUserId === row.user_id"
+                    @click="handleToggleStatus(row)"
+                  >
+                    <Icon :name="row.status === 'active' ? 'ban' : 'checkCircle'" size="xs" />
+                    {{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}
+                  </button>
+                  <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -211,6 +238,29 @@ const handleBalanceSuccess = async () => {
 // 删除用户成功后刷新列表
 const handleUserDeleted = () => {
   load()
+}
+
+// 正在切换状态的用户 ID：避免重复点击并发打同一个接口
+const togglingUserId = ref<number | null>(null)
+
+// 与用户管理页完全一致的行为：点击即切换 active / disabled，不弹二次确认，
+// admin 账号不展示该按钮（后端也会拒绝禁用管理员）。
+const handleToggleStatus = async (row: UsageIPUser) => {
+  if (row.role === 'admin' || togglingUserId.value !== null) return
+  const nextStatus = row.status === 'active' ? 'disabled' : 'active'
+  togglingUserId.value = row.user_id
+  try {
+    await adminAPI.users.toggleStatus(row.user_id, nextStatus)
+    appStore.showSuccess(
+      nextStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
+    )
+    // 重新拉取：列表按最后使用时间排序，状态以服务端为准最稳
+    await load()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
+  } finally {
+    togglingUserId.value = null
+  }
 }
 
 const handlePageChange = (page: number) => {
