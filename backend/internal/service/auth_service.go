@@ -860,8 +860,8 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 				// snapshot user × platform quota（fail-open）
-				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-				s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
+			_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+			s.bindOAuthAffiliate(ctx, user.ID, affiliateCode, registerIP)
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -1004,7 +1004,11 @@ func authSourceSignupSettings(defaults *AuthSourceDefaultSettings, signupSource 
 
 // bindOAuthAffiliate initializes the affiliate profile and binds the inviter
 // for an OAuth-registered user. Failures are logged but never block registration.
-func (s *AuthService) bindOAuthAffiliate(ctx context.Context, userID int64, affiliateCode string) {
+// registerIP must be the real client IP from the session-binding context:
+// BindInviterByCode now fail-closes when the IP guard is enabled and no IP is
+// available, so an empty value prevents the invite binding (and its reward)
+// instead of silently bypassing the anti-abuse checks.
+func (s *AuthService) bindOAuthAffiliate(ctx context.Context, userID int64, affiliateCode, registerIP string) {
 	if s.affiliateService == nil || userID <= 0 {
 		return
 	}
@@ -1012,8 +1016,7 @@ func (s *AuthService) bindOAuthAffiliate(ctx context.Context, userID int64, affi
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", userID, err)
 	}
 	if code := strings.TrimSpace(affiliateCode); code != "" {
-		// OAuth 注册链路拿不到客户端 IP，传空串让 IP 关联风控自动跳过（fail-open）。
-		if err := s.affiliateService.BindInviterByCode(ctx, userID, code, ""); err != nil {
+		if err := s.affiliateService.BindInviterByCode(ctx, userID, code, registerIP); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", userID, err)
 		}
 	}

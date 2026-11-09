@@ -276,7 +276,7 @@ func TestHandleCCStreamingFromAnthropic_TruncatedBeforeTermination(t *testing.T)
 	}
 
 	svc := &GatewayService{}
-	result, err := svc.handleCCStreamingFromAnthropic(resp, c, "gpt-5", "claude-sonnet-4.5", nil, time.Now(), true)
+	result, err := svc.handleCCStreamingFromAnthropic(resp, c, "gpt-5", "claude-sonnet-4.5", nil, time.Now())
 	require.Error(t, err)
 	require.NotNil(t, result)
 	body := rec.Body.String()

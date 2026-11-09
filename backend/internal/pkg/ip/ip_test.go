@@ -38,6 +38,8 @@ func TestGetClientIPPreservesLegacyDockerForwardedHeaders(t *testing.T) {
 	r := gin.New()
 	require.NoError(t, r.SetTrustedProxies(nil))
 	r.GET("/t", func(c *gin.Context) {
+		// Legacy 转发头模式现在是按请求显式开启的；默认值已改为 fail-secure。
+		SetLegacyForwardedIPTrust(c, true)
 		c.String(200, GetClientIP(c))
 	})
 
@@ -50,6 +52,29 @@ func TestGetClientIPPreservesLegacyDockerForwardedHeaders(t *testing.T) {
 
 	require.Equal(t, 200, w.Code)
 	require.Equal(t, "203.0.113.42", w.Body.String())
+}
+
+// TestGetClientIPDefaultsToTrustedProxyChain 验证未显式开启 legacy 模式时，
+// 伪造的转发头不会覆盖真实 peer 地址——这是注册 IP 风控可信的前提。
+func TestGetClientIPDefaultsToTrustedProxyChain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	r.GET("/t", func(c *gin.Context) {
+		c.String(200, GetClientIP(c))
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("CF-Connecting-IP", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "9.9.9.9", w.Body.String())
 }
 
 func TestCheckIPRestrictionWithCompiledRules(t *testing.T) {
@@ -79,6 +104,8 @@ func TestGetSecurityClientIPSwitchEnabledUsesLegacyHeaders(t *testing.T) {
 	r := gin.New()
 	require.NoError(t, r.SetTrustedProxies(nil))
 	r.GET("/t", func(c *gin.Context) {
+		// 显式声明该请求启用 legacy 转发头；未注入设置时默认 fail-secure。
+		SetForwardedIPSettings(c, true, nil)
 		c.String(200, GetSecurityClientIP(c, true))
 	})
 

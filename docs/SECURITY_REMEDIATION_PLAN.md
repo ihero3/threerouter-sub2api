@@ -241,3 +241,47 @@
 - 充值返利有基于 `payment_audit_logs` 唯一索引的真幂等；转余额有 `FOR UPDATE`
 - 邮箱 `+别名` / Gmail 点号归一化去重（registration_email_alias.go）
 - CORS 未放行通配符反射；`InsecureSkipVerify` 硬编码禁止；代理失败不回退直连
+
+---
+
+## 四、P0 修复记录（2026-11-09）
+
+本轮已完成 P0-1 / P0-2 / P0-3 的代码修复、配置止血与回归验证。仅改动代码与本地运行配置，未触碰数据库数据，未重启线上实例。
+
+### P0-2 注册 IP 可被伪造头完全控制 — 已修复
+
+- `internal/config/config.go`：`security.trust_forwarded_ip_for_api_key_acl` 的默认值由 `true` 改为 `false`。全局 `SessionBindingContext`（`internal/server/router.go:63`）会把该值注入每条请求，因此注册、会话绑定、审计日志不再优先信任客户端自带的 `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For`。
+- `internal/pkg/ip/ip.go`：`requestUsesLegacyForwardedIPTrust` 未注入按请求设置时由默认 `true` 改为 `false`（fail-secure），避免未走全局中间件的调用重新引入伪造风险。
+- `backend/config.yaml`：显式写入 `trust_forwarded_ip_for_api_key_acl: false`，防止默认值漂移。
+- 测试：`ip_test.go` 新增「默认走可信代理链」用例，legacy 行为改为按请求显式开启。
+- 运维注意：若部署在 CDN / 反向代理之后，必须显式配置 `server.trusted_proxies` 列出代理 IP 段，否则 Gin 只使用直连 peer 地址，所有用户会被视为同一 IP，可能与「同 IP 每小时注册 2 个」配额冲突。
+
+### P0-3 OAuth 注册链路绕过 IP 风控 — 已修复
+
+- `internal/service/auth_service.go`：`bindOAuthAffiliate` 增加 `registerIP` 参数，不再向 `BindInviterByCode` 传空串；`LoginOrRegisterOAuthWithTokenPair` 分支复用同函数内已解析的 `registerIP`。
+- `internal/service/auth_email_oauth_auto.go` / `auth_oauth_email_flow.go`：两条 OAuth 注册链路透传 `registerIPFromContext(ctx)`；前者同时补写 `users.register_ip` 与 `register_country`。
+- `internal/service/affiliate_service.go`：新增 `ErrAffiliateIPGuardMissingIP`。`enforceIPGuard` 在风控开启且 IP 为空时由 fail-open 改为 fail-close：不建立邀请关系、不发放注册奖励；风控关闭或依赖缺失时仍放行以保可用性。注册主流程不受影响（绑定失败仅记日志）。
+- 测试：`affiliate_service_test.go` 空 IP 用例改断言 `ErrAffiliateIPGuardMissingIP`，并补充「风控关闭时空 IP 放行」用例。
+
+### P0-1 JWT 弱密钥检测失效 — 已修复
+
+- `internal/config/config.go`：`isWeakJWTSecret` 由 8 个固定串的全等匹配，升级为「长度下限 + 固定名单 + 占位符子串模式匹配」，覆盖 `dev-only` / `please-change` / `example` / `placeholder` 等示例密钥；随机生成的十六进制密钥不受影响。
+- 同一文件 `load()`：完整加载时检测到弱密钥直接返回错误阻断启动（原先仅 warn）；bootstrap 阶段仍允许占位值，后续完整加载会再次校验。
+- `backend/config.yaml`：示例密钥已轮换为 32 字节随机值（64 位 hex），保留 `JWT_SECRET` 环境变量覆盖能力。原文件备份于 `backend/config.yaml.bak-20261109`，已在 `.gitignore` 中排除，禁止入库。
+- 测试：新增「弱密钥拒绝 / 生成密钥放行 / 弱密钥阻断启动」三组用例。
+- 运维注意：轮换 JWT 密钥会使所有已签发 token 立即失效，用户需重新登录，建议在低峰期重启实例时执行。
+
+### 回归验证结论
+
+- `go build ./...`：`BUILD_EXIT=0`，全量构建通过。
+- `go test -tags=unit ./internal/pkg/ip`：全部通过。
+- `go test -tags=unit ./internal/config`：本轮新增/修改的用例全部通过；仍有 2 个既有失败（`TestLoadDefaultSecurityToggles` 的 URL 白名单默认值、`TestConfigKeysAreEnvReachable` 的 compliance 键未注册），与本轮改动无关。
+- `go test -tags=unit ./internal/service -run TestEnforceIPGuard`：9 个子用例全部通过。该包全量运行仍有较多既有失败（流式超时、mock 断言、邮箱风险校验顺序变更后的旧断言等）。
+- 顺带修复 3 个测试文件共 5 处函数签名过期调用（补 `registerIP` 参数 / 删除多余参数），否则 service 测试包无法编译。
+- 验证期间曾遇 Go 1.26.4 链接器 panic（`methodref has no signature`）与 `runtime.gcbss` 报错，执行 `go clean -cache` 后消失，属构建缓存损坏，非代码缺陷。
+
+### 仍需处理（运维动作与 P1）
+
+- 重启运行中的后端实例使新配置生效；确认 CDN / 代理拓扑并按需配置 `server.trusted_proxies`。
+- 阶段 0 其余止血项：DB / Redis 强口令、`server.mode` 切 `release`、`allow_private_hosts: false`、后台先把 `affiliate_register_reward` 调 0。
+- P1：IPv4 /24、IPv6 /64 段聚合风控，设备指纹，注册前置人机验证，全局注册速率熔断，JWT 吊销能力。

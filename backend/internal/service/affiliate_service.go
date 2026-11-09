@@ -23,6 +23,9 @@ var (
 	ErrAffiliateIPGuardBlocked = infraerrors.Forbidden("AFFILIATE_IP_GUARD_BLOCKED", "registration blocked by affiliate ip guard")
 	// ErrAffiliateIPGuardReview 注册 IP 关联风控（review 模式）命中：已记录待人工审核事件。
 	ErrAffiliateIPGuardReview = infraerrors.Forbidden("AFFILIATE_IP_GUARD_REVIEW", "registration flagged by affiliate ip guard for review")
+	// ErrAffiliateIPGuardMissingIP 注册 IP 缺失，无法执行 IP 关联风控（fail-close）：
+	// 不绑定邀请人、不发放注册奖励，避免 OAuth 等链路以空 IP 绕过风控套取返利。
+	ErrAffiliateIPGuardMissingIP = infraerrors.Forbidden("AFFILIATE_IP_GUARD_MISSING_IP", "registration ip unavailable for affiliate ip guard")
 
 	ErrAffiliateQuotaInsufficient     = infraerrors.BadRequest("AFFILIATE_QUOTA_INSUFFICIENT", "insufficient available affiliate quota")
 	ErrAffiliateWithdrawAmountInvalid = infraerrors.BadRequest("AFFILIATE_WITHDRAW_AMOUNT_INVALID", "invalid offline withdrawal amount")
@@ -612,9 +615,10 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 // BindInviterByCode 将注册用户绑定到邀请码对应的邀请人。
 //
 // registerIP 为被邀请人注册时的客户端 IP，用于「同 IP 多账号共用一个邀请人」风控：
-//   - registerIP 为空（如 OAuth 注册无法取得 IP）时跳过校验（fail-open）；
 //   - 风控模式 off 时跳过校验；
-//   - 命中时：block 模式直接返回 ErrAffiliateIPGuardBlocked；review 模式记录
+//   - registerIP 为空且风控开启时 fail-close，返回 ErrAffiliateIPGuardMissingIP，
+//     不绑定邀请人、不发放注册奖励（各注册渠道必须透传真实客户端 IP）；
+//   - 命中同 IP 阈值时：block 模式直接返回 ErrAffiliateIPGuardBlocked；review 模式记录
 //     一条待审核事件后返回 ErrAffiliateIPGuardReview。两种情况都**不**绑定邀请人、
 //     不发放注册奖励，避免通过批量注册套取奖励。
 func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, rawCode string, registerIP string) error {
@@ -684,19 +688,22 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 
 // enforceIPGuard 执行「注册 IP 与邀请人关联」风控校验。
 //
-// 返回 nil 表示放行；否则返回 ErrAffiliateIPGuardBlocked / ErrAffiliateIPGuardReview。
-// 若风控关闭、registerIP 为空或查询失败，一律放行（fail-open），避免误伤正常注册。
+// 返回 nil 表示放行；否则返回 ErrAffiliateIPGuardBlocked / ErrAffiliateIPGuardReview /
+// ErrAffiliateIPGuardMissingIP。风控关闭或依赖缺失时放行，查询失败仍 fail-open 保可用性。
+// 但风控开启且 registerIP 为空时 fail-close：无法验证 IP 就不建立邀请关系、不发奖励，
+// 否则任何能构造空 IP 上下文的注册渠道都能无限刷邀请返利。
 func (s *AffiliateService) enforceIPGuard(ctx context.Context, inviteeID, inviterID int64, registerIP string) error {
 	registerIP = strings.TrimSpace(registerIP)
-	if registerIP == "" {
-		return nil
-	}
 	if s == nil || s.settingService == nil || s.repo == nil {
 		return nil
 	}
 	mode := s.settingService.GetAffiliateIPGuardMode(ctx)
 	if mode == AffiliateIPGuardModeOff {
 		return nil
+	}
+	if registerIP == "" {
+		logger.LegacyPrintf("service.affiliate", "[Affiliate] IP guard fail-close: missing registration ip for inviter %d (invitee %d)", inviterID, inviteeID)
+		return ErrAffiliateIPGuardMissingIP
 	}
 	maxAccounts := s.settingService.GetAffiliateIPGuardMaxAccounts(ctx)
 	if maxAccounts < 1 {

@@ -142,7 +142,9 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	require.Equal(t, 64*1024, cfg.Server.MaxHeaderBytes)
 	require.Empty(t, cfg.Server.TrustedProxies)
 	require.False(t, cfg.Server.TrustedProxiesConfigured)
-	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
+	// 安全默认：不信任客户端自带的转发头。需要 CDN 后的真实 IP 时，
+	// 必须显式开启该开关并同时配置 server.trusted_proxies。
+	require.False(t, cfg.TrustForwardedIPForAPIKeyACL())
 	require.Equal(t, int64(32*1024*1024), cfg.Gateway.TextMaxBodySize)
 	require.Equal(t, int64(1<<30), cfg.Gateway.RequestBodyMemoryBudgetBytes)
 	require.Equal(t, 120, cfg.Gateway.RequestBodyReadTimeoutSeconds)
@@ -387,6 +389,41 @@ func TestLoadReturnsErrorForMissingConfigFile(t *testing.T) {
 
 	_, err := Load()
 	require.ErrorContains(t, err, "read config error")
+}
+
+func TestIsWeakJWTSecretRejectsKnownPlaceholders(t *testing.T) {
+	weak := []string{
+		"dev-only-jwt-secret-please-change-in-production-32bytes",
+		"change-me-in-production",
+		"secret",
+		"12345678",
+		"please-change-this-value-before-going-live-0000000000",
+		"your-secret-key-goes-here-0000000000000000",
+		"this-is-an-example-jwt-signing-key-00000000000",
+	}
+	for _, secret := range weak {
+		require.True(t, isWeakJWTSecret(secret), "expected weak secret to be rejected: %q", secret)
+	}
+}
+
+func TestIsWeakJWTSecretAcceptsGeneratedSecrets(t *testing.T) {
+	generated, err := generateJWTSecret(32)
+	require.NoError(t, err)
+	require.False(t, isWeakJWTSecret(generated))
+	// 现有测试与 bootstrap 占位值使用的形态，不能被误判为弱。
+	require.False(t, isWeakJWTSecret(strings.Repeat("x", 32)))
+	require.False(t, isWeakJWTSecret(strings.Repeat("0", 32)))
+}
+
+func TestLoadRejectsWeakJWTSecret(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("CONFIG_FILE", "")
+	t.Setenv("DATA_DIR", "")
+	t.Setenv("JWT_SECRET", "dev-only-jwt-secret-please-change-in-production-32bytes")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "jwt.secret is weak")
 }
 
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
@@ -1546,8 +1583,16 @@ func TestValidateJWTSecretStrength(t *testing.T) {
 	if !isWeakJWTSecret("change-me-in-production") {
 		t.Fatalf("isWeakJWTSecret should detect weak secret")
 	}
-	if isWeakJWTSecret("StrongSecretValue") {
-		t.Fatalf("isWeakJWTSecret should accept strong secret")
+	// 短的非随密钥值同样是弱密钥（Validate 要求 jwt.secret >= 32 字节）。
+	if !isWeakJWTSecret("StrongSecretValue") {
+		t.Fatalf("isWeakJWTSecret should reject short non-random secret")
+	}
+	generated, err := generateJWTSecret(32)
+	if err != nil {
+		t.Fatalf("generateJWTSecret error: %v", err)
+	}
+	if isWeakJWTSecret(generated) {
+		t.Fatalf("isWeakJWTSecret should accept generated secret")
 	}
 }
 

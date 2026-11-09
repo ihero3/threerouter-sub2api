@@ -173,7 +173,7 @@ func newIPGuardService(values map[string]string, repo AffiliateRepository) *Affi
 }
 
 // TestEnforceIPGuard 覆盖注册 IP 关联风控的各分支：
-// 关闭放行、空 IP 放行、未达阈值放行、block 拦截、review 落事件、
+// 关闭放行、空 IP fail-close、未达阈值放行、block 拦截、review 落事件、
 // 查询失败 fail-open、repo 缺失 fail-open。
 func TestEnforceIPGuard(t *testing.T) {
 	t.Parallel()
@@ -192,12 +192,21 @@ func TestEnforceIPGuard(t *testing.T) {
 		require.Equal(t, 0, repo.countCalls, "guard off should short-circuit before counting")
 	})
 
-	t.Run("empty register ip allows", func(t *testing.T) {
+	t.Run("empty register ip fails closed", func(t *testing.T) {
 		t.Parallel()
 		repo := &ipGuardRepoStub{count: 99}
 		svc := newIPGuardService(map[string]string{SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeBlock}, repo)
-		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, "   "))
-		require.Equal(t, 0, repo.countCalls, "empty IP should short-circuit before counting")
+		err := svc.enforceIPGuard(context.Background(), inviteeID, inviterID, "   ")
+		require.ErrorIs(t, err, ErrAffiliateIPGuardMissingIP)
+		require.Equal(t, 0, repo.countCalls, "missing IP should short-circuit before counting")
+	})
+
+	t.Run("guard off allows empty register ip", func(t *testing.T) {
+		t.Parallel()
+		repo := &ipGuardRepoStub{count: 99}
+		svc := newIPGuardService(map[string]string{SettingKeyAffiliateIPGuardMode: AffiliateIPGuardModeOff}, repo)
+		require.NoError(t, svc.enforceIPGuard(context.Background(), inviteeID, inviterID, ""))
+		require.Equal(t, 0, repo.countCalls)
 	})
 
 	t.Run("below threshold allows", func(t *testing.T) {

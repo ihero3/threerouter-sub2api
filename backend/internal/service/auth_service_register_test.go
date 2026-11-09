@@ -326,7 +326,7 @@ func TestAuthService_Register_NoDefaultQuotasSkipsSnapshot(t *testing.T) {
 		SettingKeyRegistrationEnabled: "true",
 	}, nil, quotaRepo)
 
-	_, user, err := service.Register(context.Background(), "newuser2@test.com", "password")
+	_, user, err := service.Register(context.Background(), "newuser2@test.com", "password", "")
 	require.NoError(t, err)
 	require.NotNil(t, user)
 

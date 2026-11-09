@@ -2087,6 +2087,11 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
+		// 完整加载时弱密钥必须挡在启动之前：泄露/猜中的密钥可直接伪造任意用户
+		// （含管理员）的 JWT。Bootstrap 阶段允许占位值，后续会再做一次完整加载。
+		if !allowMissingJWTSecret {
+			return nil, fmt.Errorf("jwt.secret is weak or a known placeholder; set a random 32+ character secret (env JWT_SECRET)")
+		}
 		slog.Warn("JWT secret appears weak; use a 32+ character random secret in production.")
 	}
 	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
@@ -2199,7 +2204,12 @@ func setDefaults() {
 	viper.SetDefault("security.csp.enabled", true)
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
-	viper.SetDefault("security.trust_forwarded_ip_for_api_key_acl", true)
+	// 安全默认：不信任客户端自带的转发头（CF-Connecting-IP / X-Real-IP / X-Forwarded-For）。
+	// 这些头可被任意客户端伪造，一旦信任，users.register_ip 会写入攻击者指定的值，
+	// 使注册 IP 风控、会话绑定、限流取证与封禁全部失效。
+	// 若部署在反向代理/CDN 之后，必须显式配置 server.trusted_proxies，
+	// 由 Gin 的可信代理链解析真实客户端 IP；未配置时使用直连 peer 地址（安全但可能拿不到 CDN 后的真实 IP）。
+	viper.SetDefault("security.trust_forwarded_ip_for_api_key_acl", false)
 
 	// Security - disable direct fallback on proxy error
 	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
@@ -3909,9 +3919,23 @@ func normalizeStringSlice(values []string) []string {
 	return normalized
 }
 
+// jwtWeakSecretMarkers 覆盖示例配置、部署文档、模板里常见的占位式弱密钥。
+// 采用小写子串匹配而非全等比较：只要密钥里带有这些「请替换我」语义的片段，
+// 就说明它没有被真正轮换过。随机生成的十六进制密钥不会命中。
+var jwtWeakSecretMarkers = []string{
+	"change-me", "changeme", "please-change", "change-this", "replace-me",
+	"dev-only", "example", "placeholder", "your-secret", "your-jwt",
+	"default-secret", "test-secret", "sample-secret", "todo", "fixme",
+	"jwt-secret", "secret-key", "mysecret", "supersecret",
+}
+
 func isWeakJWTSecret(secret string) bool {
 	lower := strings.ToLower(strings.TrimSpace(secret))
 	if lower == "" {
+		return true
+	}
+	// Validate() 已要求 >= 32 字节，这里再兜一层，防止日后放宽长度校验时弱密钥漏网。
+	if len(lower) < 32 {
 		return true
 	}
 	weak := map[string]struct{}{
@@ -3924,8 +3948,15 @@ func isWeakJWTSecret(secret string) bool {
 		"admin":                   {},
 		"jwt-secret":              {},
 	}
-	_, exists := weak[lower]
-	return exists
+	if _, exists := weak[lower]; exists {
+		return true
+	}
+	for _, marker := range jwtWeakSecretMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func generateJWTSecret(byteLength int) (string, error) {

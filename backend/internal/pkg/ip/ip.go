@@ -45,9 +45,16 @@ func requestForwardedIPSettings(c *gin.Context) (forwardedIPSettings, bool) {
 	return settings, ok
 }
 
+// requestUsesLegacyForwardedIPTrust reports whether the request opts into the
+// legacy raw-forwarded-header parser. Requests without an explicit per-request
+// setting default to the trusted-proxy chain (fail-secure): raw forwarded
+// headers are fully client-controlled and must never be trusted implicitly.
 func requestUsesLegacyForwardedIPTrust(c *gin.Context) bool {
 	settings, ok := requestForwardedIPSettings(c)
-	return !ok || settings.trustForwarded
+	if !ok {
+		return false
+	}
+	return settings.trustForwarded
 }
 
 // GetClientIP resolves the client address using the legacy forwarding-header

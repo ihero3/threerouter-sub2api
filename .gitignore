@@ -110,6 +110,8 @@ backend/data/
 # 本地配置文件（包含敏感信息）
 # ===================
 backend/config.yaml
+# 配置备份同样含 JWT 密钥/DB 口令，禁止入库
+backend/config.yaml.bak-*
 deploy/config.yaml
 backend/.installed
 
