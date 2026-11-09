@@ -82,7 +82,7 @@
           class="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:bg-dark-800 dark:text-red-400 dark:hover:bg-red-500/10"
         >
           <Icon name="trash" size="sm" :stroke-width="2" />
-          删除用户
+          {{ t('admin.users.deleteUser') }}
         </button>
       </div>
 

@@ -93,9 +93,19 @@ export default defineConfig(({ mode }) => {
     alias: {
       '@': resolve(__dirname, 'src'),
       // 使用 vue-i18n 运行时版本，避免 CSP unsafe-eval 问题；
-      // v10 起 JIT 编译恒开启，消息编译为 AST 对象而非 JS 代码，无需 unsafe-eval
+      // 运行时版本默认不注册消息编译器，需靠下方 define 打开 JIT 编译
       'vue-i18n': 'vue-i18n/dist/vue-i18n.runtime.esm-bundler.js'
     }
+  },
+  define: {
+    // 启用 vue-i18n JIT 编译：消息编译为 AST 对象而非 JS 代码，无需 unsafe-eval。
+    // 缺少该开关时运行时版本的 messageCompiler 为 undefined，
+    // t() 会把所有字符串消息原样返回 key（页面出现 nav.dashboard 之类的裸 key）。
+    __INTLIFY_JIT_COMPILATION__: true,
+    // vue-i18n 9/10 的 feature flag，未定义会在打包时保留警告代码
+    __VUE_I18N_FULL_INSTALL__: true,
+    __VUE_I18N_LEGACY_API__: false,
+    __INTLIFY_PROD_DEVTOOLS__: false
   },
   build: {
     outDir: '../backend/internal/web/dist',

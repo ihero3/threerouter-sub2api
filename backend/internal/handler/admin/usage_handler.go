@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -234,6 +235,70 @@ func (h *UsageHandler) ListIPUsers(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, users, result.Total, page, pageSize)
+}
+
+// ListIPAccountRanking handles ranking IPs by the number of distinct accounts that
+// called the API from them.
+// GET /api/v1/admin/usage/ip-ranking?start_date=2026-10-20&end_date=2026-10-26&page=1&page_size=20
+func (h *UsageHandler) ListIPAccountRanking(c *gin.Context) {
+	startTime, endTime, err := parseIPRankingWindow(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+
+	items, result, err := h.usageService.ListIPAccountRanking(c.Request.Context(), startTime, endTime, params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, result.Total, page, pageSize)
+}
+
+// ipRankingMaxWindow 是 IP 排行允许统计的最长时间窗。
+// 聚合要扫 usage_logs 上的全部 IP 分组，窗口越长代价越大；第一版先用硬上限
+// 兜住成本，靠调用方在窗口内自行缩小范围，不做预聚合表。
+const ipRankingMaxWindow = 7 * 24 * time.Hour
+
+// ipRankingDefaultWindow 是未显式给时间范围时的默认窗口。
+const ipRankingDefaultWindow = 24 * time.Hour
+
+// parseIPRankingWindow 解析并收敛 IP 排行的时间窗。
+//
+// 与用量列表同一套语义：start_date/end_date 按用户时区解析成 YYYY-MM-DD，
+// end_date 顺延到次日 0 点，得到半开区间 [start, end)。
+// 超过 ipRankingMaxWindow 时把 start 往前收，保证任何请求都不会拖垮数据库。
+func parseIPRankingWindow(c *gin.Context) (time.Time, time.Time, error) {
+	userTZ := c.Query("timezone")
+
+	endTime := time.Now()
+	if endDateStr := strings.TrimSpace(c.Query("end_date")); endDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.New("invalid end_date format, use YYYY-MM-DD")
+		}
+		// Use half-open range [start, end), move to next calendar day start (DST-safe).
+		endTime = t.AddDate(0, 0, 1)
+	}
+
+	startTime := endTime.Add(-ipRankingDefaultWindow)
+	if startDateStr := strings.TrimSpace(c.Query("start_date")); startDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.New("invalid start_date format, use YYYY-MM-DD")
+		}
+		startTime = t
+	}
+
+	if !endTime.After(startTime) {
+		return time.Time{}, time.Time{}, errors.New("end_date must not be earlier than start_date")
+	}
+	if endTime.Sub(startTime) > ipRankingMaxWindow {
+		startTime = endTime.Add(-ipRankingMaxWindow)
+	}
+	return startTime, endTime, nil
 }
 
 // Stats handles getting usage statistics with filters

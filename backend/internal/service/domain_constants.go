@@ -63,6 +63,16 @@ const (
 	RegistrationIPQuotaLimitMax     = 1000
 )
 
+// 注册 IP 每小时注册数限流设置（固定 1 小时滚动窗口）。
+// 与「每日配额」互补：每日配额防批量养号，小时限流防短时间内集中注册。
+const (
+	// RegistrationIPHourlyLimitDefault 是同一 IP 每小时可注册账户数的默认值。
+	// 取值兼顾共享出口（公司/校园/CGNAT）下多个真实用户同时注册的场景。
+	RegistrationIPHourlyLimitDefault = 8
+	RegistrationIPHourlyLimitMin     = 1
+	RegistrationIPHourlyLimitMax     = 100
+)
+
 // Platform constants
 const (
 	PlatformAnthropic   = domain.PlatformAnthropic
@@ -265,6 +275,8 @@ const (
 	SettingKeyRegistrationIPQuotaEnabled = "registration_ip_quota_enabled"
 	// 同一注册 IP 每天可注册的账户数（仅在上面的开关开启时生效）。
 	SettingKeyRegistrationIPQuotaLimit = "registration_ip_quota_limit"
+	// 同一注册 IP 每小时可注册账户数（固定 1 小时滚动窗口，始终生效）。
+	SettingKeyRegistrationIPHourlyLimit = "registration_ip_hourly_limit"
 	// 注册邮箱精确黑名单（JSON 数组，按收件箱身份匹配；不进 SystemSettings，由专用接口读写）。
 	SettingKeyRegistrationEmailBlacklist = "registration_email_blacklist"
 	SettingKeyPromoCodeEnabled           = "promo_code_enabled"      // 是否启用优惠码功能

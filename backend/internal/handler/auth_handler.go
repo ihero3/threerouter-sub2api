@@ -75,20 +75,11 @@ type RegisterRequest struct {
 // 字段名是贴近 SaaS 注册场景的常规字段（company_website），肉眼不可见，
 // 正常用户不会触发；命中时 handler 返回假成功（不发邮件、不建号），
 // 避免暴露风控信号给对抗方。
+//
+// 不设任何豁免值：字段对浏览器端完全不可见，正常用户只可能留空；
+// 任何非空内容都来自脚本自动填充，放行 "1"/"test" 之类只会给对抗方留后门。
 func honeypotFilled(value string) bool {
-	v := strings.TrimSpace(value)
-	return v != "" && !looksLikeIntentionalSpamString(v)
-}
-
-// looksLikeIntentionalSpamString 少数已知的"垃圾探测"值不触发蜜罐，
-// 避免脚本/爬虫为了测试风控而故意塞 honeypot=1 时造成误伤。
-func looksLikeIntentionalSpamString(v string) bool {
-	low := strings.ToLower(v)
-	switch low {
-	case "1", "test", "honey", "honeypot", "bot", "yes":
-		return true
-	}
-	return false
+	return strings.TrimSpace(value) != ""
 }
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -234,7 +225,7 @@ func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token 
 	return h.clickCaptcha.ValidateToken(c.Request.Context(), token, ipHash, ipHash)
 }
 
-// enforceRegistrationIPHourlyRisk 同一 IP 1 小时内最多注册 2 个账号，
+// enforceRegistrationIPHourlyRisk 同一 IP 1 小时内的注册数上限（默认 8，可在后台配置），
 // 超出后直接拦截后续注册与发码请求。统计失败时放行，避免误伤正常用户。
 func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP string) bool {
 	if h == nil || h.authService == nil {
@@ -245,7 +236,7 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 		slog.Warn("[Register] count recent registrations by IP failed", "ip", clientIP, "error", err)
 		return true
 	}
-	if count >= service.RegistrationIPHourlyLimit {
+	if count >= h.authService.GetRegistrationIPHourlyLimit(c.Request.Context()) {
 		response.ErrorFrom(c, service.ErrRegistrationIPHourlyLimit)
 		return false
 	}

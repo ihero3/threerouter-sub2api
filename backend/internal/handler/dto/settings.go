@@ -40,6 +40,7 @@ type SystemSettings struct {
 	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	RegistrationIPQuotaEnabled          bool                     `json:"registration_ip_quota_enabled"`
 	RegistrationIPQuotaLimit            int                      `json:"registration_ip_quota_limit"`
+	RegistrationIPHourlyLimit           int                      `json:"registration_ip_hourly_limit"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	FrontendURL                         string                   `json:"frontend_url"`

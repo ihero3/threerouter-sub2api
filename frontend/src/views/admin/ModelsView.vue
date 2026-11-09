@@ -106,18 +106,18 @@
                   <!-- Fallback: reference pricing -->
                   <template v-else-if="model.category === 'image'">
                     <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
-                    <span class="font-medium text-gray-700">0.3$ per image</span>
+                    <span class="font-medium text-gray-700">0.3$ {{ t('admin.models.pricing.perImage') }}</span>
                   </template>
                   <template v-else-if="model.category === 'multimodal'">
                     <span class="text-gray-500">{{ t('admin.models.pricing.approx') }}:</span>
-                    <span class="font-medium text-gray-700">0.9$ per second</span>
+                    <span class="font-medium text-gray-700">0.9$ {{ t('admin.models.pricing.perSecond') }}</span>
                   </template>
                   <template v-else>
                     <!-- Dual pricing: 1.5折 and 9折 -->
                     <template v-if="getDualPricing(model.name)">
                       <div class="w-full space-y-1.5">
                         <div class="flex items-center justify-between">
-                          <span class="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">1.5折</span>
+                          <span class="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">{{ t('admin.models.pricing.discountTier15') }}</span>
                           <span class="text-gray-600 text-xs">
                             <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
                             <span class="font-medium">{{ formatPrice(getDualPricing(model.name)!.tier15.input) }}</span>
@@ -127,7 +127,7 @@
                           </span>
                         </div>
                         <div class="flex items-center justify-between">
-                          <span class="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">9折</span>
+                          <span class="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">{{ t('admin.models.pricing.discountTier90') }}</span>
                           <span class="text-gray-600 text-xs">
                             <span class="text-gray-500">{{ t('admin.models.pricing.input') }}:</span>
                             <span class="font-medium">{{ formatPrice(getDualPricing(model.name)!.tier90.input) }}</span>

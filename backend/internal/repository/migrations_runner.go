@@ -64,6 +64,8 @@ const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requeste
 const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
 const usageLogsUpstreamRequestIDIndexMigration = "233_add_usage_log_upstream_request_id_index_notx.sql"
 const usageLogsUpstreamRequestIDIndex = "idx_usage_logs_upstream_request_id"
+const usersRegisterIPIndexMigration = "251_add_users_register_ip_index_notx.sql"
+const usersRegisterIPIndex = "idx_users_register_ip_created_at"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -309,6 +311,10 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		return nil
 	case usageLogsUpstreamRequestIDIndexMigration:
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
+	case usersRegisterIPIndexMigration:
+		// CONCURRENTLY 建索引失败会留下 INVALID 索引，IF NOT EXISTS 之后会跳过它，
+		// 索引永久不可用；重试前先清掉无效索引。
+		return dropInvalidIndexIfPresent(ctx, db, usersRegisterIPIndex)
 	default:
 		return nil
 	}

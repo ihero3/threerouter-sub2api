@@ -446,7 +446,11 @@ export default {
       pricing: {
         input: '输入',
         output: '输出',
-        approx: '大约'
+        approx: '大约',
+        perImage: '每张',
+        perSecond: '每秒',
+        discountTier15: '1.5折',
+        discountTier90: '9折'
       },
       categories: {
         text: '文本',
@@ -1514,6 +1518,7 @@ export default {
       department: '部门',
       selectDepartment: '选择部门',
       noDepartments: '暂无部门',
+      noParentDepartment: '无上级部门',
       status: '状态',
       statusActive: '活跃',
       statusInactive: '已停用',
@@ -1544,7 +1549,17 @@ export default {
     analytics: {
       requests: '请求量',
       tokens: 'Token 数',
-      cost: '成本 ($)'
+      cost: '成本 ($)',
+      trendTitle: '趋势分析',
+      download: '下载',
+      usageAmount: '使用量',
+      callCount: '调用量'
+    },
+    role: {
+      owner: '所有者',
+      admin: '管理员',
+      member: '成员',
+      viewer: '访客'
     },
     yourTeams: '我的团队',
     noTeam: '未选择团队',

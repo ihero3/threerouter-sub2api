@@ -83,8 +83,11 @@
           </button>
         </div>
 
-        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+        <!-- IP 排行只按时间窗聚合，页面级筛选（用户/模型/计费…）对它无效，
+             直接隐藏筛选栏，避免摆一排不生效的控件；时间范围仍由顶部选择器控制 -->
+        <UsageFilters v-if="activeTab !== 'ip-ranking'" v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
+            <!-- 外层 v-if 已排除 ip-ranking，此处只需排除 ranking -->
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
                 data-testid="usage-column-settings"
@@ -163,6 +166,15 @@
             @select-user="handleRankingSelectUser"
           />
         </div>
+        <!-- IP 排行同样懒挂载：只有点开 tab 才跑聚合查询 -->
+        <div v-if="ipRankingMounted" v-show="activeTab === 'ip-ranking'" class="overflow-hidden rounded-b-2xl">
+          <IpAccountRanking
+            ref="ipRankingRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            @select-ip="handleIpClick"
+          />
+        </div>
       </div>
       <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
     </div>
@@ -197,6 +209,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination fro
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
+import IpAccountRanking from '@/components/admin/usage/IpAccountRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
@@ -544,6 +557,7 @@ const refreshData = () => {
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
   if (rankingMounted.value) rankingRef.value?.reload()
+  if (ipRankingMounted.value) ipRankingRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getTodayRangeDates()
@@ -790,21 +804,25 @@ const loadSavedColumns = () => {
 }
 
 // Detail tabs
-type DetailTab = 'usage' | 'errors' | 'ranking'
+type DetailTab = 'usage' | 'errors' | 'ranking' | 'ip-ranking'
 const activeTab = ref<DetailTab>('usage')
 const detailTabs = computed(() => [
   { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
   { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
   { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+  { key: 'ip-ranking' as const, label: t('usage.tabs.ipRanking'), icon: 'globe' as const },
 ])
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
 const rankingMounted = ref(false)
 const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+const ipRankingMounted = ref(false)
+const ipRankingRef = ref<InstanceType<typeof IpAccountRanking> | null>(null)
 
 const switchTab = (tab: DetailTab) => {
   activeTab.value = tab
   if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
   if (tab === 'ranking') rankingMounted.value = true
+  if (tab === 'ip-ranking') ipRankingMounted.value = true
 }
 
 // Error tab state

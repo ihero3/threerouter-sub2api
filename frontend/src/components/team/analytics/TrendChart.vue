@@ -362,7 +362,7 @@ defineExpose({
             d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
           />
         </svg>
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">趋势分析</h3>
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.analytics.trendTitle') }}</h3>
       </div>
       <button
         type="button"
@@ -377,7 +377,7 @@ defineExpose({
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
           />
         </svg>
-        下载
+        {{ t('team.analytics.download') }}
       </button>
     </div>
 
@@ -410,7 +410,7 @@ defineExpose({
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          加载中...
+          {{ t('common.loading') }}
         </div>
       </div>
 
@@ -433,7 +433,7 @@ defineExpose({
             d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
           />
         </svg>
-        <p class="text-sm text-gray-500 dark:text-dark-400">暂无数据</p>
+        <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('common.noData') }}</p>
       </div>
 
       <!-- Chart -->

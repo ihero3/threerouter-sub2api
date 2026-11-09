@@ -1378,9 +1378,15 @@ func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string
 	return s.settingService.GetRegistrationIPQuotaLimit(ctx), timezone.Today()
 }
 
-// RegistrationIPHourlyLimit 同一 IP 每小时允许注册的账号数上限。
-// 超过后直接拦截后续注册请求（辅助风控规则，固定生效）。
-const RegistrationIPHourlyLimit = 2
+// GetRegistrationIPHourlyLimit 返回同一 IP 每小时允许注册的账号数上限。
+// 超过后直接拦截后续注册请求（辅助风控规则，始终生效）。
+// 取值来自管理后台设置，缺失或非法时回退 RegistrationIPHourlyLimitDefault。
+func (s *AuthService) GetRegistrationIPHourlyLimit(ctx context.Context) int {
+	if s == nil || s.settingService == nil {
+		return RegistrationIPHourlyLimitDefault
+	}
+	return s.settingService.GetRegistrationIPHourlyLimit(ctx)
+}
 
 // CountRecentRegistrationsByIP 统计该 IP 最近一小时内成功注册的账号数。
 // 仓储不支持统计时返回 0（不阻塞），统计错误由调用方决定是否放行。

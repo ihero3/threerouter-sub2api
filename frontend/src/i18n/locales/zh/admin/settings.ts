@@ -191,6 +191,11 @@ export default {
           '开启后，同一 IP 地址每天最多可注册指定数量的账户，次日 0 点自动重置；关闭时不限制',
         ipQuotaLimitPlaceholder: '每 IP 账户数',
         ipQuotaLimitSuffix: '个账户/天（1–1000）',
+        ipHourlyLimit: '同一 IP 每小时注册上限',
+        ipHourlyLimitHint:
+          '同一 IP 地址在最近 1 小时内最多可注册的账户数（滑动窗口，服务端硬性限制）；默认 8，网吧、公司等共用公网出口的场景可适当调高',
+        ipHourlyLimitPlaceholder: '每 IP 小时账户数',
+        ipHourlyLimitSuffix: '个账户/小时（1–100）',
         clickCaptcha: '注册前人机验证',
         clickCaptchaHint:
           '开启并启用邮箱验证后，用户注册前必须完成自建人机验证（图片点选 / 拼图滑块），无需第三方验证码服务',
@@ -921,6 +926,9 @@ export default {
         validationEasyPayCustomMethodPrefixReserved: '易支付自定义支付方式不能以 alipay 或 wxpay 开头',
         validationEasyPayCustomMethodDuplicate: '易支付自定义支付方式不能重复',
         field_apiBase: 'API 基础地址',
+        field_appId: 'App ID',
+        field_pid: '商户 PID',
+        field_pkey: '商户密钥（PKey）',
         field_notifyUrl: '异步通知地址',
         field_returnUrl: '同步跳转地址',
         callbackBaseUrl: '回调基础地址',

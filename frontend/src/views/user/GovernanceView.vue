@@ -917,7 +917,7 @@
                         <span class="font-medium">{{ t('compliance.credentials.scope') }}:</span> {{ credential.scope }}
                       </p>
                       <div v-if="credential.metadata && Object.keys(credential.metadata).length > 0" class="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-900">
-                        <p class="text-xs font-medium text-gray-500 mb-2">{{ t('compliance.credentials.metadata.title') || '详细信息' }}</p>
+                        <p class="text-xs font-medium text-gray-500 mb-2">{{ t('compliance.credentials.metadata.title') }}</p>
                         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <div
                             v-for="(value, key) in credential.metadata"

@@ -191,6 +191,11 @@ export default {
           'When enabled, each IP address can register up to the configured number of accounts per day; resets at midnight. Disabled means no limit',
         ipQuotaLimitPlaceholder: 'Accounts per IP',
         ipQuotaLimitSuffix: 'accounts/day (1–1000)',
+        ipHourlyLimit: 'Hourly Registration Limit per IP',
+        ipHourlyLimitHint:
+          'Maximum accounts a single IP can register within the last hour (sliding window, always enforced server-side). Defaults to 8; raise it for shared NAT egress such as offices or campus networks',
+        ipHourlyLimitPlaceholder: 'Accounts per IP',
+        ipHourlyLimitSuffix: 'accounts/hour (1–100)',
         clickCaptcha: 'Human Verification Before Registration',
         clickCaptchaHint:
           'When enabled with email verification, users must complete the built-in human verification (image click / puzzle slider) before registration. No third-party captcha service needed',
@@ -926,6 +931,9 @@ export default {
         validationEasyPayCustomMethodPrefixReserved: 'Custom EasyPay payment types cannot start with alipay or wxpay',
         validationEasyPayCustomMethodDuplicate: 'Custom EasyPay payment types must be unique',
         field_apiBase: 'API Base URL',
+        field_appId: 'App ID',
+        field_pid: 'Merchant PID',
+        field_pkey: 'Merchant Key (PKey)',
         field_notifyUrl: 'Notify URL',
         field_returnUrl: 'Return URL',
         callbackBaseUrl: 'Callback Base URL',

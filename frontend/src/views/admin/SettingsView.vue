@@ -1571,6 +1571,33 @@
                 <Toggle v-model="form.registration_ip_quota_enabled" />
               </div>
 
+              <!-- IP Hourly Registration Limit -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex-1">
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.ipHourlyLimit")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.ipHourlyLimitHint") }}
+                  </p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <input
+                      v-model.number="form.registration_ip_hourly_limit"
+                      type="number"
+                      min="1"
+                      max="100"
+                      class="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+                      :placeholder="t('admin.settings.registration.ipHourlyLimitPlaceholder')"
+                    />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{
+                      t("admin.settings.registration.ipHourlyLimitSuffix")
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- Email Suffix Blacklist -->
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <label class="font-medium text-gray-900 dark:text-white">{{
@@ -10386,6 +10413,7 @@ const form = reactive<SettingsForm>({
   registration_email_domain_quota_window: "total",
   registration_ip_quota_enabled: false,
   registration_ip_quota_limit: 3,
+  registration_ip_hourly_limit: 8,
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
@@ -12270,6 +12298,10 @@ async function saveSettings() {
       registration_ip_quota_limit: Math.min(
         1000,
         Math.max(1, Number(form.registration_ip_quota_limit) || 3),
+      ),
+      registration_ip_hourly_limit: Math.min(
+        100,
+        Math.max(1, Number(form.registration_ip_hourly_limit) || 8),
       ),
       registration_click_captcha_enabled:
         form.registration_click_captcha_enabled,

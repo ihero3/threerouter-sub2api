@@ -184,5 +184,10 @@ func (User) Indexes() []ent.Index {
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
+		// 注册风控按 IP 统计注册数（每日配额 + 每小时限流），
+		// 与迁移 251 的部分索引保持一致：空 register_ip 不参与统计，排除后体积更小。
+		index.Fields("register_ip", "created_at").
+			StorageKey("idx_users_register_ip_created_at").
+			Annotations(entsql.IndexAnnotation{Where: "register_ip <> ''"}),
 	}
 }

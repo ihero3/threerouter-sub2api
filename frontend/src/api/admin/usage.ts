@@ -78,6 +78,19 @@ export interface UsageIPUser {
   ticket_flagged: boolean
 }
 
+/** IP 排行的一行：某个 IP 及其上发起过 API 调用的账号数 */
+export interface UsageIPAccountRank {
+  ip_address: string
+  account_count: number
+}
+
+export interface UsageIPRankingParams {
+  start_date?: string
+  end_date?: string
+  page?: number
+  page_size?: number
+}
+
 export interface CreateUsageCleanupTaskRequest {
   start_date: string
   end_date: string
@@ -172,6 +185,21 @@ export async function listUsersByIP(
 }
 
 /**
+ * IP 排行：按「该 IP 上发起过调用的账号数」倒序
+ * 服务端把统计窗口硬限制在 7 天内，超长窗口会被收紧
+ */
+export async function listIPAccountRanking(
+  params: UsageIPRankingParams,
+  options?: { signal?: AbortSignal }
+): Promise<PaginatedResponse<UsageIPAccountRank>> {
+  const { data } = await apiClient.get<PaginatedResponse<UsageIPAccountRank>>(
+    '/admin/usage/ip-ranking',
+    { params, signal: options?.signal }
+  )
+  return data
+}
+
+/**
  * Search users by email keyword (admin only)
  * @param keyword - Email keyword to search
  * @returns List of matching users (max 30)
@@ -244,6 +272,7 @@ export const adminUsageAPI = {
   list,
   getStats,
   listUsersByIP,
+  listIPAccountRanking,
   searchUsers,
   searchApiKeys,
   listCleanupTasks,

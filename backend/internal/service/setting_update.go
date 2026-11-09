@@ -193,6 +193,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationIPQuotaEnabled] = strconv.FormatBool(settings.RegistrationIPQuotaEnabled)
 	settings.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(settings.RegistrationIPQuotaLimit)
 	updates[SettingKeyRegistrationIPQuotaLimit] = strconv.Itoa(settings.RegistrationIPQuotaLimit)
+	settings.RegistrationIPHourlyLimit = clampRegistrationIPHourlyLimit(settings.RegistrationIPHourlyLimit)
+	updates[SettingKeyRegistrationIPHourlyLimit] = strconv.Itoa(settings.RegistrationIPHourlyLimit)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL

@@ -594,6 +594,16 @@ export default {
           cost: 'Cost'
         }
       },
+      ipRanking: {
+        subtitle: 'Distinct accounts that called the API from each IP in the selected range (max 7 days per query)',
+        rowHint: 'Click to view the accounts behind this IP',
+        ipCount: '{count} IPs',
+        windowClamped: 'Range exceeds 7 days — only the last 7 days are counted',
+        columns: {
+          ip: 'IP Address',
+          accounts: 'Accounts'
+        }
+      },
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

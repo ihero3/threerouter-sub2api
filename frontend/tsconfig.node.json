@@ -4,7 +4,10 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    // 只产出 .d.ts：若产出 vite.config.js，Vite 会优先加载 .js 而不是 .ts，
+    // 导致 vite.config.ts 里的 define（如 __INTLIFY_JIT_COMPILATION__）全部失效。
+    "emitDeclarationOnly": true
   },
   "include": ["vite.config.ts"]
 }

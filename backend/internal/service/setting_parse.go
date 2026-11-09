@@ -64,6 +64,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationEmailDomainQuotaWindow:        RegistrationEmailDomainQuotaWindowDefault,
 		SettingKeyRegistrationIPQuotaEnabled:                "false",
 		SettingKeyRegistrationIPQuotaLimit:                  strconv.Itoa(RegistrationIPQuotaLimitDefault),
+		SettingKeyRegistrationIPHourlyLimit:                 strconv.Itoa(RegistrationIPHourlyLimitDefault),
 		SettingKeyRegistrationClickCaptchaEnabled:           "false",
 		SettingKeyRegistrationCaptchaMode:                   RegistrationCaptchaModeRandom,
 		SettingKeyRegistrationCaptchaDifficulty:             RegistrationCaptchaDifficultyMedium,
@@ -444,6 +445,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(ipQuotaLimit)
 	} else {
 		result.RegistrationIPQuotaLimit = RegistrationIPQuotaLimitDefault
+	}
+	if ipHourlyLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationIPHourlyLimit])); err == nil {
+		result.RegistrationIPHourlyLimit = clampRegistrationIPHourlyLimit(ipHourlyLimit)
+	} else {
+		result.RegistrationIPHourlyLimit = RegistrationIPHourlyLimitDefault
 	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {

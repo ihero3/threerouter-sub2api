@@ -76,6 +76,22 @@ type UsageIPUsersRepository interface {
 	ListUsersByIP(ctx context.Context, ip string, params pagination.PaginationParams) ([]UsageIPUser, *pagination.PaginationResult, error)
 }
 
+// UsageIPAccountRank 是「IP 排行」列表中的一行：某个 IP 及其上的账号数。
+type UsageIPAccountRank struct {
+	IPAddress string `json:"ip_address"`
+	// AccountCount 是在统计窗口内发起过 API 调用的账号数（去重）。
+	AccountCount int64 `json:"account_count"`
+}
+
+// UsageIPAccountRankingRepository 同为窄接口：只给「IP 排行」用，
+// 避免把方法塞进 UsageLogRepository 影响既有测试桩。
+type UsageIPAccountRankingRepository interface {
+	ListIPAccountRanking(ctx context.Context, startTime, endTime time.Time, params pagination.PaginationParams) ([]UsageIPAccountRank, *pagination.PaginationResult, error)
+}
+
+// ErrUsageIPRankingRangeInvalid 表示 IP 排行的时间范围非法（结束时间不晚于开始时间）。
+var ErrUsageIPRankingRangeInvalid = infraerrors.BadRequest("USAGE_IP_RANKING_RANGE_INVALID", "invalid ip ranking time range")
+
 // UsageService 使用统计服务
 type UsageService struct {
 	usageRepo            UsageLogRepository
@@ -101,6 +117,21 @@ func (s *UsageService) ListUsersByIP(ctx context.Context, ip string, params pagi
 		return nil, nil, fmt.Errorf("usage repository does not support listing users by IP")
 	}
 	return repo.ListUsersByIP(ctx, ip, params)
+}
+
+// ListIPAccountRanking 统计时间窗内每个 IP 上的账号数，按账号数倒序。
+//
+// 只做透传：时间窗合法性（半开区间、最长 7 天）由 handler 收敛，
+// 保证「超长窗口被静默放过」这类问题只在一处把关。
+func (s *UsageService) ListIPAccountRanking(ctx context.Context, startTime, endTime time.Time, params pagination.PaginationParams) ([]UsageIPAccountRank, *pagination.PaginationResult, error) {
+	if !endTime.After(startTime) {
+		return nil, nil, ErrUsageIPRankingRangeInvalid
+	}
+	repo, ok := s.usageRepo.(UsageIPAccountRankingRepository)
+	if !ok {
+		return nil, nil, fmt.Errorf("usage repository does not support ip account ranking")
+	}
+	return repo.ListIPAccountRanking(ctx, startTime, endTime, params)
 }
 
 // Create 创建使用日志

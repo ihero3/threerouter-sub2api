@@ -163,6 +163,31 @@ func (s *SettingService) GetRegistrationIPQuotaLimit(ctx context.Context) int {
 	return clampRegistrationIPQuotaLimit(limit)
 }
 
+// clampRegistrationIPHourlyLimit 把同一 IP 每小时注册上限收敛到 [Min, Max]。
+func clampRegistrationIPHourlyLimit(limit int) int {
+	if limit < RegistrationIPHourlyLimitMin {
+		return RegistrationIPHourlyLimitMin
+	}
+	if limit > RegistrationIPHourlyLimitMax {
+		return RegistrationIPHourlyLimitMax
+	}
+	return limit
+}
+
+// GetRegistrationIPHourlyLimit 返回同一 IP 每小时允许注册的账户数。
+// 缺失或非法值回退默认值；该限流始终生效，没有独立开关。
+func (s *SettingService) GetRegistrationIPHourlyLimit(ctx context.Context) int {
+	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPHourlyLimit)
+	if !found {
+		return RegistrationIPHourlyLimitDefault
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return RegistrationIPHourlyLimitDefault
+	}
+	return clampRegistrationIPHourlyLimit(limit)
+}
+
 // IsPromoCodeEnabled 检查是否启用优惠码功能（缓存读取，默认启用）
 func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
 	value, found := s.getCachedSettingValue(ctx, SettingKeyPromoCodeEnabled)

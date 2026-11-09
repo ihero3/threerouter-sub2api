@@ -10,7 +10,7 @@
       @click="isOpen = !isOpen"
     >
       <span :class="selectedName ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'">
-        {{ selectedName || placeholder }}
+        {{ selectedName || placeholderText }}
       </span>
       <svg
         class="h-4 w-4 text-zinc-400 transition-transform"
@@ -33,12 +33,12 @@
         class="flex cursor-pointer items-center rounded px-2 py-1.5 text-sm transition-colors text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700"
         @click="select(null)"
       >
-        <span class="ml-1 text-zinc-500">{{ clearLabel }}</span>
+        <span class="ml-1 text-zinc-500">{{ clearLabelText }}</span>
       </div>
 
       <template v-if="flattened.length === 0">
         <div class="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-          {{ emptyText }}
+          {{ emptyTextValue }}
         </div>
       </template>
       <template v-else>
@@ -78,6 +78,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { DepartmentTreeNode } from '@/api/team'
 
 interface Props {
@@ -90,13 +91,18 @@ interface Props {
   error?: string
 }
 
+const { t } = useI18n()
+
 const props = withDefaults(defineProps<Props>(), {
-  placeholder: '请选择部门',
   allowClear: false,
-  clearLabel: '无上级部门',
-  emptyText: '暂无部门',
   error: '',
 })
+
+// defineProps 的默认值在 setup 外被提升，无法引用 t()，
+// 因此这里在模板渲染时按需回退到词典文案。
+const placeholderText = computed(() => props.placeholder ?? t('team.consumer.selectDepartment'))
+const clearLabelText = computed(() => props.clearLabel ?? t('team.consumer.noParentDepartment'))
+const emptyTextValue = computed(() => props.emptyText ?? t('team.consumer.noDepartments'))
 
 const emit = defineEmits<{
   'update:modelValue': [value: number | null]

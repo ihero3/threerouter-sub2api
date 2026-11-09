@@ -442,7 +442,11 @@ export default {
       pricing: {
         input: 'Input',
         output: 'Output',
-        approx: 'Approx'
+        approx: 'Approx',
+        perImage: 'per image',
+        perSecond: 'per second',
+        discountTier15: '15% off',
+        discountTier90: '10% off'
       },
       categories: {
         text: 'Text',
@@ -1500,6 +1504,7 @@ export default {
       department: 'Department',
       selectDepartment: 'Select department',
       noDepartments: 'No departments available',
+      noParentDepartment: 'No parent department',
       status: 'Status',
       statusActive: 'Active',
       statusInactive: 'Inactive',
@@ -1530,7 +1535,17 @@ export default {
     analytics: {
       requests: 'Requests',
       tokens: 'Tokens',
-      cost: 'Cost ($)'
+      cost: 'Cost ($)',
+      trendTitle: 'Trend',
+      download: 'Download',
+      usageAmount: 'Usage',
+      callCount: 'Calls'
+    },
+    role: {
+      owner: 'Owner',
+      admin: 'Admin',
+      member: 'Member',
+      viewer: 'Viewer'
     },
     yourTeams: 'Your teams',
     noTeam: 'No team selected',

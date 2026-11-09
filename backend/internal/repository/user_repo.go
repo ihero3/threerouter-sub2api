@@ -1533,7 +1533,11 @@ func countUsersByRegisterIPWithClient(ctx context.Context, client *dbent.Client,
 	if client == nil || ip == "" {
 		return 0, nil
 	}
-	query := client.User.Query().Where(dbuser.RegisterIPEQ(ip))
+	// 多带一个 register_ip <> '' 是给部分索引 idx_users_register_ip_created_at
+	// (WHERE register_ip <> '') 留的证明依据：只有显式写出该谓词，PostgreSQL 才能在
+	// 参数化查询的通用计划下推导出「可以走部分索引」，否则退回全表扫描。
+	// 语义上无副作用——上层已保证 ip 非空，空 IP 永远不会等于真实 IP。
+	query := client.User.Query().Where(dbuser.RegisterIPEQ(ip), dbuser.RegisterIPNEQ(""))
 	if !since.IsZero() {
 		query = query.Where(dbuser.CreatedAtGTE(since))
 	}

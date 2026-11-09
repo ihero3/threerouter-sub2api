@@ -33,25 +33,25 @@ const safeData = computed(() => (props.data ?? []).slice(0, props.maxItems))
 
 const { t } = useI18n()
 
-const typeConfig: Record<RankingType, { icon: string; iconBg: string; valueLabel: string }> = {
+const typeConfig = computed<Record<RankingType, { icon: string; iconBg: string; valueLabel: string }>>(() => ({
   department: {
     icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
     iconBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
-    valueLabel: '使用量',
+    valueLabel: t('team.analytics.usageAmount'),
   },
   consumer: {
     icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
     iconBg: 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400',
-    valueLabel: '使用量',
+    valueLabel: t('team.analytics.usageAmount'),
   },
   model: {
     icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
     iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
-    valueLabel: '调用量',
+    valueLabel: t('team.analytics.callCount'),
   },
-}
+}))
 
-const config = computed(() => typeConfig[props.type])
+const config = computed(() => typeConfig.value[props.type])
 
 const getRankStyle = (index: number) => {
   if (index === 0) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 ring-2 ring-amber-200 dark:ring-amber-800'

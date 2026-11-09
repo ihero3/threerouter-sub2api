@@ -591,6 +591,16 @@ export default {
           cost: '费用'
         }
       },
+      ipRanking: {
+        subtitle: '统计所选时间范围内，每个 IP 上有多少个账号发起过 API 调用（单次最多统计 7 天）',
+        rowHint: '点击查看该 IP 下的账号明细',
+        ipCount: '共 {count} 个 IP',
+        windowClamped: '所选范围超过 7 天，仅统计最近 7 天',
+        columns: {
+          ip: 'IP 地址',
+          accounts: '账号数'
+        }
+      },
       cleanup: {
         button: '清理',
         title: '清理使用记录',

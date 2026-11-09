@@ -82,6 +82,11 @@ func (s *failingAuthSourceSettingsRepoStub) Get(ctx context.Context, key string)
 }
 
 func (s *failingAuthSourceSettingsRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	// 构建 updates 时 buildSMTPAccountsUpdate 会读取多账号 SMTP 配置做密码合并，
+	// 这是写库前的纯读，不参与本用例验证的"失败不部分持久化"路径，放行空配置。
+	if key == service.SettingKeySMTPAccounts {
+		return s.values[key], nil
+	}
 	panic("unexpected GetValue call")
 }
 
