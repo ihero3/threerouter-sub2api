@@ -146,6 +146,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RegistrationIPQuotaEnabled:                             settings.RegistrationIPQuotaEnabled,
 		RegistrationIPQuotaLimit:                               settings.RegistrationIPQuotaLimit,
 		RegistrationIPHourlyLimit:                              settings.RegistrationIPHourlyLimit,
+		RegistrationDeviceFingerprintLimit:                     settings.RegistrationDeviceFingerprintLimit,
 		PromoCodeEnabled:                                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   settings.PasswordResetEnabled,
 		FrontendURL:                                            settings.FrontendURL,

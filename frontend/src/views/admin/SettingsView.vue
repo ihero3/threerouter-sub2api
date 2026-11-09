@@ -1598,6 +1598,33 @@
                 </div>
               </div>
 
+              <!-- Device Fingerprint Registration Limit -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex-1">
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.deviceFingerprintLimit")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.deviceFingerprintLimitHint") }}
+                  </p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <input
+                      v-model.number="form.registration_device_fingerprint_limit"
+                      type="number"
+                      min="0"
+                      max="50"
+                      class="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+                      :placeholder="t('admin.settings.registration.deviceFingerprintLimitPlaceholder')"
+                    />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{
+                      t("admin.settings.registration.deviceFingerprintLimitSuffix")
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- Email Suffix Blacklist -->
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <label class="font-medium text-gray-900 dark:text-white">{{
@@ -10414,6 +10441,7 @@ const form = reactive<SettingsForm>({
   registration_ip_quota_enabled: false,
   registration_ip_quota_limit: 3,
   registration_ip_hourly_limit: 8,
+  registration_device_fingerprint_limit: 3,
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
@@ -12302,6 +12330,10 @@ async function saveSettings() {
       registration_ip_hourly_limit: Math.min(
         100,
         Math.max(1, Number(form.registration_ip_hourly_limit) || 8),
+      ),
+      registration_device_fingerprint_limit: Math.min(
+        50,
+        Math.max(0, Number(form.registration_device_fingerprint_limit) || 0),
       ),
       registration_click_captcha_enabled:
         form.registration_click_captcha_enabled,

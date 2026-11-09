@@ -25,6 +25,7 @@ type SystemSettings struct {
 	RegistrationIPQuotaEnabled          bool     // 同一 IP 每日注册数限制开关（默认关闭）
 	RegistrationIPQuotaLimit            int      // 同一 IP 每天允许注册的账户数
 	RegistrationIPHourlyLimit           int      // 同一 IP 每小时允许注册的账户数（始终生效）
+	RegistrationDeviceFingerprintLimit  int      // 同一设备指纹 24 小时内允许注册的账户数（0 = 关闭）
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string

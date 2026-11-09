@@ -65,6 +65,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationIPQuotaEnabled:                "false",
 		SettingKeyRegistrationIPQuotaLimit:                  strconv.Itoa(RegistrationIPQuotaLimitDefault),
 		SettingKeyRegistrationIPHourlyLimit:                 strconv.Itoa(RegistrationIPHourlyLimitDefault),
+		SettingKeyRegistrationDeviceFingerprintLimit:        strconv.Itoa(RegistrationDeviceFingerprintLimitDefault),
 		SettingKeyRegistrationClickCaptchaEnabled:           "false",
 		SettingKeyRegistrationCaptchaMode:                   RegistrationCaptchaModeRandom,
 		SettingKeyRegistrationCaptchaDifficulty:             RegistrationCaptchaDifficultyMedium,
@@ -450,6 +451,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RegistrationIPHourlyLimit = clampRegistrationIPHourlyLimit(ipHourlyLimit)
 	} else {
 		result.RegistrationIPHourlyLimit = RegistrationIPHourlyLimitDefault
+	}
+	if deviceLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationDeviceFingerprintLimit])); err == nil {
+		result.RegistrationDeviceFingerprintLimit = clampRegistrationDeviceFingerprintLimit(deviceLimit)
+	} else {
+		result.RegistrationDeviceFingerprintLimit = RegistrationDeviceFingerprintLimitDefault
 	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {

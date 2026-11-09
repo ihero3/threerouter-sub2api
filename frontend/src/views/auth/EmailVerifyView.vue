@@ -228,6 +228,7 @@ import {
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode } from '@/utils/apiError'
+import { getDeviceFingerprint } from '@/utils/deviceFingerprint'
 import { getHoneypotValue } from '@/utils/honeypot'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
@@ -588,6 +589,7 @@ async function sendCode(): Promise<void> {
 
     const requestPayload = {
       email: email.value,
+      device_fingerprint: getDeviceFingerprint() || undefined,
       click_captcha_token: clickCaptchaToken.value || undefined,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       company_website: getHoneypotValue() || undefined,
@@ -771,6 +773,7 @@ async function handleVerify(): Promise<void> {
         email: email.value,
         password: password.value,
         verify_code: verifyCode.value.trim(),
+        device_fingerprint: getDeviceFingerprint() || undefined,
         click_captcha_token: clickCaptchaToken.value || undefined,
         turnstile_token:
           turnstileEnabled.value || aliyunCaptchaEnabled.value

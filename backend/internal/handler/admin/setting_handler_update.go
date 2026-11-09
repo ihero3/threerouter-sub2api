@@ -36,6 +36,7 @@ type UpdateSettingsRequest struct {
 	RegistrationIPQuotaEnabled          *bool                        `json:"registration_ip_quota_enabled"`           // 同一 IP 每日注册数限制开关（省略=保持现值）
 	RegistrationIPQuotaLimit            *int                         `json:"registration_ip_quota_limit"`             // 同一 IP 每天允许注册的账户数（省略=保持现值）
 	RegistrationIPHourlyLimit           *int                         `json:"registration_ip_hourly_limit"`            // 同一 IP 每小时允许注册的账户数（省略=保持现值）
+	RegistrationDeviceFingerprintLimit  *int                         `json:"registration_device_fingerprint_limit"`   // 同一设备指纹 24 小时注册数上限，0=关闭（省略=保持现值）
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
@@ -568,6 +569,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	registrationIPHourlyLimit := previousSettings.RegistrationIPHourlyLimit
 	if req.RegistrationIPHourlyLimit != nil {
 		registrationIPHourlyLimit = *req.RegistrationIPHourlyLimit
+	}
+	registrationDeviceFingerprintLimit := previousSettings.RegistrationDeviceFingerprintLimit
+	if req.RegistrationDeviceFingerprintLimit != nil {
+		registrationDeviceFingerprintLimit = *req.RegistrationDeviceFingerprintLimit
 	}
 	if passkeyEnabled {
 		configured, _, _ := h.settingService.PasskeyConfiguration()
@@ -1607,6 +1612,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationIPQuotaEnabled:          registrationIPQuotaEnabled,
 		RegistrationIPQuotaLimit:            registrationIPQuotaLimit,
 		RegistrationIPHourlyLimit:           registrationIPHourlyLimit,
+		RegistrationDeviceFingerprintLimit:  registrationDeviceFingerprintLimit,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
@@ -2297,6 +2303,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationIPQuotaEnabled:                             updatedSettings.RegistrationIPQuotaEnabled,
 		RegistrationIPQuotaLimit:                               updatedSettings.RegistrationIPQuotaLimit,
 		RegistrationIPHourlyLimit:                              updatedSettings.RegistrationIPHourlyLimit,
+		RegistrationDeviceFingerprintLimit:                     updatedSettings.RegistrationDeviceFingerprintLimit,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,

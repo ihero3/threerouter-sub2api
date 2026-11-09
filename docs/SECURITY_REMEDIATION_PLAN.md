@@ -285,3 +285,42 @@
 - 重启运行中的后端实例使新配置生效；确认 CDN / 代理拓扑并按需配置 `server.trusted_proxies`。
 - 阶段 0 其余止血项：DB / Redis 强口令、`server.mode` 切 `release`、`allow_private_hosts: false`、后台先把 `affiliate_register_reward` 调 0。
 - P1：IPv4 /24、IPv6 /64 段聚合风控，设备指纹，注册前置人机验证，全局注册速率熔断，JWT 吊销能力。
+
+---
+
+## 五、P1 设备指纹关联修复记录（2026-11-09）
+
+### 触发背景
+
+线上观测到同一操作者通过住宅代理池轮换出口 IP，约每 1–2 分钟注册一个账号（≈31 个/小时），IP 跨印尼 / 印度 / 新加坡 AWS / 欧洲，邮箱混用 Gmail 点号变体与冷门一次性域名。单 IP 限流、每日配额、每小时上限全部失效；**IPv4 /24 段聚合对该样本也基本无效**（6 个 IP 中 3 个属 140.213.x.x 但分属不同 /24，其余跨国家跨 ASN），/16 虽能覆盖一半却会误杀整个运营商。
+
+P0 三项修的是「IP 能否被伪造」「OAuth 空 IP 绕过」「JWT 弱密钥」，不含跨 IP 防线，因此攻击持续。本轮实现不依赖 IP 的设备指纹关联。
+
+### 实现要点
+
+- 前端 `utils/deviceFingerprint.ts`：同步采集 **UA + 时区 + 语言 + 屏幕 + canvas 渲染哈希**，4 组 FNV-1a 拼成 32 位 hex，sessionStorage 缓存。canvas 不可用（隐私模式 / 无 2D 上下文）时降级为其余 4 类信号，不阻断注册。
+- 透传：`RegisterRequest` / `SendVerifyCodeRequest` 新增 `device_fingerprint`；`RegisterView.vue`（register_data 与直接注册两条分支）、`EmailVerifyView.vue`（发码与最终注册）均带同一值。
+- 服务端 `service/registration_device_fingerprint.go`：清洗上报值后，`BuildRegistrationDeviceFingerprint` **再混合服务端可信 User-Agent 做 SHA-256** 才落库，不存前端原值。
+- 拦截：`AuthHandler.registrationDeviceFingerprintContext` 在**发码与注册两个入口**预检，命中返回 429 `REGISTRATION_DEVICE_LIMIT`。发码前拦截可避免消耗邮件额度、避免被用来探测规则。
+- 存储：`repository/registration_device_fingerprint_repo.go` + 迁移 `252_registration_device_fingerprints.sql`。用独立流水表，不动 users 表 / ent schema，避免重新生成 ent 代码。建号成功后写入。
+- 策略：同一指纹 **24 小时**内成功注册数达上限即拒绝。后台「安全与认证 → 注册设置 → 同设备 24 小时注册上限」可配，**0 = 关闭，默认 3**，范围 0–50。
+- 降级保护：前端未上报 / 上报非法时生成「UA 维度」指纹，并采用宽松阈值 `max(limit×10, 30)`——既不让攻击者靠「不传字段」直接绕过，也不误伤零散老客户端。计数查询失败 fail-open 并告警。
+
+### 已知边界（后续加固项）
+
+- 指纹由前端上报，**可被主动随机化规避**；建议下一步叠加「UA + Accept-Language 维度」辅助计数、注册后行为门槛与支付账号关联。
+- OAuth 补全注册链路（`PendingOAuthCreateAccountForm`）本轮未透传指纹，只覆盖邮箱注册与发码主路径。
+- 指纹流水在建号事务之外写入，事务回滚时可能多记一条，只会让风控偏保守。
+- 并发窗口未做事务内二次复查：当前攻击是慢速（每 1–2 分钟一个），竞态不构成实际绕过；若后续出现高频并发注册，需按指纹加事务锁。
+
+### 验证结论
+
+- `go build ./...` 通过；`go test -tags=unit ./internal/service -run <指纹用例>` 通过；`go test -tags=unit ./migrations/...` 通过。
+- 前端 `deviceFingerprint.spec.ts` 6/6、`localeKeyCompleteness.spec.ts` 3/3、`vue-tsc --noEmit` 通过。
+
+### 部署注意（重要）
+
+1. 需重启后端执行迁移 252 并加载新代码，前端需重新构建。
+2. **前后端必须同版本部署**：只更新后端会让所有请求落入 UA 降级桶（阈值 30），防护强度大幅下降。
+3. 存量账号不回填指纹流水，开启后需累积一个 24 小时窗口；建议低峰期开启并观察 `registration.device_fingerprint_rejected` 日志评估误伤。
+4. 该机制是关联层，不替代经济动机治理：仍建议同步把 `affiliate_register_reward` 调 0、开启邮箱域名白名单与注册前人机验证。

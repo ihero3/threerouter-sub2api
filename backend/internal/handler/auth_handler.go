@@ -69,6 +69,7 @@ type RegisterRequest struct {
 	InvitationCode        string `json:"invitation_code"` // 邀请码
 	AffCode               string `json:"aff_code"`        // 邀请返利码
 	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
+	DeviceFingerprint     string `json:"device_fingerprint"` // 前端设备摘要（UA/时区/语言/屏幕/canvas），服务端再混合 UA 哈希
 }
 
 // honeypotFilled 蜜罐被自动填充：非空白即判定为脚本机器人。
@@ -90,6 +91,7 @@ type SendVerifyCodeRequest struct {
 	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
 	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
+	DeviceFingerprint     string `json:"device_fingerprint"` // 与注册接口同值，用于在发码前拦截同设备批量注册
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -243,6 +245,24 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 	return true
 }
 
+// registrationDeviceFingerprintContext 生成服务端设备指纹、执行同设备注册数预检，
+// 并把指纹注入上下文供建号成功后写流水。返回 false 表示已写好响应、调用方须立即返回。
+//
+// 放在发码与注册两个入口之前：发码前拦截可避免攻击者消耗邮件额度与探测风控规则；
+// 注册入口复查可防止绕过前端直接调注册接口。
+func (h *AuthHandler) registrationDeviceFingerprintContext(c *gin.Context, clientFingerprint string) (context.Context, bool) {
+	reqCtx := c.Request.Context()
+	if h == nil || h.authService == nil {
+		return reqCtx, true
+	}
+	fingerprint, clientReported := service.BuildRegistrationDeviceFingerprint(clientFingerprint, c.Request.UserAgent())
+	if err := h.authService.EnforceRegistrationDeviceFingerprint(reqCtx, fingerprint, clientReported); err != nil {
+		response.ErrorFrom(c, err)
+		return nil, false
+	}
+	return service.WithRegistrationDeviceFingerprint(reqCtx, fingerprint), true
+}
+
 // CheckRegistrationEmail 注册邮箱预检：规则校验 + 重复注册拦截，不发送验证码。
 // 前端在点击“继续”后调用；命中高危规则或邮箱已注册（409 EMAIL_EXISTS）时
 // 直接提示并停留当前页，由前端引导用户改用已有账号登录。
@@ -291,9 +311,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// 注册 IP 取安全客户端 IP（与审计日志、使用记录同源），
 	// 由 SessionBindingContext 中间件统一解析，避免与其他链路取值不一致。
 	clientIP := middleware2.SecurityClientIP(c)
+	// 设备指纹风控：与 IP 维度独立，专治代理池轮换出口 IP 的批量注册。
+	registrationCtx, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint)
+	if !ok {
+		return
+	}
 	// 验证当前启用的验证码（邮箱验证码注册场景避免重复校验一次性票据）
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, clientIP, req.VerifyCode); err != nil {
+	if err := h.authService.VerifyCaptchaForRegister(registrationCtx, proof, clientIP, req.VerifyCode); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -306,7 +331,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	var consumedCaptcha *service.ClickCaptchaTokenPayloadRef
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
-		payload, err := h.clickCaptcha.ConsumeToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash)
+		payload, err := h.clickCaptcha.ConsumeToken(registrationCtx, req.ClickCaptchaToken, ipHash, ipHash)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -315,7 +340,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	_, user, err := h.authService.RegisterWithVerification(
-		c.Request.Context(),
+		registrationCtx,
 		req.Email,
 		req.Password,
 		req.VerifyCode,
@@ -331,7 +356,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		// 归还必须脱离请求上下文：客户端超时/取消会连带取消 c.Request.Context()，
 		// 用被取消的上下文写 Redis 会让归还静默失败，token 被永久消费掉。
 		if consumedCaptcha != nil {
-			restoreCtx, restoreCancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
+			restoreCtx, restoreCancel := context.WithTimeout(context.WithoutCancel(registrationCtx), 3*time.Second)
 			_ = h.clickCaptcha.RestoreToken(restoreCtx, req.ClickCaptchaToken, consumedCaptcha)
 			restoreCancel()
 		}
@@ -361,6 +386,11 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	}
 
 	clientIP := middleware2.SecurityClientIP(c)
+
+	// 发码前先做同设备注册数预检：命中后连验证码都不下发，避免消耗发信额度。
+	if _, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint); !ok {
+		return
+	}
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
 	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, clientIP); err != nil {

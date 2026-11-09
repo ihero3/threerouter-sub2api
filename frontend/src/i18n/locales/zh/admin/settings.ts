@@ -196,6 +196,11 @@ export default {
           '同一 IP 地址在最近 1 小时内最多可注册的账户数（滑动窗口，服务端硬性限制）；默认 8，网吧、公司等共用公网出口的场景可适当调高',
         ipHourlyLimitPlaceholder: '每 IP 小时账户数',
         ipHourlyLimitSuffix: '个账户/小时（1–100）',
+        deviceFingerprintLimit: '同设备 24 小时注册上限',
+        deviceFingerprintLimitHint:
+          '按 UA + 时区 + 语言 + 屏幕 + canvas 生成设备指纹，关联换 IP 的批量注册；同一指纹 24 小时内成功注册数达到上限后，发码与注册都会被拒绝。填 0 关闭此风控',
+        deviceFingerprintLimitPlaceholder: '每设备账户数',
+        deviceFingerprintLimitSuffix: '个账户/24 小时（0 = 关闭，建议 3）',
         clickCaptcha: '注册前人机验证',
         clickCaptchaHint:
           '开启并启用邮箱验证后，用户注册前必须完成自建人机验证（图片点选 / 拼图滑块），无需第三方验证码服务',

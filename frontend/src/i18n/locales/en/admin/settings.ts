@@ -196,6 +196,11 @@ export default {
           'Maximum accounts a single IP can register within the last hour (sliding window, always enforced server-side). Defaults to 8; raise it for shared NAT egress such as offices or campus networks',
         ipHourlyLimitPlaceholder: 'Accounts per IP',
         ipHourlyLimitSuffix: 'accounts/hour (1–100)',
+        deviceFingerprintLimit: 'Registration Limit per Device / 24h',
+        deviceFingerprintLimitHint:
+          'Builds a device fingerprint from UA + timezone + language + screen + canvas hash to correlate bulk signups that rotate IPs. Once a fingerprint reaches the limit of successful registrations within 24 hours, both code delivery and registration are rejected. Set 0 to disable',
+        deviceFingerprintLimitPlaceholder: 'Accounts per device',
+        deviceFingerprintLimitSuffix: 'accounts/24h (0 = off, 3 recommended)',
         clickCaptcha: 'Human Verification Before Registration',
         clickCaptchaHint:
           'When enabled with email verification, users must complete the built-in human verification (image click / puzzle slider) before registration. No third-party captcha service needed',

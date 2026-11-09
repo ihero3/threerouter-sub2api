@@ -394,6 +394,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			return "", nil, ErrServiceUnavailable
 		}
 	}
+	// 记录设备指纹流水：只在建号成功后写入，供后续注册按同设备 24 小时窗口计数。
+	// 指纹由 handler 注入 ctx，不改变本函数签名及其调用点。
+	s.RecordRegistrationDeviceFingerprint(ctx, user.ID, registerIP)
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
