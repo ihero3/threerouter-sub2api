@@ -254,6 +254,9 @@ export default {
       EMAIL_BLOCKED: '该邮箱不允许注册，请更换其他邮箱。',
     },
     registrationFailed: '注册失败，请重试。',
+    emailAlreadyRegistered: '该邮箱已注册，请直接使用已有账号登录。',
+    signInInstead: '去登录',
+    registrationIncomplete: '注册未能完成，请重试。',
     clickCaptchaRequired: '请先完成人机验证后再继续',
     clickCaptcha: {
       start: '点击开始人机验证',

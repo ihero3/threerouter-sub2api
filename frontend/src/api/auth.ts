@@ -175,6 +175,23 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>('/auth/register', userData)
 
+  // 风控蜜罐命中时，后端会返回 200 / code=0 的「验证码已发送」响应体（不建号、不签发 token）。
+  // 若不校验响应完整性，前端会把这类假成功当成注册成功、写入脏 token 并跳转 dashboard，
+  // 用户会误以为重复注册成功了。只有真正签发 token 的响应才允许落本地状态。
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    typeof data.access_token !== 'string' ||
+    data.access_token.length === 0 ||
+    !data.user
+  ) {
+    throw {
+      status: 502,
+      reason: 'REGISTRATION_RESPONSE_INVALID',
+      message: 'Registration response is incomplete. Please try again.'
+    }
+  }
+
   // Store token and user data
   setAuthToken(data.access_token)
   if (data.refresh_token) {

@@ -254,6 +254,10 @@ export default {
       EMAIL_BLOCKED: 'This email address is not allowed. Please use a different one.',
     },
     registrationFailed: 'Registration failed. Please try again.',
+    emailAlreadyRegistered:
+      'This email is already registered. Please sign in with your existing account instead.',
+    signInInstead: 'Sign in instead',
+    registrationIncomplete: 'Registration could not be completed. Please try again.',
     clickCaptchaRequired: 'Please complete the human verification first',
     clickCaptcha: {
       start: 'Click to start verification',

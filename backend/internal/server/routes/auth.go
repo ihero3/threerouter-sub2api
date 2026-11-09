@@ -55,8 +55,9 @@ func RegisterAuthRoutes(
 		auth.POST("/send-verify-code", rateLimiter.LimitWithOptions("auth-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.SendVerifyCode)
-		// 注册邮箱风险预检：只校验规则，不发送验证码。
-		auth.POST("/registration/email-check", rateLimiter.LimitWithOptions("auth-registration-email-check", 10, time.Minute, middleware.RateLimitOptions{
+		// 注册邮箱预检：规则校验 + 重复注册拦截，不发送验证码。
+		// 与注册接口同为 5/min：预检会返回 EMAIL_EXISTS，收紧限流以抑制邮箱枚举。
+		auth.POST("/registration/email-check", rateLimiter.LimitWithOptions("auth-registration-email-check", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.CheckRegistrationEmail)
 		// Token刷新接口添加速率限制：每分钟最多 30 次（Redis 故障时 fail-close）

@@ -1288,13 +1288,35 @@ func (s *AuthService) validateRegistrationEmailBlacklist(ctx context.Context, em
 	return nil
 }
 
-// ValidateRegistrationEmailForSignup 注册邮箱预检：格式风险 + 域名黑名单。
+// ValidateRegistrationEmailForSignup 注册邮箱预检：格式风险 + 域名黑名单 + 重复注册拦截。
 // 供前端“继续”按钮提前提示，不发送验证码。
+//
+// 为什么把查重前移到预检：/auth/register 对已注册邮箱本来就会返回 409 EMAIL_EXISTS，
+// 而发送验证码接口对已注册邮箱静默不发信（防枚举）。若不提前拦截，已注册用户会一路
+// 走到邮箱验证页却永远收不到验证码，既完不成注册也拿不到「去登录」的提示。
+// 邮箱存在性在这条链路上并非秘密，前移拦截不引入新的枚举面；本接口另挂有
+// fail-close 限流（auth-registration-email-check，见 routes/auth.go）。
 func (s *AuthService) ValidateRegistrationEmailForSignup(ctx context.Context, email string) error {
+	if s == nil || s.userRepo == nil {
+		return ErrServiceUnavailable
+	}
 	if err := ValidateRegistrationEmailRisk(email); err != nil {
 		return err
 	}
-	return s.validateRegistrationEmailBlacklist(ctx, email)
+	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
+		return err
+	}
+	// 零成本规则校验先行，明显非法的邮箱不必查库。
+	// 与主注册链路同口径：精确邮箱 + 别名变体（+tag / Gmail 点号）都算重复。
+	exists, err := s.existsByEmailOrAlias(ctx, email)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking registration email: %v", err)
+		return ErrServiceUnavailable // fail-closed：查重失败时不放行注册
+	}
+	if exists {
+		return ErrEmailExists
+	}
+	return nil
 }
 
 // registrationEmailDomainQuotaWindowAndSince 返回域名配额的统计窗口及其起始时间。

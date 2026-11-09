@@ -169,6 +169,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: CaptchaChallengeStub,
           transition: false,
         },
@@ -216,6 +217,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -253,6 +255,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: {
             template: '<button data-testid="resend-captcha" @click="$emit(\'verify\', \'fresh-proof\')">verify</button>',
           },
@@ -295,6 +298,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -331,6 +335,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -370,6 +375,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -408,6 +414,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -423,6 +430,49 @@ describe('EmailVerifyView', () => {
     expect(showErrorMock).toHaveBeenLastCalledWith(
       '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。'
     )
+  })
+
+  it('prompts the user to sign in when verified registration reports EMAIL_EXISTS', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      registration_email_suffix_whitelist: [],
+      registration_email_domain_quota_enabled: false,
+    })
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({ email: 'existing@example.com', password: 'secret-123' })
+    )
+    registerMock.mockRejectedValueOnce({
+      status: 409,
+      reason: 'EMAIL_EXISTS',
+      message: 'email already exists',
+    })
+
+    const wrapper = mount(EmailVerifyView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: true,
+          RouterLink: true,
+          TurnstileWidget: true,
+          transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('#code').setValue('123456')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenLastCalledWith('auth.emailAlreadyRegistered')
+    expect(wrapper.find('[data-testid="already-registered-alert"]').exists()).toBe(true)
+    // 明文密码不应继续留在 sessionStorage
+    expect(sessionStorage.getItem('register_data')).toBeNull()
+    expect(pushMock).not.toHaveBeenCalledWith('/dashboard')
   })
 
   // 域名限量注册开关默认关闭：恢复 PR5423 之前的客户端白名单预检，非白名单域名不发送验证码。
@@ -446,6 +496,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -484,6 +535,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -531,6 +583,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -578,6 +631,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -642,6 +696,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: {
             template: '<button data-testid="create-turnstile" @click="$emit(\'verify\', \'create-token\')">verify</button>',
             methods: {
@@ -707,6 +762,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: {
             template: '<button data-testid="create-turnstile" @click="$emit(\'verify\', \'create-token\')">verify</button>',
             methods: {
@@ -771,6 +827,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -817,6 +874,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: true,
           transition: false,
         },
@@ -867,6 +925,7 @@ describe('EmailVerifyView', () => {
         stubs: {
           AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
           Icon: true,
+          RouterLink: true,
           TurnstileWidget: {
             template: '<span />',
             methods: {

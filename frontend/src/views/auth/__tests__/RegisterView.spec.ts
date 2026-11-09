@@ -4,6 +4,7 @@ import RegisterView from '@/views/auth/RegisterView.vue'
 
 const {
   getPublicSettingsMock,
+  checkRegistrationEmailMock,
   registerMock,
   showErrorMock,
   pushMock,
@@ -11,6 +12,7 @@ const {
   appStoreMock
 } = vi.hoisted(() => ({
   getPublicSettingsMock: vi.fn(),
+  checkRegistrationEmailMock: vi.fn(),
   registerMock: vi.fn(),
   showErrorMock: vi.fn(),
   pushMock: vi.fn(),
@@ -69,7 +71,8 @@ vi.mock('@/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
   return {
     ...actual,
-    getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args)
+    getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args),
+    checkRegistrationEmail: (...args: unknown[]) => checkRegistrationEmailMock(...args)
   }
 })
 
@@ -98,6 +101,8 @@ function mountRegister() {
 describe('RegisterView', () => {
   beforeEach(() => {
     getPublicSettingsMock.mockReset()
+    checkRegistrationEmailMock.mockReset()
+    checkRegistrationEmailMock.mockResolvedValue(undefined)
     registerMock.mockReset()
     showErrorMock.mockReset()
     pushMock.mockReset()
@@ -324,5 +329,58 @@ describe('RegisterView', () => {
       expect.objectContaining({ email: 'user@allowed.com' })
     )
     expect(showErrorMock).not.toHaveBeenCalled()
+  })
+
+  it('prompts the user to sign in when registration reports EMAIL_EXISTS', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false
+    })
+    registerMock.mockRejectedValueOnce({
+      status: 409,
+      reason: 'EMAIL_EXISTS',
+      message: 'email already exists'
+    })
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('existing@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirmPassword').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showErrorMock).toHaveBeenCalledWith('auth.emailAlreadyRegistered')
+    expect(wrapper.find('[data-testid="already-registered-alert"]').exists()).toBe(true)
+    expect(pushMock).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('register_data')).toBeNull()
+  })
+
+  it('blocks a duplicate email at the precheck before entering email verification', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false,
+      email_verify_enabled: true
+    })
+    checkRegistrationEmailMock.mockRejectedValueOnce({
+      status: 409,
+      reason: 'EMAIL_EXISTS',
+      message: 'email already exists'
+    })
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('existing@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirmPassword').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(checkRegistrationEmailMock).toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('auth.emailAlreadyRegistered')
+    expect(wrapper.find('[data-testid="already-registered-alert"]').exists()).toBe(true)
+    expect(sessionStorage.getItem('register_data')).toBeNull()
+    expect(pushMock).not.toHaveBeenCalled()
+    expect(registerMock).not.toHaveBeenCalled()
   })
 })

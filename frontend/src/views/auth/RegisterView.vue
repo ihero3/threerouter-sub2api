@@ -11,6 +11,27 @@
         </p>
       </div>
 
+      <!-- 重复注册：明确告知账号已存在，并引导去登录 -->
+      <div
+        v-if="alreadyRegistered"
+        data-testid="already-registered-alert"
+        role="alert"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+      >
+        <div class="flex items-start gap-3">
+          <Icon name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0 text-amber-500" />
+          <div class="text-sm text-amber-700 dark:text-amber-400">
+            <p>{{ t('auth.emailAlreadyRegistered') }}</p>
+            <router-link
+              :to="signInLink"
+              class="mt-2 inline-flex font-medium text-primary-600 underline underline-offset-2 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+            >
+              {{ t('auth.signInInstead') }}
+            </router-link>
+          </div>
+        </div>
+      </div>
+
       <!-- Registration Disabled Message -->
       <div
         v-if="!registrationEnabled && settingsLoaded"
@@ -438,6 +459,8 @@ const isLoading = ref<boolean>(false)
 const settingsLoaded = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+// 后端返回 EMAIL_EXISTS 时展示「账号已存在，去登录」提示条
+const alreadyRegistered = ref<boolean>(false)
 const clickCaptchaToken = ref<string>('')
 const showConfirmPassword = ref<boolean>(false)
 const confirmPassword = ref('')
@@ -539,6 +562,12 @@ const errors = reactive({
   turnstile: '',
   invitation_code: ''
 })
+
+// 带着当前邮箱跳登录页并预填，避免用户重新输入一遍
+const signInLink = computed(() => ({
+  path: '/login',
+  query: { email: formData.email.trim(), reason: 'already_registered' }
+}))
 
 const validationToastMessage = computed(() =>
   errors.email ||
@@ -1029,6 +1058,7 @@ function validateForm(): boolean {
 async function handleRegister(): Promise<void> {
   // Clear previous error
   errorMessage.value = ''
+  alreadyRegistered.value = false
 
   // Validate form
   if (!validateForm()) {
@@ -1098,6 +1128,9 @@ async function handleRegister(): Promise<void> {
       try {
         await checkRegistrationEmail(formData.email.trim(), getHoneypotValue())
       } catch (error: unknown) {
+        if (handleEmailExists(error)) {
+          return
+        }
         errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
         appStore.showError(errorMessage.value)
         return
@@ -1148,6 +1181,9 @@ async function handleRegister(): Promise<void> {
     // Redirect to dashboard
     await router.push('/dashboard')
   } catch (error: unknown) {
+    if (handleEmailExists(error)) {
+      return
+    }
     // Handle registration error
     errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
 
@@ -1161,8 +1197,28 @@ async function handleRegister(): Promise<void> {
   }
 }
 
+// 统一处理「邮箱已注册」：给出明确提示、清掉暂存的注册数据（含明文密码），
+// 并展示去登录入口。返回 true 表示错误已被消费，调用方不再弹通用错误。
+function handleEmailExists(error: unknown): boolean {
+  if (extractApiErrorCode(error) !== 'EMAIL_EXISTS') {
+    return false
+  }
+  alreadyRegistered.value = true
+  const message = t('auth.emailAlreadyRegistered')
+  errorMessage.value = message
+  appStore.showError(message)
+  sessionStorage.removeItem('register_data')
+  return true
+}
+
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
   const code = extractApiErrorCode(error)
+  if (code === 'EMAIL_EXISTS') {
+    return t('auth.emailAlreadyRegistered')
+  }
+  if (code === 'REGISTRATION_RESPONSE_INVALID') {
+    return t('auth.registrationIncomplete')
+  }
   if (code === 'EMAIL_DOMAIN_BLACKLISTED') {
     return t('auth.emailDomainBlacklisted')
   }

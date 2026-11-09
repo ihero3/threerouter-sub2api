@@ -12,6 +12,27 @@
         </p>
       </div>
 
+      <!-- 重复注册：后端在最终提交阶段仍可能返回 EMAIL_EXISTS（并发/绕过预检） -->
+      <div
+        v-if="alreadyRegistered"
+        data-testid="already-registered-alert"
+        role="alert"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+      >
+        <div class="flex items-start gap-3">
+          <Icon name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0 text-amber-500" />
+          <div class="text-sm text-amber-700 dark:text-amber-400">
+            <p>{{ t('auth.emailAlreadyRegistered') }}</p>
+            <router-link
+              :to="signInLink"
+              class="mt-2 inline-flex font-medium text-primary-600 underline underline-offset-2 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+            >
+              {{ t('auth.signInInstead') }}
+            </router-link>
+          </div>
+        </div>
+      </div>
+
       <!-- No Data Warning -->
       <div
         v-if="!hasRegisterData"
@@ -232,6 +253,8 @@ const appStore = useAppStore()
 const isLoading = ref<boolean>(false)
 const isSendingCode = ref<boolean>(false)
 const errorMessage = ref<string>('')
+// 后端返回 EMAIL_EXISTS 时展示「账号已存在，去登录」提示条
+const alreadyRegistered = ref<boolean>(false)
 const codeSent = ref<boolean>(false)
 const verifyCode = ref<string>('')
 const countdown = ref<number>(0)
@@ -271,6 +294,12 @@ const pendingAdoptionDecision = ref<{
   adoptAvatar?: boolean
 } | null>(null)
 const hasRegisterData = ref<boolean>(false)
+
+// 带着当前邮箱跳登录页并预填，避免用户重新输入一遍
+const signInLink = computed(() => ({
+  path: '/login',
+  query: { email: email.value.trim(), reason: 'already_registered' }
+}))
 
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
@@ -673,6 +702,7 @@ function validateForm(): boolean {
 
 async function handleVerify(): Promise<void> {
   errorMessage.value = ''
+  alreadyRegistered.value = false
 
   if (!validateForm()) {
     return
@@ -801,6 +831,12 @@ function buildEmailSuffixNotAllowedMessage(): string {
 
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
   const code = extractApiErrorCode(error)
+  if (code === 'EMAIL_EXISTS') {
+    return t('auth.emailAlreadyRegistered')
+  }
+  if (code === 'REGISTRATION_RESPONSE_INVALID') {
+    return t('auth.registrationIncomplete')
+  }
   if (code === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return emailDomainQuotaWindow.value === 'daily'
       ? t('auth.emailDomainRegistrationLimitDaily')
@@ -826,6 +862,16 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
 // 清空暂存数据并回到注册页让用户重做一次人机验证。OAuth 补全流程不走注册页，
 // 不做跳转。
 function handleRegistrationError(error: unknown, fallback: string): void {
+  // 重复注册（例如预检与提交之间账号刚被创建）：明确提示并引导登录。
+  // OAuth 补全流程有自己的账号冲突语义，不走这条分支。
+  if (!isPendingOAuthFlow() && extractApiErrorCode(error) === 'EMAIL_EXISTS') {
+    alreadyRegistered.value = true
+    const message = t('auth.emailAlreadyRegistered')
+    errorMessage.value = message
+    appStore.showError(message)
+    sessionStorage.removeItem('register_data')
+    return
+  }
   errorMessage.value = buildRegistrationErrorMessage(error, fallback)
   appStore.showError(errorMessage.value)
   if (

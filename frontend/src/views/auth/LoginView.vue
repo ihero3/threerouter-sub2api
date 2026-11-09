@@ -10,6 +10,21 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
+      <!-- 从重复注册引导过来：说明账号已存在，请直接登录 -->
+      <div
+        v-if="alreadyRegisteredNotice"
+        data-testid="already-registered-notice"
+        role="status"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+      >
+        <div class="flex items-start gap-3">
+          <Icon name="exclamationCircle" size="md" class="mt-0.5 flex-shrink-0 text-amber-500" />
+          <p class="text-sm text-amber-700 dark:text-amber-400">
+            {{ t('auth.emailAlreadyRegistered') }}
+          </p>
+        </div>
+      </div>
+
       <PromoBanner />
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
@@ -268,6 +283,8 @@ const appStore = useAppStore()
 const isLoading = ref<boolean>(false)
 const passkeyLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
+// 从「重复注册」引导过来时展示持久提示（toast 太容易一闪而过）
+const alreadyRegisteredNotice = ref<boolean>(false)
 const showPassword = ref<boolean>(false)
 const publicSettingsLoaded = ref<boolean>(false)
 
@@ -374,6 +391,15 @@ watch(validationToastMessage, (value, previousValue) => {
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  // 注册页发现邮箱已存在时会带 email + reason 跳回登录页，预填邮箱省去重复输入。
+  // 用 router.currentRoute 而非 useRoute()，与项目既有登录页测试桩保持兼容。
+  const query = router.currentRoute?.value?.query ?? {}
+  const signInEmail = query.email
+  if (typeof signInEmail === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signInEmail.trim())) {
+    formData.email = signInEmail.trim()
+  }
+  alreadyRegisteredNotice.value = query.reason === 'already_registered'
+
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')

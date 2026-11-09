@@ -243,8 +243,9 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 	return true
 }
 
-// CheckRegistrationEmail 注册邮箱风险预检：只做规则校验，不发送验证码。
-// 前端在点击“继续”后调用，命中高危规则时直接提示并停留当前页。
+// CheckRegistrationEmail 注册邮箱预检：规则校验 + 重复注册拦截，不发送验证码。
+// 前端在点击“继续”后调用；命中高危规则或邮箱已注册（409 EMAIL_EXISTS）时
+// 直接提示并停留当前页，由前端引导用户改用已有账号登录。
 func (h *AuthHandler) CheckRegistrationEmail(c *gin.Context) {
 	var req struct {
 		Email          string `json:"email" binding:"required"`
