@@ -647,6 +647,23 @@
             </span>
           </template>
 
+          <template #cell-last_used_ip="{ row }">
+            <div v-if="row.last_used_ip">
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-500 dark:text-dark-400">{{ row.last_used_ip }}</span>
+                <span
+                  v-if="row.last_used_ip_shared"
+                  class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  :title="t('admin.users.columns.ipSuspect')"
+                >
+                  {{ t('admin.users.columns.ipSuspect') }}
+                </span>
+              </div>
+              <IpGeoCell :ip="row.last_used_ip" />
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-last_active_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">
               {{ value ? formatDateTime(value) : '-' }}
@@ -957,6 +974,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'register_ip', label: t('admin.users.columns.registerIp'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
+  { key: 'last_used_ip', label: t('admin.users.columns.lastUsedIp'), sortable: false },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },
   { key: 'actions', label: t('admin.users.columns.actions'), sortable: false }
 ])

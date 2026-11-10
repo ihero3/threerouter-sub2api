@@ -34,6 +34,7 @@ func UserFromServiceShallow(u *service.User) *User {
 		RPMLimit:                   u.RPMLimit,
 		RegisterIP:                 u.RegisterIP,
 		RegisterCountry:            u.RegisterCountry,
+		LastUsedIP:                 u.LastUsedIP,
 		DeletedAt:                  u.DeletedAt,
 	}
 }
@@ -78,6 +79,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		RestrictPublicGroups: u.RestrictPublicGroups,
 		RiskLevel:            u.RiskLevel,
 		RiskReasons:          u.RiskReasons,
+		LastUsedIPShared:     u.LastUsedIPShared,
 		LookedCount:          u.LookedCount,
 		TicketFlag:           u.TicketFlag,
 		Recharged:            u.Recharged,

@@ -148,6 +148,10 @@ export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
+  // 最后使用 IP（来自 usage_logs 最近一条非空 ip_address，列表接口计算）
+  last_used_ip?: string | null
+  // 该 IP 是否被 ≥2 个不同用户使用过（近 180 天），用于存疑标记
+  last_used_ip_shared?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。

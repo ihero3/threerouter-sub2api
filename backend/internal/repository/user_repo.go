@@ -883,6 +883,87 @@ func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int
 	return latestByUserID[userID], nil
 }
 
+// GetLatestUsedIPByUserIDs 返回每个用户最近一次 API 调用使用的客户端 IP
+// （取自 usage_logs 中该用户最近一条带有效 IP 的记录）。无记录或 IP 为空串的用户不会出现在结果中。
+func (r *userRepository) GetLatestUsedIPByUserIDs(ctx context.Context, userIDs []int64) (map[int64]string, error) {
+	result := make(map[int64]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	const query = `
+		SELECT DISTINCT ON (user_id) user_id, ip_address
+		FROM usage_logs
+		WHERE user_id = ANY($1)
+		  AND ip_address IS NOT NULL
+		  AND ip_address <> ''
+		ORDER BY user_id, created_at DESC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			userID int64
+			ipAddr string
+		)
+		if scanErr := rows.Scan(&userID, &ipAddr); scanErr != nil {
+			return nil, scanErr
+		}
+		result[userID] = ipAddr
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetSharedUsageIPs 返回「最近 180 天内被 ≥2 个不同用户使用过」的客户端 IP 集合。
+// 用于管理端 Suspect 打标：某用户的最后使用 IP 若落在此集合，说明该 IP 同时被多个账号共用。
+// 注：usage_logs.ip_address 未建索引，海量数据下该全表聚合可能偏慢；如有性能压力，
+// 可对 ip_address（非空）建部分索引，或缩短时间窗口。
+func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	const query = `
+		SELECT ip_address
+		FROM usage_logs
+		WHERE ip_address IS NOT NULL
+		  AND ip_address <> ''
+		  AND created_at >= now() - interval '180 days'
+		GROUP BY ip_address
+		HAVING COUNT(DISTINCT user_id) >= 2
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var ipAddr string
+		if scanErr := rows.Scan(&ipAddr); scanErr != nil {
+			return nil, scanErr
+		}
+		result[ipAddr] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
 	orderExpr := func(direction, nulls string, tieOrder func(string) string) func(*entsql.Selector) {
 		return func(s *entsql.Selector) {

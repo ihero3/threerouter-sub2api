@@ -3625,3 +3625,11 @@ func (s *oauthPendingFlowEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Co
 func (s *oauthPendingFlowEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
 	return false, nil
 }
+
+func (s *oauthPendingFlowUserRepo) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *oauthPendingFlowUserRepo) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

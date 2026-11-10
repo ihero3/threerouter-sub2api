@@ -1193,3 +1193,13 @@ func (s *emailBindCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, strin
 func (s *emailBindCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
 	return false, nil
 }
+
+func (s *emailBindUserRepoStub) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *emailBindUserRepoStub) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}
+	return false, nil
+}

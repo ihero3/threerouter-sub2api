@@ -840,3 +840,11 @@ func (s *userHandlerEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Context
 func (s *userHandlerEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
 	return false, nil
 }
+
+func (s *userHandlerRepoStub) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *userHandlerRepoStub) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

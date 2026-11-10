@@ -732,8 +732,10 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         registerIp: 'Register IP',
+        lastUsedIp: 'Last Used IP',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',
+        ipSuspect: 'Suspect',
         created: 'Created',
         actions: 'Actions'
       },

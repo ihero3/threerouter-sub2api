@@ -214,3 +214,11 @@ func TestAdminService_UpdateUser_DoesNotReturnPartialSuccessFromEmailIdentityRes
 	require.Empty(t, repo.replaceCalls)
 	require.Empty(t, repo.ensureCalls)
 }
+
+func (s *emailSyncRepoStub) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *emailSyncRepoStub) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

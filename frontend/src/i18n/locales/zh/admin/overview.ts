@@ -710,8 +710,10 @@ export default {
         concurrency: '并发数',
         status: '状态',
         registerIp: '注册 IP',
+        lastUsedIp: '最后使用 IP',
         lastActive: '最后活跃时间',
         lastUsed: '最后使用时间',
+        ipSuspect: '可疑',
         created: '创建时间',
         actions: '操作'
       },

@@ -37,6 +37,8 @@ type User struct {
 	// 注册 IP 采集（仅新注册用户有值，存量用户为空串）。
 	RegisterIP      string `json:"register_ip"`
 	RegisterCountry string `json:"register_country"`
+	// 最后使用 IP：用户最近一次 API 调用使用的客户端 IP（取自 usage_logs 最近一条有效记录）。
+	LastUsedIP string `json:"last_used_ip"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
@@ -59,6 +61,8 @@ type AdminUser struct {
 	// 空串 = 正常；suspect = 存疑；abnormal = 异常。RiskReasons 为逗号分隔的原因 key。
 	RiskLevel   string `json:"risk_level"`
 	RiskReasons string `json:"risk_reasons"`
+	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥2 个不同用户），用于 Suspect 打标。
+	LastUsedIPShared bool `json:"last_used_ip_shared"`
 	// LookedCount / TicketFlag 为管理员人工跟进标记（仅管理端展示，不参与业务逻辑）：
 	// 看过次数只增不减；提过工单为可切换的布尔标记。
 	LookedCount int  `json:"looked_count"`

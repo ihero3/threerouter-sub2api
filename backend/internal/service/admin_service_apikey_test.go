@@ -744,3 +744,11 @@ func TestAdminService_RealignUserAPIKeyGroups_ListError_DoesNotPanic(t *testing.
 	})
 	require.Nil(t, apiKeyRepo.realignFrom)
 }
+
+func (s *userRepoStubForGroupUpdate) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *userRepoStubForGroupUpdate) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

@@ -1873,3 +1873,11 @@ func TestContentModerationUpdateConfig_CyberPolicyExcludeFromBanCount(t *testing
 	require.NoError(t, err)
 	require.False(t, view.CyberPolicyExcludeFromBanCount)
 }
+
+func (s *contentModerationTestUserRepo) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *contentModerationTestUserRepo) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

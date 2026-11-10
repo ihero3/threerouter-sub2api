@@ -914,3 +914,11 @@ func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {
 	require.Equal(t, "https://cdn.example.com/profile.png", user.AvatarURL)
 	require.Equal(t, "remote_url", user.AvatarSource)
 }
+
+func (m *mockUserRepo) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (m *mockUserRepo) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}

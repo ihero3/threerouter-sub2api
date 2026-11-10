@@ -39,6 +39,29 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 			}
 		}
 	}
+	// 批量加载最后使用 IP 与共享（Suspect）标记
+	if s.userRepo != nil && len(users) > 0 {
+		ids := make([]int64, 0, len(users))
+		for i := range users {
+			ids = append(ids, users[i].ID)
+		}
+		lastIPByUserID, ipErr := s.userRepo.GetLatestUsedIPByUserIDs(ctx, ids)
+		if ipErr != nil {
+			logger.LegacyPrintf("service.admin", "failed to load user last_used_ip in batch: err=%v", ipErr)
+		} else {
+			sharedIPs, sharedErr := s.userRepo.GetSharedUsageIPs(ctx)
+			if sharedErr != nil {
+				logger.LegacyPrintf("service.admin", "failed to load shared usage IPs: err=%v", sharedErr)
+			} else {
+				for i := range users {
+					if ip, ok := lastIPByUserID[users[i].ID]; ok && ip != "" {
+						users[i].LastUsedIP = ip
+						users[i].LastUsedIPShared = sharedIPs[ip]
+					}
+				}
+			}
+		}
+	}
 	// 批量加载用户专属分组倍率
 	if s.userGroupRateRepo != nil && len(users) > 0 {
 		if batchRepo, ok := s.userGroupRateRepo.(userGroupRateBatchReader); ok {
@@ -88,6 +111,19 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 		logger.LegacyPrintf("service.admin", "failed to load user last_used_at: user_id=%d err=%v", id, latestErr)
 	} else {
 		user.LastUsedAt = lastUsedAt
+	}
+	// 加载最后使用 IP 与共享（Suspect）标记
+	lastIP, ipErr := s.userRepo.GetLatestUsedIPByUserIDs(ctx, []int64{id})
+	if ipErr != nil {
+		logger.LegacyPrintf("service.admin", "failed to load user last_used_ip: user_id=%d err=%v", id, ipErr)
+	} else if ip, ok := lastIP[id]; ok && ip != "" {
+		sharedIPs, sharedErr := s.userRepo.GetSharedUsageIPs(ctx)
+		if sharedErr != nil {
+			logger.LegacyPrintf("service.admin", "failed to load shared usage IPs: user_id=%d err=%v", id, sharedErr)
+		} else {
+			user.LastUsedIP = ip
+			user.LastUsedIPShared = sharedIPs[ip]
+		}
 	}
 	// 加载用户专属分组倍率
 	if s.userGroupRateRepo != nil {

@@ -161,6 +161,12 @@ type UserRepository interface {
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error)
 	GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error)
 	GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error)
+	// GetLatestUsedIPByUserIDs 返回每个用户最近一次 API 调用使用的客户端 IP（取自 usage_logs 最近一条有效记录）。
+	// 仅用于管理端展示与风控研判。
+	GetLatestUsedIPByUserIDs(ctx context.Context, userIDs []int64) (map[int64]string, error)
+	// GetSharedUsageIPs 返回「被 ≥2 个不同用户使用过」的客户端 IP 集合（仅统计最近 180 天）。
+	// 用于管理端 Suspect 打标，表示某 IP 同时被多个账号共用。
+	GetSharedUsageIPs(ctx context.Context) (map[string]bool, error)
 	UpdateUserLastActiveAt(ctx context.Context, userID int64, activeAt time.Time) error
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error

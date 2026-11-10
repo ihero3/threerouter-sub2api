@@ -859,3 +859,11 @@ func TestAdminService_BatchDeleteRedeemCodes_PartialFailures(t *testing.T) {
 	require.Equal(t, int64(2), deleted)
 	require.Equal(t, []int64{1, 2, 3}, repo.deletedIDs)
 }
+
+func (s *userRepoStub) GetLatestUsedIPByUserIDs(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
+
+func (s *userRepoStub) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}
