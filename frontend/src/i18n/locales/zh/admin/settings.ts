@@ -1114,7 +1114,7 @@ export default {
       },
       smtpAccounts: {
         title: '多账号轮换',
-        description: '配置多个 SMTP 账号，发送时自动轮换并切换故障账号；配置后优先于上面的单账号设置。',
+        description: '配置多个 SMTP 账号，发送时会在这些账号与上方单账号之间自动轮换并切换故障账号；同一邮箱重复配置会自动去重。',
         empty: '暂未配置多账号，当前使用上方单账号配置发信。',
         add: '添加账号',
         remove: '删除',

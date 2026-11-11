@@ -1119,7 +1119,7 @@ export default {
       },
       smtpAccounts: {
         title: 'Account Rotation',
-        description: 'Configure multiple SMTP accounts. Outgoing mail rotates across them and fails over automatically. When configured, this takes priority over the single account above.',
+        description: 'Configure multiple SMTP accounts. Outgoing mail rotates across these accounts and the single account above, with automatic failover. Duplicate accounts are skipped.',
         empty: 'No accounts configured. The single account above is used for sending.',
         add: 'Add Account',
         remove: 'Remove',
