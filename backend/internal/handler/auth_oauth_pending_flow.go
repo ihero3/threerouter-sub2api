@@ -622,8 +622,6 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 
 	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
-		// 发信失败归还发码额度，避免瞬时故障迫使用户重做一次人机验证。
-		h.releaseClickCaptchaSendQuota(c, req.ClickCaptchaToken)
 		response.ErrorFrom(c, err)
 		return
 	}

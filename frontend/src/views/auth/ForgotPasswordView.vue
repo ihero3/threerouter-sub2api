@@ -88,6 +88,7 @@
         <!-- 自建点击验证码：与注册一致，发信前必须通过人机验证 -->
         <RegistrationCaptcha
           v-if="clickCaptchaEnabled"
+          :key="clickCaptchaKey"
           data-testid="forgot-password-click-captcha"
           @verified="onClickCaptchaVerified"
         />
@@ -148,6 +149,7 @@ import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
 import { useAppStore } from '@/stores'
 import { getPublicSettings, forgotPassword } from '@/api/auth'
+import { extractApiErrorCode } from '@/utils/apiError'
 
 const { t } = useI18n()
 
@@ -178,6 +180,9 @@ const turnstileToken = ref<string>('')
 // 自建点击验证码：开启后发信前必须通过人机验证，防止接口被刷爆邮件配额。
 const clickCaptchaEnabled = ref<boolean>(false)
 const clickCaptchaToken = ref<string>('')
+// 递增后强制重挂载 RegistrationCaptcha：该组件验证通过后只显示「✓ 已通过」，
+// 没有自带的重新验证入口，token 失效时必须有办法让用户重新做一次题。
+const clickCaptchaKey = ref<number>(0)
 
 function onClickCaptchaVerified(token: string): void {
   clickCaptchaToken.value = token
@@ -336,13 +341,28 @@ async function handleSubmit(): Promise<void> {
     appStore.showSuccess(t('auth.resetEmailSent'))
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { detail?: string } } }
+    const code = extractApiErrorCode(error)
 
-    if (err.response?.data?.detail) {
+    if (code === 'REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT') {
+      errorMessage.value = t('auth.clickCaptchaSendLimit')
+    } else if (code === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID') {
+      errorMessage.value = t('auth.clickCaptchaTokenInvalid')
+    } else if (err.response?.data?.detail) {
       errorMessage.value = err.response.data.detail
     } else if (err.message) {
       errorMessage.value = err.message
     } else {
       errorMessage.value = t('auth.sendResetLinkFailed')
+    }
+
+    // 这两个错误都意味着当前 token 不能再用于发信。清空它并强制重挂载验证码
+    // 组件，否则组件停在「✓ 已通过」，用户改邮箱后重试仍会一直撞同一个错误。
+    if (
+      code === 'REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT' ||
+      code === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID'
+    ) {
+      clickCaptchaToken.value = ''
+      clickCaptchaKey.value += 1
     }
 
     appStore.showError(errorMessage.value)

@@ -17,7 +17,7 @@ import (
 //     邮箱发信、刷 SMTP 配额）；
 //   - 同一 token 给**同一邮箱**重发不限次（邮件延迟时的正常重试不受影响）；
 //   - Claim 不消费 token：注册接口仍能正常做一次性消费；
-//   - 发信失败归还绑定后可以换邮箱重试；
+//   - 发信失败**不得**解绑（见下方反例测试）；
 //   - 指纹不匹配 / token 过期 / 绑定存储故障一律 fail-close。
 //
 // 注意：本文件**不加 //go:build unit**（与 registration_click_captcha_consume_test.go
@@ -64,18 +64,30 @@ func TestRegistrationClickCaptcha_SendQuotaDoesNotConsumeToken(t *testing.T) {
 	require.NotNil(t, payload, "Claim 发码额度后 token 必须仍可被注册接口一次性消费")
 }
 
-// TestRegistrationClickCaptcha_ReleaseSendQuotaAllowsRetry 发信失败归还绑定：
-// SMTP/队列瞬时故障后用户换邮箱（或同邮箱）重试不应被已占用的额度拦截。
-func TestRegistrationClickCaptcha_ReleaseSendQuotaAllowsRetry(t *testing.T) {
-	svc, _, token, ipHash := newCaptchaConsumeFixture(t)
+// TestRegistrationClickCaptcha_SendQuotaSurvivesFailedSend 锁死「发信失败不解绑」。
+//
+// 曾经的实现在 SendVerifyCodeAsync 返回**任何** error 时都归还绑定，而该 service
+// 的 error 里有一批攻击者能稳定触发的确定性拒绝（高风险邮箱、域名黑名单、域名
+// 配额已满、保留邮箱）。攻击链：一次解题拿 token → 用必然失败的邮箱发码触发
+// 归还 → 换目标邮箱发码成功 → 再解绑 → 无限循环，「一次解题一个收件地址」被架空。
+//
+// 正确语义是绑定与发信结果无关，service 层也不提供任何释放绑定能力：SMTP/队列
+// 故障时用户用同一邮箱重试即可（同址重发不限次），换邮箱必须重做一次人机验证。
+func TestRegistrationClickCaptcha_SendQuotaSurvivesFailedSend(t *testing.T) {
+	svc, store, token, ipHash := newCaptchaConsumeFixture(t)
 	ctx := context.Background()
 
+	// 模拟一次发码：绑定成功，随后下游发信失败（发信结果不回写任何缓存状态）。
 	require.NoError(t, svc.ClaimTokenSendQuota(ctx, token, "first@example.com", ipHash, ipHash))
-	require.ErrorIs(t, svc.ClaimTokenSendQuota(ctx, token, "second@example.com", ipHash, ipHash), ErrRegistrationClickCaptchaSendLimit)
+	require.Equal(t, "first@example.com", store.sendEmails[token])
 
-	require.NoError(t, svc.ReleaseTokenSendQuota(ctx, token))
-	require.NoError(t, svc.ClaimTokenSendQuota(ctx, token, "second@example.com", ipHash, ipHash))
-	require.ErrorIs(t, svc.ClaimTokenSendQuota(ctx, token, "third@example.com", ipHash, ipHash), ErrRegistrationClickCaptchaSendLimit)
+	// 失败后同邮箱重试必须畅通，用户不必重做人机验证。
+	require.NoError(t, svc.ClaimTokenSendQuota(ctx, token, "first@example.com", ipHash, ipHash))
+
+	// 但换邮箱始终被拒：不存在「靠触发一次失败来清空绑定」的路径。
+	require.ErrorIs(t, svc.ClaimTokenSendQuota(ctx, token, "victim@example.com", ipHash, ipHash), ErrRegistrationClickCaptchaSendLimit)
+	require.ErrorIs(t, svc.ClaimTokenSendQuota(ctx, token, "another@example.com", ipHash, ipHash), ErrRegistrationClickCaptchaSendLimit)
+	require.Equal(t, "first@example.com", store.sendEmails[token])
 }
 
 // TestRegistrationClickCaptcha_SendQuotaValidatesTokenFirst 额度校验复用 token 的

@@ -76,10 +76,6 @@ func (m *clickCaptchaMemoryStore) ClaimTokenSendEmail(ctx context.Context, token
 	m.sendEmails[token] = email
 	return email, nil
 }
-func (m *clickCaptchaMemoryStore) ResetTokenSendEmail(ctx context.Context, token string) error {
-	delete(m.sendEmails, token)
-	return nil
-}
 
 // captchaServiceForMode 构造固定模式/难度的服务，便于确定性测试。
 func captchaServiceForMode(store clickCaptchaCacheStore, mode, difficulty string) *RegistrationClickCaptchaService {

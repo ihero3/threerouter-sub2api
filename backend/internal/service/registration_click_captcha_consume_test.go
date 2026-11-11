@@ -67,11 +67,6 @@ func (m *captchaConsumeStore) ClaimTokenSendEmail(ctx context.Context, token, em
 	return email, nil
 }
 
-func (m *captchaConsumeStore) ResetTokenSendEmail(ctx context.Context, token string) error {
-	delete(m.sendEmails, token)
-	return nil
-}
-
 func newCaptchaConsumeFixture(t *testing.T) (*RegistrationClickCaptchaService, *captchaConsumeStore, string, string) {
 	t.Helper()
 	store := &captchaConsumeStore{}

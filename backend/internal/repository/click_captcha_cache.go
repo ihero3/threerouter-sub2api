@@ -160,6 +160,10 @@ func (c *ClickCaptchaCache) IncrAttempts(ctx context.Context, challengeID string
 // 给一个收件地址发信；同一地址重发不限次）。返回当前绑定的邮箱：首次绑定返回
 // 请求的地址，已绑定则返回既有地址，由 service 层比较是否换址。
 // 用 SETNX 原子抢占：并发请求中只有一个地址能赢得绑定，其余地址拿到既有值。
+//
+// 绑定**不可释放**：一次人机验证锁定一个收件地址直到 token 过期。发信失败时
+// 用户用同一邮箱重试即可（同址重发不受限），不需要删除绑定；允许删除反而会
+// 让「先用一个必然被拒绝的邮箱触发失败、再换目标邮箱发信」把绑定反复清空。
 func (c *ClickCaptchaCache) ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error) {
 	if c == nil || c.rdb == nil {
 		return "", fmt.Errorf("click captcha cache not configured")
@@ -174,19 +178,10 @@ func (c *ClickCaptchaCache) ClaimTokenSendEmail(ctx context.Context, token, emai
 	}
 	bound, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
-		if err == redis.Nil {
-			// 绑定键恰好在 SetNX 与 GET 之间过期：视为本次请求赢得绑定。
-			return email, nil
-		}
+		// SETNX 未抢到、GET 又拿不到值，说明绑定键恰好在两步之间过期/消失。
+		// 绝不能当作「本次赢得绑定」放行——那样没有任何绑定被写入，并发的
+		// 多个不同邮箱会同时通过校验。按绑定不可用 fail-close，让用户重做验证。
 		return "", err
 	}
 	return bound, nil
-}
-
-// ResetTokenSendEmail 删除发码邮箱绑定（归还发码额度），仅由发信失败的调用方使用。
-func (c *ClickCaptchaCache) ResetTokenSendEmail(ctx context.Context, token string) error {
-	if c == nil || c.rdb == nil {
-		return nil
-	}
-	return c.rdb.Del(ctx, clickCaptchaTokenSendEmailKeyPrefix+token).Err()
 }

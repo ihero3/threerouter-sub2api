@@ -216,8 +216,7 @@ func (h *AuthHandler) enforceClickCaptchaForRegistration(c *gin.Context) bool {
 // 验证码校验（占用式：把 token 绑定到该发码邮箱，一次人机验证只允许给一个收件
 // 地址发信，防止一个 token 反复调用发码接口给任意邮箱刷 SMTP 配额、骚扰他人；
 // 同一地址重发不限次）。开启自建验证码即强制生效。token 本体仍由后续注册接口
-// 做一次性消费，这里不销毁。触发发信的调用失败时应调用
-// releaseClickCaptchaSendQuota 归还绑定。
+// 做一次性消费，这里不销毁。绑定不可释放：发信失败时用户用同一邮箱重试即可。
 func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token, email string) error {
 	if h == nil || h.clickCaptcha == nil || h.settingSvc == nil {
 		return nil
@@ -228,19 +227,6 @@ func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token,
 	clientIP := middleware2.SecurityClientIP(c)
 	ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 	return h.clickCaptcha.ClaimTokenSendQuota(c.Request.Context(), token, email, ipHash, ipHash)
-}
-
-// releaseClickCaptchaSendQuota 归还发码额度：仅在触发发信的调用失败时使用，
-// 避免瞬时故障迫使用户重新通过一次人机验证。归还必须脱离请求上下文：
-// 客户端超时/取消会连带取消 c.Request.Context()，用被取消的上下文写 Redis
-// 会让归还静默失败（与 Register 处 RestoreToken 的处理同口径）。
-func (h *AuthHandler) releaseClickCaptchaSendQuota(c *gin.Context, token string) {
-	if h == nil || h.clickCaptcha == nil {
-		return
-	}
-	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)
-	defer cancel()
-	_ = h.clickCaptcha.ReleaseTokenSendQuota(releaseCtx, token)
 }
 
 // enforceRegistrationIPHourlyRisk 同一 IP 1 小时内的注册数上限（默认 8，可在后台配置），
@@ -414,10 +400,16 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
+	// 同一 IP 1 小时内注册超过上限时不再下发验证码。放在发码额度绑定之前：
+	// 被风控拦截的请求不该白白占掉 token 的邮箱额度。
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
+	}
+
 	// 邮箱验证开启且启用点击验证时，发送验证码前必须持有有效的真人验证 token，
 	// 并把 token 绑定到该邮箱（一次人机验证只给一个收件地址发信，重发同址不限），
 	// 杜绝机器人绕过前端直接调用本接口刷邮件、打爆 SMTP 日配额；token 仍由后续
-	// 注册接口做一次性消费。
+	// 注册接口做一次性消费。绑定不可释放：发信失败时同邮箱重试不受影响。
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 		if err := h.clickCaptcha.ClaimTokenSendQuota(c.Request.Context(), req.ClickCaptchaToken, req.Email, ipHash, ipHash); err != nil {
@@ -426,17 +418,10 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		}
 	}
 
-	// 同一 IP 1 小时内注册超过上限时不再下发验证码。
-	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
-		return
-	}
-
 	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
-		// 发信失败归还发码额度：SMTP/队列瞬时故障不应迫使用户重做一次人机验证。
-		if h.enforceClickCaptchaForRegistration(c) {
-			h.releaseClickCaptchaSendQuota(c, req.ClickCaptchaToken)
-		}
+		// 刻意不归还发码绑定：失败后用户用同一邮箱重试即可，绑定不阻碍重试；
+		// 若允许归还，「先触发一次必然失败的发码、再换目标邮箱」就能反复清空绑定。
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -835,7 +820,6 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	frontendBaseURL := strings.TrimSpace(h.settingSvc.GetFrontendURL(c.Request.Context()))
 	if frontendBaseURL == "" {
 		slog.Error("frontend_url not configured in settings or config; cannot build password reset link")
-		h.releaseClickCaptchaSendQuota(c, req.ClickCaptchaToken)
 		response.InternalError(c, "Password reset is not configured")
 		return
 	}
@@ -843,8 +827,6 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	// Request password reset (async)
 	// Note: This returns success even if email doesn't exist (to prevent enumeration)
 	if err := h.authService.RequestPasswordResetAsync(c.Request.Context(), req.Email, frontendBaseURL, c.GetHeader("Accept-Language")); err != nil {
-		// 发信失败归还发码额度，避免瞬时故障迫使用户重做一次人机验证。
-		h.releaseClickCaptchaSendQuota(c, req.ClickCaptchaToken)
 		response.ErrorFrom(c, err)
 		return
 	}

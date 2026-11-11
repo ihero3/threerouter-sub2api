@@ -294,6 +294,7 @@ export default {
     clickCaptchaTokenInvalid: '人机验证已过期或已使用，请重新完成人机验证',
     clickCaptchaInvalid: '人机验证校验失败，请重新完成人机验证',
     clickCaptchaDisabled: '人机验证服务暂不可用，请联系管理员',
+    clickCaptchaSendLimit: '本次人机验证已用于其他邮箱，请返回重新完成人机验证',
     emailDomainRegistrationLimit:
       '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。',
     emailDomainBlacklisted: '该邮箱域名已被禁止注册，请更换其他邮箱',

@@ -69,7 +69,9 @@ var ErrRegistrationClickCaptchaTokenInvalid = infraerrors.BadRequest("REGISTRATI
 // token 可以反复调用 /auth/send-verify-code 给**任意邮箱**发信——刷 SMTP 日配额、
 // 骚扰第三方邮箱。发码额度绑定邮箱地址：同一 token 可以给**同一邮箱**重发（邮件
 // 延迟时的正常重试不受影响），但换一个邮箱即拒绝。绑定独立于 token 本身：token
-// 仍由注册接口做一次性消费，这里只锁"一次解题 = 一个收件地址"。
+// 仍由注册接口做一次性消费，这里只锁"一次解题 = 一个收件地址"。绑定在 token
+// 生命周期内不可释放，否则「先用一个必然被拒的邮箱触发发信失败、再换目标邮箱」
+// 就能把额度反复清空，防护等同于不存在。
 var ErrRegistrationClickCaptchaSendLimit = infraerrors.TooManyRequests("REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT", "this captcha is already used by another email address, please complete the verification again")
 
 // RegistrationClickCaptchaChallenge 一次验证题（判别联合：按 mode 三选一）。
@@ -126,9 +128,8 @@ type clickCaptchaCacheStore interface {
 	IncrAttempts(ctx context.Context, challengeID string) (int64, error)
 	// ClaimTokenSendEmail 把一次性 token 绑定到唯一发码邮箱（原子），返回当前
 	// 绑定的邮箱地址：首次绑定返回请求的地址，已绑定则返回既有地址供比较。
+	// 绑定不可释放，见 ErrRegistrationClickCaptchaSendLimit 的说明。
 	ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error)
-	// ResetTokenSendEmail 解除发码邮箱绑定（归还额度），仅由发信失败的调用方使用。
-	ResetTokenSendEmail(ctx context.Context, token string) error
 }
 
 // ClickCaptchaChallengePayloadRef 存入 Redis 的 challenge 内部数据（repository 跨包引用）。
@@ -395,8 +396,10 @@ func (s *RegistrationClickCaptchaService) ValidateToken(ctx context.Context, tok
 // token 之后只允许给**同一个邮箱**发码（重发不限次），换邮箱即拒绝。绑定独立于
 // token 生命周期：注册接口仍按原逻辑一次性消费 token，这里不销毁、不归还 token。
 //
-// 调用方在**触发发信的调用失败**时应调用 ReleaseTokenSendQuota 归还额度，
-// 避免瞬时故障迫使用户重新通过一次人机验证。
+// 绑定刻意**不提供释放接口**：发信失败（SMTP/队列故障、邮箱被风控拒绝、域名配额
+// 已满等）时用户用同一邮箱重试即可，绑定不阻碍重试。若允许失败即释放，攻击者
+// 只要先用一个必然被拒绝的邮箱触发一次错误，就能清空绑定再换目标邮箱发信，
+// 一次解题重新退化为无限收件地址。发信失败不归还不会惩罚正常用户。
 func (s *RegistrationClickCaptchaService) ClaimTokenSendQuota(ctx context.Context, token, email, ipHash, uaHash string) error {
 	if s == nil || s.cache == nil {
 		return ErrRegistrationClickCaptchaDisabled
@@ -415,18 +418,6 @@ func (s *RegistrationClickCaptchaService) ClaimTokenSendQuota(ctx context.Contex
 		return ErrRegistrationClickCaptchaSendLimit
 	}
 	return nil
-}
-
-// ReleaseTokenSendQuota 归还发码额度（解除邮箱绑定），仅在发信失败时调用。
-func (s *RegistrationClickCaptchaService) ReleaseTokenSendQuota(ctx context.Context, token string) error {
-	if s == nil || s.cache == nil {
-		return ErrRegistrationClickCaptchaDisabled
-	}
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return ErrRegistrationClickCaptchaTokenInvalid
-	}
-	return s.cache.ResetTokenSendEmail(ctx, token)
 }
 
 // ClickCaptchaTokenPayloadRef 存入 Redis 的一次性 token 数据（repository 跨包引用）。
