@@ -1517,6 +1517,42 @@ export async function updateSecurityIPBlacklistSettings(
   return data;
 }
 
+// ==================== IP Consistency Settings ====================
+
+/**
+ * IP 一致性风控配置。
+ *
+ * 同一账号在滚动窗口（默认 600 秒 / 10 分钟）内出现两个及以上不同客户端 IP，
+ * 判定为账号共享/盗用并自动禁用账号（Status=disabled，管理员可手动解封）。
+ * 覆盖注册、登录、控制台与模型网关调用。
+ */
+export interface IPConsistencySettings {
+  enabled: boolean;
+  /** 滚动窗口秒数，60 ~ 86400 */
+  window_seconds: number;
+  /** 豁免用户 ID 列表 */
+  whitelist_user_ids: number[];
+  /** 豁免 IP / CIDR 列表 */
+  whitelist_ips: string[];
+}
+
+export async function getIPConsistencySettings(): Promise<IPConsistencySettings> {
+  const { data } = await apiClient.get<IPConsistencySettings>(
+    "/admin/settings/ip-consistency",
+  );
+  return data;
+}
+
+export async function updateIPConsistencySettings(
+  settings: IPConsistencySettings,
+): Promise<IPConsistencySettings> {
+  const { data } = await apiClient.put<IPConsistencySettings>(
+    "/admin/settings/ip-consistency",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1752,6 +1788,8 @@ export const settingsAPI = {
   updateGatewayIPRateLimitSettings,
   getSecurityIPBlacklistSettings,
   updateSecurityIPBlacklistSettings,
+  getIPConsistencySettings,
+  updateIPConsistencySettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

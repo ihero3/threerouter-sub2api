@@ -175,6 +175,7 @@ type AuthService struct {
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	geoIPService          *GeoIPService
 	mcpGrantRevoker       MCPGrantRevoker
+	ipConsistency         *IPConsistencyService
 }
 
 type CaptchaProof struct {
@@ -272,6 +273,12 @@ func (s *AuthService) SetMCPGrantRevoker(revoker MCPGrantRevoker) {
 	s.mcpGrantRevoker = revoker
 }
 
+// SetIPConsistencyService 注入 IP 一致性风控服务。
+// 通过 setter 注入（而非构造器参数），保持 NewAuthService 与既有测试的兼容性。
+func (s *AuthService) SetIPConsistencyService(ipConsistency *IPConsistencyService) {
+	s.ipConsistency = ipConsistency
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password, registerIP string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", registerIP)
@@ -283,6 +290,17 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
+	}
+
+	// IP 一致性风控：同一邮箱在滚动窗口内从不同 IP 反复注册 → 拒绝。
+	if s.ipConsistency != nil {
+		clientIP := strings.TrimSpace(registerIP)
+		if clientIP == "" {
+			clientIP = clientIPFromContext(ctx)
+		}
+		if err := s.ipConsistency.CheckRegistration(ctx, email, clientIP); err != nil {
+			return "", nil, err
+		}
 	}
 
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
@@ -397,6 +415,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 记录设备指纹流水：只在建号成功后写入，供后续注册按同设备 24 小时窗口计数。
 	// 指纹由 handler 注入 ctx，不改变本函数签名及其调用点。
 	s.RecordRegistrationDeviceFingerprint(ctx, user.ID, registerIP)
+	// IP 一致性风控：把注册 IP 作为账号的首个已知 IP 写入窗口，
+	// 后续登录 / 控制台 / API 调用从其它 IP 发起时会触发禁用。
+	if s.ipConsistency != nil {
+		clientIP := strings.TrimSpace(registerIP)
+		if clientIP == "" {
+			clientIP = clientIPFromContext(ctx)
+		}
+		s.ipConsistency.RecordUserIP(ctx, user.ID, clientIP)
+	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
@@ -715,6 +742,13 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	// 检查用户状态
 	if !user.IsActive() {
 		return "", nil, ErrUserNotActive
+	}
+
+	// IP 一致性风控：与滚动窗口内的已知 IP 不一致 → 自动禁用并拒绝本次登录。
+	if s.ipConsistency != nil {
+		if violation := s.ipConsistency.CheckUser(ctx, user.ID, user.Role, clientIPFromContext(ctx)); violation != nil {
+			return "", nil, ErrIPConsistencyBlocked
+		}
 	}
 
 	// 生成JWT token

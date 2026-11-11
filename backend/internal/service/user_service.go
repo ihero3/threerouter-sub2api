@@ -208,6 +208,15 @@ type UserFollowUpMarkRepository interface {
 	SetTicketFlag(ctx context.Context, id int64, flagged bool) error
 }
 
+// UserRiskMarkRepository 是生产用户仓储为 IP 一致性风控提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现。
+type UserRiskMarkRepository interface {
+	// BumpIPInconsistencyMark 给用户打「窗口内 IP 不一致」可疑标记：
+	// risk_level 只升不降（abnormal 保持 abnormal，否则置 suspect）；
+	// reason 以逗号追加的方式并入 risk_reasons（已存在则不重复），并刷新 risk_updated_at。
+	BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 // RegistrationEmailDomainRepository 的窗口参数 since：
@@ -1248,6 +1257,18 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status str
 	}
 
 	return nil
+}
+
+// MarkIPInconsistent 给用户打「窗口内出现多个客户端 IP」的可疑标记（IP 一致性风控）。
+// 仓储不支持时静默跳过：风控标记是旁路能力，不能影响主流程。
+func (s *UserService) MarkIPInconsistent(ctx context.Context, userID int64, reason string) {
+	marker, ok := s.userRepo.(UserRiskMarkRepository)
+	if !ok {
+		return
+	}
+	if err := marker.BumpIPInconsistencyMark(ctx, userID, reason); err != nil {
+		slog.Warn("failed to mark user ip inconsistent", "user_id", userID, "error", err)
+	}
 }
 
 // Delete 删除用户（管理员功能）

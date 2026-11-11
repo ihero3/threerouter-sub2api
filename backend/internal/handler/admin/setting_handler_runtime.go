@@ -371,6 +371,66 @@ func (h *SettingHandler) UpdateSecurityIPBlacklist(c *gin.Context) {
 	})
 }
 
+// GetIPConsistencySettings 获取 IP 一致性风控配置
+// GET /api/v1/admin/settings/ip-consistency
+func (h *SettingHandler) GetIPConsistencySettings(c *gin.Context) {
+	settings, err := h.settingService.GetIPConsistencySettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.IPConsistencySettings{
+		Enabled:          settings.Enabled,
+		WindowSeconds:    settings.WindowSeconds,
+		WhitelistUserIDs: settings.WhitelistUserIDs,
+		WhitelistIPs:     settings.WhitelistIPs,
+	})
+}
+
+// UpdateIPConsistencySettingsRequest 更新 IP 一致性风控配置请求
+type UpdateIPConsistencySettingsRequest struct {
+	Enabled          bool     `json:"enabled"`
+	WindowSeconds    int      `json:"window_seconds"`
+	WhitelistUserIDs []int64  `json:"whitelist_user_ids"`
+	WhitelistIPs     []string `json:"whitelist_ips"`
+}
+
+// UpdateIPConsistencySettings 更新 IP 一致性风控配置
+// PUT /api/v1/admin/settings/ip-consistency
+func (h *SettingHandler) UpdateIPConsistencySettings(c *gin.Context) {
+	var req UpdateIPConsistencySettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.IPConsistencySettings{
+		Enabled:          req.Enabled,
+		WindowSeconds:    req.WindowSeconds,
+		WhitelistUserIDs: req.WhitelistUserIDs,
+		WhitelistIPs:     req.WhitelistIPs,
+	}
+
+	if err := h.settingService.SetIPConsistencySettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetIPConsistencySettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.IPConsistencySettings{
+		Enabled:          updatedSettings.Enabled,
+		WindowSeconds:    updatedSettings.WindowSeconds,
+		WhitelistUserIDs: updatedSettings.WhitelistUserIDs,
+		WhitelistIPs:     updatedSettings.WhitelistIPs,
+	})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {

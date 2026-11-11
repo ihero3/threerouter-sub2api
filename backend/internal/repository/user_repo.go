@@ -1327,6 +1327,34 @@ func (r *userRepository) SetTicketFlag(ctx context.Context, id int64, flagged bo
 	return nil
 }
 
+// BumpIPInconsistencyMark 给用户打「窗口内 IP 不一致」可疑标记（IP 一致性风控）。
+// risk_level 只升不降：abnormal 保持 abnormal，否则置 suspect；
+// reason 幂等追加进 risk_reasons（逗号分隔，已存在则不重复）。
+func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error {
+	const updateSQL = `
+		UPDATE users
+		SET risk_level = CASE WHEN COALESCE(risk_level, '') = 'abnormal' THEN 'abnormal' ELSE 'suspect' END,
+		    risk_reasons = CASE
+		        WHEN $2 = '' OR position($2 in COALESCE(risk_reasons, '')) > 0 THEN COALESCE(risk_reasons, '')
+		        ELSE COALESCE(risk_reasons, '') || ',' || $2
+		    END,
+		    risk_updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, id, reason)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *userRepository) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
 	if len(userIDs) == 0 {
 		return 0, nil

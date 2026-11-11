@@ -651,8 +651,9 @@
             <div v-if="row.last_used_ip">
               <div class="flex items-center gap-2">
                 <span class="text-sm text-gray-500 dark:text-dark-400">{{ row.last_used_ip }}</span>
+                <!-- 可疑标记：IP 被多账号共用，或 IP 一致性风控检出窗口内多个客户端 IP -->
                 <span
-                  v-if="row.last_used_ip_shared"
+                  v-if="row.last_used_ip_shared || row.risk_level === 'suspect' || row.risk_level === 'abnormal'"
                   class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
                   :title="t('admin.users.columns.ipSuspect')"
                 >

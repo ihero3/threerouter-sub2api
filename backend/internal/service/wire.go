@@ -73,6 +73,7 @@ func ProvideAuthService(
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	geoIPService *GeoIPService,
 	mcpOAuthService *MCPOAuthService,
+	ipConsistencyService *IPConsistencyService,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -92,6 +93,7 @@ func ProvideAuthService(
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
 	svc.SetGeoIPService(geoIPService)
+	svc.SetIPConsistencyService(ipConsistencyService)
 	if mcpOAuthService != nil {
 		svc.SetMCPGrantRevoker(mcpOAuthService)
 	}
@@ -891,6 +893,10 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewPasskeyService,
 	NewUserService,
+	// IP 一致性风控：依赖 Redis 窗口缓存 + SettingService + 用户状态更新能力。
+	NewIPConsistencyService,
+	wire.Bind(new(UserStatusUpdater), new(*UserService)),
+	wire.Bind(new(IPConsistencySettingsProvider), new(*SettingService)),
 	NewMCPOAuthService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,

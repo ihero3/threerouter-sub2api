@@ -328,6 +328,22 @@ export default {
         saved: 'Site-wide IP blacklist saved',
         saveFailed: 'Failed to save site-wide IP blacklist'
       },
+      ipConsistency: {
+        title: 'IP Consistency Guard',
+        description: 'Flags abnormal multi-IP access within a rolling window: 2 different IPs mark the user as suspect, 3 or more automatically disable the account (admins can re-enable manually).',
+        warning: 'Warning: enforced on registration, login, console and model API calls. 3+ IPs in the window disable the account immediately; 2 IPs tag the user as suspect in the user list. Enable carefully and whitelist admin accounts, office egress and proxy egress IPs first.',
+        enabled: 'Enable IP consistency guard',
+        enabledHint: 'When on, an account seen from 2 different client IPs inside the window is tagged suspect, and 3 or more disables it. When off, nothing is recorded or blocked.',
+        windowSeconds: 'Rolling window (seconds)',
+        windowSecondsHint: 'Defaults to 600 (10 minutes); allowed range 60–86400. Longer windows are stricter.',
+        whitelistIPs: 'IP whitelist',
+        whitelistIPsPlaceholder: 'One per line; exact IPv4/IPv6 address or CIDR, e.g.:\n203.0.113.9\n198.51.100.0/24',
+        whitelistIPsHint: 'Whitelisted client IPs are excluded from the consistency check — useful for office egress and fixed proxy pools.',
+        whitelistUserIDs: 'User whitelist',
+        whitelistUserIDsPlaceholder: 'One user ID per line, e.g.:\n1001\n1002',
+        saved: 'IP consistency settings saved',
+        saveFailed: 'Failed to save IP consistency settings'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: 'Bot protection for login and registration',

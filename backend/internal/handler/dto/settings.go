@@ -534,6 +534,17 @@ type SecurityIPBlacklistSettings struct {
 	Blacklist []string `json:"blacklist"`
 }
 
+// IPConsistencySettings IP 一致性风控配置 DTO
+type IPConsistencySettings struct {
+	Enabled bool `json:"enabled"`
+	// WindowSeconds 滚动窗口秒数（默认 600）
+	WindowSeconds int `json:"window_seconds"`
+	// WhitelistUserIDs 豁免的用户 ID 列表
+	WhitelistUserIDs []int64 `json:"whitelist_user_ids"`
+	// WhitelistIPs 豁免的 IP/CIDR 列表
+	WhitelistIPs []string `json:"whitelist_ips"`
+}
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

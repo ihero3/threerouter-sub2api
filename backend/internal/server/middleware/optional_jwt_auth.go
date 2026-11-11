@@ -18,8 +18,13 @@ func NewOptionalJWTAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	ipConsistency ...*service.IPConsistencyService,
 ) OptionalJWTAuthMiddleware {
-	strict := jwtAuth(authService, userService, userService, settingService, auditService)
+	var guard *service.IPConsistencyService
+	if len(ipConsistency) > 0 {
+		guard = ipConsistency[0]
+	}
+	strict := jwtAuth(authService, userService, userService, settingService, auditService, guard)
 	return OptionalJWTAuthMiddleware(func(c *gin.Context) {
 		if strings.TrimSpace(c.GetHeader("Authorization")) == "" {
 			c.Next()

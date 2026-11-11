@@ -2528,6 +2528,130 @@
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
+              <div class="flex items-center gap-2">
+                <Icon name="shield" size="md" class="text-primary-500" />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.ipConsistency.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.ipConsistency.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="ipConsistencyLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div
+                  class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                >
+                  <p class="text-sm text-amber-700 dark:text-amber-300">
+                    {{ t("admin.settings.ipConsistency.warning") }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.ipConsistency.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="ipConsistencyForm.enabled" />
+                </div>
+
+                <div
+                  v-if="ipConsistencyForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.windowSeconds") }}
+                    </label>
+                    <input
+                      v-model.number="ipConsistencyForm.window_seconds"
+                      type="number"
+                      min="60"
+                      max="86400"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.windowSecondsHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.whitelistIPs") }}
+                    </label>
+                    <textarea
+                      v-model="ipConsistencyWhitelistIPsText"
+                      rows="4"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.ipConsistency.whitelistIPsPlaceholder')
+                      "
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.whitelistIPsHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.whitelistUserIDs") }}
+                    </label>
+                    <textarea
+                      v-model="ipConsistencyWhitelistUserIDsText"
+                      rows="3"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.ipConsistency.whitelistUserIDsPlaceholder')
+                      "
+                    ></textarea>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveIPConsistencySettings"
+                    :disabled="ipConsistencySaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{
+                      ipConsistencySaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
                 {{ t("admin.settings.captcha.title") }}
               </h2>
@@ -10026,6 +10150,17 @@ const securityIPBlacklistForm = reactive({
 // 命中即在注册/登录/网关入口统一 403；管理端与支付回调豁免。
 const securityIPBlacklistText = ref("");
 
+// IP 一致性风控状态
+const ipConsistencyLoading = ref(true);
+const ipConsistencySaving = ref(false);
+const ipConsistencyForm = reactive({
+  enabled: false,
+  window_seconds: 600,
+});
+// 白名单用文本域编辑（每行一个 IP/CIDR 或用户 ID）。
+const ipConsistencyWhitelistIPsText = ref("");
+const ipConsistencyWhitelistUserIDsText = ref("");
+
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true);
 const streamTimeoutSaving = ref(false);
@@ -13353,6 +13488,64 @@ async function saveSecurityIPBlacklistSettings() {
   }
 }
 
+// IP 一致性风控方法
+async function loadIPConsistencySettings() {
+  ipConsistencyLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getIPConsistencySettings();
+    ipConsistencyForm.enabled = settings.enabled;
+    ipConsistencyForm.window_seconds = settings.window_seconds || 600;
+    ipConsistencyWhitelistIPsText.value = (settings.whitelist_ips || []).join(
+      "\n",
+    );
+    ipConsistencyWhitelistUserIDsText.value = (
+      settings.whitelist_user_ids || []
+    ).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    ipConsistencyLoading.value = false;
+  }
+}
+
+async function saveIPConsistencySettings() {
+  ipConsistencySaving.value = true;
+  try {
+    const whitelist_ips = ipConsistencyWhitelistIPsText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const whitelist_user_ids = ipConsistencyWhitelistUserIDsText.value
+      .split("\n")
+      .map((line) => Number(line.trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const updated = await adminAPI.settings.updateIPConsistencySettings({
+      enabled: ipConsistencyForm.enabled,
+      window_seconds: ipConsistencyForm.window_seconds,
+      whitelist_ips,
+      whitelist_user_ids,
+    });
+    ipConsistencyForm.enabled = updated.enabled;
+    ipConsistencyForm.window_seconds = updated.window_seconds || 600;
+    ipConsistencyWhitelistIPsText.value = (updated.whitelist_ips || []).join(
+      "\n",
+    );
+    ipConsistencyWhitelistUserIDsText.value = (
+      updated.whitelist_user_ids || []
+    ).join("\n");
+    appStore.showSuccess(t("admin.settings.ipConsistency.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.ipConsistency.saveFailed"),
+      ),
+    );
+  } finally {
+    ipConsistencySaving.value = false;
+  }
+}
+
 // Rate Limit Cooldown (429) 方法
 async function loadRateLimit429CooldownSettings() {
   rateLimit429CooldownLoading.value = true;
@@ -14038,6 +14231,7 @@ onMounted(() => {
   loadPanelRateLimitSettings();
   loadGatewayIpRateLimitSettings();
   loadSecurityIPBlacklistSettings();
+  loadIPConsistencySettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();

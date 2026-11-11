@@ -328,6 +328,22 @@ export default {
         saved: '全站 IP 黑名单已保存',
         saveFailed: '保存全站 IP 黑名单失败'
       },
+      ipConsistency: {
+        title: 'IP 一致性风控',
+        description: '同一账号在滚动窗口内从多个不同 IP 访问即判定异常：窗口内出现 2 个 IP 标记为可疑，达到 3 个及以上自动禁用账号（管理员可手动解封）',
+        warning: '注意：该功能对注册、登录、控制台与模型 API 统一生效。窗口内出现 3 个及以上 IP 会直接把账号置为「已禁用」，2 个 IP 会在用户列表打上「可疑」标记。请谨慎开启，并先把管理员、内网出口与代理出口 IP 加入白名单。',
+        enabled: '启用 IP 一致性风控',
+        enabledHint: '开启后，同一账号在窗口期内出现 2 个不同客户端 IP 标记可疑、3 个及以上自动禁用；关闭时不记录也不拦截。',
+        windowSeconds: '滚动窗口（秒）',
+        windowSecondsHint: '默认 600（10 分钟），允许范围 60 ~ 86400。窗口越长越严格。',
+        whitelistIPs: 'IP 白名单',
+        whitelistIPsPlaceholder: '每行一个，支持 IPv4/IPv6 精确地址或 CIDR，例如：\n203.0.113.9\n198.51.100.0/24',
+        whitelistIPsHint: '命中白名单的客户端 IP 不参与一致性判定，适合公司出口、代理池等固定出口。',
+        whitelistUserIDs: '用户白名单',
+        whitelistUserIDsPlaceholder: '每行一个用户 ID，例如：\n1001\n1002',
+        saved: 'IP 一致性风控配置已保存',
+        saveFailed: '保存 IP 一致性风控配置失败'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: '登录和注册的机器人防护',
