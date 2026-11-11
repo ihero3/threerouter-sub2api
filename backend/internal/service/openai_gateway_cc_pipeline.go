@@ -218,7 +218,7 @@ func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body 
 // userAgent 为空时保留默认 UA；Grok 的默认 UA 兜底由调用方解析后传入。
 //
 // 另含一层错误驱动自愈：上游以 400 明确说明"这次请求哪里不接受"时，按其说明改写
-// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前四类：
+// 请求体后**重试一次**（判定与改写见 ccUpstreamSelfHealBody）。目前五类：
 //   - 不支持 json_schema 结构化输出 → 降级为 json_object（isCCJSONSchemaUnsupportedError）
 //   - 不接受客户端给的 reasoning_effort 取值 → 按上游自己给的可接受档位就近对齐
 //     （upstreamReasoningEffortAllowedValuesFromErrorBody）
@@ -226,6 +226,8 @@ func normalizeOpenAICCUpstreamBody(account *Account, upstreamModel string, body 
 //     thinking.type=disabled）→ 剥离整个 thinking 字段（isCCThinkingTypeUnsupportedError）
 //   - 思考模式要求回传 assistant 的 reasoning_content（DeepSeek 系）→ 补字段
 //     （isCCReasoningContentPassbackError）
+//   - max_tokens 与 max_completion_tokens 同传被当作互斥入参 → 删 max_tokens
+//     （isCCMaxTokensConflictError）
 //
 // 自愈的变更范围被刻意压到最小——**只有重发拿到 <400 才改变结果**：
 //   - 重发成功：交回成功的响应（原本必然 400 的请求被救活，纯收益）；
@@ -347,6 +349,16 @@ func ccUpstreamSelfHealBody(body, errorBody []byte) ([]byte, string, bool) {
 	if isCCReasoningContentPassbackError(errorBody) {
 		if filled, _, changed := backfillCCReasoningContent(body); changed {
 			return filled, "reasoning_content passback required", true
+		}
+	}
+	// 客户端同时下发 max_tokens 与 max_completion_tokens（新旧字段兼容的常见写法），
+	// 被上游视为互斥入参拒绝。删掉旧的 max_tokens、保留 max_completion_tokens 重发。
+	//
+	// 与上面四类同一套边界：上游没点名这件事、或请求体里两个字段不齐，都不动手——
+	// "只有 max_tokens 超上限"这类 400 属于输出上限问题，另有 failover 链路处理。
+	if isCCMaxTokensConflictError(errorBody) {
+		if adjusted, changed := dropCCConflictingMaxTokens(body); changed {
+			return adjusted, "max_tokens and max_completion_tokens both set", true
 		}
 	}
 	return body, "", false
