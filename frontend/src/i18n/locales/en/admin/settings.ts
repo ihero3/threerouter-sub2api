@@ -316,6 +316,18 @@ export default {
         saved: 'Gateway IP rate limit settings saved',
         saveFailed: 'Failed to save gateway IP rate limit settings'
       },
+      securityIPBlacklist: {
+        title: 'Site-wide IP Blacklist',
+        description: 'An IP/CIDR ban list enforced on registration, login and the model gateway alike — matches get 403 on every entry point. Built for stopping abusive registrations and misuse from known source IPs.',
+        exemptNote: 'Admin API routes (/api/v1/admin) and payment webhooks are exempt, as are the static frontend and health checks — this prevents admin lockout and dropped payment callbacks. Do not blacklist your own egress IP.',
+        enabled: 'Enable site-wide IP blacklist',
+        enabledHint: 'When on, matching IPs cannot register, log in, or call any model API. Turning it off keeps the list but stops enforcement.',
+        blacklist: 'Banned entries',
+        blacklistPlaceholder: 'One per line; exact IPv4/IPv6 address or CIDR, e.g.:\n2a02:4780:5e:4f48::1\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: 'Both IPv4 and IPv6 support exact addresses and prefixes (e.g. /64 bans the whole prefix). Enforced on: registration, login, and all model API calls. Takes effect immediately after saving (cache lag is at most 60 seconds).',
+        saved: 'Site-wide IP blacklist saved',
+        saveFailed: 'Failed to save site-wide IP blacklist'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: 'Bot protection for login and registration',

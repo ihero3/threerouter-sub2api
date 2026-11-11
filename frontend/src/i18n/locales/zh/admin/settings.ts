@@ -316,6 +316,18 @@ export default {
         saved: '网关 IP 限流配置已保存',
         saveFailed: '保存网关 IP 限流配置失败'
       },
+      securityIPBlacklist: {
+        title: '全站 IP 黑名单',
+        description: '对注册、登录与模型网关统一生效的 IP/CIDR 封禁列表，命中即 403；适合拦截恶意注册和滥用的来源 IP',
+        exemptNote: '管理端接口（/api/v1/admin）与支付回调（webhook）不受黑名单影响，静态前端与健康检查同样豁免，避免管理员自锁与掉单。请勿封禁自身出口 IP。',
+        enabled: '启用全站 IP 黑名单',
+        enabledHint: '开启后命中名单的 IP 将无法注册、登录和调用任何模型 API；关闭时名单保留但不拦截。',
+        blacklist: '封禁名单',
+        blacklistPlaceholder: '每行一个，支持 IPv4/IPv6 精确地址或 CIDR 网段，例如：\n2a02:4780:5e:4f48::1\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: 'IPv4 与 IPv6 均支持精确地址和网段前缀（如 /64 可封整个前缀段）。生效入口：注册、登录、全部模型 API。保存后立即生效（缓存最多 60 秒）。',
+        saved: '全站 IP 黑名单已保存',
+        saveFailed: '保存全站 IP 黑名单失败'
+      },
       turnstile: {
         title: 'Cloudflare Turnstile',
         description: '登录和注册的机器人防护',

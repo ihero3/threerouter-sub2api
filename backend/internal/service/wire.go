@@ -1075,6 +1075,7 @@ func ProvideMediaAdapter() *MediaAdapterRegistry {
 		NewSeedanceImageAdapter(),
 		NewWanImageAdapter(),
 		NewMiniMaxImageAdapter(),
+		NewMiniMaxH3ImageAdapter(),
 		NewImageMediaAdapter(),
 		// 音频厂商（独立）
 		NewMiniMaxTTSAdapter(),

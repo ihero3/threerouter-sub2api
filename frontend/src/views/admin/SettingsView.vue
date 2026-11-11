@@ -2401,6 +2401,129 @@
             </div>
           </div>
 
+          <!-- 全站 IP 黑名单 Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="ban"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.securityIPBlacklist.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.securityIPBlacklist.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="securityIPBlacklistLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- 豁免说明：管理端/支付回调/静态前端不受影响 -->
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.securityIPBlacklist.exemptNote") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.securityIPBlacklist.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityIPBlacklist.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="securityIPBlacklistForm.enabled" />
+                </div>
+
+                <div
+                  v-if="securityIPBlacklistForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.securityIPBlacklist.blacklist") }}
+                    </label>
+                    <textarea
+                      v-model="securityIPBlacklistText"
+                      data-testid="security-ip-blacklist"
+                      rows="6"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="t('admin.settings.securityIPBlacklist.blacklistPlaceholder')"
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityIPBlacklist.blacklistHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="security-ip-blacklist-save"
+                    @click="saveSecurityIPBlacklistSettings"
+                    :disabled="securityIPBlacklistSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="securityIPBlacklistSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      securityIPBlacklistSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
@@ -9893,6 +10016,16 @@ const gatewayIpRateLimitForm = reactive({
 // 命中黑名单的 IP 直接 403，不在黑名单的所有 IP 一视同仁参与限流。
 const gatewayIpRateLimitBlacklistText = ref("");
 
+// 全站 IP 黑名单状态
+const securityIPBlacklistLoading = ref(true);
+const securityIPBlacklistSaving = ref(false);
+const securityIPBlacklistForm = reactive({
+  enabled: false,
+});
+// 黑名单用文本域编辑（每行一个 IPv4/IPv6 或 CIDR），保存时拆分为数组。
+// 命中即在注册/登录/网关入口统一 403；管理端与支付回调豁免。
+const securityIPBlacklistText = ref("");
+
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true);
 const streamTimeoutSaving = ref(false);
@@ -13180,6 +13313,46 @@ async function saveGatewayIpRateLimitSettings() {
   }
 }
 
+// 全站 IP 黑名单方法
+async function loadSecurityIPBlacklistSettings() {
+  securityIPBlacklistLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getSecurityIPBlacklistSettings();
+    securityIPBlacklistForm.enabled = settings.enabled;
+    securityIPBlacklistText.value = (settings.blacklist || []).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    securityIPBlacklistLoading.value = false;
+  }
+}
+
+async function saveSecurityIPBlacklistSettings() {
+  securityIPBlacklistSaving.value = true;
+  try {
+    const blacklist = securityIPBlacklistText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const updated = await adminAPI.settings.updateSecurityIPBlacklistSettings({
+      enabled: securityIPBlacklistForm.enabled,
+      blacklist,
+    });
+    securityIPBlacklistForm.enabled = updated.enabled;
+    securityIPBlacklistText.value = (updated.blacklist || []).join("\n");
+    appStore.showSuccess(t("admin.settings.securityIPBlacklist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.securityIPBlacklist.saveFailed"),
+      ),
+    );
+  } finally {
+    securityIPBlacklistSaving.value = false;
+  }
+}
+
 // Rate Limit Cooldown (429) 方法
 async function loadRateLimit429CooldownSettings() {
   rateLimit429CooldownLoading.value = true;
@@ -13864,6 +14037,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();
   loadGatewayIpRateLimitSettings();
+  loadSecurityIPBlacklistSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();

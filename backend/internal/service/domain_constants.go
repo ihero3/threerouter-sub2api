@@ -359,6 +359,11 @@ const (
 	// 网关 API 按客户端 IP 限流设置（JSON：GatewayIPRateLimitSettings）
 	SettingKeyGatewayIPRateLimitSettings = "gateway_ip_rate_limit_settings"
 
+	// 全站 IP 黑名单设置（JSON：SecurityIPBlacklistSettings）。
+	// 对注册/登录面板与模型网关统一生效，命中即 403；
+	// 管理端 API 与支付 webhook 回调豁免（防止管理员自锁、支付回调被误杀）。
+	SettingKeySecurityIPBlacklist = "security_ip_blacklist"
+
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
 

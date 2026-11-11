@@ -751,6 +751,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 		// 网关 API 按客户端 IP 限流配置
 		adminSettings.GET("/gateway-ip-rate-limit", h.Admin.Setting.GetGatewayIPRateLimitSettings)
 		adminSettings.PUT("/gateway-ip-rate-limit", h.Admin.Setting.UpdateGatewayIPRateLimitSettings)
+		// 全站 IP 黑名单配置（注册/登录/网关统一生效）
+		adminSettings.GET("/security-ip-blacklist", h.Admin.Setting.GetSecurityIPBlacklist)
+		adminSettings.PUT("/security-ip-blacklist", h.Admin.Setting.UpdateSecurityIPBlacklist)
 		// 流超时处理配置
 		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
 		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)

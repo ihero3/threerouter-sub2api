@@ -527,6 +527,13 @@ type GatewayIPRateLimitSettings struct {
 	Blacklist []string `json:"blacklist"`
 }
 
+// SecurityIPBlacklistSettings 全站 IP 黑名单配置 DTO
+type SecurityIPBlacklistSettings struct {
+	Enabled bool `json:"enabled"`
+	// Blacklist IP/CIDR 列表（IPv4/IPv6），命中即在注册/登录/网关入口统一 403。
+	Blacklist []string `json:"blacklist"`
+}
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

@@ -61,6 +61,10 @@ func SetupRouter(
 	// 将客户端 IP + UA 注入 request context，供 token 签发/会话绑定/审计日志统一读取。
 	// 解析模式按请求快照：兼容开关开启时信任原始转发头，关闭时使用 server.trusted_proxies。
 	r.Use(middleware2.SessionBindingContext(cfg))
+	// 全站 IP 黑名单：命中即 403，覆盖注册/登录面板与模型网关两个入口。
+	// 必须挂在 SessionBindingContext 之后（读取其注入的客户端 IP 快照）；
+	// 管理端 API / 支付 webhook / 静态前端豁免（见 ip_blacklist.go 注释）。
+	r.Use(middleware2.NewIPBlacklistGuard(settingService).Middleware())
 	r.Use(middleware2.Logger())
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {

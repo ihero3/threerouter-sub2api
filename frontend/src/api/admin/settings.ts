@@ -1486,6 +1486,37 @@ export async function updateGatewayIPRateLimitSettings(
   return data;
 }
 
+// ==================== Security IP Blacklist ====================
+
+/**
+ * Site-wide IP blacklist settings.
+ * Applies to the panel API (/api/v1/*, except admin and payment webhooks)
+ * and the model gateway (/v1, /v1beta, /backend-api/codex, /antigravity,
+ * /models). Matching entries (exact IPv4/IPv6 or CIDR) get a 403 on every
+ * entry point: registration, login and gateway.
+ */
+export interface SecurityIPBlacklistSettings {
+  enabled: boolean;
+  blacklist: string[];
+}
+
+export async function getSecurityIPBlacklistSettings(): Promise<SecurityIPBlacklistSettings> {
+  const { data } = await apiClient.get<SecurityIPBlacklistSettings>(
+    "/admin/settings/security-ip-blacklist",
+  );
+  return data;
+}
+
+export async function updateSecurityIPBlacklistSettings(
+  settings: SecurityIPBlacklistSettings,
+): Promise<SecurityIPBlacklistSettings> {
+  const { data } = await apiClient.put<SecurityIPBlacklistSettings>(
+    "/admin/settings/security-ip-blacklist",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1719,6 +1750,8 @@ export const settingsAPI = {
   updatePanelRateLimitSettings,
   getGatewayIPRateLimitSettings,
   updateGatewayIPRateLimitSettings,
+  getSecurityIPBlacklistSettings,
+  updateSecurityIPBlacklistSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

@@ -319,6 +319,58 @@ func (h *SettingHandler) UpdateGatewayIPRateLimitSettings(c *gin.Context) {
 	})
 }
 
+// GetSecurityIPBlacklist 获取全站 IP 黑名单配置
+// GET /api/v1/admin/settings/security-ip-blacklist
+func (h *SettingHandler) GetSecurityIPBlacklist(c *gin.Context) {
+	settings, err := h.settingService.GetSecurityIPBlacklist(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.SecurityIPBlacklistSettings{
+		Enabled:   settings.Enabled,
+		Blacklist: settings.Blacklist,
+	})
+}
+
+// UpdateSecurityIPBlacklistRequest 更新全站 IP 黑名单配置请求
+type UpdateSecurityIPBlacklistRequest struct {
+	Enabled   bool     `json:"enabled"`
+	Blacklist []string `json:"blacklist"`
+}
+
+// UpdateSecurityIPBlacklist 更新全站 IP 黑名单配置
+// PUT /api/v1/admin/settings/security-ip-blacklist
+func (h *SettingHandler) UpdateSecurityIPBlacklist(c *gin.Context) {
+	var req UpdateSecurityIPBlacklistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.SecurityIPBlacklistSettings{
+		Enabled:   req.Enabled,
+		Blacklist: req.Blacklist,
+	}
+
+	if err := h.settingService.SetSecurityIPBlacklist(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetSecurityIPBlacklist(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.SecurityIPBlacklistSettings{
+		Enabled:   updatedSettings.Enabled,
+		Blacklist: updatedSettings.Blacklist,
+	})
+}
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 // GET /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
