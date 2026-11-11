@@ -15,6 +15,7 @@ type clickCaptchaMemoryStore struct {
 	challenges map[string]*ClickCaptchaChallengePayloadRef
 	tokens     map[string]*ClickCaptchaTokenPayloadRef
 	attempts   map[string]int64
+	sendEmails map[string]string
 }
 
 func (m *clickCaptchaMemoryStore) SetChallenge(ctx context.Context, id string, p *ClickCaptchaChallengePayloadRef) error {
@@ -64,6 +65,20 @@ func (m *clickCaptchaMemoryStore) IncrAttempts(ctx context.Context, id string) (
 	}
 	m.attempts[id]++
 	return m.attempts[id], nil
+}
+func (m *clickCaptchaMemoryStore) ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error) {
+	if m.sendEmails == nil {
+		m.sendEmails = map[string]string{}
+	}
+	if bound, ok := m.sendEmails[token]; ok {
+		return bound, nil
+	}
+	m.sendEmails[token] = email
+	return email, nil
+}
+func (m *clickCaptchaMemoryStore) ResetTokenSendEmail(ctx context.Context, token string) error {
+	delete(m.sendEmails, token)
+	return nil
 }
 
 // captchaServiceForMode 构造固定模式/难度的服务，便于确定性测试。

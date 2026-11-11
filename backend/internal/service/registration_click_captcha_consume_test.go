@@ -12,6 +12,10 @@ import (
 // 消费语义（GETDEL 等价）与归还路径。
 type captchaConsumeStore struct {
 	tokens map[string]*ClickCaptchaTokenPayloadRef
+	// sendEmails 模拟发码邮箱绑定键（token → email）。
+	sendEmails map[string]string
+	// sendEmailErr 非空时 ClaimTokenSendEmail 返回错误，模拟 Redis 故障。
+	sendEmailErr error
 }
 
 func (m *captchaConsumeStore) SetChallenge(ctx context.Context, id string, p *ClickCaptchaChallengePayloadRef) error {
@@ -47,6 +51,25 @@ func (m *captchaConsumeStore) PeekToken(ctx context.Context, token string) (*Cli
 
 func (m *captchaConsumeStore) IncrAttempts(ctx context.Context, challengeID string) (int64, error) {
 	return 1, nil
+}
+
+func (m *captchaConsumeStore) ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error) {
+	if m.sendEmailErr != nil {
+		return "", m.sendEmailErr
+	}
+	if m.sendEmails == nil {
+		m.sendEmails = map[string]string{}
+	}
+	if bound, ok := m.sendEmails[token]; ok {
+		return bound, nil
+	}
+	m.sendEmails[token] = email
+	return email, nil
+}
+
+func (m *captchaConsumeStore) ResetTokenSendEmail(ctx context.Context, token string) error {
+	delete(m.sendEmails, token)
+	return nil
 }
 
 func newCaptchaConsumeFixture(t *testing.T) (*RegistrationClickCaptchaService, *captchaConsumeStore, string, string) {

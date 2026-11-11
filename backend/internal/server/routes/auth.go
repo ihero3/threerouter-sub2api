@@ -31,10 +31,16 @@ func RegisterAuthRoutes(
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
 	{
-		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）
+		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）。
+		// 两个接口都挂 IP 限流：challenge 出题要生成位图（CPU 打点），verify 是
+		// 爆破题面答案的入口，不限流时机器人可以无限换题重试。
 		if h.RegistrationClickCaptcha != nil {
-			auth.POST("/captcha/challenge", h.RegistrationClickCaptcha.Challenge)
-			auth.POST("/captcha/verify", h.RegistrationClickCaptcha.Verify)
+			auth.POST("/captcha/challenge", rateLimiter.LimitWithOptions("auth-captcha-challenge", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}), h.RegistrationClickCaptcha.Challenge)
+			auth.POST("/captcha/verify", rateLimiter.LimitWithOptions("auth-captcha-verify", 30, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}), h.RegistrationClickCaptcha.Verify)
 		}
 		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{

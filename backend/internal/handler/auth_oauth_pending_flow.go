@@ -585,7 +585,7 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken); err != nil {
+	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken, req.Email); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -622,6 +622,8 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 
 	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
+		// 发信失败归还发码额度，避免瞬时故障迫使用户重做一次人机验证。
+		h.releaseClickCaptchaSendQuota(c, req.ClickCaptchaToken)
 		response.ErrorFrom(c, err)
 		return
 	}
