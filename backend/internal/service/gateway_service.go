@@ -812,6 +812,26 @@ type GatewayService struct {
 	complianceProfileSvc  *UserComplianceProfileService
 }
 
+// opsErrorRecorder 是记录 Ops 错误日志的窄接口，*OpsService 满足它。
+type opsErrorRecorder interface {
+	RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error
+}
+
+// failoverOpsErrorRecorder 进程内单例，由 GatewayService.SetOpsErrorRecorder 在启动时注入
+// （全局唯一 OpsService）。账号在 failover 期间命中上游 503/5xx 或被自动停用时，
+// 通过它写一条 Ops 错误日志，使运维能在后台「错误日志」中看到账号被上游错误影响的情况。
+var failoverOpsErrorRecorder atomic.Value
+
+// SetOpsErrorRecorder 注入 Ops 错误日志记录器（应为进程唯一的 *OpsService）。
+func (s *GatewayService) SetOpsErrorRecorder(r opsErrorRecorder) {
+	if s == nil {
+		return
+	}
+	if r != nil {
+		failoverOpsErrorRecorder.Store(r)
+	}
+}
+
 // SetUserComplianceProfileService 注入用户级合规档案服务（用于按用户 ZDR 设置写入 usage_logs）。
 func (s *GatewayService) SetUserComplianceProfileService(svc *UserComplianceProfileService) {
 	s.complianceProfileSvc = svc
