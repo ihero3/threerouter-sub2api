@@ -18,6 +18,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
+// abnormal 账号未经管理员人工复核不得复活：UpdateUser 与内容风控 UnbanUser
+// 共用这一份客户端可见文案，保证两处拒绝口径一致。纯英语，不混汉语。
+const (
+	riskReviewRequiredCode    = "RISK_REVIEW_REQUIRED"
+	riskReviewRequiredMessage = "This account requires a risk review before it can be reactivated"
+)
+
 // User management implementations
 func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
@@ -250,6 +257,13 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, infraerrors.BadRequest("ADMIN_DISABLE_FORBIDDEN", "cannot disable admin user; change the role to user first")
 	}
 
+	// 风险复核冻结：abnormal 账号必须先经 POST /:id/risk-review 人工复核并清空
+	// risk_level，才允许把 status 改回 active；否则禁止通过普通编辑绕过冻结。
+	// 只拦「目标状态为 active」的写请求（最小条件），改其它字段不受影响。
+	if user.RiskLevel == AffiliateRiskLevelAbnormal && input.Status == StatusActive {
+		return nil, infraerrors.BadRequest(riskReviewRequiredCode, riskReviewRequiredMessage)
+	}
+
 	oldConcurrency := user.Concurrency
 	oldStatus := user.Status
 	oldRole := user.Role
@@ -377,6 +391,44 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+// AdminReviewUserRisk 管理员显式复核放行一个待复核账号：清空风险标记并把
+// status 恢复 active，随后失效认证缓存与余额缓存，让放行在下一次请求即生效。
+//
+// 这是「风险标记只升不降」规则的唯一显式例外——必须由管理员人工触发，
+// 任何自动链路（实时打标 / 全量扫描 / 内容风控解封）都不得调用本方法。
+// 清标记走 UserRiskReviewRepository 可选接口 + 类型断言，避免逼所有
+// UserRepository 测试桩实现这一管理端专用方法。
+func (s *adminServiceImpl) AdminReviewUserRisk(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return infraerrors.BadRequest("INVALID_USER_ID", "user id must be greater than 0")
+	}
+	if s == nil || s.userRepo == nil {
+		return infraerrors.ServiceUnavailable("USER_REPOSITORY_UNAVAILABLE", "user repository is unavailable")
+	}
+	// 确认用户存在，避免对不存在的 id 返回误导性的成功。
+	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
+		return err
+	}
+	reviewRepo, ok := s.userRepo.(UserRiskReviewRepository)
+	if !ok {
+		return infraerrors.ServiceUnavailable("RISK_REVIEW_UNAVAILABLE", "risk review is not supported by the user repository")
+	}
+	if err := reviewRepo.ClearUserRiskReview(ctx, userID); err != nil {
+		return err
+	}
+	// 放行后失效认证缓存（内含 risk_level/status 快照）与余额缓存；失败只记日志，
+	// 不回滚已提交的放行。adminServiceImpl 自身即持有这两个 invalidator。
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s.billingCacheService != nil {
+		if err := s.billingCacheService.InvalidateUserBalance(ctx, userID); err != nil {
+			logger.LegacyPrintf("service.admin", "invalidate user balance cache after risk review failed: user_id=%d err=%v", userID, err)
+		}
+	}
+	return nil
 }
 
 // realignUserAPIKeyGroups 让用户的 API Key 分组跟随管理员的允许分组配置。

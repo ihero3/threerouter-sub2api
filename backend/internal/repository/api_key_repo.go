@@ -155,6 +155,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldUsername,
 				user.FieldStatus,
 				user.FieldRole,
+				// 鉴权闸门依赖 risk_level 判定待复核账号，显式投影删不得。
+				// 少了它，DB 回源时 User.RiskLevel 恒为空，认证快照会写入空值，
+				// 导致缓存未命中/重建的请求绕过冻结。
+				user.FieldRiskLevel,
 				user.FieldBalance,
 				user.FieldConcurrency,
 				user.FieldBalanceNotifyEnabled,

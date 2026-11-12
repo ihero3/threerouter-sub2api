@@ -8,13 +8,16 @@ import (
 )
 
 // =========================
-// 邀请注册风险标记（只标记，不拦截）
+// 邀请注册风险标记（suspect 待复核 / abnormal 停用）
 // =========================
 //
 // 与 enforceIPGuard 的区别：
 //   - enforceIPGuard 会**拦截**注册（不绑定邀请人、不发奖励），是硬风控；
-//   - 本文件的规则只往 users.risk_level / risk_reasons 写一个标记，
-//     不改变登录、调用、返利任何行为，仅供管理端在用户列表展示并人工研判。
+//   - 本文件的规则往 users.risk_level / risk_reasons 写标记，且标记会真正生效：
+//     suspect / abnormal 拦住建 Key 与网关调用（见 User.RiskAccessBlocked）；
+//     abnormal 打标时同步把 status 置 disabled（管理员账号除外，见 BumpUserRiskMarks）。
+// abnormal 不能通过普通编辑或内容风控解封复活，唯一放行入口是管理员人工复核
+// POST /api/v1/admin/users/:id/risk-review（见 AdminReviewUserRisk）。
 //
 // 规则清单（key 见 domain_constants.go 的 AffiliateRiskReason*）：
 //  1. invite_burst_24h  邀请人 24h 内邀请数超阈值
@@ -280,7 +283,11 @@ func (s *AffiliateService) EvaluateInviteRisk(ctx context.Context, userIDs ...in
 	}
 	if _, err := s.repo.BumpUserRiskMarks(ctx, marks); err != nil {
 		logger.LegacyPrintf("service.affiliate", "[Affiliate] Bump risk marks failed: %v", err)
+		return
 	}
+	// 打标成功后立即失效认证/余额缓存，让 suspect/abnormal 的冻结状态
+	// 在下一个请求就生效，不必等 L2 缓存 TTL 自然过期。
+	s.invalidateRiskMarkedCaches(ctx, marks)
 }
 
 // buildRiskMarks 把原始信号转成待写入的标记列表（过滤掉无风险的用户）。
@@ -342,5 +349,30 @@ func (s *AffiliateService) AdminScanAffiliateRisk(ctx context.Context) (*Affilia
 			return nil, err
 		}
 		result.Marked += n
+		// 只处理本批 marks（每批各自失效一次），不在分批循环里对历史批次重复失效，
+		// 避免全量扫描退化成 O(N²) 的缓存 DB 工作。
+		s.invalidateRiskMarkedCaches(ctx, marks)
+	}
+}
+
+// invalidateRiskMarkedCaches 对一次批量打标涉及的用户失效认证缓存与余额缓存。
+//
+// 复用 AffiliateService.invalidateAffiliateCaches（同包同 struct，无需额外注入）。
+// 风险标记是旁路能力：缓存失效失败只记日志、不返回错误，绝不中断打标/扫描主流程。
+// 按 UserID 去重，避免全量扫描分批时同一用户被重复失效。
+func (s *AffiliateService) invalidateRiskMarkedCaches(ctx context.Context, marks []UserRiskMark) {
+	if s == nil {
+		return
+	}
+	seen := make(map[int64]struct{}, len(marks))
+	for _, m := range marks {
+		if m.UserID <= 0 {
+			continue
+		}
+		if _, ok := seen[m.UserID]; ok {
+			continue
+		}
+		seen[m.UserID] = struct{}{}
+		s.invalidateAffiliateCaches(ctx, m.UserID)
 	}
 }

@@ -643,7 +643,14 @@ export default {
           shared_password: '多个账号使用相同密码',
           chain_contagion: '关联链路中存在异常账号'
         },
-        tooltipFallback: '账号存在风险，请人工核查'
+        tooltipFallback: '账号存在风险，请人工核查',
+        review: {
+          action: '复核通过',
+          title: '风控复核通过',
+          confirm: "确定通过用户 '{email}' 的风控复核吗？将清空风险等级并恢复账号为正常状态。",
+          success: '复核通过，用户已恢复正常',
+          failed: '复核通过失败'
+        }
       },
       marks: {
         filterLabel: '标注',

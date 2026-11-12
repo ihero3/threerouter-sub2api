@@ -643,7 +643,14 @@ export default {
           shared_password: 'Shared password across accounts',
           chain_contagion: 'Linked to abnormal accounts'
         },
-        tooltipFallback: 'Account risk detected, please review manually'
+        tooltipFallback: 'Account risk detected, please review manually',
+        review: {
+          action: 'Approve Review',
+          title: 'Approve Risk Review',
+          confirm: "Approve the security review for '{email}'? This clears the risk level and restores the account to active.",
+          success: 'Risk review approved, the user is now active',
+          failed: 'Failed to approve the risk review'
+        }
       },
       marks: {
         filterLabel: 'Marks',

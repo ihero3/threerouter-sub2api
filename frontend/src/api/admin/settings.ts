@@ -431,6 +431,7 @@ export interface SystemSettings {
   registration_ip_quota_limit: number;
   registration_ip_hourly_limit: number;
   registration_device_fingerprint_limit: number;
+  registration_datacenter_asns: string;
   registration_click_captcha_enabled: boolean;
   registration_captcha_mode: "random" | "image_click" | "slider";
   registration_captcha_difficulty: "low" | "medium" | "high";
@@ -806,6 +807,7 @@ export interface UpdateSettingsRequest {
   registration_ip_quota_limit?: number;
   registration_ip_hourly_limit?: number;
   registration_device_fingerprint_limit?: number;
+  registration_datacenter_asns?: string;
   registration_click_captcha_enabled?: boolean;
   registration_captcha_mode?: "random" | "image_click" | "slider";
   registration_captcha_difficulty?: "low" | "medium" | "high";

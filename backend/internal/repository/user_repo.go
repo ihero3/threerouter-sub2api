@@ -35,6 +35,7 @@ type userRepository struct {
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 var _ service.RegistrationIPQuotaRepository = (*userRepository)(nil)
+var _ service.UserRiskReviewRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -1342,6 +1343,36 @@ func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, 
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, id, reason)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+// clearUserRiskReviewSQL 管理员复核放行：清空风险标记并把 status 恢复 active。
+// 抽成常量便于在无真库的单测里对 SQL 契约做断言（见 user_risk_review_sql_test.go）。
+const clearUserRiskReviewSQL = `
+	UPDATE users
+	SET risk_level = '',
+	    risk_reasons = '',
+	    risk_updated_at = NULL,
+	    status = 'active',
+	    updated_at = NOW()
+	WHERE id = $1 AND deleted_at IS NULL
+`
+
+// ClearUserRiskReview 清空用户的邀请注册风险标记并把 status 恢复 active。
+// 这是「风险标记只升不降」的唯一显式例外，仅由管理员人工复核放行调用
+// （adminServiceImpl.AdminReviewUserRisk），任何自动打标/扫描/解封链路都不得调用。
+func (r *userRepository) ClearUserRiskReview(ctx context.Context, userID int64) error {
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, clearUserRiskReviewSQL, userID)
 	if err != nil {
 		return err
 	}

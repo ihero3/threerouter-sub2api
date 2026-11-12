@@ -217,6 +217,16 @@ type UserRiskMarkRepository interface {
 	BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error
 }
 
+// UserRiskReviewRepository 是生产用户仓储为「管理员复核放行」提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现这一管理端专用方法。
+// 它是「风险标记只升不降」规则的唯一显式例外入口，仅由管理员人工动作调用
+// （见 adminServiceImpl.AdminReviewUserRisk）。
+type UserRiskReviewRepository interface {
+	// ClearUserRiskReview 清空 risk_level / risk_reasons / risk_updated_at，
+	// 并把 status 恢复 active；用户不存在时返回 ErrUserNotFound。
+	ClearUserRiskReview(ctx context.Context, userID int64) error
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 // RegistrationEmailDomainRepository 的窗口参数 since：

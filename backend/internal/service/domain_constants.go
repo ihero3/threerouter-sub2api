@@ -290,6 +290,10 @@ const (
 	SettingKeyRegistrationCaptchaMode = "registration_captcha_mode"
 	// 自建验证码难度：low | medium | high
 	SettingKeyRegistrationCaptchaDifficulty = "registration_captcha_difficulty"
+	// 机房 / 云厂商 ASN 或组织名清单（逗号分隔）。命中时把注册点击验证码难度升级为 high。
+	// 这是「提高对抗成本的弱信号」，不是强判定：不拦截注册、不自动标记 suspect/abnormal。
+	// 前端设置页契约：设置 key 固定为 registration_datacenter_asns，值为逗号分隔字符串。
+	SettingKeyRegistrationDatacenterASNs = "registration_datacenter_asns"
 	SettingKeyAffiliateRebateRate           = "affiliate_rebate_rate"            // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours    = "affiliate_rebate_freeze_hours"    // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays   = "affiliate_rebate_duration_days"   // 返利有效期（天，0=永久）
@@ -873,8 +877,11 @@ const (
 
 // 邀请注册风险标记（users.risk_level / risk_reasons）。
 //
-// 与上面的 IP 关联风控不同：这里**只标记、不拦截**，不改变登录/调用/返利任何行为，
-// 仅供管理端在用户列表展示并供运营人工研判。
+// 与上面的 IP 关联风控不同：这里按「人工复核」口径处理，
+//   - suspect  : 禁建 Key + 网关调用被拦，等管理员复核放行；
+//   - abnormal : 打标时同步 status=disabled，且禁止直接改回 active。
+//
+// 具体判定见 user_risk_access.go 的 RiskAccessBlocked；放行走 AdminReviewUserRisk。
 //   - 空串      : 无风险
 //   - suspect   : 存疑（命中弱特征，可能是真实推广者）
 //   - abnormal  : 异常（命中强特征，几乎确定是批量注册/链条农场）

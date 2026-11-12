@@ -504,6 +504,32 @@ func (h *UserHandler) SetTicketFlag(c *gin.Context) {
 	response.Success(c, gin.H{"user_id": userID, "ticket_flagged": req.Flagged})
 }
 
+// userRiskReviewer 是 admin 服务为「管理员复核放行」提供的可选能力。
+// 独立于 service.AdminService 主接口，避免无关测试桩被迫实现新方法。
+type userRiskReviewer interface {
+	AdminReviewUserRisk(ctx context.Context, userID int64) error
+}
+
+// ReviewRisk 管理员显式复核放行一个待复核账号：清空风险标记并恢复 active。
+// POST /api/v1/admin/users/:id/risk-review
+func (h *UserHandler) ReviewRisk(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	reviewer, ok := h.adminService.(userRiskReviewer)
+	if !ok {
+		response.Error(c, 503, "risk review service not available")
+		return
+	}
+	if err := reviewer.AdminReviewUserRisk(c.Request.Context(), userID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID, "status": service.StatusActive})
+}
+
 // GetUserAPIKeys handles getting user's API keys
 // GET /api/v1/admin/users/:id/api-keys
 func (h *UserHandler) GetUserAPIKeys(c *gin.Context) {

@@ -172,6 +172,13 @@ func apiKeyAuthWithSubscription(
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		// 邀请注册风险标记：suspect 待人工复核前不得调用，abnormal 是状态被意外
+		// 改回 active 时的双保险。用 403 而非 401，避免客户端误判 Key 失效而重试。
+		if apiKey.User.RiskAccessBlocked() {
+			MarkIngressRejected(c, IngressRejectUserRiskReview)
+			AbortWithError(c, 403, service.UserRiskAccessBlockedCode, service.UserRiskAccessBlockedMessage)
+			return
+		}
 		// IP 一致性风控：窗口内出现多个客户端 IP → 自动禁用并拒绝。
 		if !enforceUserIPConsistency(c, ipConsistency, apiKey.User.ID, apiKey.User.Role) {
 			return

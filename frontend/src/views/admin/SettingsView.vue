@@ -1770,6 +1770,24 @@
                   </option>
                 </select>
               </div>
+              <!-- Datacenter ASN list: bumps captcha difficulty for proxy/hosting IPs -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t("admin.settings.registration.datacenterAsns")
+                }}</label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.registration.datacenterAsnsHint") }}
+                </p>
+                <textarea
+                  v-model="form.registration_datacenter_asns"
+                  rows="2"
+                  class="mt-3 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+                  :placeholder="
+                    t('admin.settings.registration.datacenterAsnsPlaceholder')
+                  "
+                ></textarea>
+              </div>
+
               <!-- Exact Email Blacklist -->
               <RegistrationEmailBlacklistEditor />
 
@@ -10713,6 +10731,7 @@ const form = reactive<SettingsForm>({
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
+  registration_datacenter_asns: "",
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -12607,6 +12626,7 @@ async function saveSettings() {
         form.registration_click_captcha_enabled,
       registration_captcha_mode: form.registration_captcha_mode,
       registration_captcha_difficulty: form.registration_captcha_difficulty,
+      registration_datacenter_asns: form.registration_datacenter_asns,
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,

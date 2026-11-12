@@ -150,11 +150,72 @@ type ClickCaptchaChallengePayloadRef struct {
 type RegistrationClickCaptchaService struct {
 	cache      clickCaptchaCacheStore
 	settingSvc *SettingService
+	// asnRisk 是可选依赖：离线 ASN 机房 IP 判定服务。未注入时跳过判定（fail-open）。
+	asnRisk *ASNRiskService
 }
 
 // NewRegistrationClickCaptchaService 创建验证码服务。
 func NewRegistrationClickCaptchaService(cache clickCaptchaCacheStore, settingSvc *SettingService) *RegistrationClickCaptchaService {
 	return &RegistrationClickCaptchaService{cache: cache, settingSvc: settingSvc}
+}
+
+// SetASNRiskService 注入可选的 ASN 机房 IP 判定服务。保持构造函数签名不变，
+// 便于既有调用点与测试桩兼容；未注入 / 注入 nil 时难度升级逻辑直接跳过（fail-open）。
+func (s *RegistrationClickCaptchaService) SetASNRiskService(svc *ASNRiskService) {
+	if s == nil {
+		return
+	}
+	s.asnRisk = svc
+}
+
+// registrationClientIPContextKey 是 CreateChallenge 读取真实客户端 IP 的私有 context key。
+// 用可选 context value 而非改 CreateChallenge 签名，避免破坏其它调用点与测试桩。
+type registrationClientIPContextKey struct{}
+
+// WithClientIPForChallenge 把可信链解析出的真实客户端 IP 附加到 ctx，供 ASN 机房判定使用。
+// 这是可选通道：不附加时挑战按「无客户端 IP」处理，既有行为完全不变。
+func WithClientIPForChallenge(ctx context.Context, clientIP string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, registrationClientIPContextKey{}, strings.TrimSpace(clientIP))
+}
+
+func clientIPFromChallengeContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	ip, _ := ctx.Value(registrationClientIPContextKey{}).(string)
+	return strings.TrimSpace(ip)
+}
+
+// elevateCaptchaDifficulty 命中机房 IP 时把验证码难度「只升不降」到 high
+// （后台本就是 high 则保持），未命中时原样返回。机房 IP 只是弱信号：不拦截注册、
+// 不标记风险，仅提高一次人机验证的解题成本。
+func elevateCaptchaDifficulty(difficulty string, datacenter bool) string {
+	if !datacenter || difficulty == RegistrationCaptchaDifficultyHigh {
+		return difficulty
+	}
+	return RegistrationCaptchaDifficultyHigh
+}
+
+// isDatacenterIPForChallenge 综合 ASN 服务与后台清单判定本次挑战是否来自机房 IP。
+// 任何环节缺失 / 失败一律返回 false（fail-open）：未注入 ASN 服务、settingSvc 不可用、
+// ctx 未携带真实客户端 IP、设置项读取失败、ASN 查询失败、清单为空。
+func (s *RegistrationClickCaptchaService) isDatacenterIPForChallenge(ctx context.Context) bool {
+	if s == nil || s.asnRisk == nil || s.settingSvc == nil {
+		return false
+	}
+	clientIP := clientIPFromChallengeContext(ctx)
+	if clientIP == "" {
+		return false
+	}
+	configuredList, found := s.settingSvc.GetRegistrationDatacenterASNs(ctx)
+	if !found {
+		// settings 读取失败 / 设置项缺失按未命中处理，绝不因配置异常触发难度升级。
+		return false
+	}
+	return s.asnRisk.IsDatacenterIP(ctx, clientIP, configuredList)
 }
 
 const (
@@ -199,6 +260,8 @@ func (s *RegistrationClickCaptchaService) CreateChallenge(ctx context.Context, i
 		difficulty = s.settingSvc.GetRegistrationCaptchaDifficulty(ctx)
 	}
 	difficulty = normalizeRegistrationCaptchaDifficulty(difficulty)
+	// 机房 / 云厂商 IP：只把难度升级为 high（弱信号），不拦截注册。全链路 fail-open。
+	difficulty = elevateCaptchaDifficulty(difficulty, s.isDatacenterIPForChallenge(ctx))
 
 	resolved, err := s.resolveMode(mode)
 	if err != nil {

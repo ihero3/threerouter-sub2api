@@ -215,6 +215,10 @@ export default {
         captchaDifficultyLow: '低',
         captchaDifficultyMedium: '中（推荐）',
         captchaDifficultyHigh: '高',
+        datacenterAsns: '机房 ASN 清单',
+        datacenterAsnsHint:
+          '逗号分隔的 ASN 号或云厂商组织名片段（如 16509、amazon、14061、digitalocean）。注册 IP 命中时，点击验证码难度提升为高。匹配不区分大小写。留空使用内置默认清单。仅提升验证码难度，不会自动封禁或标记用户风险',
+        datacenterAsnsPlaceholder: '16509, amazon, 14061, digitalocean',
         emailBlacklist: {
           title: '邮箱黑名单（精确匹配）',
           hint: '禁止名单中的邮箱注册，或绑定为账号邮箱。按收件箱匹配：Gmail 地址里的点号、googlemail.com 域名，以及各邮箱的 + 后缀都视为同一邮箱。已注册的账号不受影响，可用「检查已注册用户」找出后禁用。名单在弹窗里单独保存，不受页面底部保存按钮影响。',

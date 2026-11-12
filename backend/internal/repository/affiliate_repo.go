@@ -2104,8 +2104,31 @@ WHERE u.id = ANY($1)`,
 	return signals, rows.Err()
 }
 
-// BumpUserRiskMarks 批量写入风险标记，语义为「只升不降」：
+// bumpUserRiskMarksSQL 批量写入风险标记，语义为「只升不降」：
 // 仅当新等级不低于当前等级时才覆盖，绝不会把已标记的用户改回正常。
+//
+// 打标即停用：v.level = 'abnormal' 时把 status 置为 disabled，suspect 保持原 status。
+// 管理员账号一律排除（WHERE 与 status CASE 两处都带 COALESCE(u.role,'') <> 'admin' 双保险）：
+// 批量扫描绝不能把管理员停掉，否则会造成无法登录后台的事故。排除后 admin 也不会被
+// 打上 abnormal 标记，避免其 status 被「禁止复活」保护长期锁死。
+//
+// 抽成包级常量便于在不依赖真库的情况下对 SQL 安全契约做单元测试。
+const bumpUserRiskMarksSQL = `
+UPDATE users u
+SET risk_level = v.level,
+    risk_reasons = v.reasons,
+    risk_updated_at = NOW(),
+    status = CASE
+        WHEN v.level = 'abnormal' AND COALESCE(u.role, '') <> 'admin' THEN 'disabled'
+        ELSE u.status
+    END
+FROM unnest($1::bigint[], $2::text[], $3::text[]) AS v(id, level, reasons)
+WHERE u.id = v.id
+  AND v.level <> ''
+  AND COALESCE(u.role, '') <> 'admin'
+  AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
+      >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`
+
 func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []service.UserRiskMark) (int, error) {
 	if len(marks) == 0 {
 		return 0, nil
@@ -2125,16 +2148,7 @@ func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []ser
 		return 0, nil
 	}
 	client := clientFromContext(ctx, r.client)
-	res, err := client.ExecContext(ctx, `
-UPDATE users u
-SET risk_level = v.level,
-    risk_reasons = v.reasons,
-    risk_updated_at = NOW()
-FROM unnest($1::bigint[], $2::text[], $3::text[]) AS v(id, level, reasons)
-WHERE u.id = v.id
-  AND v.level <> ''
-  AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
-      >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`,
+	res, err := client.ExecContext(ctx, bumpUserRiskMarksSQL,
 		pq.Array(ids), pq.Array(levels), pq.Array(reasons))
 	if err != nil {
 		return 0, fmt.Errorf("bump user risk marks: %w", err)

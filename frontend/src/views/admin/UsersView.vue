@@ -698,6 +698,16 @@
                 <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
               </button>
 
+              <!-- Manual Risk Review Approval (suspect / abnormal only) -->
+              <button
+                v-if="row.risk_level === 'suspect' || row.risk_level === 'abnormal'"
+                @click="handleRiskReview(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+              >
+                <Icon name="checkCircle" size="sm" />
+                <span class="text-xs">{{ t('admin.users.risk.review.action') }}</span>
+              </button>
+
               <!-- More Actions Menu Trigger -->
               <button
                 @click="openActionMenu(row, $event)"
@@ -830,6 +840,14 @@
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog
+      :show="showRiskReviewDialog"
+      :title="t('admin.users.risk.review.title')"
+      :message="t('admin.users.risk.review.confirm', { email: riskReviewUser?.email })"
+      :confirm-text="t('admin.users.risk.review.action')"
+      @confirm="confirmRiskReview"
+      @cancel="showRiskReviewDialog = false"
+    />
+    <ConfirmDialog
       :show="bulkDeleteIds.length > 0"
       :title="t('admin.users.bulkDelete.title')"
       :message="t('admin.users.bulkDelete.confirm', { count: bulkDeleteIds.length })"
@@ -868,6 +886,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import Icon from '@/components/icons/Icon.vue'
 import { useRouter } from 'vue-router'
 
@@ -1465,6 +1484,8 @@ const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
+const riskReviewUser = ref<AdminUser | null>(null)
+const showRiskReviewDialog = ref(false)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
 
@@ -1931,6 +1952,25 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  }
+}
+
+const handleRiskReview = (user: AdminUser) => {
+  riskReviewUser.value = user
+  showRiskReviewDialog.value = true
+}
+
+const confirmRiskReview = async () => {
+  if (!riskReviewUser.value) return
+  try {
+    await adminAPI.users.reviewUserRisk(riskReviewUser.value.id)
+    appStore.showSuccess(t('admin.users.risk.review.success'))
+    showRiskReviewDialog.value = false
+    riskReviewUser.value = null
+    loadUsers()
+  } catch (error: any) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.users.risk.review.failed')))
+    console.error('Error reviewing user risk:', error)
   }
 }
 

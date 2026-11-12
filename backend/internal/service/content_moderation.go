@@ -1549,6 +1549,13 @@ func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) 
 		}
 		return nil, fmt.Errorf("get content moderation unban user: %w", err)
 	}
+	// 风险复核冻结：abnormal 账号不允许通过内容风控解封链路复活，必须走
+	// 管理员 POST /:id/risk-review 人工复核。与 adminServiceImpl.UpdateUser 同源。
+	// 最小条件：只拦 abnormal，普通封禁用户的解封行为完全不变（既有测试不受影响）；
+	// 返回里用纯英语错误码/文案标注拒绝原因，调用方据此提示管理员先复核。
+	if user.RiskLevel == AffiliateRiskLevelAbnormal {
+		return nil, infraerrors.BadRequest(riskReviewRequiredCode, riskReviewRequiredMessage)
+	}
 	if user.Status != StatusActive {
 		user.Status = StatusActive
 		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {

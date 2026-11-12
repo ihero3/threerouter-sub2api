@@ -32,6 +32,7 @@ type SystemSettings struct {
 	RegistrationClickCaptchaEnabled     bool                     `json:"registration_click_captcha_enabled"` // 注册前顺序点击验证
 	RegistrationCaptchaMode             string                   `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider
 	RegistrationCaptchaDifficulty       string                   `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high
+	RegistrationDatacenterASNs          string                   `json:"registration_datacenter_asns"`       // 机房 / 云厂商 ASN 或组织名清单（逗号分隔，命中则验证码难度升为 high；弱信号）
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailSuffixBlacklist    []string                 `json:"registration_email_suffix_blacklist"`

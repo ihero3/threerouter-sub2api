@@ -32,13 +32,15 @@ func RegisterAuthRoutes(
 	auth.Use(gin.HandlerFunc(auditLog))
 	{
 		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）。
-		// 两个接口都挂 IP 限流：challenge 出题要生成位图（CPU 打点），verify 是
+		// 两个接口都挂限流：challenge 出题要生成位图（CPU 打点），verify 是
 		// 爆破题面答案的入口，不限流时机器人可以无限换题重试。
+		// 这里收紧阈值，并继续按可信客户端 IP 单一维度计数：同一 IP 下所有
+		// User-Agent 共享同一个桶，轮换 UA 无法打散计数、重新拿满额度。
 		if h.RegistrationClickCaptcha != nil {
-			auth.POST("/captcha/challenge", rateLimiter.LimitWithOptions("auth-captcha-challenge", 20, time.Minute, middleware.RateLimitOptions{
+			auth.POST("/captcha/challenge", rateLimiter.LimitWithOptions("auth-captcha-challenge", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 			}), h.RegistrationClickCaptcha.Challenge)
-			auth.POST("/captcha/verify", rateLimiter.LimitWithOptions("auth-captcha-verify", 30, time.Minute, middleware.RateLimitOptions{
+			auth.POST("/captcha/verify", rateLimiter.LimitWithOptions("auth-captcha-verify", 15, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 			}), h.RegistrationClickCaptcha.Verify)
 		}

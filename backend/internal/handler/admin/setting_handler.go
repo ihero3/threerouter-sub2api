@@ -137,6 +137,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RegistrationClickCaptchaEnabled:                        settings.RegistrationClickCaptchaEnabled,
 		RegistrationCaptchaMode:                                settings.RegistrationCaptchaMode,
 		RegistrationCaptchaDifficulty:                          settings.RegistrationCaptchaDifficulty,
+		RegistrationDatacenterASNs:                             settings.RegistrationDatacenterASNs,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailSuffixBlacklist:                       settings.RegistrationEmailSuffixBlacklist,

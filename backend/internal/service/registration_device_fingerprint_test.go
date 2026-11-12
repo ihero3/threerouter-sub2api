@@ -1,5 +1,3 @@
-//go:build unit
-
 package service
 
 import (
@@ -12,8 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// registrationDeviceFPStub 自包含桩（bare 层，无 //go:build unit）。
+// 同包里的 userRepoStub / newAuthService / settingRepoStub 都定义在 unit 标签
+// 文件里，bare 测试无法引用，因此这里嵌入 UserRepository 接口占位来满足
+// AuthService.userRepo 的静态类型：风控只通过可选接口断言调用下面两个方法，
+// 不触达 UserRepository 的其它方法，嵌入值可保持为 nil。
 type registrationDeviceFPStub struct {
-	*userRepoStub
+	UserRepository
 	count      int
 	countErr   error
 	countCalls int
@@ -34,10 +37,27 @@ func (s *registrationDeviceFPStub) RecordRegistrationDeviceFingerprint(_ context
 	return nil
 }
 
+// registrationDeviceFPSettingRepo 只实现 GetValue；其余方法由嵌入的
+// SettingRepository 接口占位，getCachedSettingValue 路径不会触达。
+type registrationDeviceFPSettingRepo struct {
+	SettingRepository
+	values map[string]string
+}
+
+func (r *registrationDeviceFPSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if v, ok := r.values[key]; ok {
+		return v, nil
+	}
+	return "", ErrSettingNotFound
+}
+
 func newDeviceFPService(settings map[string]string, stub *registrationDeviceFPStub) *AuthService {
-	svc := newAuthService(stub.userRepoStub, settings, nil, nil)
-	svc.userRepo = stub
-	return svc
+	return &AuthService{
+		userRepo: stub,
+		settingService: &SettingService{
+			settingRepo: &registrationDeviceFPSettingRepo{values: settings},
+		},
+	}
 }
 
 func TestNormalizeClientDeviceFingerprint(t *testing.T) {
@@ -90,17 +110,17 @@ func TestEnforceRegistrationDeviceFingerprint(t *testing.T) {
 	ctx := context.Background()
 	fp := "aabbccddeeff00112233445566778899"
 
-	t.Run("disabled by zero skips storage entirely", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, count: 999}
+	t.Run("disabled by zero allows even a missing client fingerprint", func(t *testing.T) {
+		stub := &registrationDeviceFPStub{count: 999}
 		svc := newDeviceFPService(map[string]string{
 			SettingKeyRegistrationDeviceFingerprintLimit: "0",
 		}, stub)
-		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, true))
-		require.Zero(t, stub.countCalls)
+		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, false))
+		require.Zero(t, stub.countCalls, "关闭时不应查询存储")
 	})
 
-	t.Run("rejects at limit", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, count: 3}
+	t.Run("client-reported rejects at the 3rd registration", func(t *testing.T) {
+		stub := &registrationDeviceFPStub{count: 3}
 		svc := newDeviceFPService(map[string]string{
 			SettingKeyRegistrationDeviceFingerprintLimit: "3",
 		}, stub)
@@ -108,32 +128,35 @@ func TestEnforceRegistrationDeviceFingerprint(t *testing.T) {
 	})
 
 	t.Run("allows below limit", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, count: 2}
+		stub := &registrationDeviceFPStub{count: 2}
 		svc := newDeviceFPService(map[string]string{
 			SettingKeyRegistrationDeviceFingerprintLimit: "3",
 		}, stub)
 		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, true))
 	})
 
-	t.Run("missing client fingerprint uses relaxed limit", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, count: 3}
+	// 收紧回归哨兵：缺失指纹不再享受放宽阈值，必须与正常指纹一样在第 3 次被拦截。
+	// 若把旧的 max(limit*10, 30) 下限放回去，count=3 会被放行，此用例应变红。
+	t.Run("missing client fingerprint uses the same limit", func(t *testing.T) {
+		stub := &registrationDeviceFPStub{count: 3}
 		svc := newDeviceFPService(map[string]string{
 			SettingKeyRegistrationDeviceFingerprintLimit: "3",
 		}, stub)
-		// 降级指纹阈值 = max(3*10, 30) = 30，避免只按 UA 聚合误伤。
-		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, false))
-		stub.count = 30
 		require.ErrorIs(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, false), ErrRegistrationDeviceFingerprintLimit)
+
+		stub.count = 2
+		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, false), "低于阈值时降级指纹同样放行")
 	})
 
+	// 设置缺失时回退默认 limit=3；计数查询失败必须 fail-open，即便无指纹也放行。
 	t.Run("count error fails open", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, countErr: errors.New("db down")}
+		stub := &registrationDeviceFPStub{countErr: errors.New("db down")}
 		svc := newDeviceFPService(map[string]string{}, stub)
-		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, true))
+		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, fp, false))
 	})
 
 	t.Run("empty fingerprint is not queried", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}, count: 999}
+		stub := &registrationDeviceFPStub{count: 999}
 		svc := newDeviceFPService(map[string]string{}, stub)
 		require.NoError(t, svc.EnforceRegistrationDeviceFingerprint(ctx, "", true))
 		require.Zero(t, stub.countCalls)
@@ -144,7 +167,7 @@ func TestRecordRegistrationDeviceFingerprint(t *testing.T) {
 	t.Parallel()
 
 	t.Run("records when enabled and fingerprint present", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}}
+		stub := &registrationDeviceFPStub{}
 		svc := newDeviceFPService(map[string]string{}, stub)
 		ctx := WithRegistrationDeviceFingerprint(context.Background(), "aabbccddeeff00112233445566778899")
 		svc.RecordRegistrationDeviceFingerprint(ctx, 42, "203.0.113.9")
@@ -152,14 +175,14 @@ func TestRecordRegistrationDeviceFingerprint(t *testing.T) {
 	})
 
 	t.Run("skips when no fingerprint in context", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}}
+		stub := &registrationDeviceFPStub{}
 		svc := newDeviceFPService(map[string]string{}, stub)
 		svc.RecordRegistrationDeviceFingerprint(context.Background(), 42, "203.0.113.9")
 		require.Empty(t, stub.records)
 	})
 
 	t.Run("skips when disabled", func(t *testing.T) {
-		stub := &registrationDeviceFPStub{userRepoStub: &userRepoStub{}}
+		stub := &registrationDeviceFPStub{}
 		svc := newDeviceFPService(map[string]string{
 			SettingKeyRegistrationDeviceFingerprintLimit: "0",
 		}, stub)

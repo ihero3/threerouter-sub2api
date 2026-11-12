@@ -28,6 +28,7 @@ type UpdateSettingsRequest struct {
 	RegistrationClickCaptchaEnabled     bool                         `json:"registration_click_captcha_enabled"` // 注册前顺序点击验证（省略=false）
 	RegistrationCaptchaMode             string                       `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider（省略=保持现值）
 	RegistrationCaptchaDifficulty       string                       `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high（省略=保持现值）
+	RegistrationDatacenterASNs          string                       `json:"registration_datacenter_asns"`       // 机房 / 云厂商 ASN 或组织名清单（逗号分隔，弱信号；省略=保持现值）
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailSuffixBlacklist    []string                     `json:"registration_email_suffix_blacklist"`
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
@@ -1604,6 +1605,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationClickCaptchaEnabled:     req.RegistrationClickCaptchaEnabled,
 		RegistrationCaptchaMode:             req.RegistrationCaptchaMode,
 		RegistrationCaptchaDifficulty:       req.RegistrationCaptchaDifficulty,
+		RegistrationDatacenterASNs:          req.RegistrationDatacenterASNs,
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailSuffixBlacklist:    req.RegistrationEmailSuffixBlacklist,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
@@ -2294,6 +2296,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationClickCaptchaEnabled:                        updatedSettings.RegistrationClickCaptchaEnabled,
 		RegistrationCaptchaMode:                                updatedSettings.RegistrationCaptchaMode,
 		RegistrationCaptchaDifficulty:                          updatedSettings.RegistrationCaptchaDifficulty,
+		RegistrationDatacenterASNs:                             updatedSettings.RegistrationDatacenterASNs,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailSuffixBlacklist:                       updatedSettings.RegistrationEmailSuffixBlacklist,

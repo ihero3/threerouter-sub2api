@@ -187,7 +187,7 @@ type AffiliateRepository interface {
 	// MarkAffiliateGuardEventReviewed 将 pending 事件置为 status；仅当仍为 pending 时生效，返回是否更新。
 	MarkAffiliateGuardEventReviewed(ctx context.Context, id int64, status string, reviewedBy int64, rewardAmount float64) (bool, error)
 
-	// 管理端：邀请注册风险标记（只标记，不拦截业务）
+	// 管理端：邀请注册风险标记（打标后会拦截建 Key 与网关调用，见 User.RiskAccessBlocked）
 	// CollectAffiliateRiskSignals 批量聚合指定用户的邀请风险信号（上溯/下溯深度、24h 邀请数、密码复用等）。
 	CollectAffiliateRiskSignals(ctx context.Context, userIDs []int64) ([]AffiliateRiskSignal, error)
 	// BumpUserRiskMarks 写入风险标记，语义为「只升不降」：新等级不低于当前等级时才更新。

@@ -113,6 +113,12 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
 		}
+		// 与标准网关保持同一口径：待复核账号不放行，文案纯英语。
+		if apiKey.User.RiskAccessBlocked() {
+			MarkIngressRejected(c, IngressRejectUserRiskReview)
+			abortWithGoogleError(c, 403, service.UserRiskAccessBlockedMessage)
+			return
+		}
 		if code, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 			if code == "GROUP_DELETED" {

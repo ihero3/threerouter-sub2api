@@ -445,6 +445,8 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
 		users.POST("/:id/looked", h.Admin.User.IncrementLooked)
 		users.PUT("/:id/ticket-flag", h.Admin.User.SetTicketFlag)
+		// 管理员复核放行待复核账号（给前端的固定契约，勿改名）。
+		users.POST("/:id/risk-review", h.Admin.User.ReviewRisk)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)

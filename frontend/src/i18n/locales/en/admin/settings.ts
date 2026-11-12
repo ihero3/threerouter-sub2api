@@ -215,6 +215,10 @@ export default {
         captchaDifficultyLow: 'Low',
         captchaDifficultyMedium: 'Medium (recommended)',
         captchaDifficultyHigh: 'High',
+        datacenterAsns: 'Datacenter ASN List',
+        datacenterAsnsHint:
+          'Comma-separated ASN numbers or cloud-provider org name fragments (for example, 16509, amazon, 14061, digitalocean). When a registration IP matches, the click captcha difficulty is raised to high. Matching is case-insensitive. Leave empty to use the built-in default list. This only raises captcha difficulty and never auto-bans or flags the user as risky',
+        datacenterAsnsPlaceholder: '16509, amazon, 14061, digitalocean',
         emailBlacklist: {
           title: 'Email Blacklist (Exact Match)',
           hint: 'Listed addresses cannot register or be bound as an account email. Matching is per inbox: dots in Gmail addresses, the googlemail.com domain and +suffixes are treated as the same address. Existing accounts are not affected; use Check Registered Users to find and disable them. The list is saved from its own dialog, independent of the Save button at the bottom of this page.',
