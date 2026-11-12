@@ -107,6 +107,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // pluginManager
 		nil, // videoWorker
 		nil, // mediaWorker
+		nil, // teamAggregation
 	)
 
 	require.NotPanics(t, func() {

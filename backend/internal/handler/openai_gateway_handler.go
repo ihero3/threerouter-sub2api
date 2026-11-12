@@ -3729,17 +3729,21 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 				respCode = *rule.ResponseCode
 			}
 
-			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
-			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
-			}
-
 			if rule.SkipMonitoring {
 				c.Set(service.OpsSkipPassthroughKey, true)
 			}
 
-			h.handleStreamingAwareError(c, respCode, "upstream_error", msg, streamStarted)
+			// 命中透传规则只改写状态码；message 一律来自平台统一文案或管理员
+			// 自定义文案，上游原文只进 OpsUpstreamErrorEvent 留档（与
+			// gateway_handler.go:handleFailoverExhausted 同口径）。
+			upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+			service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+			_, platformErrType, platformErrMsg := service.MapUpstreamErrorToClient(statusCode)
+			if rule.CustomMessage != nil && *rule.CustomMessage != "" {
+				platformErrMsg = *rule.CustomMessage
+			}
+
+			h.handleStreamingAwareError(c, respCode, platformErrType, platformErrMsg, streamStarted)
 			return
 		}
 	}

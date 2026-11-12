@@ -20,6 +20,9 @@ func TestFailoverStatusSetsAreConsistentAcrossVendors(t *testing.T) {
 	openAI := &OpenAIGatewayService{}
 	gemini := &GeminiMessagesCompatService{}
 	antigravity := &AntigravityGatewayService{}
+	// 第 4 份表：通用 Claude/Anthropic/Bedrock 网关 GatewayService。
+	// 444abee89 只补齐了上面三家，这份当时漏了 405，导致 405 不换号直接回错。
+	legacyGateway := &GatewayService{}
 
 	statuses := []int{
 		http.StatusUnauthorized,        // 401
@@ -41,6 +44,8 @@ func TestFailoverStatusSetsAreConsistentAcrossVendors(t *testing.T) {
 			"Gemini 与 OpenAI 口径不一致: status=%d", status)
 		require.Equal(t, want, antigravity.shouldFailoverUpstreamError(status),
 			"Antigravity 与 OpenAI 口径不一致: status=%d", status)
+		require.Equal(t, want, legacyGateway.shouldFailoverUpstreamError(status),
+			"GatewayService(Claude/Anthropic/Bedrock) 与 OpenAI 口径不一致: status=%d", status)
 	}
 }
 

@@ -322,6 +322,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	moderationRuleService := service.ProvideModerationRuleService(moderationRuleRepository, contentModerationService)
 	userComplianceProfileRepository := repository.NewUserComplianceProfileRepository(db)
 	userComplianceProfileService := service.NewUserComplianceProfileService(userComplianceProfileRepository)
+	// 纯副作用 provider：返回值无人依赖，Wire 生成时会省略，必须手工保留，
+	// 否则用户合规画像（ZDR 写 usage_logs / 按用户规则过滤）静默不生效。
+	service.ProvideUserComplianceProfileHook(userComplianceProfileService, gatewayService, contentModerationService)
 	complianceMappingService := service.ProvideComplianceMappingService(userJurisdictionMappingRepository, moderationRuleService, userComplianceProfileService)
 	complianceCredentialRepository := repository.NewComplianceCredentialRepository(db)
 	complianceCredentialService := service.NewComplianceCredentialService(complianceCredentialRepository, complianceService)
@@ -383,6 +386,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	consumerService := service.NewConsumerService(consumerRepository)
 	consumerHandler := handler.NewConsumerHandler(consumerService)
 	teamAnalyticsRepository := repository.ProvideTeamAnalyticsRepository(client, db)
+	// 纯副作用 provider：Start() 在内部拉起 1 分钟一次的团队/部门/消费方/模型
+	// 每日聚合，漏装配会让团队分析页面永远没有数据。
+	teamAggregationService := service.ProvideTeamAggregationService(teamAnalyticsRepository, timingWheelService, leaderLockCache, db)
 	teamAnalyticsService := service.NewTeamAnalyticsService(teamAnalyticsRepository)
 	teamAnalyticsHandler := handler.NewTeamAnalyticsHandler(teamAnalyticsService)
 	modelPlazaService := service.NewModelPlazaService(channelRepository, groupRepository, pricingService, billingService, modelPricingResolver)
@@ -435,7 +441,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -531,6 +537,7 @@ func provideCleanup(
 	pluginManager *service.PluginManager,
 	videoWorker *service.VideoWorker,
 	mediaWorker *service.MediaWorker,
+	teamAggregation *service.TeamAggregationService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -569,6 +576,12 @@ func provideCleanup(
 			{"MediaWorker", func() error {
 				if mediaWorker != nil {
 					mediaWorker.Stop()
+				}
+				return nil
+			}},
+			{"TeamAggregationService", func() error {
+				if teamAggregation != nil {
+					teamAggregation.Stop()
 				}
 				return nil
 			}},

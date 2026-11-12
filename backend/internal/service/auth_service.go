@@ -897,8 +897,8 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 				// snapshot user × platform quota（fail-open）
-			_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-			s.bindOAuthAffiliate(ctx, user.ID, affiliateCode, registerIP)
+				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+				s.bindOAuthAffiliate(ctx, user.ID, affiliateCode, registerIP)
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -1915,8 +1915,10 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return ErrServiceUnavailable
 	}
 
-	// Verify and consume the reset token (one-time use)
-	if err := s.emailService.ConsumePasswordResetToken(ctx, email, token); err != nil {
+	// 先用非破坏性的 Verify 校验 token，并把所有确定性失败分支（查用户、账号状态、
+	// 密码哈希）放在消费之前。旧实现先原子 DEL 再校验，DB 抖动或账号停用都会白耗
+	// 用户唯一的重置链接，重发还受 30s 冷却与每日发信额度限制。
+	if err := s.emailService.VerifyPasswordResetToken(ctx, email, token); err != nil {
 		return err
 	}
 
@@ -1939,6 +1941,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	hashedPassword, err := s.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
+	}
+
+	// 一次性 token 仍必须在改密前原子消费（Lua GET+DEL）防并发重放，
+	// 紧贴 Update 以把「消费成功但改密失败」的窗口缩到最小。
+	if err := s.emailService.ConsumePasswordResetToken(ctx, email, token); err != nil {
+		return err
 	}
 
 	// Update password and increment TokenVersion
