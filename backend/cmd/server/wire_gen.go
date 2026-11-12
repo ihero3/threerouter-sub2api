@@ -211,6 +211,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
 	adminService := service.NewAdminService(configConfig, userRepository, adminGroupRepository, adminAccountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, userRPMCache, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory, openAIGatewayService, affiliateService, compositeModelRouteRepository, compositeRouteResolver, channelService)
+	// IP 一致性「减额度」处罚：adminService 在 ipConsistencyService 之后才构造，
+	// 因此用 setter 后注入（同一个指针，前面引用它的 AuthService / 鉴权中间件都会看到）。
+	// 注意：本文件不能用 go generate 重生成，改装配必须手工同步（既有 provider 缺失）。
+	ipConsistencyPenaltyService := service.NewIPConsistencyPenaltyService(adminService, emailService)
+	ipConsistencyPenaltyLocker := service.ProvideIPConsistencyPenaltyLocker(ipConsistencyCache)
+	ipConsistencyService.SetPenaltyService(ipConsistencyPenaltyService, ipConsistencyPenaltyLocker)
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
 	groupHandler := admin.NewGroupHandlerWithConfig(adminService, dashboardService, groupCapacityService, configConfig)

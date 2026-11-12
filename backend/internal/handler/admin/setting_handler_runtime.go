@@ -381,19 +381,27 @@ func (h *SettingHandler) GetIPConsistencySettings(c *gin.Context) {
 	}
 
 	response.Success(c, dto.IPConsistencySettings{
-		Enabled:          settings.Enabled,
-		WindowSeconds:    settings.WindowSeconds,
-		WhitelistUserIDs: settings.WhitelistUserIDs,
-		WhitelistIPs:     settings.WhitelistIPs,
+		Enabled:               settings.Enabled,
+		WindowSeconds:         settings.WindowSeconds,
+		WhitelistUserIDs:      settings.WhitelistUserIDs,
+		WhitelistIPs:          settings.WhitelistIPs,
+		SchemaVersion:         settings.SchemaVersion,
+		BalancePenaltyEnabled: settings.BalancePenaltyEnabled,
+		BalancePenaltyFloor:   settings.BalancePenaltyFloor,
+		PenaltyNotifyEmail:    settings.PenaltyNotifyEmail,
 	})
 }
 
 // UpdateIPConsistencySettingsRequest 更新 IP 一致性风控配置请求
 type UpdateIPConsistencySettingsRequest struct {
-	Enabled          bool     `json:"enabled"`
-	WindowSeconds    int      `json:"window_seconds"`
-	WhitelistUserIDs []int64  `json:"whitelist_user_ids"`
-	WhitelistIPs     []string `json:"whitelist_ips"`
+	Enabled               bool     `json:"enabled"`
+	WindowSeconds         int      `json:"window_seconds"`
+	WhitelistUserIDs      []int64  `json:"whitelist_user_ids"`
+	WhitelistIPs          []string `json:"whitelist_ips"`
+	SchemaVersion         int      `json:"schema_version"`
+	BalancePenaltyEnabled bool     `json:"balance_penalty_enabled"`
+	BalancePenaltyFloor   float64  `json:"balance_penalty_floor"`
+	PenaltyNotifyEmail    bool     `json:"penalty_notify_email"`
 }
 
 // UpdateIPConsistencySettings 更新 IP 一致性风控配置
@@ -406,10 +414,14 @@ func (h *SettingHandler) UpdateIPConsistencySettings(c *gin.Context) {
 	}
 
 	settings := &service.IPConsistencySettings{
-		Enabled:          req.Enabled,
-		WindowSeconds:    req.WindowSeconds,
-		WhitelistUserIDs: req.WhitelistUserIDs,
-		WhitelistIPs:     req.WhitelistIPs,
+		Enabled:               req.Enabled,
+		WindowSeconds:         req.WindowSeconds,
+		WhitelistUserIDs:      req.WhitelistUserIDs,
+		WhitelistIPs:          req.WhitelistIPs,
+		SchemaVersion:         req.SchemaVersion,
+		BalancePenaltyEnabled: req.BalancePenaltyEnabled,
+		BalancePenaltyFloor:   req.BalancePenaltyFloor,
+		PenaltyNotifyEmail:    req.PenaltyNotifyEmail,
 	}
 
 	if err := h.settingService.SetIPConsistencySettings(c.Request.Context(), settings); err != nil {
@@ -424,10 +436,14 @@ func (h *SettingHandler) UpdateIPConsistencySettings(c *gin.Context) {
 	}
 
 	response.Success(c, dto.IPConsistencySettings{
-		Enabled:          updatedSettings.Enabled,
-		WindowSeconds:    updatedSettings.WindowSeconds,
-		WhitelistUserIDs: updatedSettings.WhitelistUserIDs,
-		WhitelistIPs:     updatedSettings.WhitelistIPs,
+		Enabled:               updatedSettings.Enabled,
+		WindowSeconds:         updatedSettings.WindowSeconds,
+		WhitelistUserIDs:      updatedSettings.WhitelistUserIDs,
+		WhitelistIPs:          updatedSettings.WhitelistIPs,
+		SchemaVersion:         updatedSettings.SchemaVersion,
+		BalancePenaltyEnabled: updatedSettings.BalancePenaltyEnabled,
+		BalancePenaltyFloor:   updatedSettings.BalancePenaltyFloor,
+		PenaltyNotifyEmail:    updatedSettings.PenaltyNotifyEmail,
 	})
 }
 

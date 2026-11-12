@@ -2588,6 +2588,75 @@
                   <Toggle v-model="ipConsistencyForm.enabled" />
                 </div>
 
+                <!-- 功能B 与功能A 相互独立：即使关掉功能A，减额度处罚仍可单独配置 -->
+                <div
+                  class="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                >
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.ipConsistency.penaltyEnabled")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          t("admin.settings.ipConsistency.penaltyEnabledHint")
+                        }}
+                      </p>
+                    </div>
+                    <Toggle
+                      v-model="ipConsistencyForm.balance_penalty_enabled"
+                    />
+                  </div>
+
+                  <div
+                    v-if="ipConsistencyForm.balance_penalty_enabled"
+                    class="space-y-4"
+                  >
+                    <div>
+                      <label
+                        class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        {{ t("admin.settings.ipConsistency.penaltyFloor") }}
+                      </label>
+                      <input
+                        v-model.number="ipConsistencyForm.balance_penalty_floor"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        class="input w-full"
+                      />
+                      <p
+                        class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        {{ t("admin.settings.ipConsistency.penaltyFloorHint") }}
+                      </p>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <label
+                          class="font-medium text-gray-900 dark:text-white"
+                          >{{
+                            t(
+                              "admin.settings.ipConsistency.penaltyNotifyEmail",
+                            )
+                          }}</label
+                        >
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{
+                            t(
+                              "admin.settings.ipConsistency.penaltyNotifyEmailHint",
+                            )
+                          }}
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="ipConsistencyForm.penalty_notify_email"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div
                   v-if="ipConsistencyForm.enabled"
                   class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -10172,8 +10241,12 @@ const securityIPBlacklistText = ref("");
 const ipConsistencyLoading = ref(true);
 const ipConsistencySaving = ref(false);
 const ipConsistencyForm = reactive({
-  enabled: false,
+  enabled: true,
   window_seconds: 600,
+  schema_version: 2,
+  balance_penalty_enabled: true,
+  balance_penalty_floor: 0.03,
+  penalty_notify_email: true,
 });
 // 白名单用文本域编辑（每行一个 IP/CIDR 或用户 ID）。
 const ipConsistencyWhitelistIPsText = ref("");
@@ -13521,6 +13594,14 @@ async function loadIPConsistencySettings() {
     ipConsistencyWhitelistUserIDsText.value = (
       settings.whitelist_user_ids || []
     ).join("\n");
+    // 旧后端不返回 v2 字段时按「功能开启」兜底，与服务端 v1→v2 迁移口径一致。
+    ipConsistencyForm.schema_version = settings.schema_version || 2;
+    ipConsistencyForm.balance_penalty_enabled =
+      settings.balance_penalty_enabled ?? true;
+    ipConsistencyForm.balance_penalty_floor =
+      settings.balance_penalty_floor || 0.03;
+    ipConsistencyForm.penalty_notify_email =
+      settings.penalty_notify_email ?? true;
   } catch (_error: unknown) {
     // Silent fail - settings will use defaults
   } finally {
@@ -13544,9 +13625,20 @@ async function saveIPConsistencySettings() {
       window_seconds: ipConsistencyForm.window_seconds,
       whitelist_ips,
       whitelist_user_ids,
+      schema_version: 2,
+      balance_penalty_enabled: ipConsistencyForm.balance_penalty_enabled,
+      balance_penalty_floor: ipConsistencyForm.balance_penalty_floor,
+      penalty_notify_email: ipConsistencyForm.penalty_notify_email,
     });
     ipConsistencyForm.enabled = updated.enabled;
     ipConsistencyForm.window_seconds = updated.window_seconds || 600;
+    ipConsistencyForm.schema_version = updated.schema_version || 2;
+    ipConsistencyForm.balance_penalty_enabled =
+      updated.balance_penalty_enabled ?? true;
+    ipConsistencyForm.balance_penalty_floor =
+      updated.balance_penalty_floor || 0.03;
+    ipConsistencyForm.penalty_notify_email =
+      updated.penalty_notify_email ?? true;
     ipConsistencyWhitelistIPsText.value = (updated.whitelist_ips || []).join(
       "\n",
     );

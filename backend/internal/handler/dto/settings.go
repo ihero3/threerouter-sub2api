@@ -544,6 +544,11 @@ type IPConsistencySettings struct {
 	WhitelistUserIDs []int64 `json:"whitelist_user_ids"`
 	// WhitelistIPs 豁免的 IP/CIDR 列表
 	WhitelistIPs []string `json:"whitelist_ips"`
+	// v2：功能B（IP 异常减额度处罚）配置
+	SchemaVersion         int     `json:"schema_version"`
+	BalancePenaltyEnabled bool    `json:"balance_penalty_enabled"`
+	BalancePenaltyFloor   float64 `json:"balance_penalty_floor"`
+	PenaltyNotifyEmail    bool    `json:"penalty_notify_email"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

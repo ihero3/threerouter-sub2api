@@ -293,7 +293,7 @@ const (
 	// 机房 / 云厂商 ASN 或组织名清单（逗号分隔）。命中时把注册点击验证码难度升级为 high。
 	// 这是「提高对抗成本的弱信号」，不是强判定：不拦截注册、不自动标记 suspect/abnormal。
 	// 前端设置页契约：设置 key 固定为 registration_datacenter_asns，值为逗号分隔字符串。
-	SettingKeyRegistrationDatacenterASNs = "registration_datacenter_asns"
+	SettingKeyRegistrationDatacenterASNs    = "registration_datacenter_asns"
 	SettingKeyAffiliateRebateRate           = "affiliate_rebate_rate"            // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours    = "affiliate_rebate_freeze_hours"    // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays   = "affiliate_rebate_duration_days"   // 返利有效期（天，0=永久）
@@ -891,6 +891,12 @@ const (
 	AffiliateRiskLevelNone     = ""
 	AffiliateRiskLevelSuspect  = "suspect"
 	AffiliateRiskLevelAbnormal = "abnormal"
+
+	// AffiliateRiskLevelIPSuspect IP 一致性风控的「IP 可疑」轻标记。
+	// 与 suspect 的区别：suspect 是邀请注册风险待复核，会禁建 Key + 网关 403；
+	// ip_suspect 只在管理端用户列表展示，不参与 RiskAccessBlocked()，账号照常可用。
+	// 处罚由「余额降到 floor + 调账备注 + 通知邮件」承担，避免误伤真实用户。
+	AffiliateRiskLevelIPSuspect = "ip_suspect"
 
 	// 规则 1：邀请爆发——邀请人 24h 内邀请数量超阈值。
 	AffiliateRiskReasonInviteBurst24h = "invite_burst_24h"

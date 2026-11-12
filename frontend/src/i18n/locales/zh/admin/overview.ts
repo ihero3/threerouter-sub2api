@@ -632,7 +632,8 @@ export default {
         level: {
           all: '全部',
           suspect: '账号存疑',
-          abnormal: '账号异常'
+          abnormal: '账号异常',
+          ip_suspect: 'IP 可疑（未冻结）'
         },
         reasons: {
           invite_burst_24h: '24 小时内邀请过于密集',
@@ -641,7 +642,8 @@ export default {
           random_local_part: '邮箱账号随机生成',
           email_alias_stuffing: '邮箱点号别名填充（同一 Gmail 派生多个账号）',
           shared_password: '多个账号使用相同密码',
-          chain_contagion: '关联链路中存在异常账号'
+          chain_contagion: '关联链路中存在异常账号',
+          ip_inconsistent: '监控窗口内出现多个客户端 IP'
         },
         tooltipFallback: '账号存在风险，请人工核查',
         review: {

@@ -1201,6 +1201,39 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 	return change, nil
 }
 
+// reduceBalanceToFloorSQL 原子地把余额降到 floor，仅当当前余额严格高于 floor 时命中。
+//
+// 这是 IP 一致性「减额度」处罚的幂等核心：条件写在 WHERE 里由数据库行锁保证，
+// 并发的多个处罚请求只有一个会真正扣减；余额已 ≤ floor 时 0 行、不反向充值、
+// 不写流水、不重复发邮件。RETURNING 旧值/新值供上层写调账流水。
+const reduceBalanceToFloorSQL = `
+		UPDATE users AS u
+		SET balance = $1, updated_at = NOW()
+		FROM (SELECT id, balance FROM users WHERE id = $2 AND deleted_at IS NULL) AS prev
+		WHERE u.id = prev.id AND u.deleted_at IS NULL AND prev.balance > $1
+		RETURNING prev.balance, u.balance
+	`
+
+// ReduceBalanceToFloor 把用户余额降到 floor（仅在余额更高时），返回变更前后的值。
+// 0 行时用 currentBalance 区分「用户不存在」与「余额已达标」，后者返回 Old==New。
+func (r *userRepository) ReduceBalanceToFloor(ctx context.Context, id int64, floor float64) (service.BalanceChange, error) {
+	if floor < 0 {
+		return service.BalanceChange{}, fmt.Errorf("invalid balance floor: %f", floor)
+	}
+	change, ok, err := scanBalanceChange(ctx, clientFromContext(ctx, r.client), reduceBalanceToFloorSQL, floor, id)
+	if err != nil {
+		return service.BalanceChange{}, err
+	}
+	if ok {
+		return change, nil
+	}
+	current, err := r.currentBalance(ctx, id)
+	if err != nil {
+		return service.BalanceChange{}, err
+	}
+	return service.BalanceChange{Old: current, New: current}, nil
+}
+
 // currentBalance 读取用户当前余额，用户不存在时返回 ErrUserNotFound。
 func (r *userRepository) currentBalance(ctx context.Context, id int64) (balance float64, err error) {
 	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
@@ -1331,10 +1364,17 @@ func (r *userRepository) SetTicketFlag(ctx context.Context, id int64, flagged bo
 // BumpIPInconsistencyMark 给用户打「窗口内 IP 不一致」可疑标记（IP 一致性风控）。
 // risk_level 只升不降：abnormal 保持 abnormal，否则置 suspect；
 // reason 幂等追加进 risk_reasons（逗号分隔，已存在则不重复）。
-func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error {
-	const updateSQL = `
+// bumpIPInconsistencyMarkSQL IP 一致性风控的轻标记写入。
+//
+// 刻意写 ip_suspect 而非 suspect：suspect 会触发上一轮的待复核冻结闸门
+// （禁建 Key + 网关 403），用在「3 个 IP」这一档会比「≥4 个 IP 才禁用」更严厉。
+// 已经是 suspect/abnormal（真实冻结态）的账号保持不变，绝不降级。
+const bumpIPInconsistencyMarkSQL = `
 		UPDATE users
-		SET risk_level = CASE WHEN COALESCE(risk_level, '') = 'abnormal' THEN 'abnormal' ELSE 'suspect' END,
+		SET risk_level = CASE
+		        WHEN COALESCE(risk_level, '') IN ('abnormal', 'suspect') THEN risk_level
+		        ELSE 'ip_suspect'
+		    END,
 		    risk_reasons = CASE
 		        WHEN $2 = '' OR position($2 in COALESCE(risk_reasons, '')) > 0 THEN COALESCE(risk_reasons, '')
 		        ELSE COALESCE(risk_reasons, '') || ',' || $2
@@ -1342,7 +1382,9 @@ func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, 
 		    risk_updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 	`
-	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, updateSQL, id, reason)
+
+func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error {
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, bumpIPInconsistencyMarkSQL, id, reason)
 	if err != nil {
 		return err
 	}

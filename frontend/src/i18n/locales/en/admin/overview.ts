@@ -632,7 +632,8 @@ export default {
         level: {
           all: 'All',
           suspect: 'Suspect',
-          abnormal: 'Abnormal'
+          abnormal: 'Abnormal',
+          ip_suspect: 'IP suspicious (not blocked)'
         },
         reasons: {
           invite_burst_24h: 'Invite burst within 24 hours',
@@ -641,7 +642,8 @@ export default {
           random_local_part: 'Randomized email local part',
           email_alias_stuffing: 'Email dot-alias stuffing (one Gmail, many accounts)',
           shared_password: 'Shared password across accounts',
-          chain_contagion: 'Linked to abnormal accounts'
+          chain_contagion: 'Linked to abnormal accounts',
+          ip_inconsistent: 'Multiple client IPs within the monitoring window'
         },
         tooltipFallback: 'Account risk detected, please review manually',
         review: {

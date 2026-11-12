@@ -97,7 +97,7 @@ func TestIPConsistency_SingleIPAllowed(t *testing.T) {
 	}
 }
 
-func TestIPConsistency_TwoIPsMarksSuspicious(t *testing.T) {
+func TestIPConsistency_TwoIPsNoAction(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
 	updater := &fakeUserStatusUpdater{}
 	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
@@ -108,24 +108,43 @@ func TestIPConsistency_TwoIPsMarksSuspicious(t *testing.T) {
 	if updater.userID != 0 || updater.status != "" {
 		t.Fatalf("user should not be disabled with two ips, got %d/%s", updater.userID, updater.status)
 	}
-	if updater.markedUserID != 42 || updater.markReason != ipInconsistencyReason {
-		t.Fatalf("expected user 42 marked suspicious, got %d/%q", updater.markedUserID, updater.markReason)
+	if updater.markedUserID != 0 {
+		t.Fatalf("two ips must not tag the user, got %d/%q", updater.markedUserID, updater.markReason)
 	}
 	if cache.clearedKey != "" {
-		t.Fatalf("window should be kept for suspicious users, cleared %q", cache.clearedKey)
+		t.Fatalf("window should be kept, cleared %q", cache.clearedKey)
 	}
 }
 
-func TestIPConsistency_ThreeIPsDisableUser(t *testing.T) {
+func TestIPConsistency_ThreeIPsMarksSuspicious(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
 	updater := &fakeUserStatusUpdater{}
 	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3")
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
+		t.Fatalf("three ips must not block the request, got %+v", got)
+	}
+	if updater.status != "" {
+		t.Fatalf("three ips must not disable the account, got %q", updater.status)
+	}
+	if updater.markedUserID != 42 || updater.markReason != ipInconsistencyReason {
+		t.Fatalf("expected user 42 marked ip-suspect, got %d/%q", updater.markedUserID, updater.markReason)
+	}
+	if cache.clearedKey != "" {
+		t.Fatalf("window must be kept at 3 ips so the 4th ip can still be detected, cleared %q", cache.clearedKey)
+	}
+}
+
+func TestIPConsistency_FourIPsDisableUser(t *testing.T) {
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
+	updater := &fakeUserStatusUpdater{}
+	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+
+	violation := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
 	if violation == nil {
 		t.Fatal("expected a violation")
 	}
-	if violation.UserID != 42 || violation.CurrentIP != "3.3.3.3" {
+	if violation.UserID != 42 || violation.CurrentIP != "4.4.4.4" {
 		t.Fatalf("unexpected violation: %+v", violation)
 	}
 	if updater.userID != 42 || updater.status != StatusDisabled {

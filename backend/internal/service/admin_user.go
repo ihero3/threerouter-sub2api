@@ -772,6 +772,55 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	return user, nil
 }
 
+// balanceFloorReducer 是 userRepository 提供的可选原子能力。
+// 刻意用窄接口 + 类型断言，不往 UserRepository 大接口加方法，避免所有测试桩被迫实现。
+type balanceFloorReducer interface {
+	ReduceBalanceToFloor(ctx context.Context, id int64, floor float64) (BalanceChange, error)
+}
+
+// ApplyIPBalancePenalty IP 一致性风控的「减额度」处罚：把余额原子降到 floor，
+// 并按 notes 写调账流水（与后台「- 退款」完全同款，前端显示「余额扣除（管理员）」）。
+//
+// 幂等：条件 UPDATE 只在 balance > floor 时命中；余额已达标时 Old==New，
+// applyBalanceWithAdjustmentRecord 跳过流水，返回 applied=false，调用方据此不发信。
+// 返回用户邮箱供通知邮件使用；取邮箱失败只记日志，不算处罚失败（否则会释放幂等锁，
+// 而余额和流水其实已经落库了）。
+func (s *adminServiceImpl) ApplyIPBalancePenalty(ctx context.Context, userID int64, floor float64, notes string) (string, bool, error) {
+	reducer, ok := s.userRepo.(balanceFloorReducer)
+	if !ok {
+		return "", false, fmt.Errorf("balance floor reducer unavailable")
+	}
+	change, err := s.applyBalanceWithAdjustmentRecord(ctx, userID, notes, func(applyCtx context.Context) (BalanceChange, error) {
+		return reducer.ReduceBalanceToFloor(applyCtx, userID, floor)
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if change.New == change.Old {
+		return "", false, nil
+	}
+
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s.billingCacheService != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, userID); err != nil {
+				logger.LegacyPrintf("service.admin", "invalidate user balance cache failed after ip penalty: user_id=%d err=%v", userID, err)
+			}
+		}()
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "ip penalty applied but failed to load user email: user_id=%d err=%v", userID, err)
+		return "", true, nil
+	}
+	return user.Email, true, nil
+}
+
 // applyBalanceWithAdjustmentRecord 在单个事务内完成余额变更与调账流水写入，
 // 避免出现“余额已变、流水丢失”的对账缺口。entClient 未注入时（如单测）退化为顺序执行。
 func (s *adminServiceImpl) applyBalanceWithAdjustmentRecord(ctx context.Context, userID int64, notes string, apply func(context.Context) (BalanceChange, error)) (BalanceChange, error) {

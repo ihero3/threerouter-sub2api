@@ -68,3 +68,27 @@ func (c *IPConsistencyCacheImpl) Clear(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// 编译期确认：IP 窗口缓存同时提供处罚幂等锁，供 service 层通过类型断言拿到。
+var _ service.IPConsistencyPenaltyLocker = (*IPConsistencyCacheImpl)(nil)
+
+// TryClaimPenalty 用 SETNX 抢占「本冷却期内唯一一次处罚」的执行权。
+// 值为领取时间，便于事后排查；TTL 由调用方按冷却期给出。
+func (c *IPConsistencyCacheImpl) TryClaimPenalty(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	if c == nil || c.rdb == nil || key == "" {
+		return false, fmt.Errorf("ip consistency penalty lock not configured")
+	}
+	if ttl <= 0 {
+		return false, fmt.Errorf("invalid ip consistency penalty lock ttl: %s", ttl)
+	}
+	return c.rdb.SetNX(ctx, key, time.Now().UTC().Format(time.RFC3339), ttl).Result()
+}
+
+// ReleasePenalty 释放处罚锁。仅在余额/流水写入失败时调用，让后续请求能重试；
+// 邮件失败不释放（余额已扣，释放会导致重复处罚）。
+func (c *IPConsistencyCacheImpl) ReleasePenalty(ctx context.Context, key string) error {
+	if c == nil || c.rdb == nil || key == "" {
+		return fmt.Errorf("ip consistency penalty lock not configured")
+	}
+	return c.rdb.Del(ctx, key).Err()
+}

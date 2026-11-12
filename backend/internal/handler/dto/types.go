@@ -57,8 +57,9 @@ type AdminUser struct {
 	// RestrictPublicGroups 为 true 时，该用户仅可使用 allowed_groups 中列出的
 	// 公开分组。这是管理侧的权限开关，不下发给用户自身的接口。
 	RestrictPublicGroups bool `json:"restrict_public_groups"`
-	// RiskLevel / RiskReasons 为邀请注册风险标记：
-	// 空串 = 正常；suspect = 存疑（待复核，禁建 Key + 拦网关）；abnormal = 异常（自动停用）。
+	// RiskLevel / RiskReasons 为风险标记：
+	// 空串 = 正常；suspect = 存疑（待复核，禁建 Key + 拦网关）；abnormal = 异常（自动停用）；
+	// ip_suspect = IP 一致性风控的轻标记（只在管理端展示，不冻结账号）。
 	// RiskReasons 为逗号分隔的原因 key。
 	RiskLevel   string `json:"risk_level"`
 	RiskReasons string `json:"risk_reasons"`

@@ -1524,11 +1524,13 @@ export async function updateSecurityIPBlacklistSettings(
 /**
  * IP 一致性风控配置。
  *
- * 同一账号在滚动窗口（默认 600 秒 / 10 分钟）内出现两个及以上不同客户端 IP，
- * 判定为账号共享/盗用并自动禁用账号（Status=disabled，管理员可手动解封）。
- * 覆盖注册、登录、控制台与模型网关调用。
+ * 滚动窗口（默认 600 秒 / 10 分钟）内按不同客户端 IP 数量分两档处罚：
+ *   - 恰好 3 个：打「IP 可疑」轻标记 + 把余额降到 floor + 写调账备注 + 通知邮件；
+ *   - ≥4 个：禁用账号（Status=disabled，管理员可手动解封）。
+ * 功能A（标记/禁用）与功能B（减额度）是两个独立开关。
  */
 export interface IPConsistencySettings {
+  /** 功能A：3 IP 轻标记 + ≥4 IP 禁用 */
   enabled: boolean;
   /** 滚动窗口秒数，60 ~ 86400 */
   window_seconds: number;
@@ -1536,6 +1538,14 @@ export interface IPConsistencySettings {
   whitelist_user_ids: number[];
   /** 豁免 IP / CIDR 列表 */
   whitelist_ips: string[];
+  /** 配置结构版本；存量 v1 在读取时迁移到 v2 默认值 */
+  schema_version: number;
+  /** 功能B：≥3 IP 把余额降到 floor + 写备注 + 发通知邮件 */
+  balance_penalty_enabled: boolean;
+  /** 处罚后保留的余额（美元，默认 0.03；只在余额高于它时扣减） */
+  balance_penalty_floor: number;
+  /** 处罚确实扣到钱时是否发通知邮件 */
+  penalty_notify_email: boolean;
 }
 
 export async function getIPConsistencySettings(): Promise<IPConsistencySettings> {
