@@ -359,7 +359,13 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 // Advanced settings
 // =========================
 
+// opsAdvancedSettingsSchemaVersion 当前 Ops 高级设置结构版本。
+// v2：余额不足错误过滤默认开启，存量 v1 配置（含显式 false）在读取路径一次性迁移。
+const opsAdvancedSettingsSchemaVersion = 2
+
 func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
+	// 余额不足错误量极大，会淹没真正需要排查的错误，默认开启过滤。
+	// 管理员可在 OPS 高级设置里手动关闭（写入 v2 后不再被迁移覆盖）。
 	return &OpsAdvancedSettings{
 		DataRetention: OpsDataRetentionSettings{
 			// Keep the DB-backed default aligned with ops.cleanup.enabled so a
@@ -378,7 +384,8 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		IgnoreContextCanceled:           true,  // Default to true - client disconnects are not errors
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
 		IgnoreInvalidApiKeyErrors:       true,  // Legacy compatibility field; admission rejects are always excluded.
-		IgnoreInsufficientBalanceErrors: false, // 默认不忽略，余额不足可能需要关注
+		IgnoreInsufficientBalanceErrors: true,
+		SchemaVersion:                   opsAdvancedSettingsSchemaVersion,
 		DisplayOpenAITokenStats:         false,
 		DisplayAlertEvents:              true,
 		AutoRefreshEnabled:              false,
@@ -392,6 +399,20 @@ func defaultOpsAdvancedSettingsForConfig(cfg *config.Config) *OpsAdvancedSetting
 		defaults.DataRetention.CleanupEnabled = cfg.Ops.Cleanup.Enabled
 	}
 	return defaults
+}
+
+// migrateOpsAdvancedSettings 只在读取路径（RefreshRuntimeSettings）调用，
+// 把存量 v1 配置一次性迁移到 v2：余额不足错误过滤改为默认开启。
+//
+// 刻意不在 normalizeOpsAdvancedSettings 里做：那个函数同时被写入路径调用，
+// 若在那里强制置 true，管理员在后台显式关闭后一保存就会被改回去（与
+// IP 一致性 v2 迁移踩过的坑相同）。写入路径先打 v2 版本号，之后不再迁移。
+func migrateOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
+	if cfg == nil || cfg.SchemaVersion >= opsAdvancedSettingsSchemaVersion {
+		return
+	}
+	cfg.IgnoreInsufficientBalanceErrors = true
+	cfg.SchemaVersion = opsAdvancedSettingsSchemaVersion
 }
 
 func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
@@ -488,6 +509,9 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 		return nil, err
 	}
 
+	// 写入路径先打当前版本号：不参与 v1 迁移，管理员显式关闭后不会被
+	// 读取路径再次重置为 true。
+	cfg.SchemaVersion = opsAdvancedSettingsSchemaVersion
 	normalizeOpsAdvancedSettings(cfg)
 	raw, err := json.Marshal(cfg)
 	if err != nil {

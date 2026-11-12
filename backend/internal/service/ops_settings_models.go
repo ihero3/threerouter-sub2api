@@ -99,6 +99,8 @@ type OpsAlertRuntimeSettings struct {
 }
 
 // OpsAdvancedSettings stores advanced ops configuration (data retention, aggregation).
+// SchemaVersion（v2）用于一次性迁移存量配置：余额不足错误过滤默认开启，
+// 存量 v1（字段缺失/0）在读取路径迁移为 true，避免新默认值被 DB 旧值覆盖。
 type OpsAdvancedSettings struct {
 	DataRetention               OpsDataRetentionSettings               `json:"data_retention"`
 	Aggregation                 OpsAggregationSettings                 `json:"aggregation"`
@@ -109,6 +111,7 @@ type OpsAdvancedSettings struct {
 	// Deprecated compatibility field. It is always normalized to true.
 	IgnoreInvalidApiKeyErrors       bool `json:"ignore_invalid_api_key_errors"`
 	IgnoreInsufficientBalanceErrors bool `json:"ignore_insufficient_balance_errors"`
+	SchemaVersion                   int  `json:"schema_version"`
 	DisplayOpenAITokenStats         bool `json:"display_openai_token_stats"`
 	DisplayAlertEvents              bool `json:"display_alert_events"`
 	AutoRefreshEnabled              bool `json:"auto_refresh_enabled"`

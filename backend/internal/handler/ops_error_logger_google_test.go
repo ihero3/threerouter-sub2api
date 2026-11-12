@@ -10,20 +10,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// recordGoogleFormatOpsError 让 handle 以 Google 错误格式回写错误，返回 ops 中间件记录的错误日志。
-func recordGoogleFormatOpsError(t *testing.T, handle gin.HandlerFunc) *service.OpsInsertErrorLogInput {
+// recordGoogleFormatOpsErrorWithOps 让 handle 以 Google 错误格式回写错误，
+// 返回落库条目与入队数量，便于验证「被过滤时不落库」的场景。
+func recordGoogleFormatOpsErrorWithOps(t *testing.T, handle gin.HandlerFunc, ops *service.OpsService) (*service.OpsInsertErrorLogInput, int64) {
 	t.Helper()
 	setupOpsErrorLogTestQueue(t, 1)
 	gin.SetMode(gin.TestMode)
-	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
 	router.Use(OpsErrorLoggerMiddleware(ops))
 	router.POST("/v1beta/cachedContents", handle)
 
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1beta/cachedContents", nil))
 
-	require.Equal(t, int64(1), OpsErrorLogQueueLength())
-	return (<-opsErrorLogQueue).entry
+	queued := OpsErrorLogQueueLength()
+	if queued == 0 {
+		return nil, queued
+	}
+	return (<-opsErrorLogQueue).entry, queued
+}
+
+// recordGoogleFormatOpsError 让 handle 以 Google 错误格式回写错误，返回 ops 中间件记录的错误日志。
+func recordGoogleFormatOpsError(t *testing.T, handle gin.HandlerFunc) *service.OpsInsertErrorLogInput {
+	t.Helper()
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	entry, queued := recordGoogleFormatOpsErrorWithOps(t, handle, ops)
+	require.Equal(t, int64(1), queued)
+	return entry
 }
 
 func TestOpsErrorLoggerMiddleware_GoogleClientErrorsClassifiedAsClient(t *testing.T) {
@@ -71,14 +83,32 @@ func TestOpsErrorLoggerMiddleware_GoogleServerErrorsNotTypedByStatus(t *testing.
 }
 
 func TestOpsErrorLoggerMiddleware_GoogleBillingErrorMatchesClaudeFormat(t *testing.T) {
-	entry := recordGoogleFormatOpsError(t, func(c *gin.Context) {
+	// 余额不足错误默认被「忽略 Insufficient 错误」开关过滤，不写错误日志；
+	// 分类口径改在开关关闭时验证，保证 Google 格式仍与 Claude 格式一致。
+	handle := func(c *gin.Context) {
 		status, code, message, _ := billingErrorDetails(service.ErrInsufficientBalance)
 		googleErrorWithType(c, status, code, "", message)
+	}
+
+	t.Run("filtered by default", func(t *testing.T) {
+		ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, queued := recordGoogleFormatOpsErrorWithOps(t, handle, ops)
+		require.Zero(t, queued, "默认开启过滤时余额不足错误不写错误日志")
 	})
-	require.Equal(t, "billing_error", entry.ErrorType)
-	require.Equal(t, "request", entry.ErrorPhase)
-	require.Equal(t, "client", entry.ErrorOwner)
-	require.True(t, entry.IsBusinessLimited)
+
+	t.Run("classification when filter disabled", func(t *testing.T) {
+		// 必须带 schema_version=2，否则读取路径会把存量配置迁移成默认开启。
+		ops := service.NewOpsService(nil, &opsAdvancedSettingsRepoStub{
+			advanced: `{"ignore_insufficient_balance_errors":false,"schema_version":2}`,
+		}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		require.False(t, ops.OpsAdvancedSettingsSnapshot().IgnoreInsufficientBalanceErrors)
+		entry, queued := recordGoogleFormatOpsErrorWithOps(t, handle, ops)
+		require.Equal(t, int64(1), queued)
+		require.Equal(t, "billing_error", entry.ErrorType)
+		require.Equal(t, "request", entry.ErrorPhase)
+		require.Equal(t, "client", entry.ErrorOwner)
+		require.True(t, entry.IsBusinessLimited)
+	})
 }
 
 func TestOpsErrorLoggerMiddleware_GoogleConcurrencyErrorClassifiedAsRequest(t *testing.T) {

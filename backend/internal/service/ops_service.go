@@ -210,11 +210,18 @@ func (s *OpsService) RefreshRuntimeSettings(ctx context.Context) error {
 	}
 	advanced := defaultOpsAdvancedSettingsForConfig(s.cfg)
 	if raw, ok := values[SettingKeyOpsAdvancedSettings]; ok {
+		// 存量 v1 配置不含 schema_version。json.Unmarshal 不会覆盖缺失字段，
+		// 若直接反序列化到带默认 v2 的结构体，会继承版本号 2，
+		// 让 migrateOpsAdvancedSettings 误判为已迁移、跳过存量显式 false。
+		advanced.SchemaVersion = 0
 		if err := json.Unmarshal([]byte(raw), advanced); err != nil {
 			advanced = defaultOpsAdvancedSettingsForConfig(s.cfg)
 		}
 	}
 	normalizeOpsAdvancedSettings(advanced)
+	// 存量 v1 配置（含显式 false）一次性迁移为「余额不足错误默认过滤」，
+	// 只影响内存快照，不回写 DB；管理员保存一次后写入 v2，此后尊重其选择。
+	migrateOpsAdvancedSettings(advanced)
 
 	s.runtimeSettings.Store(&opsRuntimeSettingsSnapshot{monitoringEnabled: monitoringEnabled, advanced: *advanced})
 	if s.systemLogSink != nil {
