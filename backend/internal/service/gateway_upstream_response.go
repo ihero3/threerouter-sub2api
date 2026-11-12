@@ -638,7 +638,10 @@ func recordFailoverOpsError(account *Account, statusCode int, upstreamMsg string
 		detail := sanitizeUpstreamErrorMessage(truncateString(string(upstreamBody), 2000))
 		entry.UpstreamErrorDetail = &detail
 	}
-	_ = rec.RecordError(context.Background(), entry)
+	// 异步落库：脱离请求热路径，并发受 OpsService.errEnqueueSem 限制，饱和则丢弃，
+	// 不再同步写 ops_error_logs（此前同步写库在 shouldFailover 扩到高频 429/403/404 后
+	// 耗尽 DB 连接池，导致 /admin/users 等页面变慢）。
+	rec.EnqueueError(entry)
 }
 
 func maybeDisableAccountOnFailover(

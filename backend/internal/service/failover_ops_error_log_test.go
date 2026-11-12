@@ -21,6 +21,15 @@ func (s *failoverOpsErrorRecorderStub) RecordError(_ context.Context, entry *Ops
 	return nil
 }
 
+// EnqueueError 在测试替身中同步实现，保证 recordFailoverOpsError 切换为异步 EnqueueError
+// 后，既有用例对 stub.calls/stub.lastEntry 的同步断言依然成立。
+func (s *failoverOpsErrorRecorderStub) EnqueueError(entry *OpsInsertErrorLogInput) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	s.lastEntry = entry
+}
+
 // withFailoverOpsRecorder 把 stub 注入进程级单例 failoverOpsErrorRecorder，返回清空函数。
 // 必须在测试结束/其他用例前恢复，避免跨用例污染（recordFailoverOpsError 仅对 5xx 生效，
 // 但单例是包级共享状态，必须妥善复位）。
@@ -166,6 +175,35 @@ func TestMaybeDisableAccountOnFailover_403ModelNotFound_SkipsDisableButLogs(t *t
 	}
 	if repo.tempCalled {
 		t.Errorf("expected no relay temp-cooldown for non-relay account on 403 model-not-found")
+	}
+}
+
+// TestMaybeDisableAccountOnFailover_403TokenRouting_SkipsDisableButLogs 验证「模型 + 可用性否定信号」
+// 启发式（fix B）：上游 403 返回"模型 X 不在令牌路由规则中"应跳过账号停用（避免误杀健康账号），
+// 但仍要写一条 Ops 错误日志。这是 #66 deepseek-v4-flash 触发的具体措辞。
+func TestMaybeDisableAccountOnFailover_403TokenRouting_SkipsDisableButLogs(t *testing.T) {
+	stub := &failoverOpsErrorRecorderStub{}
+	defer withFailoverOpsRecorder(stub)()
+
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 13, Status: StatusActive, Schedulable: true, Platform: "openai"}}
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, 403, nil, alwaysFailover,
+		"模型 deepseek-v4-flash 不在令牌路由规则中",
+		[]byte(`{"error":"模型 deepseek-v4-flash 不在令牌路由规则中"}`))
+
+	// A：仍记录 Ops 错误日志。
+	if stub.calls != 1 {
+		t.Fatalf("expected 1 Ops error log for 403 token-routing, got %d", stub.calls)
+	}
+	if stub.lastEntry == nil || stub.lastEntry.UpstreamStatusCode == nil || *stub.lastEntry.UpstreamStatusCode != 403 {
+		t.Errorf("expected Ops error log for 403, got %+v", stub.lastEntry)
+	}
+	// B：不应永久停用健康账号（这是模型路由/可用性问题，非账号失效）。
+	if repo.updated != nil {
+		t.Errorf("expected no account update (skip disable) for 403 token-routing, got %v", repo.updated)
+	}
+	if repo.tempCalled {
+		t.Errorf("expected no relay temp-cooldown for non-relay account on 403 token-routing")
 	}
 }
 

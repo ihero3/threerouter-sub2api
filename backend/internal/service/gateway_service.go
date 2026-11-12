@@ -815,6 +815,8 @@ type GatewayService struct {
 // opsErrorRecorder 是记录 Ops 错误日志的窄接口，*OpsService 满足它。
 type opsErrorRecorder interface {
 	RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error
+	// EnqueueError 异步落库（热路径用，避免同步写库压垮 DB 连接池）。
+	EnqueueError(entry *OpsInsertErrorLogInput)
 }
 
 // failoverOpsErrorRecorder 进程内单例，由 GatewayService.SetOpsErrorRecorder 在启动时注入

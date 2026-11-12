@@ -31,10 +31,43 @@ func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
 		return false
 	}
 	normalized := normalizeModelNotFoundBody(body)
-	if normalized == "" || (!strings.Contains(normalized, "model") && !strings.Contains(normalized, "模型")) {
+	if normalized == "" {
 		return false
 	}
-	return containsModelNotFoundKeyword(normalized)
+	// 必须明确是关于「模型」的错误，避免把「账号不存在」「服务不可用」误判为模型级。
+	if !strings.Contains(normalized, "model") && !strings.Contains(normalized, "模型") {
+		return false
+	}
+	// 命中既有精确关键词，或命中「模型 + 可用性否定信号」的更宽启发式，
+	// 以覆盖上游各种新措辞（如「模型 X 不在令牌路由规则中」「模型 X 不可用」）。
+	// 两者都受上面的 model 门控约束：只有正文明确提及模型时才生效，不会把纯账号级错误
+	// （不含「模型/model」）误判为模型级，从而避免漏停用真正故障账号；方向是保守地「不误杀」。
+	return containsModelNotFoundKeyword(normalized) || containsModelAvailabilityNegation(normalized)
+}
+
+// modelAvailabilityNegationTokens 是「模型 + 可用性否定信号」启发式的否定词表。
+// 仅当正文已含「模型/model」时才参与判定（gate 在 isUpstreamModelNotFoundError），
+// 用于覆盖上游各种「该模型不可用/未配置/不在路由中」的新措辞，避免逐条补关键词的打地鼠
+// （本仓库已先后遇到「不存在或暂时不可用」「不在令牌路由规则中」两种中文代理措辞）。
+// 方向是保守的：宁可把「模型级错误」判对（跳过账号停用、改为 (账号,模型) 冷却），也不误杀健康账号。
+var modelAvailabilityNegationTokens = []string{
+	"不在",   // 不在令牌路由规则中 / 不在允许列表（本次 #66 deepseek-v4-flash 触发）
+	"未",     // 未开通 / 未配置 / 未授权（模型相关）
+	"不可用", // 模型不可用（覆盖「暂时不可用」之外的变体）
+	"not ",   // not found / not supported / not enabled / not available / not in
+	"no ",    // no available account
+}
+
+func containsModelAvailabilityNegation(normalizedBody string) bool {
+	if normalizedBody == "" {
+		return false
+	}
+	for _, token := range modelAvailabilityNegationTokens {
+		if strings.Contains(normalizedBody, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func isModelNotFoundError(statusCode int, body []byte) bool {

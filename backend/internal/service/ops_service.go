@@ -28,6 +28,12 @@ const (
 	opsRuntimeSettingsRefreshJitter   = 20
 	opsRuntimeSettingsRefreshTimeout  = 3 * time.Second
 	opsRuntimeSettingsFailureLogEvery = time.Minute
+
+	// failoverOpsErrorMaxInflight 限制 failover 等热路径错误日志的并发落库数，
+	// 避免同步写库压垮 DB 连接池（此前 recordFailoverOpsError 同步 RecordError，
+	// 在 shouldFailover 扩到高频 429/403/404 后把请求热路径的 DB 连接耗尽，导致
+	// /admin/users 等页面变慢）。饱和时丢弃该条日志（best-effort），绝不阻塞请求。
+	failoverOpsErrorMaxInflight = 16
 )
 
 type opsRuntimeSettingsSnapshot struct {
@@ -84,6 +90,9 @@ type OpsService struct {
 	runtimeRefreshSuccess        atomic.Uint64
 	runtimeRefreshFailure        atomic.Uint64
 	runtimeRefreshLastFailureLog atomic.Int64
+
+	// errEnqueueSem 限制热路径（failover 等）错误日志的并发落库数，详见 EnqueueError。
+	errEnqueueSem chan struct{}
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -138,6 +147,7 @@ func NewOpsService(
 		antigravityGatewayService: antigravityGatewayService,
 		systemLogSink:             systemLogSink,
 	}
+	svc.errEnqueueSem = make(chan struct{}, failoverOpsErrorMaxInflight)
 	svc.initRuntimeSettings(context.Background())
 	svc.applyRuntimeLogConfigOnStartup(context.Background())
 	return svc
@@ -430,6 +440,35 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 		return err
 	}
 	return nil
+}
+
+// EnqueueError 异步、尽力而为地把错误日志落库，用于请求热路径（如 failover 上游错误记录），
+// 避免同步写库压垮 DB 连接池导致页面变慢（见 recordFailoverOpsError 的回归）。
+//
+// 行为要点：
+//   - 脱离请求上下文（context.Background + 独立超时），请求取消不连带中断落库；
+//   - 并发落库数受 errEnqueueSem 限制（failoverOpsErrorMaxInflight），饱和时静默丢弃该条，
+//     绝不阻塞请求热路径，也绝不回传错误到调用方；
+//   - 失败仅记日志，不重试（Ops 日志是 best-effort 可观测性，不能因日志写失败影响主流程）。
+func (s *OpsService) EnqueueError(entry *OpsInsertErrorLogInput) {
+	if entry == nil {
+		return
+	}
+	select {
+	case s.errEnqueueSem <- struct{}{}:
+	default:
+		// 并发落库已满：丢弃，绝不在热路径阻塞。
+		log.Printf("[Ops] EnqueueError dropped: in-flight limit reached")
+		return
+	}
+	go func() {
+		defer func() { <-s.errEnqueueSem }()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := s.RecordError(ctx, entry); err != nil {
+			log.Printf("[Ops] EnqueueError RecordError failed: %v", err)
+		}
+	}()
 }
 
 func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertErrorLogInput) error {
