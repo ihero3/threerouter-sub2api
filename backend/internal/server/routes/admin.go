@@ -756,6 +756,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 		// 全站 IP 黑名单配置（注册/登录/网关统一生效）
 		adminSettings.GET("/security-ip-blacklist", h.Admin.Setting.GetSecurityIPBlacklist)
 		adminSettings.PUT("/security-ip-blacklist", h.Admin.Setting.UpdateSecurityIPBlacklist)
+		adminSettings.GET("/security-country-blocklist", h.Admin.Setting.GetSecurityCountryBlocklist)
+		adminSettings.PUT("/security-country-blocklist", h.Admin.Setting.UpdateSecurityCountryBlocklist)
 		// IP 一致性风控（注册/登录/控制台/网关统一生效）
 		adminSettings.GET("/ip-consistency", h.Admin.Setting.GetIPConsistencySettings)
 		adminSettings.PUT("/ip-consistency", h.Admin.Setting.UpdateIPConsistencySettings)

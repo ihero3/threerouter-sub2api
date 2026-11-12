@@ -49,6 +49,12 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// GeoIPAvailability 报告 GeoIP 国家/地区数据库是否就绪。
+// 仅供系统设置页展示状态提示，避免 handler 直接依赖 MaxMind reader。
+type GeoIPAvailability interface {
+	Available() bool
+}
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService           *service.SettingService
@@ -62,6 +68,7 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	geoIPStatus              GeoIPAvailability
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -87,6 +94,12 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 // changing the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.AliyunCaptchaService) {
 	h.aliyunCaptchaService = aliyunCaptchaService
+}
+
+// SetGeoIPStatus attaches the GeoIP readiness reporter shown on the country
+// blocklist settings card. Optional dependency: nil means "not ready".
+func (h *SettingHandler) SetGeoIPStatus(geoIP GeoIPAvailability) {
+	h.geoIPStatus = geoIP
 }
 
 // SetStepUpDeps attaches the services backing the step-up switch preconditions

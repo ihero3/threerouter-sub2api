@@ -332,6 +332,20 @@ export default {
         saved: '全站 IP 黑名单已保存',
         saveFailed: '保存全站 IP 黑名单失败'
       },
+      securityCountryBlocklist: {
+        title: '国家 / 地区封禁',
+        description: '按客户端 IP 归属国家/地区拦截面板与模型网关入站请求，依赖 GeoLite2-Country 数据库，命中即 403。',
+        exemptNote: '管理端接口（/api/v1/admin）、支付回调、静态前端与健康检查豁免，避免管理员自锁。请保持「信任转发 IP」关闭，否则用于判定的客户端 IP 可被伪造。',
+        geoipReady: 'GeoIP 数据库已就绪，国家/地区解析生效中。',
+        geoipNotReady: 'GeoIP 数据库未就绪：此时跳过解析并放行全部请求（fail-open）。请开启 compliance.geoip、放置有效的 GeoLite2-Country .mmdb 文件后重启服务。',
+        enabled: '启用国家 / 地区封禁',
+        enabledHint: '开启后命中名单的地区无法注册、登录和调用任何模型 API；关闭时名单保留但不拦截。',
+        countries: '封禁的国家 / 地区代码',
+        countriesPlaceholder: '每行一个 ISO 3166-1 alpha-2 代码，例如：\nCN\nUS\nDE',
+        countriesHint: '两位字母代码，不区分大小写（CN、US、DE...）。GeoLite2 对 CN、HK、MO、TW 分别返回不同代码，需要一并限制请分别填写。保存后立即生效（缓存最多 60 秒）。',
+        saved: '国家 / 地区封禁已保存',
+        saveFailed: '保存国家 / 地区封禁失败'
+      },
       ipConsistency: {
         title: 'IP 一致性风控',
         description: '滚动窗口内两个独立功能：出现 3 个不同客户端 IP 时打「IP 可疑」轻标记，并把余额降到设定值、写调账备注、发通知邮件；出现 4 个及以上 IP 时禁用账号。',

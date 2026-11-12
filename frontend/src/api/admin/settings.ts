@@ -1519,6 +1519,36 @@ export async function updateSecurityIPBlacklistSettings(
   return data;
 }
 
+// ==================== Security Country / Region Blocklist ====================
+
+/**
+ * Site-wide country / region blocklist settings.
+ * Requires the GeoLite2-Country database (compliance.geoip). When the database
+ * is unavailable enforcement fails open. geoip_ready is read-only status.
+ */
+export interface SecurityCountryBlocklistSettings {
+  enabled: boolean;
+  countries: string[];
+  geoip_ready: boolean;
+}
+
+export async function getSecurityCountryBlocklistSettings(): Promise<SecurityCountryBlocklistSettings> {
+  const { data } = await apiClient.get<SecurityCountryBlocklistSettings>(
+    "/admin/settings/security-country-blocklist",
+  );
+  return data;
+}
+
+export async function updateSecurityCountryBlocklistSettings(
+  settings: Pick<SecurityCountryBlocklistSettings, "enabled" | "countries">,
+): Promise<SecurityCountryBlocklistSettings> {
+  const { data } = await apiClient.put<SecurityCountryBlocklistSettings>(
+    "/admin/settings/security-country-blocklist",
+    settings,
+  );
+  return data;
+}
+
 // ==================== IP Consistency Settings ====================
 
 /**
@@ -1800,6 +1830,8 @@ export const settingsAPI = {
   updateGatewayIPRateLimitSettings,
   getSecurityIPBlacklistSettings,
   updateSecurityIPBlacklistSettings,
+  getSecurityCountryBlocklistSettings,
+  updateSecurityCountryBlocklistSettings,
   getIPConsistencySettings,
   updateIPConsistencySettings,
   getStreamTimeoutSettings,

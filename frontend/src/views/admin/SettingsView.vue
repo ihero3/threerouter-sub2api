@@ -2542,6 +2542,167 @@
             </div>
           </div>
 
+          <!-- 全站国家/地区封禁 Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="ban"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.securityCountryBlocklist.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.securityCountryBlocklist.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="securityCountryBlocklistLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- GeoIP 就绪状态：未就绪时封禁自动 fail-open，必须显著提示 -->
+                <div
+                  :class="
+                    securityCountryBlocklistForm.geoip_ready
+                      ? 'rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/20'
+                      : 'rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20'
+                  "
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0"
+                      :class="
+                        securityCountryBlocklistForm.geoip_ready
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      "
+                    />
+                    <p
+                      class="ml-3 text-sm"
+                      :class="
+                        securityCountryBlocklistForm.geoip_ready
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-amber-700 dark:text-amber-300'
+                      "
+                    >
+                      {{
+                        securityCountryBlocklistForm.geoip_ready
+                          ? t("admin.settings.securityCountryBlocklist.geoipReady")
+                          : t("admin.settings.securityCountryBlocklist.geoipNotReady")
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 豁免说明：与全站 IP 黑名单一致 -->
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.securityCountryBlocklist.exemptNote") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.securityCountryBlocklist.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityCountryBlocklist.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="securityCountryBlocklistForm.enabled" />
+                </div>
+
+                <div
+                  v-if="securityCountryBlocklistForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.securityCountryBlocklist.countries") }}
+                    </label>
+                    <textarea
+                      v-model="securityCountryBlocklistText"
+                      data-testid="security-country-blocklist"
+                      rows="6"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.securityCountryBlocklist.countriesPlaceholder')
+                      "
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityCountryBlocklist.countriesHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="security-country-blocklist-save"
+                    @click="saveSecurityCountryBlocklistSettings"
+                    :disabled="securityCountryBlocklistSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="securityCountryBlocklistSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      securityCountryBlocklistSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
@@ -10237,6 +10398,16 @@ const securityIPBlacklistForm = reactive({
 // 命中即在注册/登录/网关入口统一 403；管理端与支付回调豁免。
 const securityIPBlacklistText = ref("");
 
+// 全站国家/地区封禁状态（GeoLite2-Country；未就绪时后端 fail-open）
+const securityCountryBlocklistLoading = ref(true);
+const securityCountryBlocklistSaving = ref(false);
+const securityCountryBlocklistForm = reactive({
+  enabled: false,
+  geoip_ready: false,
+});
+// 名单用文本域编辑（每行一个 ISO 3166-1 alpha-2 代码），保存时拆分为数组。
+const securityCountryBlocklistText = ref("");
+
 // IP 一致性风控状态
 const ipConsistencyLoading = ref(true);
 const ipConsistencySaving = ref(false);
@@ -13581,6 +13752,50 @@ async function saveSecurityIPBlacklistSettings() {
   }
 }
 
+// 全站国家/地区封禁方法
+async function loadSecurityCountryBlocklistSettings() {
+  securityCountryBlocklistLoading.value = true;
+  try {
+    const settings =
+      await adminAPI.settings.getSecurityCountryBlocklistSettings();
+    securityCountryBlocklistForm.enabled = settings.enabled;
+    securityCountryBlocklistForm.geoip_ready = settings.geoip_ready;
+    securityCountryBlocklistText.value = (settings.countries || []).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    securityCountryBlocklistLoading.value = false;
+  }
+}
+
+async function saveSecurityCountryBlocklistSettings() {
+  securityCountryBlocklistSaving.value = true;
+  try {
+    const countries = securityCountryBlocklistText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const updated =
+      await adminAPI.settings.updateSecurityCountryBlocklistSettings({
+        enabled: securityCountryBlocklistForm.enabled,
+        countries,
+      });
+    securityCountryBlocklistForm.enabled = updated.enabled;
+    securityCountryBlocklistForm.geoip_ready = updated.geoip_ready;
+    securityCountryBlocklistText.value = (updated.countries || []).join("\n");
+    appStore.showSuccess(t("admin.settings.securityCountryBlocklist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.securityCountryBlocklist.saveFailed"),
+      ),
+    );
+  } finally {
+    securityCountryBlocklistSaving.value = false;
+  }
+}
+
 // IP 一致性风控方法
 async function loadIPConsistencySettings() {
   ipConsistencyLoading.value = true;
@@ -14343,6 +14558,7 @@ onMounted(() => {
   loadPanelRateLimitSettings();
   loadGatewayIpRateLimitSettings();
   loadSecurityIPBlacklistSettings();
+  loadSecurityCountryBlocklistSettings();
   loadIPConsistencySettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();

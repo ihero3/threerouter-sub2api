@@ -45,6 +45,7 @@ func ProvideRouter(
 	redisClient *redis.Client,
 	teamMemberRepo service.TeamMemberRepository,
 	ipConsistencyService *service.IPConsistencyService,
+	geoIPService *service.GeoIPService,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -90,7 +91,7 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, teamMemberRepo, ipConsistencyService)
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, teamMemberRepo, ipConsistencyService, geoIPService)
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {

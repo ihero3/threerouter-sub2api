@@ -371,6 +371,65 @@ func (h *SettingHandler) UpdateSecurityIPBlacklist(c *gin.Context) {
 	})
 }
 
+// geoIPReady 报告 GeoIP 国家/地区数据库是否就绪（可选依赖）。
+func (h *SettingHandler) geoIPReady() bool {
+	return h.geoIPStatus != nil && h.geoIPStatus.Available()
+}
+
+// GetSecurityCountryBlocklist 获取全站国家/地区封禁配置
+// GET /api/v1/admin/settings/security-country-blocklist
+func (h *SettingHandler) GetSecurityCountryBlocklist(c *gin.Context) {
+	settings, err := h.settingService.GetSecurityCountryBlocklist(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.SecurityCountryBlocklistSettings{
+		Enabled:    settings.Enabled,
+		Countries:  settings.Countries,
+		GeoIPReady: h.geoIPReady(),
+	})
+}
+
+// UpdateSecurityCountryBlocklistRequest 更新全站国家/地区封禁配置请求
+type UpdateSecurityCountryBlocklistRequest struct {
+	Enabled   bool     `json:"enabled"`
+	Countries []string `json:"countries"`
+}
+
+// UpdateSecurityCountryBlocklist 更新全站国家/地区封禁配置
+// PUT /api/v1/admin/settings/security-country-blocklist
+func (h *SettingHandler) UpdateSecurityCountryBlocklist(c *gin.Context) {
+	var req UpdateSecurityCountryBlocklistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.SecurityCountryBlocklistSettings{
+		Enabled:   req.Enabled,
+		Countries: req.Countries,
+	}
+
+	if err := h.settingService.SetSecurityCountryBlocklist(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetSecurityCountryBlocklist(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.SecurityCountryBlocklistSettings{
+		Enabled:    updatedSettings.Enabled,
+		Countries:  updatedSettings.Countries,
+		GeoIPReady: h.geoIPReady(),
+	})
+}
+
 // GetIPConsistencySettings 获取 IP 一致性风控配置
 // GET /api/v1/admin/settings/ip-consistency
 func (h *SettingHandler) GetIPConsistencySettings(c *gin.Context) {

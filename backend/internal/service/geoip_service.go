@@ -77,6 +77,9 @@ func NewGeoIPService(cfg *config.Config) *GeoIPService {
 
 // Available 报告 GeoIP 数据库是否已就绪（可执行真实查询）。
 func (g *GeoIPService) Available() bool {
+	if g == nil {
+		return false
+	}
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.reader != nil
@@ -93,6 +96,9 @@ func (g *GeoIPService) FallbackEnabled() bool {
 //   - 成功：返回大写 ISO 3166-1 alpha-2 代码；私有/回环/无法识别 IP 返回空字符串。
 //   - reader 不可用或查询失败：fallbackEnabled=true 时返回 ("", nil)，否则返回错误。
 func (g *GeoIPService) Lookup(ip string) (string, error) {
+	if g == nil {
+		return "", fmt.Errorf("geoip not available")
+	}
 	g.mu.RLock()
 	reader := g.reader
 	g.mu.RUnlock()

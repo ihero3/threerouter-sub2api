@@ -38,6 +38,7 @@ func SetupRouter(
 	redisClient *redis.Client,
 	teamMemberRepo service.TeamMemberRepository,
 	ipConsistencyService *service.IPConsistencyService,
+	geoIPService *service.GeoIPService,
 ) *gin.Engine {
 	middleware2.SetIngressRejectRecorder(opsService)
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
@@ -66,6 +67,10 @@ func SetupRouter(
 	// 必须挂在 SessionBindingContext 之后（读取其注入的客户端 IP 快照）；
 	// 管理端 API / 支付 webhook / 静态前端豁免（见 ip_blacklist.go 注释）。
 	r.Use(middleware2.NewIPBlacklistGuard(settingService).Middleware())
+	// 全站国家/地区封禁：按安全客户端 IP 解析 GeoLite2-Country，命中名单即 403。
+	// 作用路径与 IP 黑名单完全一致；GeoIP 未就绪 / 解析失败一律 fail-open 放行。
+	// 默认关闭，功能关闭时热路径完全不触碰 GeoIP。
+	r.Use(middleware2.NewCountryGuard(settingService, geoIPService).Middleware())
 	r.Use(middleware2.Logger())
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {

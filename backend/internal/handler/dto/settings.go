@@ -535,6 +535,14 @@ type SecurityIPBlacklistSettings struct {
 	Blacklist []string `json:"blacklist"`
 }
 
+// SecurityCountryBlocklistSettings 全站国家/地区封禁配置 DTO。
+// GeoIPReady 为只读状态位：GeoLite2-Country 数据库未就绪时封禁自动 fail-open。
+type SecurityCountryBlocklistSettings struct {
+	Enabled    bool     `json:"enabled"`
+	Countries  []string `json:"countries"`
+	GeoIPReady bool     `json:"geoip_ready"`
+}
+
 // IPConsistencySettings IP 一致性风控配置 DTO
 type IPConsistencySettings struct {
 	Enabled bool `json:"enabled"`

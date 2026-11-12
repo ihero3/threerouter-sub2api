@@ -155,6 +155,11 @@ type SettingService struct {
 	securityIPBlacklistCache atomic.Value
 	securityIPBlacklistSF    singleflight.Group
 
+	// securityCountryBlocklistCache 全站国家/地区封禁配置进程内缓存
+	// （*cachedSecurityCountryBlocklistSettings）。全局中间件每请求读取，禁止热路径直查 DB。
+	securityCountryBlocklistCache atomic.Value
+	securityCountryBlocklistSF    singleflight.Group
+
 	// settingValueCache 通用单键设置缓存（key -> *cachedSettingValue，60s TTL）。
 	// 供请求热路径上的开关读取（session 绑定、beta 策略、模型兜底、注册/验证码等），
 	// 禁止这些读路径每请求直查 DB。写后由 refreshCachedSettings 统一清空。

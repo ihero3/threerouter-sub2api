@@ -368,6 +368,11 @@ const (
 	// 管理端 API 与支付 webhook 回调豁免（防止管理员自锁、支付回调被误杀）。
 	SettingKeySecurityIPBlacklist = "security_ip_blacklist"
 
+	// 全站国家/地区封禁设置（JSON：SecurityCountryBlocklistSettings）。
+	// 依赖 compliance.geoip GeoLite2-Country 数据库；默认关闭、空名单，
+	// GeoIP 不可用时一律 fail-open 放行。豁免口径与全站 IP 黑名单一致。
+	SettingKeySecurityCountryBlocklist = "security_country_blocklist"
+
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
 

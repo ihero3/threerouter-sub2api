@@ -332,6 +332,20 @@ export default {
         saved: 'Site-wide IP blacklist saved',
         saveFailed: 'Failed to save site-wide IP blacklist'
       },
+      securityCountryBlocklist: {
+        title: 'Country / Region Blocklist',
+        description: 'Block inbound panel and model API traffic from selected countries or regions. The client IP is resolved with the GeoLite2-Country database and matches get 403 Forbidden.',
+        exemptNote: 'Admin API routes (/api/v1/admin), payment webhooks, the static frontend and health checks are exempt to prevent admin lockout. Keep "Trust forwarded IP headers" turned OFF, otherwise clients can spoof the IP used for lookup.',
+        geoipReady: 'GeoIP database is ready. Country lookups are active.',
+        geoipNotReady: 'GeoIP database is NOT ready. Without it, lookups are skipped and every request is allowed (fail-open). Enable compliance.geoip, provide a valid GeoLite2-Country .mmdb file, then restart the service.',
+        enabled: 'Enable country / region blocklist',
+        enabledHint: 'When on, matching regions cannot register, log in, or call any model API. Turning it off keeps the list but stops enforcement.',
+        countries: 'Blocked country / region codes',
+        countriesPlaceholder: 'One ISO 3166-1 alpha-2 code per line, e.g.:\nCN\nUS\nDE',
+        countriesHint: 'Two-letter codes, case-insensitive (CN, US, DE...). GeoLite2 reports CN, HK, MO and TW as separate codes — add each code you want to cover. Takes effect immediately after saving (cache lag at most 60 seconds).',
+        saved: 'Country / region blocklist saved',
+        saveFailed: 'Failed to save country / region blocklist'
+      },
       ipConsistency: {
         title: 'IP Consistency Guard',
         description: 'Two independent features over a rolling window: 3 different client IPs tag the account as IP-suspicious and reduce its balance to the configured floor with an adjustment note and email; 4 or more IPs disable the account.',
