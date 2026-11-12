@@ -14,14 +14,24 @@ var upstreamModelNotFoundKeywords = []string{
 	"not supported by any configured account",
 	"not supported by any account",
 	"no available account",
+	// 上游直接以 "Model X does not exist" 形式返回（部分聚合/中转上游）。
+	"does not exist",
+	// 中文上游（或中文代理）的模型不存在/暂不可用，典型于本仓库截图里的
+	// "模型 deepseek-v3-flash 不存在或暂时不可用"。仅在正文含「模型/model」时才命中，
+	// 避免把「账号不存在」「服务不可用」误判为模型级错误。
+	"不存在",
+	"暂时不可用",
 }
 
 func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != http.StatusNotFound {
+	// 模型不存在/不可用是「账号能力」问题而非账号失效，典型返回 404；
+	// 但部分上游（含中文代理）以 403 返回同样的「模型 X 不存在」，若只认 404 会把健康账号
+	// 当成故障永久停用（见 #66 截图：HTTP 403 模型 deepseek-v3-flash 不存在）。故同时放行 403。
+	if statusCode != http.StatusNotFound && statusCode != http.StatusForbidden {
 		return false
 	}
 	normalized := normalizeModelNotFoundBody(body)
-	if normalized == "" || !strings.Contains(normalized, "model") {
+	if normalized == "" || (!strings.Contains(normalized, "model") && !strings.Contains(normalized, "模型")) {
 		return false
 	}
 	return containsModelNotFoundKeyword(normalized)

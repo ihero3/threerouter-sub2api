@@ -595,28 +595,25 @@ type failoverDisableRepo interface {
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error
 }
 
-// recordFailoverOpsError 把 failover 期间上游返回的服务器错误（HTTP 5xx，典型 503）
+// recordFailoverOpsError 把 failover 期间上游返回的错误（含 4xx/5xx，典型 503/403/404/429）
 // 写入 Ops 错误日志（ops_error_logs）。
 //
-// 背景：此前账号被上游 5xx 影响的链路只写应用日志（logger.LegacyPrintf，落进程
+// 背景：此前账号被上游错误影响的链路只写应用日志（logger.LegacyPrintf，落进程
 // stdout/文件），不写 Ops「错误日志」表。这导致两类盲区：
-//  1. 换号成功时客户端拿到 200，OpsErrorLoggerMiddleware 不触发，上游 5xx 彻底无记录；
+//  1. 换号成功时客户端拿到 200，OpsErrorLoggerMiddleware 不触发，上游错误彻底无记录；
 //  2. 即使账号被自动停用（StatusError）或 relay 中转站账号被临时冷却，后台「错误日志」
-//     里也看不到任何条目，运维无法从错误日志侧发现"账号被上游 503 停了"。
+//     里也看不到任何条目，运维无法从错误日志侧发现"账号被上游错误停了"。
 //
-// 按需求：① 每次上游 5xx（不止账号被停用那次）都记；② relay 中转站账号的临时冷却分支也记。
-// 因为 failoverDisableRepo 的三个分支（永久停用 / relay 临时冷却 / 临时冷却回退）都经过
-// 本函数顶部 shouldFailover 通过之后的同一次调用，所以单次上游 5xx 只会落一条日志，不会重复。
+// 按需求：① 每次 failover 上游错误（含 4xx/5xx）都记，不止账号被停用那次；
+// ② relay 中转站账号的临时冷却分支也记。因为 failoverDisableRepo 的三个分支（永久停用 /
+// relay 临时冷却 / 临时冷却回退）都经过本函数顶部 shouldFailover 通过之后的同一次调用，
+// 所以单次上游错误只会落一条日志，不会重复。本函数仅在 shouldFailover 通过后调用，
+// 因此只记录 failover 名单内状态码（401/402/403/404/405/429/529/>=500），不会误把 2xx/3xx 记进来。
 //
 // recorder 来自进程级单例 failoverOpsErrorRecorder（由 GatewayService.SetOpsErrorRecorder
-// 在启动时注入全局唯一的 *OpsService）。若未注入或上游非服务器错误则静默跳过，绝不阻塞主流程。
+// 在启动时注入全局唯一的 *OpsService）。若未注入则静默跳过，绝不阻塞主流程。
 func recordFailoverOpsError(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) {
 	if account == nil {
-		return
-	}
-	// 仅记录上游服务器错误（5xx），与用户诉求的"账号遇上 503"对应；
-	// 不记录 4xx（鉴权/未找到等）与 429（限流自动恢复），避免把客户端错误误记为上游故障。
-	if statusCode < 500 {
 		return
 	}
 	v := failoverOpsErrorRecorder.Load()
@@ -661,10 +658,10 @@ func maybeDisableAccountOnFailover(
 	if !shouldFailover(statusCode) {
 		return
 	}
-	// 记录每次上游服务器错误（5xx，典型 503）到 Ops 错误日志。
+	// 记录每次 failover 上游错误（含 4xx/5xx，典型 503/403/404/429）到 Ops 错误日志。
 	// 即使换号成功（客户端最终 200）、"Disable Failed Account on Failover" 关闭、
 	// 或账号只是被临时冷却（relay 分支），这里都落一条，保证后台「错误日志」能看到
-	// 账号被上游 5xx 影响的情况（需求 B：连每次上游 503 都记）。单次 5xx 只落一条。
+	// 账号被上游错误影响的情况（需求 A：连每次上游错误都记）。单次上游错误只落一条。
 	recordFailoverOpsError(account, statusCode, upstreamMsg, upstreamBody)
 	// 上游返回 403 但错误表明「账号/分组没开通该功能」——这是能力限制，
 	// 不是账号被封或 Key 吊销。正确行为是 failover 换账号（其他能力正常的账号），

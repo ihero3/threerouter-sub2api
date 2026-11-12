@@ -122,9 +122,9 @@ func TestMaybeDisableAccountOnFailover_RelayTempCooldown_RecordsOpsErrorLog(t *t
 	}
 }
 
-// TestMaybeDisableAccountOnFailover_Non5xx_NotLogged 反向验证：非 5xx（如 429 限流）不应写
-// Ops 错误日志，避免把客户端错误误记为上游服务器故障。
-func TestMaybeDisableAccountOnFailover_Non5xx_NotLogged(t *testing.T) {
+// TestMaybeDisableAccountOnFailover_429_LogsOpsError 验证需求 A：429（限流）虽走自动恢复而非
+// 永久停用，但仍要写一条 Ops 错误日志（此前 5xx 之外完全无记录）。
+func TestMaybeDisableAccountOnFailover_429_LogsOpsError(t *testing.T) {
 	stub := &failoverOpsErrorRecorderStub{}
 	defer withFailoverOpsRecorder(stub)()
 
@@ -132,7 +132,74 @@ func TestMaybeDisableAccountOnFailover_Non5xx_NotLogged(t *testing.T) {
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
 		repo.acct, 429, nil, alwaysFailover, "rate limited", []byte(`{"error":"rate limited"}`))
 
+	if stub.calls != 1 {
+		t.Fatalf("expected 1 Ops error log for 429 (now in scope per A), got %d", stub.calls)
+	}
+	if stub.lastEntry == nil || stub.lastEntry.UpstreamStatusCode == nil || *stub.lastEntry.UpstreamStatusCode != 429 {
+		t.Errorf("expected Ops error log for 429, got %+v", stub.lastEntry)
+	}
+}
+
+// TestMaybeDisableAccountOnFailover_403ModelNotFound_SkipsDisableButLogs 验证需求 B + A：
+// 上游 403 返回"模型不存在/不可用"（中文代理典型）应跳过账号停用（避免误杀健康账号），
+// 但仍要写一条 Ops 错误日志（A：每次上游错误都记）。
+func TestMaybeDisableAccountOnFailover_403ModelNotFound_SkipsDisableButLogs(t *testing.T) {
+	stub := &failoverOpsErrorRecorderStub{}
+	defer withFailoverOpsRecorder(stub)()
+
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 11, Status: StatusActive, Schedulable: true, Platform: "openai"}}
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, 403, nil, alwaysFailover,
+		"模型 deepseek-v3-flash 不存在或暂时不可用",
+		[]byte(`{"error":"模型 deepseek-v3-flash 不存在或暂时不可用"}`))
+
+	// A：仍记录 Ops 错误日志。
+	if stub.calls != 1 {
+		t.Fatalf("expected 1 Ops error log for 403 model-not-found, got %d", stub.calls)
+	}
+	if stub.lastEntry == nil || stub.lastEntry.UpstreamStatusCode == nil || *stub.lastEntry.UpstreamStatusCode != 403 {
+		t.Errorf("expected Ops error log for 403, got %+v", stub.lastEntry)
+	}
+	// B：不应永久停用健康账号。
+	if repo.updated != nil {
+		t.Errorf("expected no account update (skip disable) for 403 model-not-found, got %+v", repo.updated)
+	}
+	if repo.tempCalled {
+		t.Errorf("expected no relay temp-cooldown for non-relay account on 403 model-not-found")
+	}
+}
+
+// TestMaybeDisableAccountOnFailover_403CapabilityDenied_SkipsDisableButLogs 验证 A：
+// 403 能力未开通（跳过停用）仍要写一条 Ops 错误日志。
+func TestMaybeDisableAccountOnFailover_403CapabilityDenied_SkipsDisableButLogs(t *testing.T) {
+	stub := &failoverOpsErrorRecorderStub{}
+	defer withFailoverOpsRecorder(stub)()
+
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 12, Status: StatusActive, Schedulable: true, Platform: "openai"}}
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, 403, nil, alwaysFailover,
+		"Image generation is not enabled for this group", nil)
+
+	if stub.calls != 1 {
+		t.Fatalf("expected 1 Ops error log for 403 capability-denied, got %d", stub.calls)
+	}
+	if repo.updated != nil {
+		t.Errorf("expected no account update for capability-denied 403, got %+v", repo.updated)
+	}
+}
+
+// TestMaybeDisableAccountOnFailover_NonFailover_NotLogged 反向验证：非 failover 名单内状态码
+// （如 200 成功）不应写 Ops 错误日志——recordFailoverOpsError 仅在 shouldFailover 通过后调用。
+func TestMaybeDisableAccountOnFailover_NonFailover_NotLogged(t *testing.T) {
+	stub := &failoverOpsErrorRecorderStub{}
+	defer withFailoverOpsRecorder(stub)()
+
+	never := func(int) bool { return false }
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 5, Status: StatusActive, Schedulable: true, Platform: "openai"}}
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, 200, nil, never, "ok", nil)
+
 	if stub.calls != 0 {
-		t.Fatalf("expected no Ops error log for 429 (non-5xx), got %d", stub.calls)
+		t.Fatalf("expected no Ops error log when shouldFailover is false, got %d", stub.calls)
 	}
 }

@@ -48,6 +48,30 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 			body:       []byte(`{"error":{"message":"model not found"}}`),
 			want:       false,
 		},
+		{
+			name:       "403 model not found message (upstream returns 403 for missing model)",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":{"message":"model not found"}}`),
+			want:       true,
+		},
+		{
+			name:       "403 chinese model not exist (deepseek-v3-flash 不存在)",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":"模型 deepseek-v3-flash 不存在或暂时不可用"}`),
+			want:       true,
+		},
+		{
+			name:       "403 model does not exist (english)",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":{"message":"Model 'gpt-5.6' does not exist"}}`),
+			want:       true,
+		},
+		{
+			name:       "403 account not exist is not model specific",
+			statusCode: http.StatusForbidden,
+			body:       []byte(`{"error":{"message":"账号不存在"}}`),
+			want:       false,
+		},
 	}
 
 	for _, tt := range tests {
