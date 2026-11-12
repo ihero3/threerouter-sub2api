@@ -1139,7 +1139,10 @@ export default {
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        inRotation: 'Include in Rotation',
+        inRotationHint:
+          'When off, this account is excluded from multi-account rotation (connection test still works) and is never used as fallback when the list is empty'
       },
       smtpAccounts: {
         title: 'Account Rotation',

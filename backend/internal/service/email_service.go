@@ -250,6 +250,11 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 	}
 	enabled := enabledSMTPAccounts(accounts)
 	if len(enabled) == 0 {
+		// 单账号已被「参与发信轮换」开关排除时不回落发信：
+		// 管理员刻意把它退出了轮换，不能绕过开关继续用它。
+		if !s.singleSMTPInRotation(ctx) {
+			return ErrEmailNotConfigured
+		}
 		config, err := s.GetSMTPConfig(ctx)
 		if err != nil {
 			return err
@@ -381,12 +386,30 @@ func enabledSMTPAccounts(accounts []SMTPAccountSetting) []SMTPAccountSetting {
 	return enabled
 }
 
+// singleSMTPInRotation 读取「上方单账号参与发信轮换」开关。
+// 未设置或读取失败时按开启处理，保持旧行为；仅显式 "false" 才关闭。
+func (s *EmailService) singleSMTPInRotation(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	v, err := s.settingRepo.GetValue(ctx, SettingKeySMTPSingleInRotation)
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(v) != "false"
+}
+
 // singleSMTPAccount 读取上方「SMTP 设置」并转成可参与轮换的账号。
-// 未配置或读取失败时返回 nil，此时轮换池只含 smtp_accounts 列表（保持旧行为）。
+// 未配置、读取失败或管理员已关闭「参与发信轮换」开关（smtp_single_in_rotation
+// 显式为 "false"）时返回 nil，此时轮换池只含 smtp_accounts 列表（保持旧行为）。
 //
 // 每次发信会多一次轻量的设置查询：发信本身要连 SMTP，这个开销可忽略；刻意
 // 不加缓存，让后台改密码 / 测试连接后立即生效。
 func (s *EmailService) singleSMTPAccount(ctx context.Context) *SMTPAccountSetting {
+	// 轮换开关：显式关闭时单账号彻底退出发信轮换。
+	if !s.singleSMTPInRotation(ctx) {
+		return nil
+	}
 	config, err := s.GetSMTPConfig(ctx)
 	if err != nil || config == nil || strings.TrimSpace(config.Host) == "" {
 		return nil

@@ -231,6 +231,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	updates[SettingKeySMTPSingleInRotation] = strconv.FormatBool(settings.SMTPSingleInRotation)
 	smtpAccountsJSON, err := s.buildSMTPAccountsUpdate(ctx, settings.SMTPAccounts)
 	if err != nil {
 		return nil, err

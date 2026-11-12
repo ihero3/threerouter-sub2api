@@ -49,6 +49,8 @@ type SystemSettings struct {
 	SMTPFrom               string
 	SMTPFromName           string
 	SMTPUseTLS             bool
+	// SMTPSingleInRotation 上方单账号是否参与发信轮换；缺省 true（未设置时按开启处理）。
+	SMTPSingleInRotation bool
 	// SMTPAccounts 多账号轮换配置；非空时优先于上面的单账号配置。
 	SMTPAccounts []SMTPAccountSetting
 

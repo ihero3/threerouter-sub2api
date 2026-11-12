@@ -320,6 +320,9 @@ const (
 	// 多账号轮换配置（JSON 数组）。配置后优先使用该列表轮换发信；
 	// 为空时回落到上面的单账号 smtp_host 配置。
 	SettingKeySMTPAccounts = "smtp_accounts"
+	// 上方单账号 SMTP 是否参与发信轮换。缺省 "true"（保持旧行为）；
+	// "false" 时该单账号不进入轮换池，也不作为多账号列表为空时的回落发信账号。
+	SettingKeySMTPSingleInRotation = "smtp_single_in_rotation"
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证

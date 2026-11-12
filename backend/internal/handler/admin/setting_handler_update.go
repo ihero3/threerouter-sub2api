@@ -60,6 +60,8 @@ type UpdateSettingsRequest struct {
 	SMTPFrom     string `json:"smtp_from_email"`
 	SMTPFromName string `json:"smtp_from_name"`
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	// 单账号是否参与发信轮换；旧客户端未传时保留现值（缺省开启）。
+	SMTPSingleInRotation *bool `json:"smtp_single_in_rotation"`
 	// 多账号轮换：非空时优先使用该列表发信，为空则回落到上面的单账号配置。
 	SMTPAccounts []dto.SMTPAccount `json:"smtp_accounts"`
 
@@ -719,6 +721,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.SMTPFrom = previousSettings.SMTPFrom
 		req.SMTPFromName = previousSettings.SMTPFromName
 		req.SMTPUseTLS = previousSettings.SMTPUseTLS
+	}
+	// 单账号轮换开关：旧客户端未传字段时保留当前值。
+	smtpSingleInRotation := previousSettings.SMTPSingleInRotation
+	if req.SMTPSingleInRotation != nil {
+		smtpSingleInRotation = *req.SMTPSingleInRotation
 	}
 
 	turnstileEnabled := req.TurnstileEnabled
@@ -1635,6 +1642,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                            req.SMTPFrom,
 		SMTPFromName:                        req.SMTPFromName,
 		SMTPUseTLS:                          req.SMTPUseTLS,
+		SMTPSingleInRotation:                smtpSingleInRotation,
 		SMTPAccounts:                        smtpAccountsFromDTO(req.SMTPAccounts),
 		TurnstileEnabled:                    req.TurnstileEnabled,
 		TurnstileSiteKey:                    req.TurnstileSiteKey,
@@ -2331,6 +2339,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                                               updatedSettings.SMTPFrom,
 		SMTPFromName:                                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                                             updatedSettings.SMTPUseTLS,
+		SMTPSingleInRotation:                                   updatedSettings.SMTPSingleInRotation,
 		SMTPAccounts:                                           smtpAccountsToDTO(updatedSettings.SMTPAccounts),
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,

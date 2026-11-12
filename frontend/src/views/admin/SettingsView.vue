@@ -9625,6 +9625,21 @@
                 </div>
                 <Toggle v-model="form.smtp_use_tls" />
               </div>
+
+              <!-- Single account rotation toggle -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.smtp.inRotation")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.smtp.inRotationHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.smtp_single_in_rotation" />
+              </div>
             </div>
           </div>
 
@@ -11070,6 +11085,7 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  smtp_single_in_rotation: true,
   smtp_accounts: [] as SMTPAccount[],
   // Cloudflare Turnstile
   turnstile_enabled: false,
@@ -12930,6 +12946,7 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_single_in_rotation: form.smtp_single_in_rotation,
       smtp_accounts: form.smtp_accounts.map((account) => ({
         id: account.id,
         host: account.host,

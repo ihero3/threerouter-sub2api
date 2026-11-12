@@ -531,6 +531,8 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  // 上方单账号 SMTP 是否参与发信轮换（默认开启）
+  smtp_single_in_rotation: boolean;
   // 多账号轮换：非空时优先使用该列表发信
   smtp_accounts: SMTPAccount[];
   // Cloudflare Turnstile settings
@@ -900,6 +902,7 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  smtp_single_in_rotation?: boolean;
   smtp_accounts?: SMTPAccount[];
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;

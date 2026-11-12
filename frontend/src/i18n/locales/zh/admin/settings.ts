@@ -1134,7 +1134,10 @@ export default {
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        inRotation: '参与发信轮换',
+        inRotationHint:
+          '关闭后此账号不再参与多账号轮换发信（测试连接仍可用）；多账号列表为空时也不会再用它发信'
       },
       smtpAccounts: {
         title: '多账号轮换',

@@ -75,6 +75,9 @@ func (s *smtpPoolSettingRepoStub) GetValue(_ context.Context, key string) (strin
 	if key == SettingKeySMTPAccounts {
 		return s.accountsJSON, nil
 	}
+	if value, ok := s.values[key]; ok {
+		return value, nil
+	}
 	return "", ErrSettingNotFound
 }
 func (s *smtpPoolSettingRepoStub) Set(context.Context, string, string) error { return nil }
@@ -129,6 +132,84 @@ func TestSingleSMTPAccount_ReadsPrimarySettings(t *testing.T) {
 func TestSingleSMTPAccount_NotConfiguredReturnsNil(t *testing.T) {
 	svc := NewEmailService(newSMTPPoolSettingRepo(t, nil, map[string]string{}), nil)
 	require.Nil(t, svc.singleSMTPAccount(context.Background()), "未配置单账号时轮换池只含列表账号，保持旧行为")
+}
+
+func TestSingleSMTPInRotation_DefaultOn(t *testing.T) {
+	svc := NewEmailService(newSMTPPoolSettingRepo(t, nil, map[string]string{}), nil)
+	require.True(t, svc.singleSMTPInRotation(context.Background()), "未设置开关时按开启处理，保持旧行为")
+}
+
+func TestSingleSMTPInRotation_ExplicitOff(t *testing.T) {
+	svc := NewEmailService(newSMTPPoolSettingRepo(t, nil, map[string]string{
+		SettingKeySMTPSingleInRotation: "false",
+	}), nil)
+	require.False(t, svc.singleSMTPInRotation(context.Background()), "显式 false 才关闭")
+}
+
+func TestSingleSMTPAccount_RotationDisabledReturnsNil(t *testing.T) {
+	repo := newSMTPPoolSettingRepo(t, nil, map[string]string{
+		SettingKeySMTPHost:             "smtp.gmail.com",
+		SettingKeySMTPPort:             "587",
+		SettingKeySMTPUsername:         "ihero.cn@gmail.com",
+		SettingKeySMTPPassword:         "app-password",
+		SettingKeySMTPSingleInRotation: "false",
+	})
+	svc := NewEmailService(repo, nil)
+
+	require.Nil(t, svc.singleSMTPAccount(context.Background()),
+		"开关关闭后即使单账号配置完整，也不得进入轮换池")
+}
+
+// TestSendEmail_RotationDisabledExcludesSingleAccount 端到端锁死开关语义：
+// 上方单账号配置完整但开关关闭，发信只走列表账号，绝不回退到单账号。
+func TestSendEmail_RotationDisabledExcludesSingleAccount(t *testing.T) {
+	server, port := startSMTPPoolFakeServer(t)
+	repo := newSMTPPoolSettingRepo(t, []SMTPAccountSetting{
+		{
+			ID:         "list-1",
+			Host:       "127.0.0.1",
+			Port:       port,
+			Username:   "listed@example.com",
+			Password:   "pw",
+			From:       "listed@example.com",
+			Enabled:    true,
+			DailyLimit: 500,
+		},
+	}, map[string]string{
+		SettingKeySMTPHost:             "127.0.0.1",
+		SettingKeySMTPPort:             strconv.Itoa(port),
+		SettingKeySMTPUsername:         "primary@example.com",
+		SettingKeySMTPPassword:         "pw",
+		SettingKeySMTPFrom:             "primary@example.com",
+		SettingKeySMTPUseTLS:           "false",
+		SettingKeySMTPSingleInRotation: "false",
+	})
+	svc := NewEmailService(repo, nil)
+
+	err := svc.SendEmail(context.Background(), "user@example.com", "subject", "<p>body</p>")
+
+	require.NoError(t, err)
+	for _, sender := range server.senders() {
+		require.Contains(t, sender, "listed@example.com",
+			"开关关闭后发信只允许走列表账号")
+	}
+}
+
+// TestSendEmail_RotationDisabledAndListEmptyErrors 锁死回落语义：
+// 开关关闭且列表没有可用账号时，直接报未配置，不得偷偷用被排除的单账号发信。
+func TestSendEmail_RotationDisabledAndListEmptyErrors(t *testing.T) {
+	repo := newSMTPPoolSettingRepo(t, nil, map[string]string{
+		SettingKeySMTPHost:             "127.0.0.1",
+		SettingKeySMTPPort:             "587",
+		SettingKeySMTPUsername:         "primary@example.com",
+		SettingKeySMTPPassword:         "pw",
+		SettingKeySMTPSingleInRotation: "false",
+	})
+	svc := NewEmailService(repo, nil)
+
+	err := svc.SendEmail(context.Background(), "user@example.com", "subject", "<p>body</p>")
+
+	require.ErrorIs(t, err, ErrEmailNotConfigured)
 }
 
 // smtpPoolFakeServer 是不 advertise STARTTLS 的最小明文 SMTP 服务器。
