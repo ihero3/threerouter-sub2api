@@ -912,32 +912,34 @@ const (
 	AffiliateRiskReasonChainDepth = "chain_depth"
 	// 规则 3：一次性邮箱域名——注册邮箱命中已知临时/一次性邮箱服务。
 	AffiliateRiskReasonDisposableEmail = "disposable_email"
-	// 规则 4：邮箱本地部分为无意义随机串（机器批量注册的典型特征）。
-	AffiliateRiskReasonRandomLocalPart = "random_local_part"
 	// 规则 5：邮箱点号别名填充——Gmail 忽略点号，一个邮箱可派生无限地址。
 	AffiliateRiskReasonEmailAliasStuffing = "email_alias_stuffing"
-	// 规则 6：密码哈希复用——多个账号使用完全相同的密码。
-	AffiliateRiskReasonSharedPassword = "shared_password"
-	// 规则 10：链路传染——链上（向上或向下两跳内）存在已判异常的账号。
+	// 规则 10：链路传染——链上（向上或向下 1 跳内）存在已判异常的账号。
 	AffiliateRiskReasonChainContagion = "chain_contagion"
+	// 注册网关闭：邮箱域 MX 指向已知一次性邮箱服务集群（守株待兔，针对 temp-mail 类服务商）。
+	AffiliateRiskReasonTempMailMXCluster = "temp_mail_mx_cluster"
+	// 注册关联：同一注册 IP 在 24 小时内关联账号数超阈值（软性存疑，冻结建 Key/网关）。
+	AffiliateRiskReasonRegistrationIPCorrelation = "registration_ip_correlation"
 
 	// 规则阈值。
-	// 规则 1：24h 邀请数达到该值 → 存疑；超过该值数倍 → 异常。
-	AffiliateRiskInviteBurstSuspect  = 3
-	AffiliateRiskInviteBurstAbnormal = 10
+	// 规则 1：24h 邀请数分层（按账号年龄）。新号更敏感，老号放宽。
+	AffiliateRiskNewAccountDays         = 7  // 账号年龄 ≤ 该天数视为新号。
+	AffiliateRiskInviteBurstNewSuspect  = 3  // 新号：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstNewAbnormal = 10 // 新号：24h 邀请数 > 该值 → 异常。
+	AffiliateRiskInviteBurstOldSuspect  = 10 // 老号放宽：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstOldAbnormal = 20 // 老号放宽：24h 邀请数 > 该值 → 异常。
 	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。自然裂变到 4 级很常见，故放宽。
 	AffiliateRiskChainDepthSuspect  = 4
 	AffiliateRiskChainDepthAbnormal = 6
 	// 规则 2 的递归上限，防止异常数据（环）导致查询失控。
 	AffiliateRiskChainDepthMaxScan = 20
-	// 规则 6：相同密码账号数阈值。
-	AffiliateRiskSharedPasswordSuspect  = 3
-	AffiliateRiskSharedPasswordAbnormal = 5
-	// 规则 10：链路传染的扫描半径（向上/向下各几跳）。
-	AffiliateRiskContagionRadius = 2
+	// 规则 10：链路传染的扫描半径（向上/向下各几跳）——收窄到 1 跳。
+	AffiliateRiskContagionRadius = 1
 	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
 	AffiliateRiskAliasStuffingMinDots   = 2
 	AffiliateRiskAliasStuffingMinLength = 16
+	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
+	AffiliateRiskRegistrationIPCorrelationThreshold = 3
 
 	// 存量扫描每批处理的用户数，避免一次性写满事务。
 	AffiliateRiskScanBatchSize = 500
@@ -970,6 +972,15 @@ var AffiliateRiskDisposableEmailDomains = []string{
 var AffiliateRiskDotAliasingDomains = []string{
 	"gmail.com",
 	"googlemail.com",
+}
+
+// AffiliateRiskTempMailMXClusters 是已知一次性邮箱服务的 MX 集群后缀列表（可继续扩充）。
+// 注册时解析邮箱域的 MX 记录，只要任一 MX 主机域（或其父域）以本列表中的后缀结尾，
+// 即判定为一次性邮箱集群并拒绝注册。相较于域名黑名单，MX 集群命中可"守株待兔"地
+// 覆盖某服务商名下所有域名，对其是降维打击。
+var AffiliateRiskTempMailMXClusters = []string{
+	"temp-mail-pro.com",
+	"erinn.biz",
 }
 
 // SettingKeyDisableFailedAccountOnFailover 出错后是否在 failover 时禁用失败账号（默认 false）。

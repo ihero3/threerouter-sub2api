@@ -20,24 +20,29 @@ import (
 // POST /api/v1/admin/users/:id/risk-review（见 AdminReviewUserRisk）。
 //
 // 规则清单（key 见 domain_constants.go 的 AffiliateRiskReason*）：
-//  1. invite_burst_24h  邀请人 24h 内邀请数超阈值
+//  1. invite_burst_24h  邀请人 24h 内邀请数超阈值（按账号年龄分层：新号更敏感、老号放宽）
 //  2. chain_depth       上溯/下溯链深超阈值
 //  3. disposable_email  注册邮箱命中一次性邮箱域名
-//  4. random_local_part 邮箱本地部分为无意义随机串
-//  5. email_alias_stuffing 邮箱点号别名填充（Gmail 忽略点号，一个邮箱可派生无限地址）
-//  6. shared_password   多个账号使用完全相同的密码
-// 10. chain_contagion   链路上下两跳内存在已判异常的账号
+//  4. email_alias_stuffing 邮箱点号别名填充（Gmail 忽略点号，一个邮箱可派生无限地址）
+//  5. chain_contagion   链路上/下 1 跳内存在已判异常的账号
+//
+// 另有两道独立于本引擎、在注册网关实时生效的规则（见 email_risk.go / auth_service.go）：
+//  - temp_mail_mx_cluster      解析邮箱域 MX，命中已知一次性邮箱服务集群直接拒绝注册；
+//  - registration_ip_correlation 同注册 IP 24h 关联账号数超阈值 → 软性存疑。
 //
 // 设计约束：
 //   - 标记只升不降：扫描不会把已标记的用户改回正常，避免证据被后续扫描抹掉。
 //   - 所有规则共享同一份「原始信号 + 判定函数」，实时路径与存量扫描走完全相同的代码，
 //     不存在两套判定逻辑。
+//   - 全量扫描跳过已人工复核放行的账号（user_risk_review_exemptions，见迁移 253
+//     与 ListUserIDsForRiskScan），避免管理员的复核结论被同一批静态证据反复推翻；
+//     实时邀请绑定不受此豁免影响，新证据仍会重新打标。
 
 // AffiliateRiskSignal 单个用户的邀请注册风险原始信号，由仓储层一次 SQL 聚合得到。
 type AffiliateRiskSignal struct {
-	UserID         int64
-	Email          string
-	PasswordHash   string
+	UserID       int64
+	Email        string
+	PasswordHash string // 保留字段：shared_password 规则下线后已不参与判定，仅仓储层顺带回传。
 	// AncestorDepth 上溯深度：该用户上面有几级邀请人（1 = 直接邀请人）。
 	AncestorDepth int
 	// DescendantDepth 下溯深度：该用户下面有几级被邀请人（1 = 直接下级）。
@@ -46,8 +51,8 @@ type AffiliateRiskSignal struct {
 	ChainContagion bool
 	// InvitesIn24h 该用户作为邀请人，近 24 小时内的邀请数量。
 	InvitesIn24h int
-	// SharedPasswordCount 使用与该用户完全相同密码的账号数（含自己）。
-	SharedPasswordCount int
+	// AccountAgeDays 账号年龄（天），用于邀请爆发分层的"新号/老号"判定。
+	AccountAgeDays int
 }
 
 // UserRiskMark 待写入 users 表的一条风险标记。
@@ -94,11 +99,7 @@ func evaluateAffiliateRisk(sig AffiliateRiskSignal) (string, []string) {
 		raise(AffiliateRiskLevelAbnormal)
 	}
 
-	// 规则 4：邮箱本地部分为随机串 —— 弱特征（也可能是无意义用户名），只判存疑。
-	if isRandomLocalPart(sig.Email) {
-		reasons = append(reasons, AffiliateRiskReasonRandomLocalPart)
-		raise(AffiliateRiskLevelSuspect)
-	}
+	// 规则 4（原 random_local_part）已下线：对 AI 脚本生成的邮箱无效，且会误伤拼音邮箱。
 
 	// 规则 5：点号别名填充 —— Gmail 忽略点号，同一邮箱可派生无限地址，只判存疑。
 	if isStuffedEmailAlias(sig.Email) {
@@ -119,25 +120,27 @@ func evaluateAffiliateRisk(sig AffiliateRiskSignal) (string, []string) {
 		raise(AffiliateRiskLevelSuspect)
 	}
 
-	// 规则 1：24h 邀请爆发。注意阈值语义是「超过 N 个」，故用严格大于。
-	if sig.InvitesIn24h > AffiliateRiskInviteBurstAbnormal {
-		reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
-		raise(AffiliateRiskLevelAbnormal)
-	} else if sig.InvitesIn24h > AffiliateRiskInviteBurstSuspect {
-		reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
-		raise(AffiliateRiskLevelSuspect)
+	// 规则 1：24h 邀请爆发，按账号年龄分层（新号更敏感，老号放宽）。
+	// 阈值语义是「超过 N 个」，故用严格大于。
+	if sig.AccountAgeDays <= AffiliateRiskNewAccountDays {
+		if sig.InvitesIn24h > AffiliateRiskInviteBurstNewAbnormal {
+			reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
+			raise(AffiliateRiskLevelAbnormal)
+		} else if sig.InvitesIn24h > AffiliateRiskInviteBurstNewSuspect {
+			reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
+			raise(AffiliateRiskLevelSuspect)
+		}
+	} else {
+		if sig.InvitesIn24h > AffiliateRiskInviteBurstOldAbnormal {
+			reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
+			raise(AffiliateRiskLevelAbnormal)
+		} else if sig.InvitesIn24h > AffiliateRiskInviteBurstOldSuspect {
+			reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
+			raise(AffiliateRiskLevelSuspect)
+		}
 	}
 
-	// 规则 6：密码哈希复用 —— 批量注册脚本的典型特征。
-	if sig.SharedPasswordCount >= AffiliateRiskSharedPasswordAbnormal {
-		reasons = append(reasons, AffiliateRiskReasonSharedPassword)
-		raise(AffiliateRiskLevelAbnormal)
-	} else if sig.SharedPasswordCount >= AffiliateRiskSharedPasswordSuspect {
-		reasons = append(reasons, AffiliateRiskReasonSharedPassword)
-		raise(AffiliateRiskLevelSuspect)
-	}
-
-	// 规则 10：链路传染 —— 上下两跳内已有异常账号，本账号至少存疑。
+	// 规则 10：链路传染 —— 上下 1 跳内已有异常账号，本账号至少存疑。
 	if sig.ChainContagion {
 		reasons = append(reasons, AffiliateRiskReasonChainContagion)
 		raise(AffiliateRiskLevelSuspect)
@@ -160,46 +163,9 @@ func isDisposableEmail(email string) bool {
 	return false
 }
 
-// isRandomLocalPart 判断邮箱本地部分是否像机器生成的随机串。
-//
-// 判定口径（三项同时满足才命中，尽量压低误报）：
-//   - 长度为 10-24（覆盖机器随机串与「长人名+数字」批量命名形态）；
-//   - 只含小写字母与数字，且不含任何分隔符；
-//   - 数字至少 2 个；
-//   - 元音占比 (a/e/i/o/u) 不超过 20% —— 正常姓名/拼音通常在 25% 以上，
-//     随机串通常在 10% 以下。
-//
-// 例：trfajvw9xplr（0.09，命中）、zhangsan2024（0.25，不命中）。
-func isRandomLocalPart(email string) bool {
-	at := strings.IndexByte(email, '@')
-	if at <= 0 {
-		return false
-	}
-	local := strings.ToLower(strings.TrimSpace(email[:at]))
-	if len(local) < 10 || len(local) > 24 {
-		return false
-	}
-	letters, digits, vowels := 0, 0, 0
-	for _, r := range local {
-		switch {
-		case r >= '0' && r <= '9':
-			digits++
-		case r >= 'a' && r <= 'z':
-			letters++
-			switch r {
-			case 'a', 'e', 'i', 'o', 'u':
-				vowels++
-			}
-		default:
-			// 出现分隔符（. _ - +）说明是有意构造的邮箱，不算随机串。
-			return false
-		}
-	}
-	if digits < 2 || letters == 0 {
-		return false
-	}
-	return float64(vowels)/float64(letters) <= 0.2
-}
+// isRandomLocalPart 规则已于风控优化中下线：对 AI 脚本生成的邮箱无效（AI 可生成带元音、
+// 看似正常的本地部分），且会误伤拼音邮箱，故不再作为判定信号。
+// 保留本注释以便追溯，函数实现已删除。
 
 // isStuffedEmailAlias 判断邮箱是否为点号别名填充。
 //
@@ -311,6 +277,8 @@ func buildRiskMarks(signals []AffiliateRiskSignal) []UserRiskMark {
 //
 // 分批按 ID 游标推进，每批一次聚合查询 + 一次批量写入，避免单个超大事务。
 // 只升不降：不会清除任何已有标记。
+// 已人工复核放行的账号在取 ID 阶段就被排除（迁移 253），不会被标回待复核；
+// 实时邀请绑定仍会独立评估这些账号，属于新增证据的兜底。
 func (s *AffiliateService) AdminScanAffiliateRisk(ctx context.Context) (*AffiliateRiskScanResult, error) {
 	if s == nil || s.repo == nil {
 		return nil, ErrAffiliateProfileNotFound

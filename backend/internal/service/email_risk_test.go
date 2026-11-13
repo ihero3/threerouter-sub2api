@@ -43,3 +43,28 @@ func TestValidateRegistrationEmailRisk(t *testing.T) {
 		require.ErrorIsf(t, ValidateRegistrationEmailRisk(email), ErrEmailRiskRejected, "expected rejected: %s", email)
 	}
 }
+
+func TestTempMailMXClusterHit(t *testing.T) {
+	clusters := []string{"temp-mail-pro.com", "erinn.biz"}
+	cases := []struct {
+		domain  string
+		mxHosts []string
+		want    bool
+	}{
+		// 邮箱域本身就是集群域。
+		{"temp-mail-pro.com", nil, true},
+		{"erinn.biz", nil, true},
+		// MX 主机落在集群域下（含多级子域与结尾点）。
+		{"foo.com", []string{"mail.temp-mail-pro.com"}, true},
+		{"foo.com", []string{"mx1.erinn.biz."}, true},
+		// 普通域名 + 正常 MX，不命中。
+		{"gmail.com", []string{"smtp.gmail.com"}, false},
+		{"acme-corp.com", []string{"aspmx.l.google.com"}, false},
+		{"example.com", nil, false},
+	}
+	for _, tc := range cases {
+		if got := tempMailMXClusterHit(tc.domain, tc.mxHosts, clusters); got != tc.want {
+			t.Errorf("tempMailMXClusterHit(%q, %v) = %v, want %v", tc.domain, tc.mxHosts, got, tc.want)
+		}
+	}
+}

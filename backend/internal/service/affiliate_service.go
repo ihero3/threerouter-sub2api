@@ -566,6 +566,20 @@ func NewAffiliateService(repo AffiliateRepository, settingService *SettingServic
 	}
 }
 
+// MarkUserRisk 写入单条风险标记（只升不降的旁路能力），失败仅记日志、不影响主流程。
+// 用于注册网关的实时软性标记（如同 IP 关联账号数超阈值），区别于批量扫描与邀请绑定评估。
+func (s *AffiliateService) MarkUserRisk(ctx context.Context, userID int64, level string, reasons []string) {
+	if s == nil || s.repo == nil || userID <= 0 || level == "" {
+		return
+	}
+	marks := []UserRiskMark{{UserID: userID, Level: level, Reasons: reasons}}
+	if _, err := s.repo.BumpUserRiskMarks(ctx, marks); err != nil {
+		logger.LegacyPrintf("service.affiliate", "[Affiliate] MarkUserRisk failed user=%d: %v", userID, err)
+		return
+	}
+	s.invalidateRiskMarkedCaches(ctx, marks)
+}
+
 // IsEnabled reports whether the affiliate (邀请返利) feature is turned on.
 func (s *AffiliateService) IsEnabled(ctx context.Context) bool {
 	if s == nil || s.settingService == nil {
