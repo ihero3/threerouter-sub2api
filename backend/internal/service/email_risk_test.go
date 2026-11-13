@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -67,4 +68,15 @@ func TestTempMailMXClusterHit(t *testing.T) {
 			t.Errorf("tempMailMXClusterHit(%q, %v) = %v, want %v", tc.domain, tc.mxHosts, got, tc.want)
 		}
 	}
+}
+
+func TestLookupTempMailMXCluster_InvalidEmailNoPanic(t *testing.T) {
+	// 非法邮箱不应触发 DNS，直接放行且不报错。
+	hit, err := lookupTempMailMXCluster(context.Background(), "not-an-email")
+	require.False(t, hit)
+	require.NoError(t, err)
+
+	hit, err = lookupTempMailMXCluster(context.Background(), "foo@")
+	require.False(t, hit)
+	require.NoError(t, err)
 }

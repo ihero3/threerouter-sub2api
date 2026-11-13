@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"net"
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -15,6 +17,10 @@ var ErrEmailRiskRejected = infraerrors.BadRequest("EMAIL_RISK_REJECTED", "邮箱
 
 // ErrTempMailMXRejected 邮箱域 MX 指向已知一次性邮箱服务集群：直接拒绝注册，不入库。
 var ErrTempMailMXRejected = infraerrors.BadRequest("TEMP_MAIL_PROVIDER", "registration using temporary email providers is not allowed")
+
+// registrationMXLookupTimeout 是一次性邮箱 MX 解析的超时。
+// 解析器慢/卡死时 fail-open（放行），绝不拖垮注册/发码主流程。
+const registrationMXLookupTimeout = 3 * time.Second
 
 const (
 	// 用户名中一旦出现即高危的符号（不含分隔符 . _ -）。
@@ -237,11 +243,11 @@ func isRiskyEmailDomain(domain string) bool {
 
 // lookupTempMailMXCluster 解析邮箱域的 MX 记录，命中已知一次性邮箱服务集群则返回 true。
 //
-// best-effort、fail-open：DNS 解析失败或域名无 MX 记录时返回 (false, nil)，
+// best-effort、fail-open：DNS 解析失败、超时或域名无 MX 记录时返回 (false, nil)，
 // 绝不因解析异常误杀正常注册。命中条件：邮箱域本身、或其任一 MX 主机域（含父域）
 // 以 AffiliateRiskTempMailMXClusters 中任一后缀结尾。例如 x@foo.com 的 MX 为
 // mail.temp-mail-pro.com 即命中——无需逐个收录 temp-mail 的下级域名，守株待兔。
-func lookupTempMailMXCluster(email string) (bool, error) {
+func lookupTempMailMXCluster(ctx context.Context, email string) (bool, error) {
 	at := strings.LastIndex(email, "@")
 	if at < 0 || at == len(email)-1 {
 		return false, nil
@@ -250,9 +256,12 @@ func lookupTempMailMXCluster(email string) (bool, error) {
 	if domain == "" {
 		return false, nil
 	}
-	mx, err := net.LookupMX(domain)
+	// 带超时的上下文做 DNS 解析：解析器慢/卡死时 fail-open，绝不拖垮注册/发码主流程。
+	resolveCtx, cancel := context.WithTimeout(ctx, registrationMXLookupTimeout)
+	defer cancel()
+	mx, err := net.DefaultResolver.LookupMX(resolveCtx, domain)
 	if err != nil {
-		// 解析失败或无 MX 记录：放行，避免把正常用户挡在门外。
+		// 解析失败、超时或无 MX 记录：放行，避免把正常用户挡在门外。
 		return false, nil
 	}
 	hosts := make([]string, 0, len(mx))

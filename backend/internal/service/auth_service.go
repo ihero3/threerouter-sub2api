@@ -359,7 +359,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, err
 	}
 	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝注册（不入库）。
-	if hit, dnsErr := lookupTempMailMXCluster(email); dnsErr == nil && hit {
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster registration email: %s", email)
 		return "", nil, ErrTempMailMXRejected
 	}
@@ -511,6 +511,12 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
 		return err
 	}
+	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝且不下发验证码。
+	// 与注册网关同源，发码阶段就拦掉，避免消耗发信配额。
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster email (send code): %s", email)
+		return ErrTempMailMXRejected
+	}
 	// 域名黑名单：命中直接拒绝，不发验证码。
 	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
 		return err
@@ -564,6 +570,11 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	if err := ValidateRegistrationEmailRisk(email); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
 		return nil, err
+	}
+	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝且不入队发信。
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster email (send code async): %s", email)
+		return nil, ErrTempMailMXRejected
 	}
 	// 域名黑名单：必须在入队发信之前拦截。
 	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
