@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -35,11 +36,12 @@ type CountryLookup interface {
 type CountryGuard struct {
 	settingService *service.SettingService
 	geoIP          CountryLookup
+	opsService     *service.OpsService
 }
 
 // NewCountryGuard 创建全站国家/地区封禁中间件。
-func NewCountryGuard(settingService *service.SettingService, geoIP CountryLookup) *CountryGuard {
-	return &CountryGuard{settingService: settingService, geoIP: geoIP}
+func NewCountryGuard(settingService *service.SettingService, geoIP CountryLookup, opsService *service.OpsService) *CountryGuard {
+	return &CountryGuard{settingService: settingService, geoIP: geoIP, opsService: opsService}
 }
 
 // Middleware 返回 gin 中间件。应挂在 SessionBindingContext 之后。
@@ -85,8 +87,41 @@ func (p *CountryGuard) Middleware() gin.HandlerFunc {
 			"method", c.Request.Method,
 			"path", path,
 		)
-		abortCountryBlocklistBlocked(c)
+		blocked := strings.ToUpper(strings.TrimSpace(country))
+		p.recordCountryBlock(c, blocked, path)
+		abortCountryBlocklistBlocked(c, blocked, isAuthPath(path))
 	}
+}
+
+// isAuthPath 判断路径是否属于登录/注册等认证入口；命中时拦截文案会点名登录/注册。
+func isAuthPath(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/auth")
+}
+
+// recordCountryBlock 把国家/地区封禁命中写入「错误请求」日志（ops_error_logs）。
+// 登录/注册被拦截时通常没有已认证用户，归属统一记 admin(id=1)，便于在
+// 「使用记录 → 错误请求」中观测，防止登录坍塌毫不知情。
+func (p *CountryGuard) recordCountryBlock(c *gin.Context, country, path string) {
+	if p.opsService == nil {
+		return
+	}
+	clientIP := SecurityClientIP(c)
+	uid := int64(authErrorDefaultUserID)
+	cp := clientIP
+	entry := &service.OpsInsertErrorLogInput{
+		UserID:          &uid,
+		ErrorPhase:      "auth",
+		ErrorType:       "region_blocked",
+		StatusCode:      http.StatusForbidden,
+		ErrorMessage:    "Region blocked: " + country,
+		ClientIP:        &cp,
+		RequestPath:     path,
+		InboundEndpoint: path,
+		Platform:        platformForPath(path),
+		UserAgent:       c.GetHeader("User-Agent"),
+		CreatedAt:       time.Now(),
+	}
+	p.opsService.EnqueueError(entry)
 }
 
 // countryBlocklisted 判断国家/地区代码是否命中名单（大小写不敏感）。
@@ -107,8 +142,14 @@ func countryBlocklisted(country string, list []string) bool {
 // abortCountryBlocklistBlocked 返回 403。客户端可见文案纯英语：
 //   - 面板路径（/api/*）返回 {"detail": ...}；
 //   - 网关路径返回 OpenAI 兼容错误格式，与全站 IP 黑名单 403 同款。
-func abortCountryBlocklistBlocked(c *gin.Context) {
-	const message = "Access denied: requests from your region are not accepted by this service."
+//
+// country 为命中的大写 ISO 3166-1 alpha-2 代码；authPath 为 true 时文案额外点名
+// 登录/注册被禁，直接对应「CN 区域被禁止登录注册」的可读诉求。
+func abortCountryBlocklistBlocked(c *gin.Context, country string, authPath bool) {
+	message := "Access denied: your region (" + country + ") is blocked from this service."
+	if authPath {
+		message += " Account login and registration are disabled for this region."
+	}
 	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 		c.JSON(http.StatusForbidden, gin.H{"detail": message})
 	} else {

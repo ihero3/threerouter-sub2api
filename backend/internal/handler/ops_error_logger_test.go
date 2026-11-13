@@ -331,6 +331,52 @@ func TestOpsErrorLoggerMiddleware_OrdinaryPermissionStillRecords(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, job.entry.StatusCode)
 }
 
+// TestOpsErrorLoggerMiddlewareWithDefaultUser_FallsBackToDefaultUser 验证登录/注册入口
+// 的 WithDefaultUser 变体：当 4xx 无法确定归属用户（entry.UserID 为 nil）时，兜底记为
+// defaultUserID（admin id=1），使其能在「使用记录 → 错误请求」（按当前登录用户过滤）中被观测，
+// 防止登录坍塌（Login Collapse）毫不知情。
+func TestOpsErrorLoggerMiddlewareWithDefaultUser_FallsBackToDefaultUser(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddlewareWithDefaultUser(ops, 1))
+	router.POST("/api/v1/auth/login", func(c *gin.Context) {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid credentials"})
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil))
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.NotNil(t, job.entry.UserID, "auth 4xx 无法确定用户时必须兜底归属 admin")
+	require.Equal(t, int64(1), *job.entry.UserID, "兜底用户应为 admin(id=1)")
+}
+
+// TestOpsErrorLoggerMiddlewareWithoutDefaultUser_LeavesUserNil 反向验证：普通
+// OpsErrorLoggerMiddleware（defaultUserID=0）在无法确定用户时不应注入任何归属用户，
+// 确保新的兜底行为只由 WithDefaultUser 变体引入，不影响其它入口。
+func TestOpsErrorLoggerMiddlewareWithoutDefaultUser_LeavesUserNil(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "code": "permission_denied", "message": "denied"}})
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Nil(t, job.entry.UserID, "普通中间件不应在没有用户时注入归属")
+}
+
 func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailureSLA(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 2)
 	gin.SetMode(gin.TestMode)

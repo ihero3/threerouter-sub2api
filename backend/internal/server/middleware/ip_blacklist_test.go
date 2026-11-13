@@ -27,7 +27,7 @@ func newIPBlacklistTestRouter(t *testing.T, settingsJSON string) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(NewIPBlacklistGuard(newIPBlacklistTestService(t, settingsJSON)).Middleware())
+	router.Use(NewIPBlacklistGuard(newIPBlacklistTestService(t, settingsJSON), nil).Middleware())
 	for _, path := range []string{
 		"/api/v1/auth/register",
 		"/api/v1/auth/login",

@@ -38,7 +38,7 @@ func newCountryGuardTestRouter(t *testing.T, settingsJSON string, geoIP CountryL
 	}
 	svc := service.NewSettingService(repo, &config.Config{})
 	router := gin.New()
-	router.Use(NewCountryGuard(svc, geoIP).Middleware())
+	router.Use(NewCountryGuard(svc, geoIP, nil).Middleware())
 	for _, path := range []string{
 		"/api/v1/auth/register",
 		"/api/v1/auth/login",

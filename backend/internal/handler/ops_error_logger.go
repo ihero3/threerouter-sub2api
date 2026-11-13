@@ -1124,6 +1124,29 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
 		riskControlFn = riskControlEnabled[0]
 	}
+	return newOpsErrorLogger(ops, riskControlFn, 0)
+}
+
+// OpsErrorLoggerMiddlewareWithDefaultUser 与 OpsErrorLoggerMiddleware 行为一致，但额外在
+// 错误无法确定归属用户（entry.UserID 为 nil）时兜底记为 defaultUserID。
+//
+// 用于登录/注册入口：登录/注册失败往往没有已认证用户，统一归属 admin(id=1) 才能在
+// 「使用记录 → 错误请求」（按当前登录用户过滤）中观测到，防止登录坍塌（Login Collapse）
+// 时毫不知情。仅登录/注册路由组使用该变体，模型网关等其它入口保持原行为不变。
+func OpsErrorLoggerMiddlewareWithDefaultUser(ops *service.OpsService, defaultUserID int64, riskControlEnabled ...func(context.Context) bool) gin.HandlerFunc {
+	riskControlFn := func(context.Context) bool { return false }
+	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
+		riskControlFn = riskControlEnabled[0]
+	}
+	return newOpsErrorLogger(ops, riskControlFn, defaultUserID)
+}
+
+// newOpsErrorLogger 是 OpsErrorLoggerMiddleware 与 WithDefaultUser 变体的共享实现。
+// defaultUserID != 0 时，若最终 entry.UserID 仍为空（无法确定用户），则兜底记为该用户。
+func newOpsErrorLogger(ops *service.OpsService, riskControlFn func(context.Context) bool, defaultUserID int64) gin.HandlerFunc {
+	if riskControlFn == nil {
+		riskControlFn = func(context.Context) bool { return false }
+	}
 	return func(c *gin.Context) {
 		var reqCtx context.Context
 		if c.Request != nil {
@@ -1299,6 +1322,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		applyOpsAPIKeyFields(entry, apiKey)
 
 		applyOpsClientIP(entry, c)
+
+		// 登录/注册入口：无法确定归属用户时兜底记为 defaultUserID（admin id=1），
+		// 让这些异常错误能在「使用记录 → 错误请求」中被观测到。
+		if defaultUserID != 0 && entry.UserID == nil {
+			fallbackUID := defaultUserID
+			entry.UserID = &fallbackUID
+		}
 
 		enqueueOpsErrorLog(ops, entry)
 	}

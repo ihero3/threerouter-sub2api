@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -26,11 +27,12 @@ import (
 //   - 命中时写结构化审计日志（audit=true），供事后回溯。
 type IPBlacklistGuard struct {
 	settingService *service.SettingService
+	opsService     *service.OpsService
 }
 
 // NewIPBlacklistGuard 创建全站 IP 黑名单中间件。
-func NewIPBlacklistGuard(settingService *service.SettingService) *IPBlacklistGuard {
-	return &IPBlacklistGuard{settingService: settingService}
+func NewIPBlacklistGuard(settingService *service.SettingService, opsService *service.OpsService) *IPBlacklistGuard {
+	return &IPBlacklistGuard{settingService: settingService, opsService: opsService}
 }
 
 // Middleware 返回 gin 中间件。应挂在 SessionBindingContext 之后（依赖其注入的
@@ -62,8 +64,34 @@ func (p *IPBlacklistGuard) Middleware() gin.HandlerFunc {
 			"method", c.Request.Method,
 			"path", path,
 		)
-		abortIPBlacklistBlocked(c)
+		p.recordIPBlock(c, clientIP, path)
+		abortIPBlacklistBlocked(c, isAuthPath(path))
 	}
+}
+
+// recordIPBlock 把 IP 黑名单命中写入「错误请求」日志（ops_error_logs）。
+// 登录/注册被拦截时通常没有已认证用户，归属统一记 admin(id=1)，便于在
+// 「使用记录 → 错误请求」中观测，防止登录坍塌毫不知情。
+func (p *IPBlacklistGuard) recordIPBlock(c *gin.Context, clientIP, path string) {
+	if p.opsService == nil {
+		return
+	}
+	uid := int64(authErrorDefaultUserID)
+	cp := clientIP
+	entry := &service.OpsInsertErrorLogInput{
+		UserID:          &uid,
+		ErrorPhase:      "auth",
+		ErrorType:       "ip_blocked",
+		StatusCode:      http.StatusForbidden,
+		ErrorMessage:    "IP blocked: " + clientIP,
+		ClientIP:        &cp,
+		RequestPath:     path,
+		InboundEndpoint: path,
+		Platform:        platformForPath(path),
+		UserAgent:       c.GetHeader("User-Agent"),
+		CreatedAt:       time.Now(),
+	}
+	p.opsService.EnqueueError(entry)
 }
 
 // ipBlacklistGuardPathPrefixes 是黑名单需要覆盖的网关路由前缀（挂在 gin 根路由）。
@@ -135,8 +163,13 @@ func securityIPBlacklisted(clientIP string, blacklist []string) bool {
 // abortIPBlacklistBlocked 返回 403。错误文案纯英语（客户端可见）：
 //   - 面板路径（/api/*）返回 {"detail": ...}，与管理端/面板错误格式一致；
 //   - 网关路径返回 OpenAI 兼容错误格式，与网关 IP 限流 403 同款。
-func abortIPBlacklistBlocked(c *gin.Context) {
-	const message = "Access denied: your IP address has been blocked by the site administrator."
+//
+// authPath 为 true 时文案额外点名登录/注册被禁。
+func abortIPBlacklistBlocked(c *gin.Context, authPath bool) {
+	message := "Access denied: your IP address has been blocked by the site administrator."
+	if authPath {
+		message += " Account login and registration are disabled for blocked addresses."
+	}
 	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 		c.JSON(http.StatusForbidden, gin.H{"detail": message})
 	} else {

@@ -21,6 +21,7 @@ func RegisterAuthRoutes(
 	redisClient *redis.Client,
 	settingService *service.SettingService,
 	panelRateLimiter *servermiddleware.PanelRateLimiter,
+	opsService *service.OpsService,
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
@@ -30,6 +31,9 @@ func RegisterAuthRoutes(
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
+	// 登录/注册等失败（4xx）写入「错误请求」：无法确定用户时兜底记 admin(id=1)，
+	// 防止登录坍塌在「使用记录 → 错误请求」中毫无痕迹。该变体仅用于 auth 路由组。
+	auth.Use(handler.OpsErrorLoggerMiddlewareWithDefaultUser(opsService, 1))
 	{
 		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）。
 		// 两个接口都挂限流：challenge 出题要生成位图（CPU 打点），verify 是
