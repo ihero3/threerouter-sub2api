@@ -223,8 +223,19 @@ type UserRiskMarkRepository interface {
 // （见 adminServiceImpl.AdminReviewUserRisk）。
 type UserRiskReviewRepository interface {
 	// ClearUserRiskReview 清空 risk_level / risk_reasons / risk_updated_at，
-	// 并把 status 恢复 active；用户不存在时返回 ErrUserNotFound。
+	// 把 status 恢复 active，并登记全量扫描豁免（迁移 253：已人工放行的账号
+	// 不再被 AdminScanAffiliateRisk 标回待复核）；用户不存在时返回 ErrUserNotFound。
+	// 豁免不覆盖实时邀请绑定打标，新证据仍会让账号回到待复核。
 	ClearUserRiskReview(ctx context.Context, userID int64) error
+}
+
+// IPPenaltyRefundRepository 是生产用户仓储为「复核放行自动返还 IP 风控扣减」提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现这一管理端专用方法。
+type IPPenaltyRefundRepository interface {
+	// RefundIPBalancePenalties 把该用户所有「未返还的 IP 一致性扣减」加回当前余额，
+	// 返回实际返还金额；同一条扣减流水只会返还一次（返还流水 code 唯一约束）。
+	// 用加法而非设回旧值，避免抹掉扣减之后发生的充值或消费。
+	RefundIPBalancePenalties(ctx context.Context, userID int64) (float64, error)
 }
 
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。

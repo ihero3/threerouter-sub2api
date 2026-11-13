@@ -649,8 +649,8 @@ export default {
         review: {
           action: 'Approve Review',
           title: 'Approve Risk Review',
-          confirm: "Approve the security review for '{email}'? This clears the risk level and restores the account to active.",
-          success: 'Risk review approved, the user is now active',
+          confirm: "Approve the security review for '{email}'? This clears the risk level and restores the account to active. Any balance previously deducted by the IP guard will be refunded automatically (nothing is refunded if nothing was deducted).",
+          success: 'Risk review approved, the user is now active; any deduction has been refunded',
           failed: 'Failed to approve the risk review'
         }
       },

@@ -698,9 +698,10 @@
                 <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
               </button>
 
-              <!-- Manual Risk Review Approval (suspect / abnormal only) -->
+              <!-- Manual Risk Review Approval (suspect / abnormal / ip_suspect).
+                   ip_suspect is included so a mistakenly deducted balance can be refunded. -->
               <button
-                v-if="row.risk_level === 'suspect' || row.risk_level === 'abnormal'"
+                v-if="row.risk_level === 'suspect' || row.risk_level === 'abnormal' || row.risk_level === 'ip_suspect'"
                 @click="handleRiskReview(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
               >

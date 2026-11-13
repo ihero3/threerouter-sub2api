@@ -56,6 +56,17 @@ const (
 	// IPAbnormalityEmailSubject 通知邮件标题（纯英语）。
 	IPAbnormalityEmailSubject = "Security notice: unusual IP activity on your account"
 
+	// IPPenaltyRefundType 复核放行时返还流水的 type。刻意不用 admin_balance：
+	// SumPositiveBalanceByUser 会把 admin_balance 的正数计入「累计充值」，
+	// 返还是归还扣减而非充值，用独立 type 避免污染统计；余额历史按 used_by
+	// 查询不过滤 type，返还流水仍然可见。
+	IPPenaltyRefundType = "ip_penalty_refund"
+	// IPPenaltyRefundCodePrefix 返还流水 code 前缀，拼原扣减流水 id 后天然唯一，
+	// 配合唯一约束 + ON CONFLICT DO NOTHING 保证同一条扣减只返还一次。
+	IPPenaltyRefundCodePrefix = "RF-"
+	// IPPenaltyRefundNotePrefix 返还流水备注前缀（纯英语，管理端与客户端可见）。
+	IPPenaltyRefundNotePrefix = "Risk review refund for IP penalty #"
+
 	// ipConsistencyPenaltyCooldown 同一用户的处罚冷却期：窗口滚动或用户充值后，
 	// 短时间内不重复扣减、不重复发信。DB 层的条件 UPDATE 是第二重幂等保证。
 	ipConsistencyPenaltyCooldown = 24 * time.Hour

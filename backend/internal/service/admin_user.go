@@ -393,8 +393,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	return user, nil
 }
 
-// AdminReviewUserRisk 管理员显式复核放行一个待复核账号：清空风险标记并把
-// status 恢复 active，随后失效认证缓存与余额缓存，让放行在下一次请求即生效。
+// AdminReviewUserRisk 管理员显式复核放行一个待复核账号：先把该账号被 IP 一致性
+// 风控扣掉的余额加回（见 IPPenaltyRefundRepository），再清空风险标记、把 status
+// 恢复 active 并登记全量扫描豁免（见 ClearUserRiskReview），随后失效认证缓存与
+// 余额缓存，让放行在下一次请求即生效。
+//
+// 返还只对「真正扣过且尚未返还」的流水生效：没扣过时 SQL 返回 0，不写流水、不动余额。
+//
+// 豁免只作用于全量扫描：同一批静态证据不会再把账号标回待复核；实时邀请绑定
+// 属于新增证据，仍会重新打标，届时账号需再次人工复核。
 //
 // 这是「风险标记只升不降」规则的唯一显式例外——必须由管理员人工触发，
 // 任何自动链路（实时打标 / 全量扫描 / 内容风控解封）都不得调用本方法。
@@ -410,6 +417,14 @@ func (s *adminServiceImpl) AdminReviewUserRisk(ctx context.Context, userID int64
 	// 确认用户存在，避免对不存在的 id 返回误导性的成功。
 	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
 		return err
+	}
+	// 先返还再清标记：返还失败时风险标记仍在、按钮不消失，管理员可以重试；
+	// 反过来会留下「标记已清但钱没退」且入口跟着消失的死角。
+	// 可选接口：测试桩/其它仓储实现未接入时静默跳过，不影响既有复核放行。
+	if refundRepo, ok := s.userRepo.(IPPenaltyRefundRepository); ok {
+		if _, err := refundRepo.RefundIPBalancePenalties(ctx, userID); err != nil {
+			return fmt.Errorf("refund ip balance penalties: %w", err)
+		}
 	}
 	reviewRepo, ok := s.userRepo.(UserRiskReviewRepository)
 	if !ok {

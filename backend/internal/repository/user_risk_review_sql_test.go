@@ -57,3 +57,56 @@ func TestClearUserRiskReviewSQL_ClearsMarksAndReactivates(t *testing.T) {
 		t.Fatal("clear SQL must not be a bulk multi-table update")
 	}
 }
+
+// TestClearUserRiskReviewSQL_RecordsScanExemption 覆盖「放行即登记全量扫描豁免」。
+// 清标记与写豁免必须在同一条 CTE 语句里：拆成两次写会出现用户已恢复正常、
+// 但豁免没落库，下一次扫描又把账号标回待复核。
+func TestClearUserRiskReviewSQL_RecordsScanExemption(t *testing.T) {
+	sql := clearUserRiskReviewSQL
+
+	for _, want := range []string{
+		"WITH cleared AS (",
+		"RETURNING id",
+		"INSERT INTO user_risk_review_exemptions (user_id, reviewed_at)",
+		"SELECT id, NOW() FROM cleared",
+		"ON CONFLICT (user_id) DO UPDATE SET reviewed_at = NOW()",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("clear SQL missing scan-exemption clause %q", want)
+		}
+	}
+	// 只对本次实际放行的用户写豁免，绝不能按条件批量给所有用户加豁免。
+	if !strings.Contains(sql, "WHERE id = $1") {
+		t.Fatal("exemption must be scoped to the cleared user id")
+	}
+}
+
+// TestListUserIDsForRiskScanSQL_SkipsReviewedUsers 覆盖「已人工放行的账号不再被全量扫描标回」。
+func TestListUserIDsForRiskScanSQL_SkipsReviewedUsers(t *testing.T) {
+	sql := listUserIDsForRiskScanSQL
+
+	for _, want := range []string{
+		"user_risk_review_exemptions",
+		"NOT EXISTS",
+		"e.user_id = u.id",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("risk scan SQL missing exemption clause %q", want)
+		}
+	}
+	// 分批游标、软删除过滤、LIMIT 一个都不能被豁免条件挤掉。
+	for _, want := range []string{
+		"u.deleted_at IS NULL",
+		"u.id > $1",
+		"ORDER BY u.id",
+		"LIMIT $2",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("risk scan SQL missing batch contract %q", want)
+		}
+	}
+	// 扫描只读取数据，绝不在这里写标记。
+	if strings.Contains(sql, "UPDATE ") || strings.Contains(sql, "INSERT ") {
+		t.Fatal("risk scan SQL must stay read-only")
+	}
+}
