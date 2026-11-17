@@ -927,8 +927,9 @@ func (r *userRepository) GetLatestUsedIPByUserIDs(ctx context.Context, userIDs [
 	return result, nil
 }
 
-// GetSharedUsageIPs 返回「最近 180 天内被 ≥2 个不同用户使用过」的客户端 IP 集合。
+// GetSharedUsageIPs 返回「最近 180 天内被 ≥5 个不同用户使用过」的客户端 IP 集合。
 // 用于管理端 Suspect 打标：某用户的最后使用 IP 若落在此集合，说明该 IP 同时被多个账号共用。
+// 阈值 5 为运营尺度（原为 2）；放宽以兼容公司/NAT/代理下的正常多人共用。
 // 注：usage_logs.ip_address 未建索引，海量数据下该全表聚合可能偏慢；如有性能压力，
 // 可对 ip_address（非空）建部分索引，或缩短时间窗口。
 func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool, error) {
@@ -944,7 +945,7 @@ func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool
 		  AND ip_address <> ''
 		  AND created_at >= now() - interval '180 days'
 		GROUP BY ip_address
-		HAVING COUNT(DISTINCT user_id) >= 2
+		HAVING COUNT(DISTINCT user_id) >= 5
 	`
 
 	rows, err := r.sql.QueryContext(ctx, query)
@@ -1339,6 +1340,45 @@ func (r *userRepository) IncrementLookedCount(ctx context.Context, id int64) (in
 		return 0, err
 	}
 	return count, nil
+}
+
+// isRiskExemptByIDSQL 判断用户是否命中「提过工单 / 人工复核放行」豁免。
+// 命中任一即豁免：
+//   - users.ticket_flag（迁移 246，管理员工单跟进时置位）
+//   - user_risk_review_exemptions（迁移 253，人工复核放行时写入）
+//
+// 两条 EXISTS 用 OR 合并，一次往返；抽成常量便于在无真库的单测里断言 SQL 契约。
+const isRiskExemptByIDSQL = `
+SELECT EXISTS (
+    SELECT 1 FROM users
+    WHERE id = $1 AND deleted_at IS NULL AND ticket_flag = TRUE
+) OR EXISTS (
+    SELECT 1 FROM user_risk_review_exemptions WHERE user_id = $1
+)
+`
+
+// IsRiskExemptByID 查询用户是否命中自动风控豁免（工单标记 / 复核放行）。
+// 由 service 层的 RiskExemptionChecker 调用并缓存，避免鉴权热路径每次查库。
+func (r *userRepository) IsRiskExemptByID(ctx context.Context, id int64) (bool, error) {
+	if r.sql == nil {
+		return false, fmt.Errorf("sql executor is not configured")
+	}
+	rows, err := r.sql.QueryContext(ctx, isRiskExemptByIDSQL, id)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return false, fmt.Errorf("risk exemption query returned no row for user %d", id)
+	}
+	var exempt bool
+	if err := rows.Scan(&exempt); err != nil {
+		return false, err
+	}
+	return exempt, nil
 }
 
 // SetTicketFlag 设置管理员「提过工单」标记。

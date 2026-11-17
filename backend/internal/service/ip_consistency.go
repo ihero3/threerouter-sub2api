@@ -18,9 +18,11 @@ import (
 // IP 一致性风控（IP consistency guard）。
 //
 // 两档处罚（滚动窗口，默认 10 分钟）：
-//   - 恰好 3 个不同客户端 IP：打「IP 可疑」轻标记 + 把余额降到只剩 $0.03 +
-//     写调账备注 + 给用户发一封通知邮件。账号仍可正常调用，不冻结。
-//   - ≥4 个不同客户端 IP：直接禁用账号（Status=disabled，管理员可解封）。
+//   - 恰好 ipMarkThreshold(4) 个不同客户端 IP：打「IP 可疑」轻标记 + 把余额降到
+//     只剩 $0.03 + 写调账备注 + 给用户发一封通知邮件。账号仍可正常调用，不冻结。
+//   - ≥ipDisableThreshold(5) 个不同客户端 IP：直接禁用账号（Status=disabled，管理员可解封）。
+//
+// 命中工单标记 / 人工复核豁免 / IP 白名单的用户整体跳过本风控（见 CheckUser）。
 //
 // 两个功能各有独立开关，默认都开启；存量 v1 配置在读取时一次性迁移到 v2，
 // 保证升级后线上立即生效（管理员之后再进后台关闭才会写回 v2 配置）。
@@ -42,6 +44,12 @@ const (
 	defaultIPConsistencyWindowSeconds = 600 // 10 分钟
 	minIPConsistencyWindowSeconds     = 60
 	maxIPConsistencyWindowSeconds     = 24 * 3600
+
+	// ipMarkThreshold / ipDisableThreshold IP 一致性的两档阈值。
+	// 达到 ipMarkThreshold 个不同 IP 打轻标记并触发扣减；达到 ipDisableThreshold 个直接禁用。
+	// 刻意分开命名，便于后续按运营尺度调整（最近一次调整：标记 3→4、禁用 4→5）。
+	ipMarkThreshold    = 4
+	ipDisableThreshold = 5
 
 	// ipConsistencySettingsVersion 配置结构版本。v1 只有「标记可疑 + 禁用」且默认关闭；
 	// v2 拆成两个独立功能且默认都开。存量 v1 在读取时一次性迁移，保证升级后立即生效。
@@ -77,6 +85,16 @@ const (
 	ipConsistencyRegisterKeyPrefix = "ipguard:register:"
 	// ipConsistencyPenaltyKeyPrefix 处罚幂等锁 Redis key 前缀
 	ipConsistencyPenaltyKeyPrefix = "ipguard:penalty:"
+	// ipConsistencyNewUserKeyPrefix 新用户「首调令牌」前缀。SETNX 成功者才有权判定，
+	// 天然同时保证「只罚第一次」与「不重复扣钱 / 不发重复邮件」。
+	ipConsistencyNewUserKeyPrefix = "ipguard:newuser:"
+	// ipConsistencyNewUserPenaltyKeyPrefix 新用户严格规则的独立扣减幂等键。
+	// 刻意与 4/5 IP 规则的 penalty key 分开，避免两条规则互相吞掉处罚。
+	ipConsistencyNewUserPenaltyKeyPrefix = "ipguard:newuser-penalty:"
+	// newUserFirstUseWindow 新用户首调严格校验窗口：注册后 10 分钟内。
+	newUserFirstUseWindow = 10 * time.Minute
+	// newUserIPMismatchReason 真实 suspect 标记的原因码（进人工复核队列）。
+	newUserIPMismatchReason = "new_user_first_use_ip_mismatch"
 )
 
 // ErrIPConsistencyBlocked IP 一致性校验未通过（注册/登录返回 403）。
@@ -87,7 +105,7 @@ var ErrIPConsistencyBlocked = infraerrors.Forbidden(
 
 // IPConsistencySettings IP 一致性风控配置（v2）。
 type IPConsistencySettings struct {
-	// Enabled 功能A：3 个 IP 打「IP 可疑」轻标记、≥4 个 IP 禁用账号（默认开启）。
+	// Enabled 功能A：ipMarkThreshold 个 IP 打「IP 可疑」轻标记、≥ipDisableThreshold 个 IP 禁用账号（默认开启）。
 	Enabled bool `json:"enabled"`
 	// WindowSeconds 滚动窗口秒数（默认 600，取值区间 60 ~ 86400）
 	WindowSeconds int `json:"window_seconds"`
@@ -98,7 +116,7 @@ type IPConsistencySettings struct {
 
 	// SchemaVersion 配置结构版本；<2 视为存量 v1，读取时迁移到 v2 默认值。
 	SchemaVersion int `json:"schema_version"`
-	// BalancePenaltyEnabled 功能B：≥3 个 IP 把余额降到 floor + 写备注 + 发通知邮件（默认开启）。
+	// BalancePenaltyEnabled 功能B：≥ipMarkThreshold 个 IP 把余额降到 floor + 写备注 + 发通知邮件（默认开启）。
 	BalancePenaltyEnabled bool `json:"balance_penalty_enabled"`
 	// BalancePenaltyFloor 处罚后保留的余额（默认 0.03，只在当前余额高于它时扣减）。
 	BalancePenaltyFloor float64 `json:"balance_penalty_floor"`
@@ -258,8 +276,22 @@ type UserStatusUpdater interface {
 	UpdateStatus(ctx context.Context, userID int64, status string) error
 	// MarkIPInconsistent 给用户打「窗口内 IP 不一致」轻标记（risk_level=ip_suspect）。
 	// 刻意不写 risk_level=suspect：后者会触发上一轮的待复核冻结闸门（禁建 Key +
-	// 网关 403），比 ≥4 个 IP 才禁用还早生效，梯度倒挂且误伤真实用户。
+	// 网关 403），比达到禁用阈值才禁用还早生效，梯度倒挂且误伤真实用户。
 	MarkIPInconsistent(ctx context.Context, userID int64, reason string)
+}
+
+// RiskExemptionCheck 全局豁免判断能力（由 *RiskExemptionChecker 实现）。
+// 独立成窄接口便于测试桩，且同样是可选依赖：未注入时豁免不生效，处罚照常。
+type RiskExemptionCheck interface {
+	IsExempt(ctx context.Context, userID int64) bool
+	Invalidate(userID int64)
+}
+
+// NewUserRiskMarker 写入「真实 suspect」标记的能力（由 *AffiliateService 实现）。
+// suspect 会触发 RiskAccessBlocked，并在管理端复核队列中可见；与 ip_suspect
+// 轻标记完全不同的处置档位。独立成窄接口便于测试与可选注入。
+type NewUserRiskMarker interface {
+	MarkUserRisk(ctx context.Context, userID int64, level string, reasons []string)
 }
 
 // IPConsistencyPenaltyLocker 处罚幂等锁（由 repository 的 IP 窗口缓存实现）。
@@ -293,6 +325,8 @@ type IPConsistencyService struct {
 	userStatusUpdater UserStatusUpdater
 	penalty           IPConsistencyPenalty
 	penaltyLocker     IPConsistencyPenaltyLocker
+	exemptionChecker  RiskExemptionCheck
+	newUserRiskMarker NewUserRiskMarker
 }
 
 // NewIPConsistencyService 创建 IP 一致性风控服务。
@@ -318,8 +352,113 @@ func (s *IPConsistencyService) SetPenaltyService(penalty IPConsistencyPenalty, l
 	s.penaltyLocker = locker
 }
 
+// SetRiskExemptionChecker 注入全局豁免检查器（可选依赖）。
+// 未注入时豁免不生效、处罚照常，与注入失败时的行为一致。
+func (s *IPConsistencyService) SetRiskExemptionChecker(checker RiskExemptionCheck) {
+	if s == nil {
+		return
+	}
+	s.exemptionChecker = checker
+}
+
+// SetNewUserRiskMarker 注入真实 suspect 打标器（可选依赖）。
+// 未注入时仍会禁用与扣钱，只是复核队列里看不到标记，绝不阻断鉴权。
+func (s *IPConsistencyService) SetNewUserRiskMarker(marker NewUserRiskMarker) {
+	if s == nil {
+		return
+	}
+	s.newUserRiskMarker = marker
+}
+
+// CheckNewUserFirstUseIP 新用户注册后 10 分钟内「首次 API Key 调用」的 IP 严格校验。
+//
+// 与按窗口统计 IP 数量的 CheckUser 是两条独立规则：这里只看注册 IP 与首调 IP，
+// 不一致即 suspect + 禁用 + 扣减，并中断本次请求。返回非 nil 表示命中。
+//
+// 「首次」由 Redis SETNX 令牌判定，不查 usage_logs：
+//   - 首调 IP 一致：消费令牌，窗口内后续换 IP 不追罚（符合「首次」语义）；
+//   - 首调 IP 不一致：消费令牌并执行处罚，后续请求因令牌已存在直接放行。
+//
+// Redis 不可用、字段缺失、超过窗口、管理员、白名单与工单/复核豁免均 fail-open。
+func (s *IPConsistencyService) CheckNewUserFirstUseIP(
+	ctx context.Context,
+	userID int64,
+	role, clientIP, registerIP string,
+	createdAt time.Time,
+) *IPConsistencyViolation {
+	if s == nil || s.penaltyLocker == nil || userID <= 0 || role == RoleAdmin || createdAt.IsZero() {
+		return nil
+	}
+	age := time.Since(createdAt)
+	if age < 0 || age >= newUserFirstUseWindow {
+		return nil
+	}
+
+	clientIP = normalizeClientIP(clientIP)
+	registerIP = normalizeClientIP(registerIP)
+	if clientIP == "" || registerIP == "" {
+		return nil
+	}
+
+	settings := *DefaultIPConsistencySettings()
+	if s.settingsProvider != nil {
+		settings = s.settingsProvider.GetIPConsistencySettingsCached(ctx)
+	}
+	// 与主 IP 规则同口径：两个功能都关时整条规则不生效；白名单、工单与复核豁免照旧。
+	if !settings.Enabled && !settings.BalancePenaltyEnabled {
+		return nil
+	}
+	if containsInt64(settings.WhitelistUserIDs, userID) || ipWhitelisted(clientIP, settings.WhitelistIPs) {
+		return nil
+	}
+	if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, userID) {
+		return nil
+	}
+
+	// TTL 只覆盖注册后的剩余窗口；窗口一过令牌自然消失，不留下长期状态。
+	ttl := newUserFirstUseWindow - age
+	key := ipConsistencyNewUserKeyPrefix + fmt.Sprintf("%d", userID)
+	claimed, err := s.penaltyLocker.TryClaimPenalty(ctx, key, ttl)
+	if err != nil {
+		slog.Warn("new-user first-use ip check skipped: lock unavailable",
+			"user_id", userID, "error", err)
+		return nil
+	}
+	if !claimed {
+		return nil // 首调已经发生过（无论当时是否命中），不重复处罚
+	}
+	if clientIP == registerIP {
+		return nil
+	}
+
+	if s.newUserRiskMarker != nil {
+		s.newUserRiskMarker.MarkUserRisk(ctx, userID, AffiliateRiskLevelSuspect, []string{newUserIPMismatchReason})
+	}
+	if s.userStatusUpdater != nil {
+		if err := s.userStatusUpdater.UpdateStatus(ctx, userID, StatusDisabled); err != nil {
+			slog.Error("failed to disable user after new-user first-use ip mismatch",
+				"user_id", userID, "error", err)
+		}
+	}
+	// 严格规则无条件扣钱，不受「4/5 IP」规则的功能B 开关影响；使用独立幂等键。
+	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor,
+		settings.PenaltyNotifyEmail, ipConsistencyNewUserPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
+
+	slog.Warn("account disabled: new-user first api call ip differs from registration ip",
+		"audit", true,
+		"user_id", userID,
+		"current_ip", clientIP,
+		"register_ip", registerIP,
+	)
+	return &IPConsistencyViolation{
+		UserID:    userID,
+		CurrentIP: clientIP,
+		KnownIPs:  []string{registerIP},
+	}
+}
+
 // CheckUser 记录并校验已认证用户的客户端 IP 一致性。
-// 返回 nil 表示放行；返回非 nil 表示命中 ≥4 个 IP，账号已被自动禁用。
+// 返回 nil 表示放行；返回非 nil 表示命中 ≥ipDisableThreshold 个 IP，账号已被自动禁用。
 func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role, clientIP string) *IPConsistencyViolation {
 	if s == nil || s.cache == nil || s.settingsProvider == nil || userID <= 0 {
 		return nil
@@ -341,6 +480,11 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 	if clientIP == "" || ipWhitelisted(clientIP, settings.WhitelistIPs) {
 		return nil
 	}
+	// 全局豁免：提过工单 / 人工复核放行 / IP 白名单命中者，跳过一切自动处罚
+	// （轻标记 + 扣减 + 禁用）。白名单已在上面判断；这里查工单标记与复核豁免。
+	if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, userID) {
+		return nil
+	}
 
 	key := ipConsistencyUserKeyPrefix + fmt.Sprintf("%d", userID)
 	ips, err := s.cache.RecordAndListIPs(ctx, key, clientIP, time.Now(), time.Duration(settings.WindowSeconds)*time.Second)
@@ -350,18 +494,18 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 		return nil
 	}
 
-	// 功能B：≥3 个 IP 触发减额度处罚。幂等锁保证一个冷却期内只扣一次、只发一封信，
-	// 即使 IP 从 3 个继续涨到 4、5 个也不会重复处罚。
-	if settings.BalancePenaltyEnabled && len(ips) >= 3 {
+	// 功能B：达到 ipMarkThreshold 个 IP 触发减额度处罚。幂等锁保证一个冷却期内只扣一次、只发一封信，
+	// 即使 IP 继续上涨也不会重复处罚。
+	if settings.BalancePenaltyEnabled && len(ips) >= ipMarkThreshold {
 		s.scheduleBalancePenalty(ctx, userID, settings)
 	}
 
-	// 功能A：恰好 3 个 IP 打轻标记；≥4 个 IP 禁用账号并中断本次请求。
+	// 功能A：恰好 ipMarkThreshold 个 IP 打轻标记；≥ipDisableThreshold 个 IP 禁用账号并中断本次请求。
 	if !settings.Enabled {
 		return nil
 	}
 	switch {
-	case len(ips) >= 4:
+	case len(ips) >= ipDisableThreshold:
 		if s.userStatusUpdater != nil {
 			if err := s.userStatusUpdater.UpdateStatus(ctx, userID, StatusDisabled); err != nil {
 				slog.Error("failed to disable user after ip consistency violation",
@@ -383,11 +527,11 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 			CurrentIP: clientIP,
 			KnownIPs:  ips,
 		}
-	case len(ips) == 3:
+	case len(ips) == ipMarkThreshold:
 		if s.userStatusUpdater != nil {
 			s.userStatusUpdater.MarkIPInconsistent(ctx, userID, ipInconsistencyReason)
 		}
-		slog.Warn("user marked ip-suspect: three client ips within monitoring window",
+		slog.Warn("user marked ip-suspect: threshold client ips within monitoring window",
 			"audit", true,
 			"user_id", userID,
 			"current_ip", clientIP,
@@ -401,12 +545,17 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 // scheduleBalancePenalty 抢到幂等锁后异步执行处罚。
 // CheckUser 位于登录 / JWT / API Key 鉴权热路径，DB 写入与 SMTP 绝不能同步执行。
 func (s *IPConsistencyService) scheduleBalancePenalty(ctx context.Context, userID int64, settings IPConsistencySettings) {
+	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor, settings.PenaltyNotifyEmail,
+		ipConsistencyPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
+}
+
+// scheduleBalancePenaltyWithKey 是处罚调度的唯一实现；不同规则通过不同 key 隔离幂等。
+func (s *IPConsistencyService) scheduleBalancePenaltyWithKey(ctx context.Context, userID int64, floor float64, notify bool, key string) {
 	if s.penalty == nil || s.penaltyLocker == nil {
 		slog.Warn("ip balance penalty skipped: penalty dependencies not wired",
 			"audit", true, "user_id", userID)
 		return
 	}
-	key := ipConsistencyPenaltyKeyPrefix + fmt.Sprintf("%d", userID)
 	claimed, err := s.penaltyLocker.TryClaimPenalty(ctx, key, ipConsistencyPenaltyCooldown)
 	if err != nil {
 		// 锁不可用时不处罚，也不阻断请求（fail-open）；下次请求仍有机会重试。
@@ -417,8 +566,7 @@ func (s *IPConsistencyService) scheduleBalancePenalty(ctx context.Context, userI
 	if !claimed {
 		return // 冷却期内已处罚过
 	}
-	floor := settings.BalancePenaltyFloor
-	notify := settings.PenaltyNotifyEmail
+	// 邮件失败不算失败（见处罚服务），不释放锁。
 	penalty := s.penalty
 	locker := s.penaltyLocker
 	go func() {

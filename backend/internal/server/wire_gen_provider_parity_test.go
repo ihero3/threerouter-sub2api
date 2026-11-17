@@ -32,4 +32,21 @@ func TestWireGenSideEffectProvidersArePresent(t *testing.T) {
 	// 顺带保护此前已手工同步的可选依赖，避免修复时误删。
 	require.Contains(t, src, "settingHandler.SetGeoIPStatus(geoIPService)")
 	require.Contains(t, src, "SetPenaltyService(")
+
+	// 全局豁免检查器 + 共享 IP 风险扫描的装配同样只能手工同步：漏了会导致
+	// 工单/复核豁免不生效、共享 IP 扫描从不启动。
+	require.Contains(t, string(providerSrc), "NewRiskExemptionChecker,")
+	require.Contains(t, string(providerSrc), "NewSharedIPRiskScanService,")
+	require.Contains(t, src, "service.NewRiskExemptionChecker(")
+	require.Contains(t, src, "SetRiskExemptionChecker(")
+	require.Contains(t, src, "SetRiskExemptionInvalidator(")
+	require.Contains(t, src, "service.NewSharedIPRiskScanService(")
+	require.Contains(t, src, "sharedIPRiskScanService.Start()")
+	require.Contains(t, src, "sharedIPRiskScan.Stop()")
+
+	// 新用户首调 IP 严格规则：打标器必须手工注入，漏了会只禁用扣钱但不进复核队列。
+	require.Contains(t, src, "SetNewUserRiskMarker(")
+	routeSrc, err := os.ReadFile("routes/gateway.go")
+	require.NoError(t, err)
+	require.Contains(t, string(routeSrc), "NewUserFirstUseIPGuard(ipConsistencyGuard, true)")
 }

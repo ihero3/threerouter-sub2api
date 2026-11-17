@@ -56,7 +56,7 @@ type User struct {
 	// LastUsedIP 用户最近一次 API 调用使用的客户端 IP（取自 usage_logs 最近一条有效记录）。
 	// 仅用于管理端展示与风控研判，不参与鉴权、限流或计费。
 	LastUsedIP string
-	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥2 个不同用户使用过）。
+	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥5 个不同用户使用过）。
 	// 仅用于管理端风控打标（Suspect），不参与业务逻辑。
 	LastUsedIPShared bool
 	CreatedAt    time.Time

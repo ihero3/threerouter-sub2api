@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 26 // v26: user risk_level gate (pending-review accounts blocked at ingress)
+const apiKeyAuthSnapshotVersion = 27 // v27: user register_ip/created_at for new-user first-use IP guard
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -367,6 +367,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			TotalRecharged:             apiKey.User.TotalRecharged,
 			RPMLimit:                   apiKey.User.RPMLimit,
 			RiskLevel:                  apiKey.User.RiskLevel,
+			RegisterIP:                 apiKey.User.RegisterIP,
+			CreatedAt:                  apiKey.User.CreatedAt,
 		},
 	}
 
@@ -479,6 +481,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
 			RiskLevel:                  snapshot.User.RiskLevel,
+			RegisterIP:                 snapshot.User.RegisterIP,
+			CreatedAt:                  snapshot.User.CreatedAt,
 		},
 	}
 	if snapshot.Group != nil {

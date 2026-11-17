@@ -580,6 +580,19 @@ func (s *AffiliateService) MarkUserRisk(ctx context.Context, userID int64, level
 	s.invalidateRiskMarkedCaches(ctx, marks)
 }
 
+// BumpUserRiskMarksBatch 批量写入风险标记（只升不降），供共享 IP 等周期性风控扫描调用。
+// 与 MarkUserRisk 同款语义：失败只记日志、不影响扫描主循环；成功后失效认证/余额缓存。
+func (s *AffiliateService) BumpUserRiskMarksBatch(ctx context.Context, marks []UserRiskMark) {
+	if s == nil || s.repo == nil || len(marks) == 0 {
+		return
+	}
+	if _, err := s.repo.BumpUserRiskMarks(ctx, marks); err != nil {
+		logger.LegacyPrintf("service.affiliate", "[Affiliate] BumpUserRiskMarksBatch failed count=%d: %v", len(marks), err)
+		return
+	}
+	s.invalidateRiskMarkedCaches(ctx, marks)
+}
+
 // IsEnabled reports whether the affiliate (邀请返利) feature is turned on.
 func (s *AffiliateService) IsEnabled(ctx context.Context) bool {
 	if s == nil || s.settingService == nil {

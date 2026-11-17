@@ -119,11 +119,11 @@ func waitPenaltyCall(t *testing.T, p *fakePenalty) penaltyCall {
 	return calls[0]
 }
 
-func TestIPConsistency_ThreeIPsSchedulesPenaltyWithContract(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
+func TestIPConsistency_FourIPsSchedulesPenaltyWithContract(t *testing.T) {
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
-		t.Fatalf("three ips must not block the request, got %+v", got)
+	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
+		t.Fatalf("four ips must not block the request, got %+v", got)
 	}
 	calls, _, key, ttl := locker.snapshot()
 	if calls != 1 {
@@ -151,13 +151,13 @@ func TestIPConsistency_ThreeIPsSchedulesPenaltyWithContract(t *testing.T) {
 	}
 }
 
-func TestIPConsistency_FourIPsDisablesButNeverDoublePenalizes(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+func TestIPConsistency_FiveIPsDisablesButNeverDoublePenalizes(t *testing.T) {
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"})
 	locker.returnOnCalls = map[int]bool{1: false} // 冷却期内已处罚过
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
+	violation := svc.CheckUser(context.Background(), 42, "user", "5.5.5.5")
 	if violation == nil {
-		t.Fatal("expected a violation at 4 ips")
+		t.Fatal("expected a violation at 5 ips")
 	}
 	if calls, _, _, _ := locker.snapshot(); calls != 1 {
 		t.Fatalf("expected one claim attempt, got %d", calls)
@@ -177,18 +177,18 @@ func TestIPConsistency_TwoIPsNeverSchedulesPenalty(t *testing.T) {
 		t.Fatalf("two ips must not block, got %+v", got)
 	}
 	if calls, _, _, _ := locker.snapshot(); calls != 0 {
-		t.Fatalf("penalty lock must not be touched below 3 ips, got %d claims", calls)
+		t.Fatalf("penalty lock must not be touched below the mark threshold, got %d claims", calls)
 	}
 	if len(penalty.snapshot()) != 0 {
-		t.Fatal("penalty must not run below 3 ips")
+		t.Fatal("penalty must not run below the mark threshold")
 	}
 }
 
 func TestIPConsistency_PenaltyLockFailureFailsOpen(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
 	locker.claimErr = errors.New("redis down")
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
+	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
 		t.Fatalf("lock failure must never block the request, got %+v", got)
 	}
 	select {
@@ -199,10 +199,10 @@ func TestIPConsistency_PenaltyLockFailureFailsOpen(t *testing.T) {
 }
 
 func TestIPConsistency_PenaltyFailureReleasesLock(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
 	penalty.err = errors.New("db down")
 
-	svc.CheckUser(context.Background(), 42, "user", "3.3.3.3")
+	svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
 	waitPenaltyCall(t, penalty)
 
 	deadline := time.After(3 * time.Second)

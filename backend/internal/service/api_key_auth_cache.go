@@ -54,6 +54,12 @@ type APIKeyAuthUserSnapshot struct {
 	// 管理端复核放行后缓存会被失效并重建。空值 = 正常。
 	RiskLevel string `json:"risk_level,omitempty"`
 
+	// RegisterIP / CreatedAt 新用户首调 IP 严格校验所需（注册后 10 分钟内首次
+	// API Key 调用的 IP 必须与注册 IP 一致）。必须随快照缓存，否则鉴权热路径
+	// 拿不到注册信息，规则会静默失效。
+	RegisterIP string    `json:"register_ip,omitempty"`
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
