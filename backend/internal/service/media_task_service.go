@@ -1052,6 +1052,12 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 		if p, ok := input["prompt"].(string); ok {
 			req.Prompt = p
 		}
+	} else if kind == MediaKindAudio {
+		// OpenAI /v1/audio/speech 用字符串 input 传待合成文本；
+		// 只影响音频，避免改变图片/视频既有协议的取值口径。
+		if v, ok := body["input"].(string); ok {
+			req.Prompt = v
+		}
 	}
 	if v, ok := body["negative_prompt"].(string); ok {
 		req.NegativePrompt = v

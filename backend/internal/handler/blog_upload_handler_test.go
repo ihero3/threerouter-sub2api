@@ -2,6 +2,10 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -151,5 +155,149 @@ func TestBlogUploadHandler_MissingFile(t *testing.T) {
 	h.UploadImage(c)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// uploadTestImage uploads content via the handler and returns the stored filename.
+func uploadTestImage(t *testing.T, h *BlogUploadHandler, filename string, content []byte) string {
+	t.Helper()
+
+	c, w := newUploadContext(t, filename, content)
+	h.UploadImage(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	name := strings.TrimPrefix(resp.Data.URL, "/api/v1/public/uploads/blogs/")
+	if name == "" || name == resp.Data.URL {
+		t.Fatalf("unexpected upload url: %q", resp.Data.URL)
+	}
+	return name
+}
+
+// testGradientPNG builds a w×h PNG so downscaling is actually exercised.
+func testGradientPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: 128, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode test png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+type listedImage struct {
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	ThumbURL  string `json:"thumb_url"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"created_at"`
+}
+
+func TestBlogUploadHandler_ListImages(t *testing.T) {
+	dir := t.TempDir()
+	h := NewBlogUploadHandler(dir)
+
+	name := uploadTestImage(t, h, "product.png", testPNG)
+	// 非图片文件不应出现在列表中
+	if err := os.WriteFile(filepath.Join(dir, "uploads", "blogs", "note.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write non-image: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/uploads/images", nil)
+	h.ListImages(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Items []listedImage `json:"items"`
+			Total int           `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if resp.Data.Total != 1 || len(resp.Data.Items) != 1 {
+		t.Fatalf("items = %d (total %d), want 1", len(resp.Data.Items), resp.Data.Total)
+	}
+	item := resp.Data.Items[0]
+	if item.Name != name {
+		t.Fatalf("name = %q, want %q", item.Name, name)
+	}
+	if item.URL != "/api/v1/public/uploads/blogs/"+name {
+		t.Fatalf("url = %q", item.URL)
+	}
+	if item.ThumbURL != "/api/v1/public/uploads/thumbs/"+name {
+		t.Fatalf("thumb_url = %q", item.ThumbURL)
+	}
+	if item.Size <= 0 || item.CreatedAt == "" {
+		t.Fatalf("unexpected item: %+v", item)
+	}
+}
+
+func TestBlogUploadHandler_ServeThumbnailLazily(t *testing.T) {
+	dir := t.TempDir()
+	h := NewBlogUploadHandler(dir)
+
+	// 直接写入原图（模拟历史已上传、尚无缩略图的文件），验证访问时懒生成
+	const name = "legacy.png"
+	if err := os.WriteFile(filepath.Join(dir, "uploads", "blogs", name), testGradientPNG(t, 640, 480), 0o644); err != nil {
+		t.Fatalf("write original: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/public/uploads/thumbs/"+name, nil)
+	c.Params = gin.Params{{Key: "filename", Value: "/" + name}}
+	h.ServeThumbnail(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("thumb status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		t.Fatalf("content-type = %q, want image/png", ct)
+	}
+	thumb, err := png.Decode(bytes.NewReader(w.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("decode thumb: %v", err)
+	}
+	if got := thumb.Bounds().Dx(); got != maxThumbSize {
+		t.Fatalf("thumb width = %d, want %d", got, maxThumbSize)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "uploads", "blog-thumbs", "legacy.thumb.png")); err != nil {
+		t.Fatalf("thumbnail not persisted: %v", err)
+	}
+}
+
+func TestBlogUploadHandler_ServeThumbnailBlocksTraversal(t *testing.T) {
+	h := NewBlogUploadHandler(t.TempDir())
+
+	for _, target := range []string{"/../secret.png", "/..%2fsecret.png", "/sub/dir.png"} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/public/uploads/thumbs"+target, nil)
+		c.Params = gin.Params{{Key: "filename", Value: target}}
+		h.ServeThumbnail(c)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("traversal %q: status = %d, want 404", target, w.Code)
+		}
 	}
 }

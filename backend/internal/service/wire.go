@@ -1101,6 +1101,7 @@ func ProvideMediaAdapter() *MediaAdapterRegistry {
 		NewImageMediaAdapter(),
 		// 音频厂商（独立）
 		NewMiniMaxTTSAdapter(),
+		NewQwenAudioTTSAdapter(),
 		NewVolcanoTTSAdapter(),
 		NewAliyunTTSAdapter(),
 		NewAudioMediaAdapter(),

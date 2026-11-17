@@ -92,9 +92,13 @@
             <div class="flex-shrink-0">
               <Icon name="checkCircle" size="md" class="text-green-500" />
             </div>
-            <p class="text-sm text-green-700 dark:text-green-400">
-              {{ t('auth.codeSentSuccess') }}
-            </p>
+            <div class="text-sm text-green-700 dark:text-green-400">
+              <p>{{ t('auth.codeSentSuccess') }}</p>
+              <p class="mt-2 flex items-start gap-2 rounded-lg bg-green-100/70 px-2.5 py-2 font-medium text-green-800 dark:bg-green-800/40 dark:text-green-200">
+                <Icon name="mail" size="sm" class="mt-0.5 flex-shrink-0" />
+                <span>{{ t('auth.spamFolderHint') }}</span>
+              </p>
+            </div>
           </div>
         </div>
 

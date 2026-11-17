@@ -748,6 +748,8 @@ export default {
         ignoreNoAvailableAccountsHint: '启用后，"No available accounts" 错误将不会写入错误日志（不推荐，这通常是配置问题）。',
         ignoreInsufficientBalanceErrors: '忽略 Insufficient 错误',
         ignoreInsufficientBalanceErrorsHint: '默认开启。凡错误信息含 Insufficient（用户余额不足、额度耗尽、上游渠道欠费、OAuth 权限不足等）都不写入错误日志，避免淹没真实故障；关闭后恢复记录。',
+        ignoreAuthFallbackAdminErrors: '忽略归属到 admin 的认证错误',
+        ignoreAuthFallbackAdminErrorsHint: '默认开启。登录、注册、验证码等无法确定用户而归属到 admin 的失败不写入错误日志，避免刷屏；关闭后恢复记录。',
         autoRefresh: '自动刷新',
         enableAutoRefresh: '启用自动刷新',
         enableAutoRefreshHint: '自动刷新仪表板数据，启用后会定期拉取最新数据。',

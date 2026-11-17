@@ -7,6 +7,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -183,9 +184,16 @@ func NewMiniMaxTTSAdapter() *MiniMaxTTSAdapter {
 	a.mediaVendorAudioAdapter = newMediaVendorAudioAdapter("minimax-tts")
 	a.supports = func(platform, model string) bool {
 		m := strings.ToLower(strings.TrimSpace(model))
+		// T2A v2 官方模型（speech-2.8-hd/turbo、speech-2.6-*、speech-02-* 等）
+		// 不含 "tts" 也不含 "speech-01"，旧口径会漏判并落到 fallback 打错端点。
+		if strings.HasPrefix(m, "speech-") {
+			return true
+		}
+		// "tts" 只做精确匹配：宽泛 Contains 会抢走 qwen-audio-...-tts-flash
+		// 等其它厂商模型（MiniMax 注册在阿里之前，会打错端点）。
 		return strings.Contains(m, "minimax-tts") ||
-			strings.Contains(m, "speech-01") ||
-			strings.Contains(m, "tts")
+			m == "speech-01" ||
+			m == "tts"
 	}
 	a.buildCreate = buildMiniMaxTTSBody
 	a.parseCreate = parseMiniMaxTTSResult
@@ -203,16 +211,64 @@ func NewMiniMaxTTSAdapter() *MiniMaxTTSAdapter {
 	return a
 }
 
+// buildMiniMaxTTSBody 把 OpenAI /v1/audio/speech 风格参数映射到 MiniMax T2A v2。
+// 客户端也可直接传 MiniMax 原生字段（voice_setting / audio_setting /
+// pronunciation_dict / language_boost / text_normalization_mode 等），原样透传。
 func buildMiniMaxTTSBody(req MediaCreateRequest) []byte {
 	body := map[string]any{
-		"model": req.UpstreamModel,
-		"text":  req.Prompt,
+		"model":  req.UpstreamModel,
+		"text":   req.Prompt,
+		"stream": false, // 本端点只做同步 HTTP；流式需要另一套链路
 	}
+
+	// voice -> voice_setting.voice_id；原生 voice_setting 优先，避免覆盖客户端显式设置。
+	voiceSetting := map[string]any{}
+	if raw, ok := req.Extra["voice_setting"].(map[string]any); ok {
+		for k, v := range raw {
+			voiceSetting[k] = v
+		}
+	}
+	if voice, ok := req.Extra["voice"].(string); ok && strings.TrimSpace(voice) != "" {
+		if _, exists := voiceSetting["voice_id"]; !exists {
+			voiceSetting["voice_id"] = strings.TrimSpace(voice)
+		}
+	}
+	if speed, ok := req.Extra["speed"]; ok {
+		if _, exists := voiceSetting["speed"]; !exists {
+			voiceSetting["speed"] = speed
+		}
+	}
+	if len(voiceSetting) > 0 {
+		body["voice_setting"] = voiceSetting
+	}
+
+	// response_format -> audio_setting.format（上游只支持 mp3 / pcm / flac）。
+	audioSetting := map[string]any{}
+	if raw, ok := req.Extra["audio_setting"].(map[string]any); ok {
+		for k, v := range raw {
+			audioSetting[k] = v
+		}
+	}
+	if format, ok := req.Extra["response_format"].(string); ok {
+		format = strings.ToLower(strings.TrimSpace(format))
+		if format == "mp3" || format == "pcm" || format == "flac" {
+			if _, exists := audioSetting["format"]; !exists {
+				audioSetting["format"] = format
+			}
+		}
+	}
+	if len(audioSetting) > 0 {
+		body["audio_setting"] = audioSetting
+	}
+
 	for k, v := range req.Extra {
 		switch k {
 		case "model", "prompt", "text", "media", "video_create_path",
 			// 幂等标识不能进上游请求体，见 video_adapter.go 同处说明。
-			"request_id":
+			"request_id",
+			// 以下为 OpenAI 风格字段：已映射或上游不认，不能原样下发。
+			"input", "voice", "voice_setting", "audio_setting",
+			"response_format", "speed", "stream":
 			continue
 		}
 		body[k] = v
@@ -232,27 +288,50 @@ func parseMiniMaxTTSResult(respBody []byte, statusCode int) (*MediaCreateResult,
 	if err := json.Unmarshal(respBody, &data); err != nil {
 		return nil, fmt.Errorf("minimax tts unmarshal response: %w", err)
 	}
-	url := ""
-	if audio, ok := data["data"].(map[string]any); ok {
-		if u, ok := audio["audio"].(string); ok {
-			url = u
+	// T2A v2 业务失败是 HTTP 200 + base_resp.status_code != 0。
+	// 原文只留 UpstreamRaw，绝不把 status_msg 回显给终端用户。
+	if base, ok := data["base_resp"].(map[string]any); ok {
+		if code, ok := base["status_code"].(float64); ok && code != 0 {
+			return &MediaCreateResult{
+				Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+				ErrorMessage: "minimax tts upstream rejected the request",
+			}, nil
 		}
 	}
-	if url == "" {
-		if u, ok := data["audio"].(string); ok {
-			url = u
+	audio := ""
+	if d, ok := data["data"].(map[string]any); ok {
+		if a, ok := d["audio"].(string); ok {
+			audio = a
+		}
+	}
+	if audio == "" {
+		if a, ok := data["audio"].(string); ok {
+			audio = a
 		}
 	}
 	// 没有产物就必须判失败：音频是同步终态，服务层会立刻真实扣费，
-	// succeeded 却给不出 URL 等于"扣了钱没有声音"。与图片侧同口径。
-	if url == "" {
+	// succeeded 却给不出产物等于"扣了钱没有声音"。与图片侧同口径。
+	if audio == "" {
 		return &MediaCreateResult{
 			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
-			ErrorMessage: "minimax tts response contained no audio url",
+			ErrorMessage: "minimax tts response contained no audio",
+		}, nil
+	}
+	// output_format=url 时是 24h 下载链接；默认 output_format=hex 时是 hex 编码音频。
+	if strings.HasPrefix(audio, "https://") || strings.HasPrefix(audio, "http://") {
+		return &MediaCreateResult{
+			Status: "succeeded", Mode: MediaCompletionSync, InlineURL: audio, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+		}, nil
+	}
+	audioBytes, err := hex.DecodeString(audio)
+	if err != nil || len(audioBytes) == 0 {
+		return &MediaCreateResult{
+			Status: "failed", Mode: MediaCompletionFailed, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+			ErrorMessage: "minimax tts response contained invalid audio",
 		}, nil
 	}
 	return &MediaCreateResult{
-		Status: "succeeded", Mode: MediaCompletionSync, InlineURL: url, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
+		Status: "succeeded", Mode: MediaCompletionSync, InlineBytes: audioBytes, UpstreamStatusCode: statusCode, UpstreamRaw: respBody,
 	}, nil
 }
 
