@@ -116,7 +116,7 @@ func TestIPConsistency_TwoIPsNoAction(t *testing.T) {
 	}
 }
 
-func TestIPConsistency_ThreeIPsNoAction(t *testing.T) {
+func TestIPConsistency_ThreeIPsMarksSuspicious(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
 	updater := &fakeUserStatusUpdater{}
 	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
@@ -124,43 +124,27 @@ func TestIPConsistency_ThreeIPsNoAction(t *testing.T) {
 	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
 		t.Fatalf("three ips must not block the request, got %+v", got)
 	}
-	if updater.status != "" || updater.markedUserID != 0 {
-		t.Fatalf("three ips must not disable or tag the account, got %q/%d", updater.status, updater.markedUserID)
-	}
-	if cache.clearedKey != "" {
-		t.Fatalf("window must be kept, cleared %q", cache.clearedKey)
-	}
-}
-
-func TestIPConsistency_FourIPsMarksSuspicious(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
-
-	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
-		t.Fatalf("four ips must not block the request, got %+v", got)
-	}
 	if updater.status != "" {
-		t.Fatalf("four ips must not disable the account, got %q", updater.status)
+		t.Fatalf("three ips must not disable the account, got %q", updater.status)
 	}
 	if updater.markedUserID != 42 || updater.markReason != ipInconsistencyReason {
 		t.Fatalf("expected user 42 marked ip-suspect, got %d/%q", updater.markedUserID, updater.markReason)
 	}
 	if cache.clearedKey != "" {
-		t.Fatalf("window must be kept so a 5th ip can still be detected, cleared %q", cache.clearedKey)
+		t.Fatalf("window must be kept so a 4th ip can still be detected, cleared %q", cache.clearedKey)
 	}
 }
 
-func TestIPConsistency_FiveIPsDisableUser(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"}}
+func TestIPConsistency_FourIPsDisableUser(t *testing.T) {
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
 	updater := &fakeUserStatusUpdater{}
 	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "5.5.5.5")
+	violation := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
 	if violation == nil {
-		t.Fatal("expected a violation")
+		t.Fatal("expected a violation at 4 ips")
 	}
-	if violation.UserID != 42 || violation.CurrentIP != "5.5.5.5" {
+	if violation.UserID != 42 || violation.CurrentIP != "4.4.4.4" {
 		t.Fatalf("unexpected violation: %+v", violation)
 	}
 	if updater.userID != 42 || updater.status != StatusDisabled {
@@ -168,6 +152,20 @@ func TestIPConsistency_FiveIPsDisableUser(t *testing.T) {
 	}
 	if cache.clearedKey != "ipguard:user:42" {
 		t.Fatalf("expected window to be cleared, got %q", cache.clearedKey)
+	}
+}
+
+func TestIPConsistency_FiveIPsStillDisable(t *testing.T) {
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"}}
+	updater := &fakeUserStatusUpdater{}
+	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+
+	violation := svc.CheckUser(context.Background(), 42, "user", "5.5.5.5")
+	if violation == nil {
+		t.Fatal("expected a violation above the disable threshold")
+	}
+	if updater.userID != 42 || updater.status != StatusDisabled {
+		t.Fatalf("expected user 42 to be disabled, got %d/%s", updater.userID, updater.status)
 	}
 }
 

@@ -18,9 +18,9 @@ import (
 // IP 一致性风控（IP consistency guard）。
 //
 // 两档处罚（滚动窗口，默认 10 分钟）：
-//   - 恰好 ipMarkThreshold(4) 个不同客户端 IP：打「IP 可疑」轻标记 + 把余额降到
+//   - 恰好 ipMarkThreshold(3) 个不同客户端 IP：打「IP 可疑」轻标记 + 把余额降到
 //     只剩 $0.03 + 写调账备注 + 给用户发一封通知邮件。账号仍可正常调用，不冻结。
-//   - ≥ipDisableThreshold(5) 个不同客户端 IP：直接禁用账号（Status=disabled，管理员可解封）。
+//   - ≥ipDisableThreshold(4) 个不同客户端 IP：直接禁用账号（Status=disabled，管理员可解封）。
 //
 // 命中工单标记 / 人工复核豁免 / IP 白名单的用户整体跳过本风控（见 CheckUser）。
 //
@@ -47,9 +47,9 @@ const (
 
 	// ipMarkThreshold / ipDisableThreshold IP 一致性的两档阈值。
 	// 达到 ipMarkThreshold 个不同 IP 打轻标记并触发扣减；达到 ipDisableThreshold 个直接禁用。
-	// 刻意分开命名，便于后续按运营尺度调整（最近一次调整：标记 3→4、禁用 4→5）。
-	ipMarkThreshold    = 4
-	ipDisableThreshold = 5
+	// 刻意分开命名，便于后续按运营尺度调整（最近一次调整：标记 4→3、禁用 5→4）。
+	ipMarkThreshold    = 3
+	ipDisableThreshold = 4
 
 	// ipConsistencySettingsVersion 配置结构版本。v1 只有「标记可疑 + 禁用」且默认关闭；
 	// v2 拆成两个独立功能且默认都开。存量 v1 在读取时一次性迁移，保证升级后立即生效。
@@ -89,7 +89,7 @@ const (
 	// 天然同时保证「只罚第一次」与「不重复扣钱 / 不发重复邮件」。
 	ipConsistencyNewUserKeyPrefix = "ipguard:newuser:"
 	// ipConsistencyNewUserPenaltyKeyPrefix 新用户严格规则的独立扣减幂等键。
-	// 刻意与 4/5 IP 规则的 penalty key 分开，避免两条规则互相吞掉处罚。
+	// 刻意与 3/4 IP 规则的 penalty key 分开，避免两条规则互相吞掉处罚。
 	ipConsistencyNewUserPenaltyKeyPrefix = "ipguard:newuser-penalty:"
 	// newUserFirstUseWindow 新用户首调严格校验窗口：注册后 10 分钟内。
 	newUserFirstUseWindow = 10 * time.Minute
@@ -440,7 +440,7 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 				"user_id", userID, "error", err)
 		}
 	}
-	// 严格规则无条件扣钱，不受「4/5 IP」规则的功能B 开关影响；使用独立幂等键。
+	// 严格规则无条件扣钱，不受「3/4 IP」规则的功能B 开关影响；使用独立幂等键。
 	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor,
 		settings.PenaltyNotifyEmail, ipConsistencyNewUserPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
 

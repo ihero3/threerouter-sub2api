@@ -19,7 +19,7 @@ type fakePenaltyLocker struct {
 	lastKey       string
 	lastTTL       time.Duration
 	claimSet      bool
-	returnOnCalls map[int]bool // 第 N 次调用的返回值，用于模拟「3 IP 抢到、4 IP 没抢到」
+	returnOnCalls map[int]bool // 第 N 次调用的返回值，用于模拟冷却期内锁已被占用
 }
 
 func (f *fakePenaltyLocker) TryClaimPenalty(_ context.Context, key string, ttl time.Duration) (bool, error) {
@@ -119,11 +119,11 @@ func waitPenaltyCall(t *testing.T, p *fakePenalty) penaltyCall {
 	return calls[0]
 }
 
-func TestIPConsistency_FourIPsSchedulesPenaltyWithContract(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+func TestIPConsistency_ThreeIPsSchedulesPenaltyWithContract(t *testing.T) {
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
-		t.Fatalf("four ips must not block the request, got %+v", got)
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
+		t.Fatalf("three ips must not block the request, got %+v", got)
 	}
 	calls, _, key, ttl := locker.snapshot()
 	if calls != 1 {
@@ -151,13 +151,13 @@ func TestIPConsistency_FourIPsSchedulesPenaltyWithContract(t *testing.T) {
 	}
 }
 
-func TestIPConsistency_FiveIPsDisablesButNeverDoublePenalizes(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"})
+func TestIPConsistency_FourIPsDisablesButNeverDoublePenalizes(t *testing.T) {
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
 	locker.returnOnCalls = map[int]bool{1: false} // 冷却期内已处罚过
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "5.5.5.5")
+	violation := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
 	if violation == nil {
-		t.Fatal("expected a violation at 5 ips")
+		t.Fatal("expected a violation at 4 ips")
 	}
 	if calls, _, _, _ := locker.snapshot(); calls != 1 {
 		t.Fatalf("expected one claim attempt, got %d", calls)
@@ -185,10 +185,10 @@ func TestIPConsistency_TwoIPsNeverSchedulesPenalty(t *testing.T) {
 }
 
 func TestIPConsistency_PenaltyLockFailureFailsOpen(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 	locker.claimErr = errors.New("redis down")
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
 		t.Fatalf("lock failure must never block the request, got %+v", got)
 	}
 	select {
@@ -199,10 +199,10 @@ func TestIPConsistency_PenaltyLockFailureFailsOpen(t *testing.T) {
 }
 
 func TestIPConsistency_PenaltyFailureReleasesLock(t *testing.T) {
-	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 	penalty.err = errors.New("db down")
 
-	svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
+	svc.CheckUser(context.Background(), 42, "user", "3.3.3.3")
 	waitPenaltyCall(t, penalty)
 
 	deadline := time.After(3 * time.Second)
@@ -220,7 +220,7 @@ func TestIPConsistency_PenaltyFailureReleasesLock(t *testing.T) {
 }
 
 func TestIPConsistency_FeatureBOnlyNeverDisables(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
 	updater := &fakeUserStatusUpdater{}
 	settings := DefaultIPConsistencySettings()
 	settings.Enabled = false // 功能A 关闭
@@ -229,7 +229,7 @@ func TestIPConsistency_FeatureBOnlyNeverDisables(t *testing.T) {
 	locker := &fakePenaltyLocker{}
 	svc.SetPenaltyService(&fakePenalty{started: make(chan struct{}, 1)}, locker)
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
 		t.Fatalf("feature B alone must never disable or block the account, got %+v", got)
 	}
 	if updater.status != "" || updater.markedUserID != 0 {
