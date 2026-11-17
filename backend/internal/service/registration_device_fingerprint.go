@@ -22,8 +22,9 @@ import (
 // 边界：
 //   - 指纹由前端上报，可被主动随机化；本机制用于抬高对抗成本、串联跨 IP
 //     注册，不是强身份认证。需要更强保证时应再叠加行为/支付账号维度。
-//   - 前端未上报或上报非法时仍会生成「UA 维度」的降级指纹，并采用更宽松
-//     的阈值，避免攻击者通过不传字段直接绕过，同时不误伤零散老客户端。
+//   - 前端未上报或上报非法时仍会生成「UA 维度」的降级指纹参与计数，但不再
+//     放宽阈值：缺失指纹与正常指纹使用同一个 limit，避免「不传字段」成为绕过
+//     口子；UA 派生降级指纹只是聚合维度不同，阈值一致。
 //   - 计数只统计成功建号；记录写入失败不影响注册（fail-open），但会告警。
 
 const (
@@ -37,9 +38,6 @@ const (
 
 	registrationDeviceFingerprintClientMinLength = 16
 	registrationDeviceFingerprintClientMaxLength = 64
-	// 降级指纹的宽松倍数与下限：UA 维度区分度低，不能套用设备级阈值。
-	registrationDeviceFingerprintMissingMultiplier = 10
-	registrationDeviceFingerprintMissingFloor      = 30
 )
 
 var ErrRegistrationDeviceFingerprintLimit = infraerrors.TooManyRequests(
@@ -122,7 +120,7 @@ func NormalizeClientDeviceFingerprint(raw string) string {
 }
 
 // BuildRegistrationDeviceFingerprint 生成落库用的服务端指纹。
-// clientReported 表示前端是否提供了合法指纹；为 false 时调用方需放宽阈值。
+// clientReported 表示前端是否提供了合法指纹；调用方不再据此放宽阈值。
 func BuildRegistrationDeviceFingerprint(clientFingerprint, userAgent string) (fingerprint string, clientReported bool) {
 	normalized := NormalizeClientDeviceFingerprint(clientFingerprint)
 	seed := normalized
@@ -150,6 +148,10 @@ func (s *AuthService) RegistrationDeviceFingerprintLimit(ctx context.Context) in
 }
 
 // EnforceRegistrationDeviceFingerprint 在发码与注册两个入口做预检。
+//
+// 缺失指纹不再放宽阈值：clientReported 仅为兼容既有调用点而保留，不参与判定，
+// 只在日志中作为观测维度区分真实上报与 UA 降级桶。UA 派生降级指纹仍照常参与
+// 计数，只是与正常指纹使用同一个 limit，避免「不传字段」成为绕过口子。
 // 查询失败时 fail-open（记录告警），避免存储故障导致全站无法注册。
 func (s *AuthService) EnforceRegistrationDeviceFingerprint(ctx context.Context, fingerprint string, clientReported bool) error {
 	limit := s.RegistrationDeviceFingerprintLimit(ctx)
@@ -161,22 +163,14 @@ func (s *AuthService) EnforceRegistrationDeviceFingerprint(ctx context.Context, 
 		return nil
 	}
 
-	effectiveLimit := limit
-	if !clientReported {
-		effectiveLimit = limit * registrationDeviceFingerprintMissingMultiplier
-		if effectiveLimit < registrationDeviceFingerprintMissingFloor {
-			effectiveLimit = registrationDeviceFingerprintMissingFloor
-		}
-	}
-
 	count, err := repo.CountRegistrationDeviceFingerprints(ctx, fingerprint, time.Now().Add(-RegistrationDeviceFingerprintWindow))
 	if err != nil {
 		slog.Warn("registration.device_fingerprint_count_failed", "error", err)
 		return nil
 	}
-	if count >= effectiveLimit {
+	if count >= limit {
 		slog.Warn("registration.device_fingerprint_rejected",
-			"count", count, "limit", effectiveLimit, "client_reported", clientReported)
+			"count", count, "limit", limit, "client_reported", clientReported)
 		return ErrRegistrationDeviceFingerprintLimit
 	}
 	return nil

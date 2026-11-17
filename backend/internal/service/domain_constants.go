@@ -290,6 +290,10 @@ const (
 	SettingKeyRegistrationCaptchaMode = "registration_captcha_mode"
 	// 自建验证码难度：low | medium | high
 	SettingKeyRegistrationCaptchaDifficulty = "registration_captcha_difficulty"
+	// 机房 / 云厂商 ASN 或组织名清单（逗号分隔）。命中时把注册点击验证码难度升级为 high。
+	// 这是「提高对抗成本的弱信号」，不是强判定：不拦截注册、不自动标记 suspect/abnormal。
+	// 前端设置页契约：设置 key 固定为 registration_datacenter_asns，值为逗号分隔字符串。
+	SettingKeyRegistrationDatacenterASNs    = "registration_datacenter_asns"
 	SettingKeyAffiliateRebateRate           = "affiliate_rebate_rate"            // 邀请返利比例（百分比，0-100）
 	SettingKeyAffiliateRebateFreezeHours    = "affiliate_rebate_freeze_hours"    // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays   = "affiliate_rebate_duration_days"   // 返利有效期（天，0=永久）
@@ -316,6 +320,9 @@ const (
 	// 多账号轮换配置（JSON 数组）。配置后优先使用该列表轮换发信；
 	// 为空时回落到上面的单账号 smtp_host 配置。
 	SettingKeySMTPAccounts = "smtp_accounts"
+	// 上方单账号 SMTP 是否参与发信轮换。缺省 "true"（保持旧行为）；
+	// "false" 时该单账号不进入轮换池，也不作为多账号列表为空时的回落发信账号。
+	SettingKeySMTPSingleInRotation = "smtp_single_in_rotation"
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
@@ -358,6 +365,16 @@ const (
 
 	// 网关 API 按客户端 IP 限流设置（JSON：GatewayIPRateLimitSettings）
 	SettingKeyGatewayIPRateLimitSettings = "gateway_ip_rate_limit_settings"
+
+	// 全站 IP 黑名单设置（JSON：SecurityIPBlacklistSettings）。
+	// 对注册/登录面板与模型网关统一生效，命中即 403；
+	// 管理端 API 与支付 webhook 回调豁免（防止管理员自锁、支付回调被误杀）。
+	SettingKeySecurityIPBlacklist = "security_ip_blacklist"
+
+	// 全站国家/地区封禁设置（JSON：SecurityCountryBlocklistSettings）。
+	// 依赖 compliance.geoip GeoLite2-Country 数据库；默认关闭、空名单，
+	// GeoIP 不可用时一律 fail-open 放行。豁免口径与全站 IP 黑名单一致。
+	SettingKeySecurityCountryBlocklist = "security_country_blocklist"
 
 	// 操作审计日志设置
 	SettingKeyAuditLogRetentionDays = "audit_log_retention_days" // 审计日志保留天数（<=0 永久保留），默认 180
@@ -868,8 +885,11 @@ const (
 
 // 邀请注册风险标记（users.risk_level / risk_reasons）。
 //
-// 与上面的 IP 关联风控不同：这里**只标记、不拦截**，不改变登录/调用/返利任何行为，
-// 仅供管理端在用户列表展示并供运营人工研判。
+// 与上面的 IP 关联风控不同：这里按「人工复核」口径处理，
+//   - suspect  : 禁建 Key + 网关调用被拦，等管理员复核放行；
+//   - abnormal : 打标时同步 status=disabled，且禁止直接改回 active。
+//
+// 具体判定见 user_risk_access.go 的 RiskAccessBlocked；放行走 AdminReviewUserRisk。
 //   - 空串      : 无风险
 //   - suspect   : 存疑（命中弱特征，可能是真实推广者）
 //   - abnormal  : 异常（命中强特征，几乎确定是批量注册/链条农场）
@@ -880,38 +900,46 @@ const (
 	AffiliateRiskLevelSuspect  = "suspect"
 	AffiliateRiskLevelAbnormal = "abnormal"
 
+	// AffiliateRiskLevelIPSuspect IP 一致性风控的「IP 可疑」轻标记。
+	// 与 suspect 的区别：suspect 是邀请注册风险待复核，会禁建 Key + 网关 403；
+	// ip_suspect 只在管理端用户列表展示，不参与 RiskAccessBlocked()，账号照常可用。
+	// 处罚由「余额降到 floor + 调账备注 + 通知邮件」承担，避免误伤真实用户。
+	AffiliateRiskLevelIPSuspect = "ip_suspect"
+
 	// 规则 1：邀请爆发——邀请人 24h 内邀请数量超阈值。
 	AffiliateRiskReasonInviteBurst24h = "invite_burst_24h"
 	// 规则 2：邀请链深度——上溯（我上面有几级）或下溯（我下面有几级）超阈值。
 	AffiliateRiskReasonChainDepth = "chain_depth"
 	// 规则 3：一次性邮箱域名——注册邮箱命中已知临时/一次性邮箱服务。
 	AffiliateRiskReasonDisposableEmail = "disposable_email"
-	// 规则 4：邮箱本地部分为无意义随机串（机器批量注册的典型特征）。
-	AffiliateRiskReasonRandomLocalPart = "random_local_part"
 	// 规则 5：邮箱点号别名填充——Gmail 忽略点号，一个邮箱可派生无限地址。
 	AffiliateRiskReasonEmailAliasStuffing = "email_alias_stuffing"
-	// 规则 6：密码哈希复用——多个账号使用完全相同的密码。
-	AffiliateRiskReasonSharedPassword = "shared_password"
-	// 规则 10：链路传染——链上（向上或向下两跳内）存在已判异常的账号。
+	// 规则 10：链路传染——链上（向上或向下 1 跳内）存在已判异常的账号。
 	AffiliateRiskReasonChainContagion = "chain_contagion"
+	// 注册网关闭：邮箱域 MX 指向已知一次性邮箱服务集群（守株待兔，针对 temp-mail 类服务商）。
+	AffiliateRiskReasonTempMailMXCluster = "temp_mail_mx_cluster"
+	// 注册关联：同一注册 IP 在 24 小时内关联账号数超阈值（软性存疑，冻结建 Key/网关）。
+	AffiliateRiskReasonRegistrationIPCorrelation = "registration_ip_correlation"
 
 	// 规则阈值。
-	// 规则 1：24h 邀请数达到该值 → 存疑；超过该值数倍 → 异常。
-	AffiliateRiskInviteBurstSuspect  = 3
-	AffiliateRiskInviteBurstAbnormal = 10
+	// 规则 1：24h 邀请数分层（按账号年龄）。新号更敏感，老号放宽。
+	AffiliateRiskNewAccountDays         = 7  // 账号年龄 ≤ 该天数视为新号。
+	AffiliateRiskInviteBurstNewSuspect  = 3  // 新号：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstNewAbnormal = 10 // 新号：24h 邀请数 > 该值 → 异常。
+	AffiliateRiskInviteBurstOldSuspect  = 10 // 老号放宽：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstOldAbnormal = 20 // 老号放宽：24h 邀请数 > 该值 → 异常。
 	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。自然裂变到 4 级很常见，故放宽。
 	AffiliateRiskChainDepthSuspect  = 4
 	AffiliateRiskChainDepthAbnormal = 6
 	// 规则 2 的递归上限，防止异常数据（环）导致查询失控。
 	AffiliateRiskChainDepthMaxScan = 20
-	// 规则 6：相同密码账号数阈值。
-	AffiliateRiskSharedPasswordSuspect  = 3
-	AffiliateRiskSharedPasswordAbnormal = 5
-	// 规则 10：链路传染的扫描半径（向上/向下各几跳）。
-	AffiliateRiskContagionRadius = 2
+	// 规则 10：链路传染的扫描半径（向上/向下各几跳）——收窄到 1 跳。
+	AffiliateRiskContagionRadius = 1
 	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
 	AffiliateRiskAliasStuffingMinDots   = 2
 	AffiliateRiskAliasStuffingMinLength = 16
+	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
+	AffiliateRiskRegistrationIPCorrelationThreshold = 3
 
 	// 存量扫描每批处理的用户数，避免一次性写满事务。
 	AffiliateRiskScanBatchSize = 500
@@ -944,6 +972,15 @@ var AffiliateRiskDisposableEmailDomains = []string{
 var AffiliateRiskDotAliasingDomains = []string{
 	"gmail.com",
 	"googlemail.com",
+}
+
+// AffiliateRiskTempMailMXClusters 是已知一次性邮箱服务的 MX 集群后缀列表（可继续扩充）。
+// 注册时解析邮箱域的 MX 记录，只要任一 MX 主机域（或其父域）以本列表中的后缀结尾，
+// 即判定为一次性邮箱集群并拒绝注册。相较于域名黑名单，MX 集群命中可"守株待兔"地
+// 覆盖某服务商名下所有域名，对其是降维打击。
+var AffiliateRiskTempMailMXClusters = []string{
+	"temp-mail-pro.com",
+	"erinn.biz",
 }
 
 // SettingKeyDisableFailedAccountOnFailover 出错后是否在 failover 时禁用失败账号（默认 false）。

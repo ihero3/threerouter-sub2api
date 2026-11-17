@@ -458,6 +458,16 @@ export async function setTicketFlag(
   return data
 }
 
+/**
+ * Manually approve a user pending a risk review.
+ * Clears risk_level/risk_reasons, restores status to active and invalidates
+ * the auth cache so the user is allowed again. The request body is empty.
+ * @param id - User ID
+ */
+export async function reviewUserRisk(id: number): Promise<void> {
+  await apiClient.post(`/admin/users/${id}/risk-review`)
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -480,6 +490,7 @@ export const usersAPI = {
   resetPlatformQuotaWindow,
   incrementLookedCount,
   setTicketFlag,
+  reviewUserRisk,
 }
 
 export default usersAPI

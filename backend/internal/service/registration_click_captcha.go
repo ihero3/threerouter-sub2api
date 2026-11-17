@@ -63,6 +63,17 @@ var ErrRegistrationClickCaptchaInvalid = infraerrors.BadRequest("REGISTRATION_CL
 // ErrRegistrationClickCaptchaTokenInvalid 一次性 token 无效、过期或已使用。
 var ErrRegistrationClickCaptchaTokenInvalid = infraerrors.BadRequest("REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID", "registration click captcha token invalid or expired, please complete the verification again")
 
+// ErrRegistrationClickCaptchaSendLimit 同一个一次性 token 已绑定另一个发码邮箱。
+//
+// 背景：发码接口此前用非消费式校验（ValidateToken 只看不动），一次人机验证拿到的
+// token 可以反复调用 /auth/send-verify-code 给**任意邮箱**发信——刷 SMTP 日配额、
+// 骚扰第三方邮箱。发码额度绑定邮箱地址：同一 token 可以给**同一邮箱**重发（邮件
+// 延迟时的正常重试不受影响），但换一个邮箱即拒绝。绑定独立于 token 本身：token
+// 仍由注册接口做一次性消费，这里只锁"一次解题 = 一个收件地址"。绑定在 token
+// 生命周期内不可释放，否则「先用一个必然被拒的邮箱触发发信失败、再换目标邮箱」
+// 就能把额度反复清空，防护等同于不存在。
+var ErrRegistrationClickCaptchaSendLimit = infraerrors.TooManyRequests("REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT", "this captcha is already used by another email address, please complete the verification again")
+
 // RegistrationClickCaptchaChallenge 一次验证题（判别联合：按 mode 三选一）。
 type RegistrationClickCaptchaChallenge struct {
 	ChallengeID string               `json:"challenge_id"`
@@ -115,6 +126,10 @@ type clickCaptchaCacheStore interface {
 	TakeToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
 	PeekToken(ctx context.Context, token string) (*ClickCaptchaTokenPayloadRef, error)
 	IncrAttempts(ctx context.Context, challengeID string) (int64, error)
+	// ClaimTokenSendEmail 把一次性 token 绑定到唯一发码邮箱（原子），返回当前
+	// 绑定的邮箱地址：首次绑定返回请求的地址，已绑定则返回既有地址供比较。
+	// 绑定不可释放，见 ErrRegistrationClickCaptchaSendLimit 的说明。
+	ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error)
 }
 
 // ClickCaptchaChallengePayloadRef 存入 Redis 的 challenge 内部数据（repository 跨包引用）。
@@ -135,11 +150,72 @@ type ClickCaptchaChallengePayloadRef struct {
 type RegistrationClickCaptchaService struct {
 	cache      clickCaptchaCacheStore
 	settingSvc *SettingService
+	// asnRisk 是可选依赖：离线 ASN 机房 IP 判定服务。未注入时跳过判定（fail-open）。
+	asnRisk *ASNRiskService
 }
 
 // NewRegistrationClickCaptchaService 创建验证码服务。
 func NewRegistrationClickCaptchaService(cache clickCaptchaCacheStore, settingSvc *SettingService) *RegistrationClickCaptchaService {
 	return &RegistrationClickCaptchaService{cache: cache, settingSvc: settingSvc}
+}
+
+// SetASNRiskService 注入可选的 ASN 机房 IP 判定服务。保持构造函数签名不变，
+// 便于既有调用点与测试桩兼容；未注入 / 注入 nil 时难度升级逻辑直接跳过（fail-open）。
+func (s *RegistrationClickCaptchaService) SetASNRiskService(svc *ASNRiskService) {
+	if s == nil {
+		return
+	}
+	s.asnRisk = svc
+}
+
+// registrationClientIPContextKey 是 CreateChallenge 读取真实客户端 IP 的私有 context key。
+// 用可选 context value 而非改 CreateChallenge 签名，避免破坏其它调用点与测试桩。
+type registrationClientIPContextKey struct{}
+
+// WithClientIPForChallenge 把可信链解析出的真实客户端 IP 附加到 ctx，供 ASN 机房判定使用。
+// 这是可选通道：不附加时挑战按「无客户端 IP」处理，既有行为完全不变。
+func WithClientIPForChallenge(ctx context.Context, clientIP string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, registrationClientIPContextKey{}, strings.TrimSpace(clientIP))
+}
+
+func clientIPFromChallengeContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	ip, _ := ctx.Value(registrationClientIPContextKey{}).(string)
+	return strings.TrimSpace(ip)
+}
+
+// elevateCaptchaDifficulty 命中机房 IP 时把验证码难度「只升不降」到 high
+// （后台本就是 high 则保持），未命中时原样返回。机房 IP 只是弱信号：不拦截注册、
+// 不标记风险，仅提高一次人机验证的解题成本。
+func elevateCaptchaDifficulty(difficulty string, datacenter bool) string {
+	if !datacenter || difficulty == RegistrationCaptchaDifficultyHigh {
+		return difficulty
+	}
+	return RegistrationCaptchaDifficultyHigh
+}
+
+// isDatacenterIPForChallenge 综合 ASN 服务与后台清单判定本次挑战是否来自机房 IP。
+// 任何环节缺失 / 失败一律返回 false（fail-open）：未注入 ASN 服务、settingSvc 不可用、
+// ctx 未携带真实客户端 IP、设置项读取失败、ASN 查询失败、清单为空。
+func (s *RegistrationClickCaptchaService) isDatacenterIPForChallenge(ctx context.Context) bool {
+	if s == nil || s.asnRisk == nil || s.settingSvc == nil {
+		return false
+	}
+	clientIP := clientIPFromChallengeContext(ctx)
+	if clientIP == "" {
+		return false
+	}
+	configuredList, found := s.settingSvc.GetRegistrationDatacenterASNs(ctx)
+	if !found {
+		// settings 读取失败 / 设置项缺失按未命中处理，绝不因配置异常触发难度升级。
+		return false
+	}
+	return s.asnRisk.IsDatacenterIP(ctx, clientIP, configuredList)
 }
 
 const (
@@ -184,6 +260,8 @@ func (s *RegistrationClickCaptchaService) CreateChallenge(ctx context.Context, i
 		difficulty = s.settingSvc.GetRegistrationCaptchaDifficulty(ctx)
 	}
 	difficulty = normalizeRegistrationCaptchaDifficulty(difficulty)
+	// 机房 / 云厂商 IP：只把难度升级为 high（弱信号），不拦截注册。全链路 fail-open。
+	difficulty = elevateCaptchaDifficulty(difficulty, s.isDatacenterIPForChallenge(ctx))
 
 	resolved, err := s.resolveMode(mode)
 	if err != nil {
@@ -371,6 +449,36 @@ func (s *RegistrationClickCaptchaService) ValidateToken(ctx context.Context, tok
 	}
 	if payload.IPHash != ipHash || payload.UAHash != uaHash {
 		return ErrRegistrationClickCaptchaTokenInvalid
+	}
+	return nil
+}
+
+// ClaimTokenSendQuota 校验一次性 token（不消费）并把发码额度绑定到该邮箱。
+//
+// 与 ValidateToken 的差别：本方法把 token 与邮箱的绑定原子写入 Redis——同一
+// token 之后只允许给**同一个邮箱**发码（重发不限次），换邮箱即拒绝。绑定独立于
+// token 生命周期：注册接口仍按原逻辑一次性消费 token，这里不销毁、不归还 token。
+//
+// 绑定刻意**不提供释放接口**：发信失败（SMTP/队列故障、邮箱被风控拒绝、域名配额
+// 已满等）时用户用同一邮箱重试即可，绑定不阻碍重试。若允许失败即释放，攻击者
+// 只要先用一个必然被拒绝的邮箱触发一次错误，就能清空绑定再换目标邮箱发信，
+// 一次解题重新退化为无限收件地址。发信失败不归还不会惩罚正常用户。
+func (s *RegistrationClickCaptchaService) ClaimTokenSendQuota(ctx context.Context, token, email, ipHash, uaHash string) error {
+	if s == nil || s.cache == nil {
+		return ErrRegistrationClickCaptchaDisabled
+	}
+	if err := s.ValidateToken(ctx, token, ipHash, uaHash); err != nil {
+		return err
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	bound, err := s.cache.ClaimTokenSendEmail(ctx, strings.TrimSpace(token), email)
+	if err != nil {
+		// 绑定不可用（Redis 故障）时按 token 无效处理：宁可让用户重做一次
+		// 人机验证，也不能让"额度不可知"退化为无限给任意邮箱发信。
+		return ErrRegistrationClickCaptchaTokenInvalid
+	}
+	if bound != email {
+		return ErrRegistrationClickCaptchaSendLimit
 	}
 	return nil
 }

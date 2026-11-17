@@ -10,9 +10,13 @@ import (
 )
 
 const (
-	clickCaptchaChallengeKeyPrefix = "captcha:click:challenge:"
-	clickCaptchaTokenKeyPrefix     = "captcha:click:token:"
-	clickCaptchaAttemptsKeyPrefix  = "captcha:click:attempts:"
+	clickCaptchaChallengeKeyPrefix      = "captcha:click:challenge:"
+	clickCaptchaTokenKeyPrefix          = "captcha:click:token:"
+	clickCaptchaAttemptsKeyPrefix       = "captcha:click:attempts:"
+	clickCaptchaTokenSendEmailKeyPrefix = "captcha:click:sendemail:"
+	// clickCaptchaTokenSendEmailTTL 发码邮箱绑定键的存活时间，与 token 的 15 分钟
+	// 生命周期同量级；token 过期后绑定键自然失效，不产生堆积。
+	clickCaptchaTokenSendEmailTTL = 15 * time.Minute
 	// clickCaptchaAttemptsTTL 尝试计数键的存活时间；与 challenge 同量级，
 	// 题目作废后计数键最多再多存活该时长即可自然过期。
 	clickCaptchaAttemptsTTL = 2 * time.Minute
@@ -150,4 +154,34 @@ func (c *ClickCaptchaCache) IncrAttempts(ctx context.Context, challengeID string
 		return 0, err
 	}
 	return incr.Val(), nil
+}
+
+// ClaimTokenSendEmail 把一次性 token 原子绑定到唯一发码邮箱（一次人机验证只允许
+// 给一个收件地址发信；同一地址重发不限次）。返回当前绑定的邮箱：首次绑定返回
+// 请求的地址，已绑定则返回既有地址，由 service 层比较是否换址。
+// 用 SETNX 原子抢占：并发请求中只有一个地址能赢得绑定，其余地址拿到既有值。
+//
+// 绑定**不可释放**：一次人机验证锁定一个收件地址直到 token 过期。发信失败时
+// 用户用同一邮箱重试即可（同址重发不受限），不需要删除绑定；允许删除反而会
+// 让「先用一个必然被拒绝的邮箱触发失败、再换目标邮箱发信」把绑定反复清空。
+func (c *ClickCaptchaCache) ClaimTokenSendEmail(ctx context.Context, token, email string) (string, error) {
+	if c == nil || c.rdb == nil {
+		return "", fmt.Errorf("click captcha cache not configured")
+	}
+	key := clickCaptchaTokenSendEmailKeyPrefix + token
+	set, err := c.rdb.SetNX(ctx, key, email, clickCaptchaTokenSendEmailTTL).Result()
+	if err != nil {
+		return "", err
+	}
+	if set {
+		return email, nil
+	}
+	bound, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		// SETNX 未抢到、GET 又拿不到值，说明绑定键恰好在两步之间过期/消失。
+		// 绝不能当作「本次赢得绑定」放行——那样没有任何绑定被写入，并发的
+		// 多个不同邮箱会同时通过校验。按绑定不可用 fail-close，让用户重做验证。
+		return "", err
+	}
+	return bound, nil
 }

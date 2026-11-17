@@ -35,6 +35,8 @@ type userRepository struct {
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
 var _ service.RegistrationIPQuotaRepository = (*userRepository)(nil)
+var _ service.UserRiskReviewRepository = (*userRepository)(nil)
+var _ service.IPPenaltyRefundRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -1200,6 +1202,39 @@ func (r *userRepository) SetBalance(ctx context.Context, id int64, value float64
 	return change, nil
 }
 
+// reduceBalanceToFloorSQL 原子地把余额降到 floor，仅当当前余额严格高于 floor 时命中。
+//
+// 这是 IP 一致性「减额度」处罚的幂等核心：条件写在 WHERE 里由数据库行锁保证，
+// 并发的多个处罚请求只有一个会真正扣减；余额已 ≤ floor 时 0 行、不反向充值、
+// 不写流水、不重复发邮件。RETURNING 旧值/新值供上层写调账流水。
+const reduceBalanceToFloorSQL = `
+		UPDATE users AS u
+		SET balance = $1, updated_at = NOW()
+		FROM (SELECT id, balance FROM users WHERE id = $2 AND deleted_at IS NULL) AS prev
+		WHERE u.id = prev.id AND u.deleted_at IS NULL AND prev.balance > $1
+		RETURNING prev.balance, u.balance
+	`
+
+// ReduceBalanceToFloor 把用户余额降到 floor（仅在余额更高时），返回变更前后的值。
+// 0 行时用 currentBalance 区分「用户不存在」与「余额已达标」，后者返回 Old==New。
+func (r *userRepository) ReduceBalanceToFloor(ctx context.Context, id int64, floor float64) (service.BalanceChange, error) {
+	if floor < 0 {
+		return service.BalanceChange{}, fmt.Errorf("invalid balance floor: %f", floor)
+	}
+	change, ok, err := scanBalanceChange(ctx, clientFromContext(ctx, r.client), reduceBalanceToFloorSQL, floor, id)
+	if err != nil {
+		return service.BalanceChange{}, err
+	}
+	if ok {
+		return change, nil
+	}
+	current, err := r.currentBalance(ctx, id)
+	if err != nil {
+		return service.BalanceChange{}, err
+	}
+	return service.BalanceChange{Old: current, New: current}, nil
+}
+
 // currentBalance 读取用户当前余额，用户不存在时返回 ErrUserNotFound。
 func (r *userRepository) currentBalance(ctx context.Context, id int64) (balance float64, err error) {
 	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
@@ -1325,6 +1360,158 @@ func (r *userRepository) SetTicketFlag(ctx context.Context, id int64, flagged bo
 		return service.ErrUserNotFound
 	}
 	return nil
+}
+
+// BumpIPInconsistencyMark 给用户打「窗口内 IP 不一致」可疑标记（IP 一致性风控）。
+// risk_level 只升不降：abnormal 保持 abnormal，否则置 suspect；
+// reason 幂等追加进 risk_reasons（逗号分隔，已存在则不重复）。
+// bumpIPInconsistencyMarkSQL IP 一致性风控的轻标记写入。
+//
+// 刻意写 ip_suspect 而非 suspect：suspect 会触发上一轮的待复核冻结闸门
+// （禁建 Key + 网关 403），用在「3 个 IP」这一档会比「≥4 个 IP 才禁用」更严厉。
+// 已经是 suspect/abnormal（真实冻结态）的账号保持不变，绝不降级。
+const bumpIPInconsistencyMarkSQL = `
+		UPDATE users
+		SET risk_level = CASE
+		        WHEN COALESCE(risk_level, '') IN ('abnormal', 'suspect') THEN risk_level
+		        ELSE 'ip_suspect'
+		    END,
+		    risk_reasons = CASE
+		        WHEN $2 = '' OR position($2 in COALESCE(risk_reasons, '')) > 0 THEN COALESCE(risk_reasons, '')
+		        ELSE COALESCE(risk_reasons, '') || ',' || $2
+		    END,
+		    risk_updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+func (r *userRepository) BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error {
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, bumpIPInconsistencyMarkSQL, id, reason)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+// clearUserRiskReviewSQL 管理员复核放行：清空风险标记、把 status 恢复 active，
+// 并在同一语句里登记「已人工放行」豁免，供全量扫描跳过（见 listUserIDsForRiskScanSQL）。
+//
+// 一条 CTE 保证「清标记 + 写豁免」原子：不会出现用户已恢复正常却因豁免没写成功
+// 而被下一次扫描标回待复核。UPDATE 未匹配到用户时 CTE 为空，INSERT 影响 0 行，
+// 调用方据此返回 ErrUserNotFound；重复复核走 ON CONFLICT 刷新 reviewed_at。
+// 抽成常量便于在无真库的单测里对 SQL 契约做断言（见 user_risk_review_sql_test.go）。
+const clearUserRiskReviewSQL = `
+WITH cleared AS (
+	UPDATE users
+	SET risk_level = '',
+	    risk_reasons = '',
+	    risk_updated_at = NULL,
+	    status = 'active',
+	    updated_at = NOW()
+	WHERE id = $1 AND deleted_at IS NULL
+	RETURNING id
+)
+INSERT INTO user_risk_review_exemptions (user_id, reviewed_at)
+SELECT id, NOW() FROM cleared
+ON CONFLICT (user_id) DO UPDATE SET reviewed_at = NOW()
+`
+
+// ClearUserRiskReview 清空用户的邀请注册风险标记、把 status 恢复 active，
+// 并登记全量扫描豁免（迁移 253）。
+// 这是「风险标记只升不降」的唯一显式例外，仅由管理员人工复核放行调用
+// （adminServiceImpl.AdminReviewUserRisk），任何自动打标/扫描/解封链路都不得调用。
+// 豁免只作用于全量扫描：实时邀请绑定仍按新证据重新评估。
+func (r *userRepository) ClearUserRiskReview(ctx context.Context, userID int64) error {
+	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, clearUserRiskReviewSQL, userID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+// refundIPBalancePenaltiesSQL 管理员复核放行时，把「IP 一致性风控扣减」加回余额。
+//
+// 只有真正被扣过、且尚未返还过的流水才进入 pending：没扣过（或已返还过）时
+// pending 为空 → 不写返还流水、不动余额、返回 0，复核放行照常继续。
+// 一条 CTE 完成「查未返还扣减 + 写返还流水 + 加余额」，全语句原子。
+//
+// 幂等：每条扣减流水对应固定的返还流水 code（RF-<原流水id>），靠唯一约束 +
+// ON CONFLICT DO NOTHING 保证重复点复核、并发复核都只有第一次真正加钱。
+// 余额用加法而非设回旧值，避免抹掉扣减之后发生的充值或消费。
+// 返还流水用独立 type，避免被 SumPositiveBalanceByUser 算成「累计充值」。
+// 抽成常量便于在无真库的单测里对 SQL 契约做断言。
+const refundIPBalancePenaltiesSQL = `
+WITH pending AS (
+    SELECT rc.id, -rc.value AS amount
+    FROM redeem_codes rc
+    WHERE rc.used_by = $1
+      AND rc.type = '` + service.AdjustmentTypeAdminBalance + `'
+      AND rc.notes = '` + service.IPAbnormalityMessage + `'
+      AND rc.value < 0
+      AND EXISTS (SELECT 1 FROM users u WHERE u.id = $1 AND u.deleted_at IS NULL)
+      AND NOT EXISTS (
+          SELECT 1 FROM redeem_codes r
+          WHERE r.code = '` + service.IPPenaltyRefundCodePrefix + `' || rc.id::text
+      )
+),
+claimed AS (
+    INSERT INTO redeem_codes (code, type, value, status, used_by, used_at, created_at, notes)
+    SELECT '` + service.IPPenaltyRefundCodePrefix + `' || p.id::text,
+           '` + service.IPPenaltyRefundType + `',
+           p.amount,
+           'used',
+           $1,
+           NOW(),
+           NOW(),
+           '` + service.IPPenaltyRefundNotePrefix + `' || p.id::text
+    FROM pending p
+    ON CONFLICT (code) DO NOTHING
+    RETURNING value
+),
+total AS (
+    SELECT COALESCE(SUM(value), 0) AS amount FROM claimed
+),
+updated AS (
+    UPDATE users
+    SET balance = balance + total.amount, updated_at = NOW()
+    FROM total
+    WHERE users.id = $1 AND users.deleted_at IS NULL AND total.amount > 0
+    RETURNING total.amount AS amount
+)
+SELECT COALESCE((SELECT SUM(amount) FROM updated), 0)
+`
+
+// RefundIPBalancePenalties 实现 service.IPPenaltyRefundRepository：
+// 返回实际加回余额的金额；没有待返还扣减时返回 0 且不做任何写入。
+func (r *userRepository) RefundIPBalancePenalties(ctx context.Context, userID int64) (float64, error) {
+	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx, refundIPBalancePenaltiesSQL, userID)
+	if err != nil {
+		return 0, fmt.Errorf("refund ip balance penalties: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var amount float64
+	if rows.Next() {
+		if err := rows.Scan(&amount); err != nil {
+			return 0, fmt.Errorf("scan ip penalty refund total: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return amount, nil
 }
 
 func (r *userRepository) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {

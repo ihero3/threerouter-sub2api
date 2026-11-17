@@ -17,6 +17,7 @@ type SystemSettings struct {
 	RegistrationClickCaptchaEnabled     bool
 	RegistrationCaptchaMode             string // 自建验证码模式：random | image_click | slider
 	RegistrationCaptchaDifficulty       string // 自建验证码难度：low | medium | high
+	RegistrationDatacenterASNs          string // 机房 / 云厂商 ASN 或组织名清单（逗号分隔，命中则验证码难度升为 high；弱信号）
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailSuffixBlacklist    []string // 注册邮箱域名黑名单（命中即拒绝，匹配域名及其子域名）
 	RegistrationEmailDomainQuotaEnabled bool     // 白名单非空时放行非白名单域名限量注册（默认关闭）
@@ -48,6 +49,8 @@ type SystemSettings struct {
 	SMTPFrom               string
 	SMTPFromName           string
 	SMTPUseTLS             bool
+	// SMTPSingleInRotation 上方单账号是否参与发信轮换；缺省 true（未设置时按开启处理）。
+	SMTPSingleInRotation bool
 	// SMTPAccounts 多账号轮换配置；非空时优先于上面的单账号配置。
 	SMTPAccounts []SMTPAccountSetting
 

@@ -516,6 +516,11 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
+	// 待人工复核的账号不允许新建 Key。注意只挡新增：存量 Key 由网关鉴权层的
+	// RiskAccessBlocked 一并拦住，两处共用同一判定与文案。
+	if user != nil && user.RiskAccessBlocked() {
+		return nil, ErrUserRiskAccessBlocked
+	}
 
 	// 验证 IP 白名单格式
 	if len(req.IPWhitelist) > 0 {
@@ -1028,6 +1033,11 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKey, *
 	// 检查用户状态
 	if !user.IsActive() {
 		return nil, nil, ErrUserNotActive
+	}
+	// 与网关鉴权同口径：待复核账号不得通过任何鉴权入口。
+	// 本方法当前无生产调用者，但保留闸门可避免将来接入路由时漏掉。
+	if user.RiskAccessBlocked() {
+		return nil, nil, ErrUserRiskAccessBlocked
 	}
 
 	return apiKey, user, nil

@@ -445,6 +445,8 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
 		users.POST("/:id/looked", h.Admin.User.IncrementLooked)
 		users.PUT("/:id/ticket-flag", h.Admin.User.SetTicketFlag)
+		// 管理员复核放行待复核账号（给前端的固定契约，勿改名）。
+		users.POST("/:id/risk-review", h.Admin.User.ReviewRisk)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
@@ -751,6 +753,14 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 		// 网关 API 按客户端 IP 限流配置
 		adminSettings.GET("/gateway-ip-rate-limit", h.Admin.Setting.GetGatewayIPRateLimitSettings)
 		adminSettings.PUT("/gateway-ip-rate-limit", h.Admin.Setting.UpdateGatewayIPRateLimitSettings)
+		// 全站 IP 黑名单配置（注册/登录/网关统一生效）
+		adminSettings.GET("/security-ip-blacklist", h.Admin.Setting.GetSecurityIPBlacklist)
+		adminSettings.PUT("/security-ip-blacklist", h.Admin.Setting.UpdateSecurityIPBlacklist)
+		adminSettings.GET("/security-country-blocklist", h.Admin.Setting.GetSecurityCountryBlocklist)
+		adminSettings.PUT("/security-country-blocklist", h.Admin.Setting.UpdateSecurityCountryBlocklist)
+		// IP 一致性风控（注册/登录/控制台/网关统一生效）
+		adminSettings.GET("/ip-consistency", h.Admin.Setting.GetIPConsistencySettings)
+		adminSettings.PUT("/ip-consistency", h.Admin.Setting.UpdateIPConsistencySettings)
 		// 流超时处理配置
 		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
 		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)

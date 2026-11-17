@@ -104,6 +104,12 @@ var mediaValidationMarkers = []string{
 // 媒体链路（生图/生视频/音频）对调用方的错误文案一律走这里，保证任何上游实现细节、
 // 内部错误码、请求回显都不会泄露给用户；上游原文仍通过 UpstreamRaw / ops 事件留档。
 // 文案口径与 grokMediaClientErrorMessage / writeSanitizedOpenAIPassthroughError 对齐。
+// MediaUpstreamClientMessage 供 handler 把任务失败回写给调用方时生成统一话术。
+// 落库的 ErrorMessage / UpstreamRaw 保留上游原文供运营排障，客户端只看到这里的话术。
+func MediaUpstreamClientMessage(statusCode int) string {
+	return mediaUpstreamClientErrorMessage(statusCode)
+}
+
 func mediaUpstreamClientErrorMessage(statusCode int) string {
 	switch {
 	case statusCode == http.StatusUnauthorized:

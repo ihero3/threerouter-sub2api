@@ -37,6 +37,8 @@ func SetupRouter(
 	cfg *config.Config,
 	redisClient *redis.Client,
 	teamMemberRepo service.TeamMemberRepository,
+	ipConsistencyService *service.IPConsistencyService,
+	geoIPService *service.GeoIPService,
 ) *gin.Engine {
 	middleware2.SetIngressRejectRecorder(opsService)
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
@@ -61,6 +63,14 @@ func SetupRouter(
 	// 将客户端 IP + UA 注入 request context，供 token 签发/会话绑定/审计日志统一读取。
 	// 解析模式按请求快照：兼容开关开启时信任原始转发头，关闭时使用 server.trusted_proxies。
 	r.Use(middleware2.SessionBindingContext(cfg))
+	// 全站 IP 黑名单：命中即 403，覆盖注册/登录面板与模型网关两个入口。
+	// 必须挂在 SessionBindingContext 之后（读取其注入的客户端 IP 快照）；
+	// 管理端 API / 支付 webhook / 静态前端豁免（见 ip_blacklist.go 注释）。
+	r.Use(middleware2.NewIPBlacklistGuard(settingService, opsService).Middleware())
+	// 全站国家/地区封禁：按安全客户端 IP 解析 GeoLite2-Country，命中名单即 403。
+	// 作用路径与 IP 黑名单完全一致；GeoIP 未就绪 / 解析失败一律 fail-open 放行。
+	// 默认关闭，功能关闭时热路径完全不触碰 GeoIP。
+	r.Use(middleware2.NewCountryGuard(settingService, geoIPService, opsService).Middleware())
 	r.Use(middleware2.Logger())
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {
@@ -91,7 +101,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, teamMemberRepo)
+	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient, teamMemberRepo, ipConsistencyService)
 
 	return r
 }
@@ -114,6 +124,7 @@ func registerRoutes(
 	cfg *config.Config,
 	redisClient *redis.Client,
 	teamMemberRepo service.TeamMemberRepository,
+	ipConsistencyService *service.IPConsistencyService,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
@@ -128,13 +139,13 @@ func registerRoutes(
 	gatewayIPRateLimiter := middleware2.NewGatewayIPRateLimiter(redisClient, settingService)
 
 	// 注册各模块路由
-	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter)
+	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter, opsService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter, teamMemberRepo)
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
 	routes.RegisterMCPRoutes(v1, h, auditLog, stepUpAuth, settingService, panelRateLimiter, cfg.CORS.AllowedOrigins, redisClient)
 	routes.RegisterMCPOAuthRoutes(r, v1, h, redisClient)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, gatewayIPRateLimiter)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, gatewayIPRateLimiter, ipConsistencyService)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)

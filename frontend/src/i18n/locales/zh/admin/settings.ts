@@ -215,6 +215,10 @@ export default {
         captchaDifficultyLow: '低',
         captchaDifficultyMedium: '中（推荐）',
         captchaDifficultyHigh: '高',
+        datacenterAsns: '机房 ASN 清单',
+        datacenterAsnsHint:
+          '逗号分隔的 ASN 号或云厂商组织名片段（如 16509、amazon、14061、digitalocean）。注册 IP 命中时，点击验证码难度提升为高。匹配不区分大小写。留空使用内置默认清单。仅提升验证码难度，不会自动封禁或标记用户风险',
+        datacenterAsnsPlaceholder: '16509, amazon, 14061, digitalocean',
         emailBlacklist: {
           title: '邮箱黑名单（精确匹配）',
           hint: '禁止名单中的邮箱注册，或绑定为账号邮箱。按收件箱匹配：Gmail 地址里的点号、googlemail.com 域名，以及各邮箱的 + 后缀都视为同一邮箱。已注册的账号不受影响，可用「检查已注册用户」找出后禁用。名单在弹窗里单独保存，不受页面底部保存按钮影响。',
@@ -315,6 +319,54 @@ export default {
         perMinute: '次/分钟',
         saved: '网关 IP 限流配置已保存',
         saveFailed: '保存网关 IP 限流配置失败'
+      },
+      securityIPBlacklist: {
+        title: '全站 IP 黑名单',
+        description: '对注册、登录与模型网关统一生效的 IP/CIDR 封禁列表，命中即 403；适合拦截恶意注册和滥用的来源 IP',
+        exemptNote: '管理端接口（/api/v1/admin）与支付回调（webhook）不受黑名单影响，静态前端与健康检查同样豁免，避免管理员自锁与掉单。请勿封禁自身出口 IP。',
+        enabled: '启用全站 IP 黑名单',
+        enabledHint: '开启后命中名单的 IP 将无法注册、登录和调用任何模型 API；关闭时名单保留但不拦截。',
+        blacklist: '封禁名单',
+        blacklistPlaceholder: '每行一个，支持 IPv4/IPv6 精确地址或 CIDR 网段，例如：\n2a02:4780:5e:4f48::1\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: 'IPv4 与 IPv6 均支持精确地址和网段前缀（如 /64 可封整个前缀段）。生效入口：注册、登录、全部模型 API。保存后立即生效（缓存最多 60 秒）。',
+        saved: '全站 IP 黑名单已保存',
+        saveFailed: '保存全站 IP 黑名单失败'
+      },
+      securityCountryBlocklist: {
+        title: '国家 / 地区封禁',
+        description: '按客户端 IP 归属国家/地区拦截面板与模型网关入站请求，依赖 GeoLite2-Country 数据库，命中即 403。',
+        exemptNote: '管理端接口（/api/v1/admin）、支付回调、静态前端与健康检查豁免，避免管理员自锁。请保持「信任转发 IP」关闭，否则用于判定的客户端 IP 可被伪造。',
+        geoipReady: 'GeoIP 数据库已就绪，国家/地区解析生效中。',
+        geoipNotReady: 'GeoIP 数据库未就绪：此时跳过解析并放行全部请求（fail-open）。请开启 compliance.geoip、放置有效的 GeoLite2-Country .mmdb 文件后重启服务。',
+        enabled: '启用国家 / 地区封禁',
+        enabledHint: '开启后命中名单的地区无法注册、登录和调用任何模型 API；关闭时名单保留但不拦截。',
+        countries: '封禁的国家 / 地区代码',
+        countriesPlaceholder: '每行一个 ISO 3166-1 alpha-2 代码，例如：\nCN\nUS\nDE',
+        countriesHint: '两位字母代码，不区分大小写（CN、US、DE...）。GeoLite2 对 CN、HK、MO、TW 分别返回不同代码，需要一并限制请分别填写。保存后立即生效（缓存最多 60 秒）。',
+        saved: '国家 / 地区封禁已保存',
+        saveFailed: '保存国家 / 地区封禁失败'
+      },
+      ipConsistency: {
+        title: 'IP 一致性风控',
+        description: '滚动窗口内两个独立功能：出现 3 个不同客户端 IP 时打「IP 可疑」轻标记，并把余额降到设定值、写调账备注、发通知邮件；出现 4 个及以上 IP 时禁用账号。',
+        warning: '注意：对注册、登录、控制台与模型 API 统一生效。3 个 IP 只打不冻结的轻标记并减额度（账号照常可用）；4 个及以上才禁用。请先把管理员、内网出口与代理出口 IP 加入白名单。',
+        enabled: '启用标记与禁用（功能一）',
+        enabledHint: '开启后，3 个不同 IP 打「IP 可疑」轻标记（不冻结调用），4 个及以上禁用账号；关闭时既不打标记也不禁用。',
+        penaltyEnabled: '启用减额度处罚（功能二）',
+        penaltyEnabledHint: '与功能一相互独立。达到 3 个及以上 IP 时，原子地把余额降到设定值、写调账备注并按需发邮件，全程不冻结账号。',
+        penaltyFloor: '处罚后保留余额（美元）',
+        penaltyFloorHint: '默认 0.03。只在当前余额高于它时扣减，已低于或等于的账号不动；同一用户 24 小时内最多处罚一次，避免重复扣减。',
+        penaltyNotifyEmail: '发送通知邮件',
+        penaltyNotifyEmailHint: '确实扣到余额时发送「The system detected an abnormality in your IP.」。邮件失败只记日志，不回滚已落库的余额与流水。',
+        windowSeconds: '滚动窗口（秒）',
+        windowSecondsHint: '默认 600（10 分钟），允许范围 60 ~ 86400。窗口越长越严格。',
+        whitelistIPs: 'IP 白名单',
+        whitelistIPsPlaceholder: '每行一个，支持 IPv4/IPv6 精确地址或 CIDR，例如：\n203.0.113.9\n198.51.100.0/24',
+        whitelistIPsHint: '命中白名单的客户端 IP 不参与一致性判定，适合公司出口、代理池等固定出口。',
+        whitelistUserIDs: '用户白名单',
+        whitelistUserIDsPlaceholder: '每行一个用户 ID，例如：\n1001\n1002',
+        saved: 'IP 一致性风控配置已保存',
+        saveFailed: '保存 IP 一致性风控配置失败'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -1082,11 +1134,14 @@ export default {
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        inRotation: '参与发信轮换',
+        inRotationHint:
+          '关闭后此账号不再参与多账号轮换发信（测试连接仍可用）；多账号列表为空时也不会再用它发信'
       },
       smtpAccounts: {
         title: '多账号轮换',
-        description: '配置多个 SMTP 账号，发送时自动轮换并切换故障账号；配置后优先于上面的单账号设置。',
+        description: '配置多个 SMTP 账号，发送时会在这些账号与上方单账号之间自动轮换并切换故障账号；同一邮箱重复配置会自动去重。',
         empty: '暂未配置多账号，当前使用上方单账号配置发信。',
         add: '添加账号',
         remove: '删除',

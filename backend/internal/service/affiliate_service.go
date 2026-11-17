@@ -187,7 +187,7 @@ type AffiliateRepository interface {
 	// MarkAffiliateGuardEventReviewed 将 pending 事件置为 status；仅当仍为 pending 时生效，返回是否更新。
 	MarkAffiliateGuardEventReviewed(ctx context.Context, id int64, status string, reviewedBy int64, rewardAmount float64) (bool, error)
 
-	// 管理端：邀请注册风险标记（只标记，不拦截业务）
+	// 管理端：邀请注册风险标记（打标后会拦截建 Key 与网关调用，见 User.RiskAccessBlocked）
 	// CollectAffiliateRiskSignals 批量聚合指定用户的邀请风险信号（上溯/下溯深度、24h 邀请数、密码复用等）。
 	CollectAffiliateRiskSignals(ctx context.Context, userIDs []int64) ([]AffiliateRiskSignal, error)
 	// BumpUserRiskMarks 写入风险标记，语义为「只升不降」：新等级不低于当前等级时才更新。
@@ -564,6 +564,20 @@ func NewAffiliateService(repo AffiliateRepository, settingService *SettingServic
 		authCacheInvalidator: authCacheInvalidator,
 		billingCacheService:  billingCacheService,
 	}
+}
+
+// MarkUserRisk 写入单条风险标记（只升不降的旁路能力），失败仅记日志、不影响主流程。
+// 用于注册网关的实时软性标记（如同 IP 关联账号数超阈值），区别于批量扫描与邀请绑定评估。
+func (s *AffiliateService) MarkUserRisk(ctx context.Context, userID int64, level string, reasons []string) {
+	if s == nil || s.repo == nil || userID <= 0 || level == "" {
+		return
+	}
+	marks := []UserRiskMark{{UserID: userID, Level: level, Reasons: reasons}}
+	if _, err := s.repo.BumpUserRiskMarks(ctx, marks); err != nil {
+		logger.LegacyPrintf("service.affiliate", "[Affiliate] MarkUserRisk failed user=%d: %v", userID, err)
+		return
+	}
+	s.invalidateRiskMarkedCaches(ctx, marks)
 }
 
 // IsEnabled reports whether the affiliate (邀请返利) feature is turned on.

@@ -35,8 +35,12 @@ func (h *RegistrationClickCaptchaHandler) Challenge(c *gin.Context) {
 		response.InternalError(c, "Click captcha service not configured")
 		return
 	}
-	ipHash := service.HashFingerprint(middleware2.SecurityClientIP(c), c.Request.UserAgent())
-	challenge, err := h.clickCaptcha.CreateChallenge(c.Request.Context(), ipHash, ipHash)
+	clientIP := middleware2.SecurityClientIP(c)
+	ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
+	// 把可信链解析出的真实客户端 IP 通过可选 context value 传入，供 ASN 机房判定使用；
+	// 不破坏 CreateChallenge 既有签名。
+	ctx := service.WithClientIPForChallenge(c.Request.Context(), clientIP)
+	challenge, err := h.clickCaptcha.CreateChallenge(ctx, ipHash, ipHash)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

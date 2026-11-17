@@ -215,6 +215,10 @@ export default {
         captchaDifficultyLow: 'Low',
         captchaDifficultyMedium: 'Medium (recommended)',
         captchaDifficultyHigh: 'High',
+        datacenterAsns: 'Datacenter ASN List',
+        datacenterAsnsHint:
+          'Comma-separated ASN numbers or cloud-provider org name fragments (for example, 16509, amazon, 14061, digitalocean). When a registration IP matches, the click captcha difficulty is raised to high. Matching is case-insensitive. Leave empty to use the built-in default list. This only raises captcha difficulty and never auto-bans or flags the user as risky',
+        datacenterAsnsPlaceholder: '16509, amazon, 14061, digitalocean',
         emailBlacklist: {
           title: 'Email Blacklist (Exact Match)',
           hint: 'Listed addresses cannot register or be bound as an account email. Matching is per inbox: dots in Gmail addresses, the googlemail.com domain and +suffixes are treated as the same address. Existing accounts are not affected; use Check Registered Users to find and disable them. The list is saved from its own dialog, independent of the Save button at the bottom of this page.',
@@ -315,6 +319,54 @@ export default {
         perMinute: 'req/min',
         saved: 'Gateway IP rate limit settings saved',
         saveFailed: 'Failed to save gateway IP rate limit settings'
+      },
+      securityIPBlacklist: {
+        title: 'Site-wide IP Blacklist',
+        description: 'An IP/CIDR ban list enforced on registration, login and the model gateway alike — matches get 403 on every entry point. Built for stopping abusive registrations and misuse from known source IPs.',
+        exemptNote: 'Admin API routes (/api/v1/admin) and payment webhooks are exempt, as are the static frontend and health checks — this prevents admin lockout and dropped payment callbacks. Do not blacklist your own egress IP.',
+        enabled: 'Enable site-wide IP blacklist',
+        enabledHint: 'When on, matching IPs cannot register, log in, or call any model API. Turning it off keeps the list but stops enforcement.',
+        blacklist: 'Banned entries',
+        blacklistPlaceholder: 'One per line; exact IPv4/IPv6 address or CIDR, e.g.:\n2a02:4780:5e:4f48::1\n203.0.113.9\n198.51.100.0/24',
+        blacklistHint: 'Both IPv4 and IPv6 support exact addresses and prefixes (e.g. /64 bans the whole prefix). Enforced on: registration, login, and all model API calls. Takes effect immediately after saving (cache lag is at most 60 seconds).',
+        saved: 'Site-wide IP blacklist saved',
+        saveFailed: 'Failed to save site-wide IP blacklist'
+      },
+      securityCountryBlocklist: {
+        title: 'Country / Region Blocklist',
+        description: 'Block inbound panel and model API traffic from selected countries or regions. The client IP is resolved with the GeoLite2-Country database and matches get 403 Forbidden.',
+        exemptNote: 'Admin API routes (/api/v1/admin), payment webhooks, the static frontend and health checks are exempt to prevent admin lockout. Keep "Trust forwarded IP headers" turned OFF, otherwise clients can spoof the IP used for lookup.',
+        geoipReady: 'GeoIP database is ready. Country lookups are active.',
+        geoipNotReady: 'GeoIP database is NOT ready. Without it, lookups are skipped and every request is allowed (fail-open). Enable compliance.geoip, provide a valid GeoLite2-Country .mmdb file, then restart the service.',
+        enabled: 'Enable country / region blocklist',
+        enabledHint: 'When on, matching regions cannot register, log in, or call any model API. Turning it off keeps the list but stops enforcement.',
+        countries: 'Blocked country / region codes',
+        countriesPlaceholder: 'One ISO 3166-1 alpha-2 code per line, e.g.:\nCN\nUS\nDE',
+        countriesHint: 'Two-letter codes, case-insensitive (CN, US, DE...). GeoLite2 reports CN, HK, MO and TW as separate codes — add each code you want to cover. Takes effect immediately after saving (cache lag at most 60 seconds).',
+        saved: 'Country / region blocklist saved',
+        saveFailed: 'Failed to save country / region blocklist'
+      },
+      ipConsistency: {
+        title: 'IP Consistency Guard',
+        description: 'Two independent features over a rolling window: 3 different client IPs tag the account as IP-suspicious and reduce its balance to the configured floor with an adjustment note and email; 4 or more IPs disable the account.',
+        warning: 'Enforced on registration, login, console and model API calls. 3 IPs applies a non-blocking tag plus a balance penalty (the account keeps working); 4+ IPs disables it. Whitelist admin accounts, office egress and proxy egress IPs first.',
+        enabled: 'Enable tagging & account disabling (feature A)',
+        enabledHint: 'When on, 3 different IPs tag the account as IP-suspicious (no API freeze) and 4+ IPs disable it. When off, neither tagging nor disabling runs.',
+        penaltyEnabled: 'Enable balance penalty (feature B)',
+        penaltyEnabledHint: 'Independent of feature A. Reaching 3+ different IPs atomically reduces the balance to the floor, writes an adjustment note and optionally emails the user. Never freezes the account.',
+        penaltyFloor: 'Balance kept after penalty (USD)',
+        penaltyFloorHint: 'Defaults to 0.03. Applied only when the current balance is higher; accounts already at or below the floor are untouched. Idempotent: at most one penalty per user per 24 hours.',
+        penaltyNotifyEmail: 'Send notification email',
+        penaltyNotifyEmailHint: 'Sends "The system detected an abnormality in your IP." when a penalty actually deducts balance. Email failures are logged only and never roll back the adjustment.',
+        windowSeconds: 'Rolling window (seconds)',
+        windowSecondsHint: 'Defaults to 600 (10 minutes); allowed range 60–86400. Longer windows are stricter.',
+        whitelistIPs: 'IP whitelist',
+        whitelistIPsPlaceholder: 'One per line; exact IPv4/IPv6 address or CIDR, e.g.:\n203.0.113.9\n198.51.100.0/24',
+        whitelistIPsHint: 'Whitelisted client IPs are excluded from the consistency check — useful for office egress and fixed proxy pools.',
+        whitelistUserIDs: 'User whitelist',
+        whitelistUserIDsPlaceholder: 'One user ID per line, e.g.:\n1001\n1002',
+        saved: 'IP consistency settings saved',
+        saveFailed: 'Failed to save IP consistency settings'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -1087,11 +1139,14 @@ export default {
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        inRotation: 'Include in Rotation',
+        inRotationHint:
+          'When off, this account is excluded from multi-account rotation (connection test still works) and is never used as fallback when the list is empty'
       },
       smtpAccounts: {
         title: 'Account Rotation',
-        description: 'Configure multiple SMTP accounts. Outgoing mail rotates across them and fails over automatically. When configured, this takes priority over the single account above.',
+        description: 'Configure multiple SMTP accounts. Outgoing mail rotates across these accounts and the single account above, with automatic failover. Duplicate accounts are skipped.',
         empty: 'No accounts configured. The single account above is used for sending.',
         add: 'Add Account',
         remove: 'Remove',

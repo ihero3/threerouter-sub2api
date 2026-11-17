@@ -175,6 +175,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationClickCaptchaEnabled] = strconv.FormatBool(settings.RegistrationClickCaptchaEnabled)
 	updates[SettingKeyRegistrationCaptchaMode] = normalizeRegistrationCaptchaMode(settings.RegistrationCaptchaMode)
 	updates[SettingKeyRegistrationCaptchaDifficulty] = normalizeRegistrationCaptchaDifficulty(settings.RegistrationCaptchaDifficulty)
+	updates[SettingKeyRegistrationDatacenterASNs] = settings.RegistrationDatacenterASNs
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
@@ -230,6 +231,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	updates[SettingKeySMTPSingleInRotation] = strconv.FormatBool(settings.SMTPSingleInRotation)
 	smtpAccountsJSON, err := s.buildSMTPAccountsUpdate(ctx, settings.SMTPAccounts)
 	if err != nil {
 		return nil, err

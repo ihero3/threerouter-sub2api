@@ -22,6 +22,7 @@ const (
 	IngressRejectAPIKeyDisabled         IngressRejectReason = "api_key_disabled"
 	IngressRejectIPRestricted           IngressRejectReason = "ip_restricted"
 	IngressRejectUserInactive           IngressRejectReason = "user_inactive"
+	IngressRejectUserRiskReview         IngressRejectReason = "user_risk_review"
 	IngressRejectGroupDeleted           IngressRejectReason = "group_deleted"
 	IngressRejectGroupDisabled          IngressRejectReason = "group_disabled"
 	IngressRejectGroupNotAllowed        IngressRejectReason = "group_not_allowed"

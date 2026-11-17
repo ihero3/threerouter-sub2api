@@ -571,7 +571,8 @@ func (h *MediaGatewayHandler) Create(c *gin.Context) {
 		response.URLs = record.MediaURLs
 	}
 	if record.ErrorMessage != "" {
-		response.Error = record.ErrorMessage
+		// 落库 ErrorMessage 保留上游原文供运营排障；客户端只回平台统一话术。
+		response.Error = service.MediaUpstreamClientMessage(0)
 	}
 
 	c.JSON(http.StatusAccepted, response)
@@ -643,7 +644,8 @@ func (h *MediaGatewayHandler) Get(c *gin.Context) {
 		response.Resolution = record.Resolution
 	}
 	if record.ErrorMessage != "" {
-		response.Error = record.ErrorMessage
+		// 落库 ErrorMessage 保留上游原文供运营排障；客户端只回平台统一话术。
+		response.Error = service.MediaUpstreamClientMessage(0)
 	}
 	if record.FinishedAt != nil {
 		response.FinishedAt = record.FinishedAt.UTC().Format(time.RFC3339)

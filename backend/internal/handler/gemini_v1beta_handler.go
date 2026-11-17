@@ -909,18 +909,21 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 				respCode = *rule.ResponseCode
 			}
 
-			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
-			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
-			}
-
 			if rule.SkipMonitoring {
 				c.Set(service.OpsSkipPassthroughKey, true)
 			}
 
+			// 命中透传规则只改写状态码；message 一律来自平台统一文案或管理员
+			// 自定义文案，上游原文只进 OpsUpstreamErrorEvent 留档。
+			upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+			service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+			_, _, platformErrMsg := service.MapUpstreamErrorToClient(statusCode)
+			if rule.CustomMessage != nil && *rule.CustomMessage != "" {
+				platformErrMsg = *rule.CustomMessage
+			}
+
 			// 按透传规则改写的是上游错误，不登记本地错误类型。
-			googleErrorWithType(c, respCode, "", "", msg)
+			googleErrorWithType(c, respCode, "", "", platformErrMsg)
 			return
 		}
 	}

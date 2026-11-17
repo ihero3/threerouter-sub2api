@@ -1241,6 +1241,9 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
   if (code === 'REGISTRATION_CLICK_CAPTCHA_DISABLED') {
     return t('auth.clickCaptchaDisabled')
   }
+  if (code === 'REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT') {
+    return t('auth.clickCaptchaSendLimit')
+  }
   if (extractApiErrorCode(error) === 'EMAIL_BLOCKED') {
     return t('auth.errors.EMAIL_BLOCKED')
   }

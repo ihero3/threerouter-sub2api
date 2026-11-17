@@ -69,6 +69,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationClickCaptchaEnabled:           "false",
 		SettingKeyRegistrationCaptchaMode:                   RegistrationCaptchaModeRandom,
 		SettingKeyRegistrationCaptchaDifficulty:             RegistrationCaptchaDifficultyMedium,
+		SettingKeyRegistrationDatacenterASNs:                DefaultRegistrationDatacenterASNs,
 		SettingKeyPromoCodeEnabled:                          "true", // 默认启用优惠码功能
 		SettingKeyLoginAgreementEnabled:                     "false",
 		SettingKeyLoginAgreementMode:                        defaultLoginAgreementMode,
@@ -339,6 +340,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		RegistrationClickCaptchaEnabled:        settings[SettingKeyRegistrationClickCaptchaEnabled] == "true",
 		RegistrationCaptchaMode:                normalizeRegistrationCaptchaMode(settings[SettingKeyRegistrationCaptchaMode]),
 		RegistrationCaptchaDifficulty:          normalizeRegistrationCaptchaDifficulty(settings[SettingKeyRegistrationCaptchaDifficulty]),
+		RegistrationDatacenterASNs:             settings[SettingKeyRegistrationDatacenterASNs],
 		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		RegistrationEmailSuffixBlacklist:       ParseRegistrationEmailSuffixBlacklist(settings[SettingKeyRegistrationEmailSuffixBlacklist]),
 		RegistrationEmailDomainQuotaEnabled:    settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
@@ -360,7 +362,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFrom:                               settings[SettingKeySMTPFrom],
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
-		SMTPAccounts:                           parseSMTPAccounts(settings[SettingKeySMTPAccounts]),
+		// 单账号轮换开关缺省开启：只有显式存了 "false" 才关闭。
+		SMTPSingleInRotation: settings[SettingKeySMTPSingleInRotation] != "false",
+		SMTPAccounts:         parseSMTPAccounts(settings[SettingKeySMTPAccounts]),
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],

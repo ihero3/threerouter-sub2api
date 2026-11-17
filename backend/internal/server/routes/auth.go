@@ -21,6 +21,7 @@ func RegisterAuthRoutes(
 	redisClient *redis.Client,
 	settingService *service.SettingService,
 	panelRateLimiter *servermiddleware.PanelRateLimiter,
+	opsService *service.OpsService,
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
@@ -30,11 +31,22 @@ func RegisterAuthRoutes(
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
+	// 登录/注册等失败（4xx）写入「错误请求」：无法确定用户时兜底记 admin(id=1)，
+	// 防止登录坍塌在「使用记录 → 错误请求」中毫无痕迹。该变体仅用于 auth 路由组。
+	auth.Use(handler.OpsErrorLoggerMiddlewareWithDefaultUser(opsService, 1))
 	{
-		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）
+		// 自建顺序点击验证码（仅邮箱验证开启且启用开关时强制）。
+		// 两个接口都挂限流：challenge 出题要生成位图（CPU 打点），verify 是
+		// 爆破题面答案的入口，不限流时机器人可以无限换题重试。
+		// 这里收紧阈值，并继续按可信客户端 IP 单一维度计数：同一 IP 下所有
+		// User-Agent 共享同一个桶，轮换 UA 无法打散计数、重新拿满额度。
 		if h.RegistrationClickCaptcha != nil {
-			auth.POST("/captcha/challenge", h.RegistrationClickCaptcha.Challenge)
-			auth.POST("/captcha/verify", h.RegistrationClickCaptcha.Verify)
+			auth.POST("/captcha/challenge", rateLimiter.LimitWithOptions("auth-captcha-challenge", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}), h.RegistrationClickCaptcha.Challenge)
+			auth.POST("/captcha/verify", rateLimiter.LimitWithOptions("auth-captcha-verify", 15, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}), h.RegistrationClickCaptcha.Verify)
 		}
 		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{

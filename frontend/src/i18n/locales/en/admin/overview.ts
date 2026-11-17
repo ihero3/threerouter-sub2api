@@ -632,7 +632,8 @@ export default {
         level: {
           all: 'All',
           suspect: 'Suspect',
-          abnormal: 'Abnormal'
+          abnormal: 'Abnormal',
+          ip_suspect: 'IP suspicious (not blocked)'
         },
         reasons: {
           invite_burst_24h: 'Invite burst within 24 hours',
@@ -641,9 +642,17 @@ export default {
           random_local_part: 'Randomized email local part',
           email_alias_stuffing: 'Email dot-alias stuffing (one Gmail, many accounts)',
           shared_password: 'Shared password across accounts',
-          chain_contagion: 'Linked to abnormal accounts'
+          chain_contagion: 'Linked to abnormal accounts',
+          ip_inconsistent: 'Multiple client IPs within the monitoring window'
         },
-        tooltipFallback: 'Account risk detected, please review manually'
+        tooltipFallback: 'Account risk detected, please review manually',
+        review: {
+          action: 'Approve Review',
+          title: 'Approve Risk Review',
+          confirm: "Approve the security review for '{email}'? This clears the risk level and restores the account to active. Any balance previously deducted by the IP guard will be refunded automatically (nothing is refunded if nothing was deducted).",
+          success: 'Risk review approved, the user is now active; any deduction has been refunded',
+          failed: 'Failed to approve the risk review'
+        }
       },
       marks: {
         filterLabel: 'Marks',

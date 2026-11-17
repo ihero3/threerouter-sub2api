@@ -643,6 +643,37 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		}
 	})
 
+	t.Run("returns_404_for_missing_assets", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		// A stale deployment references removed chunk hashes. Serving index.html for
+		// them makes browsers reject the module with a text/html MIME error, so the
+		// server must answer 404 instead.
+		missingAssetPaths := []string{
+			"/assets/DashboardView-stale123.js",
+			"/assets/index-removed456.css",
+		}
+
+		for _, path := range missingAssetPaths {
+			t.Run(path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				router.ServeHTTP(w, req)
+
+				assert.Equal(t, http.StatusNotFound, w.Code)
+				assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+			})
+		}
+	})
+
 	t.Run("serves_static_files", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},

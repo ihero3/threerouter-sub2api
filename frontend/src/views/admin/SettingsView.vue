@@ -1770,6 +1770,24 @@
                   </option>
                 </select>
               </div>
+              <!-- Datacenter ASN list: bumps captcha difficulty for proxy/hosting IPs -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t("admin.settings.registration.datacenterAsns")
+                }}</label>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.registration.datacenterAsnsHint") }}
+                </p>
+                <textarea
+                  v-model="form.registration_datacenter_asns"
+                  rows="2"
+                  class="mt-3 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+                  :placeholder="
+                    t('admin.settings.registration.datacenterAsnsPlaceholder')
+                  "
+                ></textarea>
+              </div>
+
               <!-- Exact Email Blacklist -->
               <RegistrationEmailBlacklistEditor />
 
@@ -2392,6 +2410,483 @@
                     </svg>
                     {{
                       gatewayIpRateLimitSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 全站 IP 黑名单 Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="ban"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.securityIPBlacklist.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.securityIPBlacklist.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="securityIPBlacklistLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- 豁免说明：管理端/支付回调/静态前端不受影响 -->
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.securityIPBlacklist.exemptNote") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.securityIPBlacklist.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityIPBlacklist.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="securityIPBlacklistForm.enabled" />
+                </div>
+
+                <div
+                  v-if="securityIPBlacklistForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.securityIPBlacklist.blacklist") }}
+                    </label>
+                    <textarea
+                      v-model="securityIPBlacklistText"
+                      data-testid="security-ip-blacklist"
+                      rows="6"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="t('admin.settings.securityIPBlacklist.blacklistPlaceholder')"
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityIPBlacklist.blacklistHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="security-ip-blacklist-save"
+                    @click="saveSecurityIPBlacklistSettings"
+                    :disabled="securityIPBlacklistSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="securityIPBlacklistSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      securityIPBlacklistSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 全站国家/地区封禁 Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="ban"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.securityCountryBlocklist.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.securityCountryBlocklist.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="securityCountryBlocklistLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- GeoIP 就绪状态：未就绪时封禁自动 fail-open，必须显著提示 -->
+                <div
+                  :class="
+                    securityCountryBlocklistForm.geoip_ready
+                      ? 'rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/20'
+                      : 'rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20'
+                  "
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0"
+                      :class="
+                        securityCountryBlocklistForm.geoip_ready
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      "
+                    />
+                    <p
+                      class="ml-3 text-sm"
+                      :class="
+                        securityCountryBlocklistForm.geoip_ready
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-amber-700 dark:text-amber-300'
+                      "
+                    >
+                      {{
+                        securityCountryBlocklistForm.geoip_ready
+                          ? t("admin.settings.securityCountryBlocklist.geoipReady")
+                          : t("admin.settings.securityCountryBlocklist.geoipNotReady")
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 豁免说明：与全站 IP 黑名单一致 -->
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.securityCountryBlocklist.exemptNote") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.securityCountryBlocklist.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityCountryBlocklist.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="securityCountryBlocklistForm.enabled" />
+                </div>
+
+                <div
+                  v-if="securityCountryBlocklistForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.securityCountryBlocklist.countries") }}
+                    </label>
+                    <textarea
+                      v-model="securityCountryBlocklistText"
+                      data-testid="security-country-blocklist"
+                      rows="6"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.securityCountryBlocklist.countriesPlaceholder')
+                      "
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.securityCountryBlocklist.countriesHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="security-country-blocklist-save"
+                    @click="saveSecurityCountryBlocklistSettings"
+                    :disabled="securityCountryBlocklistSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="securityCountryBlocklistSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      securityCountryBlocklistSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon name="shield" size="md" class="text-primary-500" />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.ipConsistency.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.ipConsistency.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="ipConsistencyLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div
+                  class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+                >
+                  <p class="text-sm text-amber-700 dark:text-amber-300">
+                    {{ t("admin.settings.ipConsistency.warning") }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.ipConsistency.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="ipConsistencyForm.enabled" />
+                </div>
+
+                <!-- 功能B 与功能A 相互独立：即使关掉功能A，减额度处罚仍可单独配置 -->
+                <div
+                  class="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                >
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.ipConsistency.penaltyEnabled")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          t("admin.settings.ipConsistency.penaltyEnabledHint")
+                        }}
+                      </p>
+                    </div>
+                    <Toggle
+                      v-model="ipConsistencyForm.balance_penalty_enabled"
+                    />
+                  </div>
+
+                  <div
+                    v-if="ipConsistencyForm.balance_penalty_enabled"
+                    class="space-y-4"
+                  >
+                    <div>
+                      <label
+                        class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        {{ t("admin.settings.ipConsistency.penaltyFloor") }}
+                      </label>
+                      <input
+                        v-model.number="ipConsistencyForm.balance_penalty_floor"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        class="input w-full"
+                      />
+                      <p
+                        class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        {{ t("admin.settings.ipConsistency.penaltyFloorHint") }}
+                      </p>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <label
+                          class="font-medium text-gray-900 dark:text-white"
+                          >{{
+                            t(
+                              "admin.settings.ipConsistency.penaltyNotifyEmail",
+                            )
+                          }}</label
+                        >
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{
+                            t(
+                              "admin.settings.ipConsistency.penaltyNotifyEmailHint",
+                            )
+                          }}
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="ipConsistencyForm.penalty_notify_email"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="ipConsistencyForm.enabled"
+                  class="space-y-5 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.windowSeconds") }}
+                    </label>
+                    <input
+                      v-model.number="ipConsistencyForm.window_seconds"
+                      type="number"
+                      min="60"
+                      max="86400"
+                      class="input w-full"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.windowSecondsHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.whitelistIPs") }}
+                    </label>
+                    <textarea
+                      v-model="ipConsistencyWhitelistIPsText"
+                      rows="4"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.ipConsistency.whitelistIPsPlaceholder')
+                      "
+                    ></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.ipConsistency.whitelistIPsHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.ipConsistency.whitelistUserIDs") }}
+                    </label>
+                    <textarea
+                      v-model="ipConsistencyWhitelistUserIDsText"
+                      rows="3"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t('admin.settings.ipConsistency.whitelistUserIDsPlaceholder')
+                      "
+                    ></textarea>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveIPConsistencySettings"
+                    :disabled="ipConsistencySaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    {{
+                      ipConsistencySaving
                         ? t("common.saving")
                         : t("common.save")
                     }}
@@ -9130,6 +9625,21 @@
                 </div>
                 <Toggle v-model="form.smtp_use_tls" />
               </div>
+
+              <!-- Single account rotation toggle -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.smtp.inRotation")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.smtp.inRotationHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.smtp_single_in_rotation" />
+              </div>
             </div>
           </div>
 
@@ -9893,6 +10403,41 @@ const gatewayIpRateLimitForm = reactive({
 // 命中黑名单的 IP 直接 403，不在黑名单的所有 IP 一视同仁参与限流。
 const gatewayIpRateLimitBlacklistText = ref("");
 
+// 全站 IP 黑名单状态
+const securityIPBlacklistLoading = ref(true);
+const securityIPBlacklistSaving = ref(false);
+const securityIPBlacklistForm = reactive({
+  enabled: false,
+});
+// 黑名单用文本域编辑（每行一个 IPv4/IPv6 或 CIDR），保存时拆分为数组。
+// 命中即在注册/登录/网关入口统一 403；管理端与支付回调豁免。
+const securityIPBlacklistText = ref("");
+
+// 全站国家/地区封禁状态（GeoLite2-Country；未就绪时后端 fail-open）
+const securityCountryBlocklistLoading = ref(true);
+const securityCountryBlocklistSaving = ref(false);
+const securityCountryBlocklistForm = reactive({
+  enabled: false,
+  geoip_ready: false,
+});
+// 名单用文本域编辑（每行一个 ISO 3166-1 alpha-2 代码），保存时拆分为数组。
+const securityCountryBlocklistText = ref("");
+
+// IP 一致性风控状态
+const ipConsistencyLoading = ref(true);
+const ipConsistencySaving = ref(false);
+const ipConsistencyForm = reactive({
+  enabled: true,
+  window_seconds: 600,
+  schema_version: 2,
+  balance_penalty_enabled: true,
+  balance_penalty_floor: 0.03,
+  penalty_notify_email: true,
+});
+// 白名单用文本域编辑（每行一个 IP/CIDR 或用户 ID）。
+const ipConsistencyWhitelistIPsText = ref("");
+const ipConsistencyWhitelistUserIDsText = ref("");
+
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true);
 const streamTimeoutSaving = ref(false);
@@ -10445,6 +10990,7 @@ const form = reactive<SettingsForm>({
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
   registration_captcha_difficulty: "medium",
+  registration_datacenter_asns: "",
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -10539,6 +11085,7 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  smtp_single_in_rotation: true,
   smtp_accounts: [] as SMTPAccount[],
   // Cloudflare Turnstile
   turnstile_enabled: false,
@@ -12339,6 +12886,7 @@ async function saveSettings() {
         form.registration_click_captcha_enabled,
       registration_captcha_mode: form.registration_captcha_mode,
       registration_captcha_difficulty: form.registration_captcha_difficulty,
+      registration_datacenter_asns: form.registration_datacenter_asns,
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
@@ -12398,6 +12946,7 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_single_in_rotation: form.smtp_single_in_rotation,
       smtp_accounts: form.smtp_accounts.map((account) => ({
         id: account.id,
         host: account.host,
@@ -13180,6 +13729,167 @@ async function saveGatewayIpRateLimitSettings() {
   }
 }
 
+// 全站 IP 黑名单方法
+async function loadSecurityIPBlacklistSettings() {
+  securityIPBlacklistLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getSecurityIPBlacklistSettings();
+    securityIPBlacklistForm.enabled = settings.enabled;
+    securityIPBlacklistText.value = (settings.blacklist || []).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    securityIPBlacklistLoading.value = false;
+  }
+}
+
+async function saveSecurityIPBlacklistSettings() {
+  securityIPBlacklistSaving.value = true;
+  try {
+    const blacklist = securityIPBlacklistText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const updated = await adminAPI.settings.updateSecurityIPBlacklistSettings({
+      enabled: securityIPBlacklistForm.enabled,
+      blacklist,
+    });
+    securityIPBlacklistForm.enabled = updated.enabled;
+    securityIPBlacklistText.value = (updated.blacklist || []).join("\n");
+    appStore.showSuccess(t("admin.settings.securityIPBlacklist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.securityIPBlacklist.saveFailed"),
+      ),
+    );
+  } finally {
+    securityIPBlacklistSaving.value = false;
+  }
+}
+
+// 全站国家/地区封禁方法
+async function loadSecurityCountryBlocklistSettings() {
+  securityCountryBlocklistLoading.value = true;
+  try {
+    const settings =
+      await adminAPI.settings.getSecurityCountryBlocklistSettings();
+    securityCountryBlocklistForm.enabled = settings.enabled;
+    securityCountryBlocklistForm.geoip_ready = settings.geoip_ready;
+    securityCountryBlocklistText.value = (settings.countries || []).join("\n");
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    securityCountryBlocklistLoading.value = false;
+  }
+}
+
+async function saveSecurityCountryBlocklistSettings() {
+  securityCountryBlocklistSaving.value = true;
+  try {
+    const countries = securityCountryBlocklistText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const updated =
+      await adminAPI.settings.updateSecurityCountryBlocklistSettings({
+        enabled: securityCountryBlocklistForm.enabled,
+        countries,
+      });
+    securityCountryBlocklistForm.enabled = updated.enabled;
+    securityCountryBlocklistForm.geoip_ready = updated.geoip_ready;
+    securityCountryBlocklistText.value = (updated.countries || []).join("\n");
+    appStore.showSuccess(t("admin.settings.securityCountryBlocklist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.securityCountryBlocklist.saveFailed"),
+      ),
+    );
+  } finally {
+    securityCountryBlocklistSaving.value = false;
+  }
+}
+
+// IP 一致性风控方法
+async function loadIPConsistencySettings() {
+  ipConsistencyLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getIPConsistencySettings();
+    ipConsistencyForm.enabled = settings.enabled;
+    ipConsistencyForm.window_seconds = settings.window_seconds || 600;
+    ipConsistencyWhitelistIPsText.value = (settings.whitelist_ips || []).join(
+      "\n",
+    );
+    ipConsistencyWhitelistUserIDsText.value = (
+      settings.whitelist_user_ids || []
+    ).join("\n");
+    // 旧后端不返回 v2 字段时按「功能开启」兜底，与服务端 v1→v2 迁移口径一致。
+    ipConsistencyForm.schema_version = settings.schema_version || 2;
+    ipConsistencyForm.balance_penalty_enabled =
+      settings.balance_penalty_enabled ?? true;
+    ipConsistencyForm.balance_penalty_floor =
+      settings.balance_penalty_floor || 0.03;
+    ipConsistencyForm.penalty_notify_email =
+      settings.penalty_notify_email ?? true;
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    ipConsistencyLoading.value = false;
+  }
+}
+
+async function saveIPConsistencySettings() {
+  ipConsistencySaving.value = true;
+  try {
+    const whitelist_ips = ipConsistencyWhitelistIPsText.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const whitelist_user_ids = ipConsistencyWhitelistUserIDsText.value
+      .split("\n")
+      .map((line) => Number(line.trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const updated = await adminAPI.settings.updateIPConsistencySettings({
+      enabled: ipConsistencyForm.enabled,
+      window_seconds: ipConsistencyForm.window_seconds,
+      whitelist_ips,
+      whitelist_user_ids,
+      schema_version: 2,
+      balance_penalty_enabled: ipConsistencyForm.balance_penalty_enabled,
+      balance_penalty_floor: ipConsistencyForm.balance_penalty_floor,
+      penalty_notify_email: ipConsistencyForm.penalty_notify_email,
+    });
+    ipConsistencyForm.enabled = updated.enabled;
+    ipConsistencyForm.window_seconds = updated.window_seconds || 600;
+    ipConsistencyForm.schema_version = updated.schema_version || 2;
+    ipConsistencyForm.balance_penalty_enabled =
+      updated.balance_penalty_enabled ?? true;
+    ipConsistencyForm.balance_penalty_floor =
+      updated.balance_penalty_floor || 0.03;
+    ipConsistencyForm.penalty_notify_email =
+      updated.penalty_notify_email ?? true;
+    ipConsistencyWhitelistIPsText.value = (updated.whitelist_ips || []).join(
+      "\n",
+    );
+    ipConsistencyWhitelistUserIDsText.value = (
+      updated.whitelist_user_ids || []
+    ).join("\n");
+    appStore.showSuccess(t("admin.settings.ipConsistency.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.ipConsistency.saveFailed"),
+      ),
+    );
+  } finally {
+    ipConsistencySaving.value = false;
+  }
+}
+
 // Rate Limit Cooldown (429) 方法
 async function loadRateLimit429CooldownSettings() {
   rateLimit429CooldownLoading.value = true;
@@ -13864,6 +14574,9 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();
   loadGatewayIpRateLimitSettings();
+  loadSecurityIPBlacklistSettings();
+  loadSecurityCountryBlocklistSettings();
+  loadIPConsistencySettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();

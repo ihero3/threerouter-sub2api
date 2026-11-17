@@ -585,7 +585,7 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken); err != nil {
+	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken, req.Email); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

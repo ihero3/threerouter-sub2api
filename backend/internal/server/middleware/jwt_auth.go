@@ -10,14 +10,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// NewJWTAuthMiddleware 创建 JWT 认证中间件
+// NewJWTAuthMiddleware 创建 JWT 认证中间件。
+// ipConsistency 为可选的 IP 一致性风控服务（保持既有测试调用兼容）。
 func NewJWTAuthMiddleware(
 	authService *service.AuthService,
 	userService *service.UserService,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	ipConsistency ...*service.IPConsistencyService,
 ) JWTAuthMiddleware {
-	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService))
+	var guard *service.IPConsistencyService
+	if len(ipConsistency) > 0 {
+		guard = ipConsistency[0]
+	}
+	return JWTAuthMiddleware(jwtAuth(authService, userService, userService, settingService, auditService, guard))
 }
 
 type jwtUserReader interface {
@@ -35,7 +41,12 @@ func jwtAuth(
 	activityToucher userActivityToucher,
 	settingService *service.SettingService,
 	auditService *service.AuditLogService,
+	ipConsistency ...*service.IPConsistencyService,
 ) gin.HandlerFunc {
+	var guard *service.IPConsistencyService
+	if len(ipConsistency) > 0 {
+		guard = ipConsistency[0]
+	}
 	return func(c *gin.Context) {
 		// 从Authorization header中提取token
 		authHeader := c.GetHeader("Authorization")
@@ -94,6 +105,11 @@ func jwtAuth(
 
 		// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
 		if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
+			return
+		}
+
+		// IP 一致性风控：滚动窗口内出现多个客户端 IP → 自动禁用并拒绝。
+		if !enforceUserIPConsistency(c, guard, user.ID, user.Role) {
 			return
 		}
 

@@ -39,13 +39,18 @@ const (
 	opsRequestTypeKey   = "ops_request_type"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
-	opsErrContextCanceled            = "context canceled"
-	opsErrNoAvailableAccounts        = "no available accounts"
-	opsErrInvalidAPIKey              = "invalid_api_key"
-	opsErrAPIKeyRequired             = "api_key_required"
-	opsErrInsufficientBalance        = "insufficient balance"
-	opsErrInsufficientAccountBalance = "insufficient account balance"
-	opsErrInsufficientQuota          = "insufficient_quota"
+	opsErrContextCanceled     = "context canceled"
+	opsErrNoAvailableAccounts = "no available accounts"
+	opsErrInvalidAPIKey       = "invalid_api_key"
+	opsErrAPIKeyRequired      = "api_key_required"
+	opsErrInsufficientBalance = "insufficient balance"
+	// opsErrInsufficientKeyword 是错误日志「忽略余额不足」的过滤口径。
+	// 采用子串匹配而非短语白名单：上游/网关余额不足的写法五花八门
+	// （INSUFFICIENT_BALANCE、insufficient_quota、insufficient credits、
+	// insufficient funds、Insufficient account balance ...），白名单必漏。
+	// 注意该口径会一并过滤 insufficient_scope 等非余额错误，属管理员明确选择的取舍，
+	// 关闭后台开关即可恢复记录。
+	opsErrInsufficientKeyword = "insufficient"
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
@@ -215,6 +220,11 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 	if ops == nil || entry == nil {
 		return
 	}
+	// 兜底过滤：2xx 上游恢复行、cyber 专用记录等路径不经过 shouldSkipOpsErrorLog，
+	// 在这里统一收口，保证「凡含 insufficient 的错误都不写入 ops_error_logs」。
+	if shouldSkipEnqueuedInsufficientError(ops.OpsAdvancedSettingsSnapshot(), entry) {
+		return
+	}
 	entry.UserAgent = normalizeOpsPersistentUserAgent(entry.UserAgent)
 	if entry.ErrorBody != "" {
 		originalBody := entry.ErrorBody
@@ -266,6 +276,32 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 		opsErrorLogDropped.Add(1)
 		maybeLogOpsErrorLogDrop()
 	}
+}
+
+// shouldSkipEnqueuedInsufficientError 是落库前的最后一道过滤，只检查最终错误文本字段。
+// 刻意不看 RequestPreview（用户输入里恰好出现 "insufficient" 不该吞掉错误日志），
+// 也不展开 UpstreamErrors 事件数组（一次成功恢复里残留的历史欠费尝试不该吞掉
+// 真正需要排查的上游故障日志）。
+func shouldSkipEnqueuedInsufficientError(settings service.OpsAdvancedSettings, entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	if !settings.IgnoreInsufficientBalanceErrors {
+		return false
+	}
+	texts := []string{entry.ErrorMessage, entry.ErrorBody}
+	if entry.UpstreamErrorMessage != nil {
+		texts = append(texts, *entry.UpstreamErrorMessage)
+	}
+	if entry.UpstreamErrorDetail != nil {
+		texts = append(texts, *entry.UpstreamErrorDetail)
+	}
+	for _, text := range texts {
+		if strings.Contains(strings.ToLower(text), opsErrInsufficientKeyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeOpsPersistentUserAgent(value string) string {
@@ -1088,6 +1124,29 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
 		riskControlFn = riskControlEnabled[0]
 	}
+	return newOpsErrorLogger(ops, riskControlFn, 0)
+}
+
+// OpsErrorLoggerMiddlewareWithDefaultUser 与 OpsErrorLoggerMiddleware 行为一致，但额外在
+// 错误无法确定归属用户（entry.UserID 为 nil）时兜底记为 defaultUserID。
+//
+// 用于登录/注册入口：登录/注册失败往往没有已认证用户，统一归属 admin(id=1) 才能在
+// 「使用记录 → 错误请求」（按当前登录用户过滤）中观测到，防止登录坍塌（Login Collapse）
+// 时毫不知情。仅登录/注册路由组使用该变体，模型网关等其它入口保持原行为不变。
+func OpsErrorLoggerMiddlewareWithDefaultUser(ops *service.OpsService, defaultUserID int64, riskControlEnabled ...func(context.Context) bool) gin.HandlerFunc {
+	riskControlFn := func(context.Context) bool { return false }
+	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
+		riskControlFn = riskControlEnabled[0]
+	}
+	return newOpsErrorLogger(ops, riskControlFn, defaultUserID)
+}
+
+// newOpsErrorLogger 是 OpsErrorLoggerMiddleware 与 WithDefaultUser 变体的共享实现。
+// defaultUserID != 0 时，若最终 entry.UserID 仍为空（无法确定用户），则兜底记为该用户。
+func newOpsErrorLogger(ops *service.OpsService, riskControlFn func(context.Context) bool, defaultUserID int64) gin.HandlerFunc {
+	if riskControlFn == nil {
+		riskControlFn = func(context.Context) bool { return false }
+	}
 	return func(c *gin.Context) {
 		var reqCtx context.Context
 		if c.Request != nil {
@@ -1168,7 +1227,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		}
 
 		// Skip logging if the error should be filtered based on settings
-		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
+		if shouldSkipOpsErrorLog(ops, parsed.Message, string(body), parsed.Code, c.Request.URL.Path) {
 			return
 		}
 		if shouldSkipOpsClientClosed(c, ops, status) {
@@ -1263,6 +1322,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 		applyOpsAPIKeyFields(entry, apiKey)
 
 		applyOpsClientIP(entry, c)
+
+		// 登录/注册入口：无法确定归属用户时兜底记为 defaultUserID（admin id=1），
+		// 让这些异常错误能在「使用记录 → 错误请求」中被观测到。
+		if defaultUserID != 0 && entry.UserID == nil {
+			fallbackUID := defaultUserID
+			entry.UserID = &fallbackUID
+		}
 
 		enqueueOpsErrorLog(ops, entry)
 	}
@@ -1526,7 +1592,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	}
 
 	// 复用与 status>=400 分支相同的设置过滤（context canceled / 无可用账号等）。
-	if shouldSkipOpsErrorLog(c.Request.Context(), ops, streamErr.Message, streamErr.Message, c.Request.URL.Path) {
+	if shouldSkipOpsErrorLog(ops, streamErr.Message, streamErr.Message, streamErr.Code, c.Request.URL.Path) {
 		return
 	}
 
@@ -2498,13 +2564,12 @@ func strconvItoa(v int) string {
 
 // shouldSkipOpsErrorLog determines if an error should be skipped from logging based on settings.
 // Returns true for errors that should be filtered according to OpsAdvancedSettings.
-func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message, body, requestPath string) bool {
+func shouldSkipOpsErrorLog(ops *service.OpsService, message, body, code, requestPath string) bool {
 	if ops == nil {
 		return false
 	}
 
 	// Get advanced settings to check filter configuration
-	_ = ctx
 	settings := ops.OpsAdvancedSettingsSnapshot()
 
 	msgLower := strings.ToLower(message)
@@ -2536,15 +2601,27 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 		}
 	}
 
-	// Check if insufficient balance errors should be ignored
-	if settings.IgnoreInsufficientBalanceErrors {
-		if strings.Contains(bodyLower, opsErrInsufficientBalance) || strings.Contains(bodyLower, opsErrInsufficientAccountBalance) ||
-			strings.Contains(bodyLower, opsErrInsufficientQuota) ||
-			strings.Contains(msgLower, opsErrInsufficientBalance) || strings.Contains(msgLower, opsErrInsufficientAccountBalance) {
+	// Check if insufficient balance errors should be ignored.
+	// 口径：message / 响应体 / 错误码任一含 "insufficient"（大小写不敏感）即跳过，
+	// 覆盖错误码 INSUFFICIENT_BALANCE、文案 insufficient credits/funds/quota 等所有变体。
+	if shouldSkipInsufficientError(settings, message, body, code) {
+		return true
+	}
+
+	return false
+}
+
+// shouldSkipInsufficientError 是「忽略余额不足错误」的纯判定，便于单测直接覆盖
+// 各种大小写、下划线错误码与上游变体，不依赖 OpsService 实例。
+func shouldSkipInsufficientError(settings service.OpsAdvancedSettings, message, body, code string) bool {
+	if !settings.IgnoreInsufficientBalanceErrors {
+		return false
+	}
+	for _, text := range []string{message, body, code} {
+		if strings.Contains(strings.ToLower(text), opsErrInsufficientKeyword) {
 			return true
 		}
 	}
-
 	return false
 }
 

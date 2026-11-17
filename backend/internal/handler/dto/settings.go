@@ -32,6 +32,7 @@ type SystemSettings struct {
 	RegistrationClickCaptchaEnabled     bool                     `json:"registration_click_captcha_enabled"` // 注册前顺序点击验证
 	RegistrationCaptchaMode             string                   `json:"registration_captcha_mode"`          // 自建验证码模式：random | image_click | slider
 	RegistrationCaptchaDifficulty       string                   `json:"registration_captcha_difficulty"`    // 自建验证码难度：low | medium | high
+	RegistrationDatacenterASNs          string                   `json:"registration_datacenter_asns"`       // 机房 / 云厂商 ASN 或组织名清单（逗号分隔，命中则验证码难度升为 high；弱信号）
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailSuffixBlacklist    []string                 `json:"registration_email_suffix_blacklist"`
@@ -67,6 +68,7 @@ type SystemSettings struct {
 	SMTPFrom               string        `json:"smtp_from_email"`
 	SMTPFromName           string        `json:"smtp_from_name"`
 	SMTPUseTLS             bool          `json:"smtp_use_tls"`
+	SMTPSingleInRotation   bool          `json:"smtp_single_in_rotation"`
 	SMTPAccounts           []SMTPAccount `json:"smtp_accounts"`
 
 	TurnstileEnabled                       bool     `json:"turnstile_enabled"`
@@ -525,6 +527,37 @@ type GatewayIPRateLimitSettings struct {
 	RPM     int  `json:"rpm"`
 	// Blacklist 命中即 403 Forbidden，所有未命中黑名单的 IP 一视同仁参与限流。
 	Blacklist []string `json:"blacklist"`
+}
+
+// SecurityIPBlacklistSettings 全站 IP 黑名单配置 DTO
+type SecurityIPBlacklistSettings struct {
+	Enabled bool `json:"enabled"`
+	// Blacklist IP/CIDR 列表（IPv4/IPv6），命中即在注册/登录/网关入口统一 403。
+	Blacklist []string `json:"blacklist"`
+}
+
+// SecurityCountryBlocklistSettings 全站国家/地区封禁配置 DTO。
+// GeoIPReady 为只读状态位：GeoLite2-Country 数据库未就绪时封禁自动 fail-open。
+type SecurityCountryBlocklistSettings struct {
+	Enabled    bool     `json:"enabled"`
+	Countries  []string `json:"countries"`
+	GeoIPReady bool     `json:"geoip_ready"`
+}
+
+// IPConsistencySettings IP 一致性风控配置 DTO
+type IPConsistencySettings struct {
+	Enabled bool `json:"enabled"`
+	// WindowSeconds 滚动窗口秒数（默认 600）
+	WindowSeconds int `json:"window_seconds"`
+	// WhitelistUserIDs 豁免的用户 ID 列表
+	WhitelistUserIDs []int64 `json:"whitelist_user_ids"`
+	// WhitelistIPs 豁免的 IP/CIDR 列表
+	WhitelistIPs []string `json:"whitelist_ips"`
+	// v2：功能B（IP 异常减额度处罚）配置
+	SchemaVersion         int     `json:"schema_version"`
+	BalancePenaltyEnabled bool    `json:"balance_penalty_enabled"`
+	BalancePenaltyFloor   float64 `json:"balance_penalty_floor"`
+	PenaltyNotifyEmail    bool    `json:"penalty_notify_email"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

@@ -212,10 +212,12 @@ func (h *AuthHandler) enforceClickCaptchaForRegistration(c *gin.Context) bool {
 	return h.settingSvc.IsRegistrationClickCaptchaEnabled(c.Request.Context())
 }
 
-// validateClickCaptchaForEmailSending 对所有会触发发信的公开接口统一做自建点击验证码校验
-// （非消费式校验，token 仍由后续提交动作消费）。开启自建验证码即强制生效，
-// 防止机器人绕过前端直接调用接口刷邮件、打爆 SMTP 日配额。
-func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token string) error {
+// validateClickCaptchaForEmailSending 对所有会触发发信的公开接口统一做自建点击
+// 验证码校验（占用式：把 token 绑定到该发码邮箱，一次人机验证只允许给一个收件
+// 地址发信，防止一个 token 反复调用发码接口给任意邮箱刷 SMTP 配额、骚扰他人；
+// 同一地址重发不限次）。开启自建验证码即强制生效。token 本体仍由后续注册接口
+// 做一次性消费，这里不销毁。绑定不可释放：发信失败时用户用同一邮箱重试即可。
+func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token, email string) error {
 	if h == nil || h.clickCaptcha == nil || h.settingSvc == nil {
 		return nil
 	}
@@ -224,7 +226,7 @@ func (h *AuthHandler) validateClickCaptchaForEmailSending(c *gin.Context, token 
 	}
 	clientIP := middleware2.SecurityClientIP(c)
 	ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
-	return h.clickCaptcha.ValidateToken(c.Request.Context(), token, ipHash, ipHash)
+	return h.clickCaptcha.ClaimTokenSendQuota(c.Request.Context(), token, email, ipHash, ipHash)
 }
 
 // enforceRegistrationIPHourlyRisk 同一 IP 1 小时内的注册数上限（默认 8，可在后台配置），
@@ -398,23 +400,28 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
-	// 邮箱验证开启且启用点击验证时，发送验证码前必须持有有效的真人验证 token（非消费式校验），
-	// 杜绝机器人绕过前端直接调用本接口刷邮件；token 仍由后续注册接口做一次性消费。
+	// 同一 IP 1 小时内注册超过上限时不再下发验证码。放在发码额度绑定之前：
+	// 被风控拦截的请求不该白白占掉 token 的邮箱额度。
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
+	}
+
+	// 邮箱验证开启且启用点击验证时，发送验证码前必须持有有效的真人验证 token，
+	// 并把 token 绑定到该邮箱（一次人机验证只给一个收件地址发信，重发同址不限），
+	// 杜绝机器人绕过前端直接调用本接口刷邮件、打爆 SMTP 日配额；token 仍由后续
+	// 注册接口做一次性消费。绑定不可释放：发信失败时同邮箱重试不受影响。
 	if h.enforceClickCaptchaForRegistration(c) {
 		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
-		if err := h.clickCaptcha.ValidateToken(c.Request.Context(), req.ClickCaptchaToken, ipHash, ipHash); err != nil {
+		if err := h.clickCaptcha.ClaimTokenSendQuota(c.Request.Context(), req.ClickCaptchaToken, req.Email, ipHash, ipHash); err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
 	}
 
-	// 同一 IP 1 小时内注册超过上限时不再下发验证码。
-	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
-		return
-	}
-
 	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
+		// 刻意不归还发码绑定：失败后用户用同一邮箱重试即可，绑定不阻碍重试；
+		// 若允许归还，「先触发一次必然失败的发码、再换目标邮箱」就能反复清空绑定。
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -801,11 +808,11 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, middleware2.SecurityClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken); err != nil {
+	if err := h.validateClickCaptchaForEmailSending(c, req.ClickCaptchaToken, req.Email); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

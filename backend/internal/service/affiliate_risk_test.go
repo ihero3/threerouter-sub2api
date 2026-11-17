@@ -58,3 +58,30 @@ func TestEvaluateAffiliateRisk_NormalEmailNotFlagged(t *testing.T) {
 		t.Fatalf("level = %q, want none; reasons = %v", level, reasons)
 	}
 }
+
+func TestEvaluateAffiliateRisk_InviteBurstTiering(t *testing.T) {
+	cases := []struct {
+		name      string
+		age       int
+		invites   int
+		wantLevel string
+	}{
+		{"new account under suspect", 0, 2, AffiliateRiskLevelNone},
+		{"new account at suspect", 3, 4, AffiliateRiskLevelSuspect},
+		{"new account at abnormal", 1, 11, AffiliateRiskLevelAbnormal},
+		{"old account under suspect", 30, 10, AffiliateRiskLevelNone},
+		{"old account at suspect", 20, 11, AffiliateRiskLevelSuspect},
+		{"old account at abnormal", 40, 21, AffiliateRiskLevelAbnormal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			level, _ := evaluateAffiliateRisk(AffiliateRiskSignal{
+				AccountAgeDays: tc.age,
+				InvitesIn24h:   tc.invites,
+			})
+			if level != tc.wantLevel {
+				t.Fatalf("age=%d invites=%d level=%q, want %q", tc.age, tc.invites, level, tc.wantLevel)
+			}
+		})
+	}
+}

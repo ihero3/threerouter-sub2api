@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 25 // v25: group image_count_billing switch (per-image billing on image endpoints)
+const apiKeyAuthSnapshotVersion = 26 // v26: user risk_level gate (pending-review accounts blocked at ingress)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -366,6 +366,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             apiKey.User.TotalRecharged,
 			RPMLimit:                   apiKey.User.RPMLimit,
+			RiskLevel:                  apiKey.User.RiskLevel,
 		},
 	}
 
@@ -477,6 +478,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			TotalRecharged:             snapshot.User.TotalRecharged,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
+			RiskLevel:                  snapshot.User.RiskLevel,
 		},
 	}
 	if snapshot.Group != nil {

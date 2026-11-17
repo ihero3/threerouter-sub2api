@@ -33,7 +33,12 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	gatewayIPRateLimiter *middleware.GatewayIPRateLimiter,
+	ipConsistency ...*service.IPConsistencyService,
 ) {
+	var ipConsistencyGuard *service.IPConsistencyService
+	if len(ipConsistency) > 0 {
+		ipConsistencyGuard = ipConsistency[0]
+	}
 	bodyMemoryBudget := pkghttputil.NewBodyMemoryBudget(cfg.Gateway.RequestBodyMemoryBudgetBytes)
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize, bodyMemoryBudget)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize, bodyMemoryBudget)
@@ -497,6 +502,8 @@ func RegisterGatewayRoutes(
 	gemini.Use(opsErrorLogger)
 	gemini.Use(endpointNorm)
 	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
+	// Gemini 原生端点使用独立的 Google 风格鉴权，需单独挂 IP 一致性校验
+	gemini.Use(middleware.UserIPConsistencyGuard(ipConsistencyGuard))
 	gemini.Use(groupModelAllowlist)
 	gemini.Use(compositeGeminiTarget)
 	gemini.Use(requireGroupGoogle)

@@ -37,7 +37,9 @@ type User struct {
 	RegisterIP      string
 	RegisterCountry string
 	// RiskLevel/RiskReasons 邀请注册风险标记（见迁移 245）。
-	// 仅用于管理端展示与人工研判，不参与鉴权、限流或返利结算。
+	// suspect = 待人工复核，abnormal = 已判定异常：两者会拦截建 Key 与网关调用
+	// （见 user_risk_access.go 的 RiskAccessBlocked），abnormal 还会同步停用账号。
+	// 管理端复核放行会清空标记并恢复账号。
 	RiskLevel     string
 	RiskReasons   string
 	RiskUpdatedAt *time.Time

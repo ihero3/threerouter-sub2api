@@ -250,6 +250,11 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 	}
 	enabled := enabledSMTPAccounts(accounts)
 	if len(enabled) == 0 {
+		// 单账号已被「参与发信轮换」开关排除时不回落发信：
+		// 管理员刻意把它退出了轮换，不能绕过开关继续用它。
+		if !s.singleSMTPInRotation(ctx) {
+			return ErrEmailNotConfigured
+		}
 		config, err := s.GetSMTPConfig(ctx)
 		if err != nil {
 			return err
@@ -260,16 +265,21 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 		return s.SendEmailWithConfig(config, to, subject, body)
 	}
 
-	// 多账号时全站上限取各账号日额度的总和，既保留总量兜底，
+	// 多账号与上方「SMTP 设置」的单账号**一起**参与轮换。此前只要列表非空就整组
+	// 丢弃单账号配置（前端文案亦如此说明），导致最早配置的账号在加了多账号后
+	// 再也不发信。现在把单账号作为池中普通成员，按 host+username 去重。
+	pool := mergeSingleSMTPAccount(enabled, accounts, s.singleSMTPAccount(ctx))
+
+	// 全站上限取池内各账号日额度的总和，既保留总量兜底，
 	// 又不会因为固定的 500 把多账号的总容量压回单账号水平。
 	globalLimit := 0
-	for _, acc := range enabled {
+	for _, acc := range pool {
 		globalLimit += acc.DailyLimit
 	}
 	if err := s.checkEmailDailySendQuota(ctx, to, globalLimit); err != nil {
 		return err
 	}
-	return s.sendEmailWithRotation(ctx, enabled, to, subject, body)
+	return s.sendEmailWithRotation(ctx, pool, to, subject, body)
 }
 
 // GetSMTPAccounts 读取多账号轮换配置。未配置或解析失败时返回空切片，
@@ -374,6 +384,71 @@ func enabledSMTPAccounts(accounts []SMTPAccountSetting) []SMTPAccountSetting {
 		}
 	}
 	return enabled
+}
+
+// singleSMTPInRotation 读取「上方单账号参与发信轮换」开关。
+// 未设置或读取失败时按开启处理，保持旧行为；仅显式 "false" 才关闭。
+func (s *EmailService) singleSMTPInRotation(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	v, err := s.settingRepo.GetValue(ctx, SettingKeySMTPSingleInRotation)
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(v) != "false"
+}
+
+// singleSMTPAccount 读取上方「SMTP 设置」并转成可参与轮换的账号。
+// 未配置、读取失败或管理员已关闭「参与发信轮换」开关（smtp_single_in_rotation
+// 显式为 "false"）时返回 nil，此时轮换池只含 smtp_accounts 列表（保持旧行为）。
+//
+// 每次发信会多一次轻量的设置查询：发信本身要连 SMTP，这个开销可忽略；刻意
+// 不加缓存，让后台改密码 / 测试连接后立即生效。
+func (s *EmailService) singleSMTPAccount(ctx context.Context) *SMTPAccountSetting {
+	// 轮换开关：显式关闭时单账号彻底退出发信轮换。
+	if !s.singleSMTPInRotation(ctx) {
+		return nil
+	}
+	config, err := s.GetSMTPConfig(ctx)
+	if err != nil || config == nil || strings.TrimSpace(config.Host) == "" {
+		return nil
+	}
+	return &SMTPAccountSetting{
+		// ID 留空：cacheKey() 会按 host+username 派生稳定标识，
+		// 与列表里无 ID 的旧账号口径一致。
+		Host:       config.Host,
+		Port:       config.Port,
+		Username:   config.Username,
+		Password:   config.Password,
+		From:       config.From,
+		FromName:   config.FromName,
+		UseTLS:     config.UseTLS,
+		Enabled:    true,
+		DailyLimit: smtpAccountDefaultDailyLimit,
+	}
+}
+
+// mergeSingleSMTPAccount 把上方单账号追加到轮换池末尾（保持列表账号的相对顺序）。
+// 去重基于**全量**列表、含被禁用的账号：管理员在列表里显式禁用某个账号时，
+// 不应因为上方还留着单账号配置就把它重新启用；重复也会让同一邮箱被计数两次、
+// 日额度翻倍。单账号与列表账号的 host+username 都相同即视为同一账号。
+func mergeSingleSMTPAccount(enabled, all []SMTPAccountSetting, single *SMTPAccountSetting) []SMTPAccountSetting {
+	pool := append([]SMTPAccountSetting(nil), enabled...)
+	if single == nil {
+		return pool
+	}
+	for _, acc := range all {
+		if sameSMTPAccount(acc, *single) {
+			return pool
+		}
+	}
+	return append(pool, *single)
+}
+
+func sameSMTPAccount(a, b SMTPAccountSetting) bool {
+	return strings.EqualFold(strings.TrimSpace(a.Host), strings.TrimSpace(b.Host)) &&
+		strings.EqualFold(strings.TrimSpace(a.Username), strings.TrimSpace(b.Username))
 }
 
 // cacheKey 生成稳定的账号标识，用于按账号计数与冷却。

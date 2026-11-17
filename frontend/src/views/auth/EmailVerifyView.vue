@@ -854,16 +854,19 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
   if (code === 'REGISTRATION_CLICK_CAPTCHA_DISABLED') {
     return t('auth.clickCaptchaDisabled')
   }
+  if (code === 'REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT') {
+    return t('auth.clickCaptchaSendLimit')
+  }
   if (extractApiErrorCode(error) === 'EMAIL_BLOCKED') {
     return t('auth.errors.EMAIL_BLOCKED')
   }
   return buildAuthErrorMessage(error, { fallback })
 }
 
-// 统一注册链路错误处理：提示错误；当人机验证 token 已无法使用
-// （过期/已消费/校验失败）时，本页没有重新验证的入口，停留在原地是死路，
-// 清空暂存数据并回到注册页让用户重做一次人机验证。OAuth 补全流程不走注册页，
-// 不做跳转。
+// 统一注册链路错误处理：提示错误；当人机验证 token 已无法继续用于本次注册
+// （过期/已消费/校验失败，或已绑定另一个发码邮箱）时，本页没有重新验证的入口，
+// 停留在原地是死路，清空暂存数据并回到注册页让用户重做一次人机验证。
+// OAuth 补全流程不走注册页，不做跳转。
 function handleRegistrationError(error: unknown, fallback: string): void {
   // 重复注册（例如预检与提交之间账号刚被创建）：明确提示并引导登录。
   // OAuth 补全流程有自己的账号冲突语义，不走这条分支。
@@ -877,10 +880,13 @@ function handleRegistrationError(error: unknown, fallback: string): void {
   }
   errorMessage.value = buildRegistrationErrorMessage(error, fallback)
   appStore.showError(errorMessage.value)
-  if (
-    !isPendingOAuthFlow() &&
-    extractApiErrorCode(error) === 'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID'
-  ) {
+  // SEND_LIMIT 与 TOKEN_INVALID 同样是「本页无解」：不回注册页重做验证的话，
+  // 用户只能反复点重发并一直收到 429。
+  const captchaRestartCodes = [
+    'REGISTRATION_CLICK_CAPTCHA_TOKEN_INVALID',
+    'REGISTRATION_CLICK_CAPTCHA_SEND_LIMIT'
+  ]
+  if (!isPendingOAuthFlow() && captchaRestartCodes.includes(extractApiErrorCode(error) ?? '')) {
     sessionStorage.removeItem('register_data')
     void router.push('/register')
   }

@@ -175,6 +175,7 @@ type AuthService struct {
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	geoIPService          *GeoIPService
 	mcpGrantRevoker       MCPGrantRevoker
+	ipConsistency         *IPConsistencyService
 }
 
 type CaptchaProof struct {
@@ -272,6 +273,12 @@ func (s *AuthService) SetMCPGrantRevoker(revoker MCPGrantRevoker) {
 	s.mcpGrantRevoker = revoker
 }
 
+// SetIPConsistencyService 注入 IP 一致性风控服务。
+// 通过 setter 注入（而非构造器参数），保持 NewAuthService 与既有测试的兼容性。
+func (s *AuthService) SetIPConsistencyService(ipConsistency *IPConsistencyService) {
+	s.ipConsistency = ipConsistency
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password, registerIP string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", registerIP)
@@ -283,6 +290,17 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
+	}
+
+	// IP 一致性风控：同一邮箱在滚动窗口内从不同 IP 反复注册 → 拒绝。
+	if s.ipConsistency != nil {
+		clientIP := strings.TrimSpace(registerIP)
+		if clientIP == "" {
+			clientIP = clientIPFromContext(ctx)
+		}
+		if err := s.ipConsistency.CheckRegistration(ctx, email, clientIP); err != nil {
+			return "", nil, err
+		}
 	}
 
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
@@ -339,6 +357,11 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if err := ValidateRegistrationEmailRisk(email); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
 		return "", nil, err
+	}
+	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝注册（不入库）。
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster registration email: %s", email)
+		return "", nil, ErrTempMailMXRejected
 	}
 	// 域名黑名单：命中直接拒绝，不发验证码。
 	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
@@ -397,6 +420,25 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 记录设备指纹流水：只在建号成功后写入，供后续注册按同设备 24 小时窗口计数。
 	// 指纹由 handler 注入 ctx，不改变本函数签名及其调用点。
 	s.RecordRegistrationDeviceFingerprint(ctx, user.ID, registerIP)
+	// 同注册 IP 24h 关联账号数超阈值 → 软性存疑（冻结建 Key/网关直到人工复核）。
+	// 与设备指纹硬拒（registration_device_fingerprint_limit）互补：IP 维度用更宽的
+	// 24h 窗口做软性标记，避免误伤共享 NAT / 办公网络下的正常用户。
+	if s.affiliateService != nil && registerIP != "" {
+		if ipRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
+			if cnt, ipErr := ipRepo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-24*time.Hour)); ipErr == nil && cnt >= AffiliateRiskRegistrationIPCorrelationThreshold {
+				s.affiliateService.MarkUserRisk(ctx, user.ID, AffiliateRiskLevelSuspect, []string{AffiliateRiskReasonRegistrationIPCorrelation})
+			}
+		}
+	}
+	// IP 一致性风控：把注册 IP 作为账号的首个已知 IP 写入窗口，
+	// 后续登录 / 控制台 / API 调用从其它 IP 发起时会触发禁用。
+	if s.ipConsistency != nil {
+		clientIP := strings.TrimSpace(registerIP)
+		if clientIP == "" {
+			clientIP = clientIPFromContext(ctx)
+		}
+		s.ipConsistency.RecordUserIP(ctx, user.ID, clientIP)
+	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
@@ -469,6 +511,12 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
 		return err
 	}
+	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝且不下发验证码。
+	// 与注册网关同源，发码阶段就拦掉，避免消耗发信配额。
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster email (send code): %s", email)
+		return ErrTempMailMXRejected
+	}
 	// 域名黑名单：命中直接拒绝，不发验证码。
 	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
 		return err
@@ -522,6 +570,11 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	if err := ValidateRegistrationEmailRisk(email); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Rejected high-risk registration email: %s", email)
 		return nil, err
+	}
+	// 一次性邮箱 MX 集群拦截：命中已知 temp-mail 服务集群直接拒绝且不入队发信。
+	if hit, dnsErr := lookupTempMailMXCluster(ctx, email); dnsErr == nil && hit {
+		logger.LegacyPrintf("service.auth", "[Auth] Rejected temp-mail MX cluster email (send code async): %s", email)
+		return nil, ErrTempMailMXRejected
 	}
 	// 域名黑名单：必须在入队发信之前拦截。
 	if err := s.validateRegistrationEmailBlacklist(ctx, email); err != nil {
@@ -717,6 +770,13 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", nil, ErrUserNotActive
 	}
 
+	// IP 一致性风控：与滚动窗口内的已知 IP 不一致 → 自动禁用并拒绝本次登录。
+	if s.ipConsistency != nil {
+		if violation := s.ipConsistency.CheckUser(ctx, user.ID, user.Role, clientIPFromContext(ctx)); violation != nil {
+			return "", nil, ErrIPConsistencyBlocked
+		}
+	}
+
 	// 生成JWT token
 	token, err := s.GenerateToken(ctx, user)
 	if err != nil {
@@ -863,8 +923,8 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 				// snapshot user × platform quota（fail-open）
-			_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-			s.bindOAuthAffiliate(ctx, user.ID, affiliateCode, registerIP)
+				_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+				s.bindOAuthAffiliate(ctx, user.ID, affiliateCode, registerIP)
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -1881,8 +1941,10 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return ErrServiceUnavailable
 	}
 
-	// Verify and consume the reset token (one-time use)
-	if err := s.emailService.ConsumePasswordResetToken(ctx, email, token); err != nil {
+	// 先用非破坏性的 Verify 校验 token，并把所有确定性失败分支（查用户、账号状态、
+	// 密码哈希）放在消费之前。旧实现先原子 DEL 再校验，DB 抖动或账号停用都会白耗
+	// 用户唯一的重置链接，重发还受 30s 冷却与每日发信额度限制。
+	if err := s.emailService.VerifyPasswordResetToken(ctx, email, token); err != nil {
 		return err
 	}
 
@@ -1905,6 +1967,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	hashedPassword, err := s.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
+	}
+
+	// 一次性 token 仍必须在改密前原子消费（Lua GET+DEL）防并发重放，
+	// 紧贴 Update 以把「消费成功但改密失败」的窗口缩到最小。
+	if err := s.emailService.ConsumePasswordResetToken(ctx, email, token); err != nil {
+		return err
 	}
 
 	// Update password and increment TokenVersion

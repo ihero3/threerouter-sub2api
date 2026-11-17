@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
+	"net"
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -11,6 +14,13 @@ import (
 
 // ErrEmailRiskRejected 邮箱风险校验未通过：直接拒绝注册，且不会下发验证码。
 var ErrEmailRiskRejected = infraerrors.BadRequest("EMAIL_RISK_REJECTED", "邮箱格式不符合注册要求")
+
+// ErrTempMailMXRejected 邮箱域 MX 指向已知一次性邮箱服务集群：直接拒绝注册，不入库。
+var ErrTempMailMXRejected = infraerrors.BadRequest("TEMP_MAIL_PROVIDER", "registration using temporary email providers is not allowed")
+
+// registrationMXLookupTimeout 是一次性邮箱 MX 解析的超时。
+// 解析器慢/卡死时 fail-open（放行），绝不拖垮注册/发码主流程。
+const registrationMXLookupTimeout = 3 * time.Second
 
 const (
 	// 用户名中一旦出现即高危的符号（不含分隔符 . _ -）。
@@ -227,6 +237,59 @@ func isRiskyEmailDomain(domain string) bool {
 	// 域名主体 8 位以上且完全没有元音，基本不会是正常企业域名。
 	if len(root) >= 8 && !containsVowel(root) {
 		return true
+	}
+	return false
+}
+
+// lookupTempMailMXCluster 解析邮箱域的 MX 记录，命中已知一次性邮箱服务集群则返回 true。
+//
+// best-effort、fail-open：DNS 解析失败、超时或域名无 MX 记录时返回 (false, nil)，
+// 绝不因解析异常误杀正常注册。命中条件：邮箱域本身、或其任一 MX 主机域（含父域）
+// 以 AffiliateRiskTempMailMXClusters 中任一后缀结尾。例如 x@foo.com 的 MX 为
+// mail.temp-mail-pro.com 即命中——无需逐个收录 temp-mail 的下级域名，守株待兔。
+func lookupTempMailMXCluster(ctx context.Context, email string) (bool, error) {
+	at := strings.LastIndex(email, "@")
+	if at < 0 || at == len(email)-1 {
+		return false, nil
+	}
+	domain := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	if domain == "" {
+		return false, nil
+	}
+	// 带超时的上下文做 DNS 解析：解析器慢/卡死时 fail-open，绝不拖垮注册/发码主流程。
+	resolveCtx, cancel := context.WithTimeout(ctx, registrationMXLookupTimeout)
+	defer cancel()
+	mx, err := net.DefaultResolver.LookupMX(resolveCtx, domain)
+	if err != nil {
+		// 解析失败、超时或无 MX 记录：放行，避免把正常用户挡在门外。
+		return false, nil
+	}
+	hosts := make([]string, 0, len(mx))
+	for _, r := range mx {
+		hosts = append(hosts, strings.TrimSuffix(strings.ToLower(r.Host), "."))
+	}
+	return tempMailMXClusterHit(domain, hosts, AffiliateRiskTempMailMXClusters), nil
+}
+
+// tempMailMXClusterHit 是 lookupTempMailMXCluster 的纯函数核心，便于单测。
+// 邮箱域或任一 MX 主机域（含父域）命中 clusters 中任一后缀即返回 true。
+func tempMailMXClusterHit(domain string, mxHosts, clusters []string) bool {
+	match := func(host string) bool {
+		host = strings.TrimSuffix(strings.ToLower(host), ".")
+		for _, c := range clusters {
+			if host == c || strings.HasSuffix(host, "."+c) {
+				return true
+			}
+		}
+		return false
+	}
+	if match(domain) {
+		return true
+	}
+	for _, h := range mxHosts {
+		if match(h) {
+			return true
+		}
 	}
 	return false
 }

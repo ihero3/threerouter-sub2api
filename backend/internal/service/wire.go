@@ -73,6 +73,7 @@ func ProvideAuthService(
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	geoIPService *GeoIPService,
 	mcpOAuthService *MCPOAuthService,
+	ipConsistencyService *IPConsistencyService,
 ) *AuthService {
 	svc := NewAuthService(
 		entClient,
@@ -92,9 +93,22 @@ func ProvideAuthService(
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
 	svc.SetGeoIPService(geoIPService)
+	svc.SetIPConsistencyService(ipConsistencyService)
 	if mcpOAuthService != nil {
 		svc.SetMCPGrantRevoker(mcpOAuthService)
 	}
+	return svc
+}
+
+// ProvideRegistrationClickCaptchaService 构造自建点击验证码服务并注入可选的 ASN 机房判定服务。
+// ASN 服务为可选依赖：离线库缺失 / 加载失败时服务内部 fail-open，不影响验证码主流程。
+func ProvideRegistrationClickCaptchaService(
+	cache clickCaptchaCacheStore,
+	settingSvc *SettingService,
+	asnRisk *ASNRiskService,
+) *RegistrationClickCaptchaService {
+	svc := NewRegistrationClickCaptchaService(cache, settingSvc)
+	svc.SetASNRiskService(asnRisk)
 	return svc
 }
 
@@ -891,6 +905,10 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewPasskeyService,
 	NewUserService,
+	// IP 一致性风控：依赖 Redis 窗口缓存 + SettingService + 用户状态更新能力。
+	NewIPConsistencyService,
+	wire.Bind(new(UserStatusUpdater), new(*UserService)),
+	wire.Bind(new(IPConsistencySettingsProvider), new(*SettingService)),
 	NewMCPOAuthService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
@@ -1031,6 +1049,10 @@ var ProviderSet = wire.NewSet(
 
 	// AI 治理与合规模块（见 docs/合规方案.md）
 	NewGeoIPService,
+	// 注册风控：离线 ASN 机房 IP 判定 → 点击验证码难度升级（弱信号，全链路 fail-open）。
+	// 自建验证码服务经此 provider 装配 ASN 可选依赖（setter 注入，不改构造函数签名）。
+	NewASNRiskService,
+	ProvideRegistrationClickCaptchaService,
 	ProvideComplianceService,
 	ProvidePolicyTemplateService,
 	ProvideComplianceMappingService,
@@ -1075,6 +1097,7 @@ func ProvideMediaAdapter() *MediaAdapterRegistry {
 		NewSeedanceImageAdapter(),
 		NewWanImageAdapter(),
 		NewMiniMaxImageAdapter(),
+		NewMiniMaxH3ImageAdapter(),
 		NewImageMediaAdapter(),
 		// 音频厂商（独立）
 		NewMiniMaxTTSAdapter(),

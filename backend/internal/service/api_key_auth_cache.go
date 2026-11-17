@@ -50,6 +50,10 @@ type APIKeyAuthUserSnapshot struct {
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 兜底判断。
 	RPMLimit int `json:"rpm_limit"`
 
+	// RiskLevel 邀请注册风险标记（suspect / abnormal）。网关鉴权据此拦住待复核账号，
+	// 管理端复核放行后缓存会被失效并重建。空值 = 正常。
+	RiskLevel string `json:"risk_level,omitempty"`
+
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`

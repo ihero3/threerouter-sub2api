@@ -431,6 +431,7 @@ export interface SystemSettings {
   registration_ip_quota_limit: number;
   registration_ip_hourly_limit: number;
   registration_device_fingerprint_limit: number;
+  registration_datacenter_asns: string;
   registration_click_captcha_enabled: boolean;
   registration_captcha_mode: "random" | "image_click" | "slider";
   registration_captcha_difficulty: "low" | "medium" | "high";
@@ -530,6 +531,8 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  // 上方单账号 SMTP 是否参与发信轮换（默认开启）
+  smtp_single_in_rotation: boolean;
   // 多账号轮换：非空时优先使用该列表发信
   smtp_accounts: SMTPAccount[];
   // Cloudflare Turnstile settings
@@ -806,6 +809,7 @@ export interface UpdateSettingsRequest {
   registration_ip_quota_limit?: number;
   registration_ip_hourly_limit?: number;
   registration_device_fingerprint_limit?: number;
+  registration_datacenter_asns?: string;
   registration_click_captcha_enabled?: boolean;
   registration_captcha_mode?: "random" | "image_click" | "slider";
   registration_captcha_difficulty?: "low" | "medium" | "high";
@@ -898,6 +902,7 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  smtp_single_in_rotation?: boolean;
   smtp_accounts?: SMTPAccount[];
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
@@ -1486,6 +1491,113 @@ export async function updateGatewayIPRateLimitSettings(
   return data;
 }
 
+// ==================== Security IP Blacklist ====================
+
+/**
+ * Site-wide IP blacklist settings.
+ * Applies to the panel API (/api/v1/*, except admin and payment webhooks)
+ * and the model gateway (/v1, /v1beta, /backend-api/codex, /antigravity,
+ * /models). Matching entries (exact IPv4/IPv6 or CIDR) get a 403 on every
+ * entry point: registration, login and gateway.
+ */
+export interface SecurityIPBlacklistSettings {
+  enabled: boolean;
+  blacklist: string[];
+}
+
+export async function getSecurityIPBlacklistSettings(): Promise<SecurityIPBlacklistSettings> {
+  const { data } = await apiClient.get<SecurityIPBlacklistSettings>(
+    "/admin/settings/security-ip-blacklist",
+  );
+  return data;
+}
+
+export async function updateSecurityIPBlacklistSettings(
+  settings: SecurityIPBlacklistSettings,
+): Promise<SecurityIPBlacklistSettings> {
+  const { data } = await apiClient.put<SecurityIPBlacklistSettings>(
+    "/admin/settings/security-ip-blacklist",
+    settings,
+  );
+  return data;
+}
+
+// ==================== Security Country / Region Blocklist ====================
+
+/**
+ * Site-wide country / region blocklist settings.
+ * Requires the GeoLite2-Country database (compliance.geoip). When the database
+ * is unavailable enforcement fails open. geoip_ready is read-only status.
+ */
+export interface SecurityCountryBlocklistSettings {
+  enabled: boolean;
+  countries: string[];
+  geoip_ready: boolean;
+}
+
+export async function getSecurityCountryBlocklistSettings(): Promise<SecurityCountryBlocklistSettings> {
+  const { data } = await apiClient.get<SecurityCountryBlocklistSettings>(
+    "/admin/settings/security-country-blocklist",
+  );
+  return data;
+}
+
+export async function updateSecurityCountryBlocklistSettings(
+  settings: Pick<SecurityCountryBlocklistSettings, "enabled" | "countries">,
+): Promise<SecurityCountryBlocklistSettings> {
+  const { data } = await apiClient.put<SecurityCountryBlocklistSettings>(
+    "/admin/settings/security-country-blocklist",
+    settings,
+  );
+  return data;
+}
+
+// ==================== IP Consistency Settings ====================
+
+/**
+ * IP 一致性风控配置。
+ *
+ * 滚动窗口（默认 600 秒 / 10 分钟）内按不同客户端 IP 数量分两档处罚：
+ *   - 恰好 3 个：打「IP 可疑」轻标记 + 把余额降到 floor + 写调账备注 + 通知邮件；
+ *   - ≥4 个：禁用账号（Status=disabled，管理员可手动解封）。
+ * 功能A（标记/禁用）与功能B（减额度）是两个独立开关。
+ */
+export interface IPConsistencySettings {
+  /** 功能A：3 IP 轻标记 + ≥4 IP 禁用 */
+  enabled: boolean;
+  /** 滚动窗口秒数，60 ~ 86400 */
+  window_seconds: number;
+  /** 豁免用户 ID 列表 */
+  whitelist_user_ids: number[];
+  /** 豁免 IP / CIDR 列表 */
+  whitelist_ips: string[];
+  /** 配置结构版本；存量 v1 在读取时迁移到 v2 默认值 */
+  schema_version: number;
+  /** 功能B：≥3 IP 把余额降到 floor + 写备注 + 发通知邮件 */
+  balance_penalty_enabled: boolean;
+  /** 处罚后保留的余额（美元，默认 0.03；只在余额高于它时扣减） */
+  balance_penalty_floor: number;
+  /** 处罚确实扣到钱时是否发通知邮件 */
+  penalty_notify_email: boolean;
+}
+
+export async function getIPConsistencySettings(): Promise<IPConsistencySettings> {
+  const { data } = await apiClient.get<IPConsistencySettings>(
+    "/admin/settings/ip-consistency",
+  );
+  return data;
+}
+
+export async function updateIPConsistencySettings(
+  settings: IPConsistencySettings,
+): Promise<IPConsistencySettings> {
+  const { data } = await apiClient.put<IPConsistencySettings>(
+    "/admin/settings/ip-consistency",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1719,6 +1831,12 @@ export const settingsAPI = {
   updatePanelRateLimitSettings,
   getGatewayIPRateLimitSettings,
   updateGatewayIPRateLimitSettings,
+  getSecurityIPBlacklistSettings,
+  updateSecurityIPBlacklistSettings,
+  getSecurityCountryBlocklistSettings,
+  updateSecurityCountryBlocklistSettings,
+  getIPConsistencySettings,
+  updateIPConsistencySettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,

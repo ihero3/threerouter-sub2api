@@ -129,6 +129,9 @@ type GeoIPConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`
 	DatabasePath    string `mapstructure:"database_path"`
 	FallbackEnabled bool   `mapstructure:"fallback_enabled"`
+	// ASNDatabasePath 指向 GeoLite2-ASN.mmdb（离线库，需运维手工放置并定期更新）。
+	// 用于注册点击验证码的机房/云厂商 IP 判定；缺失或加载失败时一律 fail-open。
+	ASNDatabasePath string `mapstructure:"asn_database_path"`
 }
 
 // SimpleModeConfig controls startup behavior in simple mode.

@@ -88,8 +88,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	geoIPService := service.NewGeoIPService(configConfig)
 	mcpoAuthRepository := repository.NewMCPOAuthRepository(client, db)
 	mcpoAuthService := service.NewMCPOAuthService(mcpoAuthRepository, userRepository)
-	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService, mcpoAuthService)
+	// userService 提前构造：IP 一致性风控需要其 UpdateStatus 能力来自动禁用账号。
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
+	ipConsistencyCache := repository.NewIPConsistencyCache(redisClient)
+	ipConsistencyService := service.NewIPConsistencyService(ipConsistencyCache, settingService, userService)
+	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService, mcpoAuthService, ipConsistencyService)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)
@@ -103,7 +106,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	authHandler := handler.NewAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService)
 	clickCaptchaCache := repository.NewClickCaptchaCache(redisClient)
-	clickCaptchaService := service.NewRegistrationClickCaptchaService(clickCaptchaCache, settingService)
+	asnRiskService := service.NewASNRiskService(configConfig)
+	clickCaptchaService := service.ProvideRegistrationClickCaptchaService(clickCaptchaCache, settingService, asnRiskService)
 	authHandler.SetRegistrationClickCaptchaService(clickCaptchaService)
 	registrationClickCaptchaHandler := handler.NewRegistrationClickCaptchaHandler(clickCaptchaService)
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)
@@ -180,6 +184,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	authCacheInvalidationOutboxRepository := repository.NewAuthCacheInvalidationOutboxRepository(db)
 	authCacheInvalidationWorker := service.ProvideAuthCacheInvalidationWorker(authCacheInvalidationOutboxRepository, apiKeyCache, apiKeyService)
 	opsService := service.ProvideOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink, settingService, authCacheInvalidationWorker, apiKeyService)
+	// 将唯一的 *OpsService 注入 GatewayService 的进程级单例，使 failover 期间命中上游 5xx
+	//（含账号被自动停用 / relay 中转站账号临时冷却）时能把错误写入后台「错误日志」。
+	gatewayService.SetOpsErrorRecorder(opsService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, opsService, settingService)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
@@ -207,6 +214,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
 	adminService := service.NewAdminService(configConfig, userRepository, adminGroupRepository, adminAccountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, userRPMCache, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator, client, settingService, subscriptionService, userSubscriptionRepository, privacyClientFactory, openAIGatewayService, affiliateService, compositeModelRouteRepository, compositeRouteResolver, channelService)
+	// IP 一致性「减额度」处罚：adminService 在 ipConsistencyService 之后才构造，
+	// 因此用 setter 后注入（同一个指针，前面引用它的 AuthService / 鉴权中间件都会看到）。
+	// 注意：本文件不能用 go generate 重生成，改装配必须手工同步（既有 provider 缺失）。
+	ipConsistencyPenaltyService := service.NewIPConsistencyPenaltyService(adminService, emailService)
+	ipConsistencyPenaltyLocker := service.ProvideIPConsistencyPenaltyLocker(ipConsistencyCache)
+	ipConsistencyService.SetPenaltyService(ipConsistencyPenaltyService, ipConsistencyPenaltyLocker)
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
 	groupHandler := admin.NewGroupHandlerWithConfig(adminService, dashboardService, groupCapacityService, configConfig)
@@ -256,6 +269,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, notificationEmailService)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, totpService, userService)
+	settingHandler.SetGeoIPStatus(geoIPService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
 	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
@@ -311,6 +325,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	moderationRuleService := service.ProvideModerationRuleService(moderationRuleRepository, contentModerationService)
 	userComplianceProfileRepository := repository.NewUserComplianceProfileRepository(db)
 	userComplianceProfileService := service.NewUserComplianceProfileService(userComplianceProfileRepository)
+	// 纯副作用 provider：返回值无人依赖，Wire 生成时会省略，必须手工保留，
+	// 否则用户合规画像（ZDR 写 usage_logs / 按用户规则过滤）静默不生效。
+	service.ProvideUserComplianceProfileHook(userComplianceProfileService, gatewayService, contentModerationService)
 	complianceMappingService := service.ProvideComplianceMappingService(userJurisdictionMappingRepository, moderationRuleService, userComplianceProfileService)
 	complianceCredentialRepository := repository.NewComplianceCredentialRepository(db)
 	complianceCredentialService := service.NewComplianceCredentialService(complianceCredentialRepository, complianceService)
@@ -372,6 +389,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	consumerService := service.NewConsumerService(consumerRepository)
 	consumerHandler := handler.NewConsumerHandler(consumerService)
 	teamAnalyticsRepository := repository.ProvideTeamAnalyticsRepository(client, db)
+	// 纯副作用 provider：Start() 在内部拉起 1 分钟一次的团队/部门/消费方/模型
+	// 每日聚合，漏装配会让团队分析页面永远没有数据。
+	teamAggregationService := service.ProvideTeamAggregationService(teamAnalyticsRepository, timingWheelService, leaderLockCache, db)
 	teamAnalyticsService := service.NewTeamAnalyticsService(teamAnalyticsRepository)
 	teamAnalyticsHandler := handler.NewTeamAnalyticsHandler(teamAnalyticsService)
 	modelPlazaService := service.NewModelPlazaService(channelRepository, groupRepository, pricingService, billingService, modelPricingResolver)
@@ -392,13 +412,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIQuotaAutoResetService := service.ProvideOpenAIQuotaAutoResetService(accountRepository, openAIQuotaService, rateLimitService, idempotencyCoordinator, auditLogService, settingService, leaderLockCache)
 	blogUploadHandler := handler.ProvideBlogUploadHandler(configConfig)
 	handlers := handler.ProvideHandlers(authHandler, registrationClickCaptchaHandler, userHandler, mcpoAuthHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, blogAPIHandler, blogHandler, blogUploadHandler, channelMonitorUserHandler, channelMonitorV2Handler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, handlerTicketHandler, governanceUserHandler, teamHandler, departmentHandler, consumerHandler, teamAnalyticsHandler, modelPlazaHandler, asyncImageHandler, batchImageHandler, videoGatewayHandler, mediaGatewayHandler, idempotencyCoordinator, idempotencyCleanupService, openAIQuotaAutoResetService)
-	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
-	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
+	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService, ipConsistencyService)
+	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService, ipConsistencyService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)
-	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
+	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig, ipConsistencyService)
 	auditLogMiddleware := middleware.NewAuditLogMiddleware(auditLogService)
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService, settingService)
-	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, teamMemberRepository)
+	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, teamMemberRepository, ipConsistencyService, geoIPService)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	videoWorker := service.NewVideoWorker(videoTaskService)
 	videoWorker.SetLeaderLock(leaderLockCache)
@@ -424,7 +444,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -520,6 +540,7 @@ func provideCleanup(
 	pluginManager *service.PluginManager,
 	videoWorker *service.VideoWorker,
 	mediaWorker *service.MediaWorker,
+	teamAggregation *service.TeamAggregationService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -558,6 +579,12 @@ func provideCleanup(
 			{"MediaWorker", func() error {
 				if mediaWorker != nil {
 					mediaWorker.Stop()
+				}
+				return nil
+			}},
+			{"TeamAggregationService", func() error {
+				if teamAggregation != nil {
+					teamAggregation.Stop()
 				}
 				return nil
 			}},

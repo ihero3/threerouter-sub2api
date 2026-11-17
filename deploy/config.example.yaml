@@ -1350,3 +1350,17 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# 合规 / 离线 IP 情报（见 docs/合规方案.md）。均为离线 MaxMind mmdb，需运维手工放置并定期更新。
+# 文件缺失或加载失败时相关能力一律 fail-open，绝不阻断注册。
+compliance:
+  geoip:
+    enabled: false
+    # GeoLite2-Country.mmdb：司法管辖区解析
+    database_path: ""
+    fallback_enabled: true
+    # GeoLite2-ASN.mmdb：注册点击验证码的机房 / 云厂商 IP 判定。
+    # 这是「提高对抗成本的弱信号」，命中时只把验证码难度提升到 high，不拦截注册、不标记 suspect/abnormal。
+    # 云厂商 ASN / 组织名清单在后台「注册设置」的 registration_datacenter_asns 项配置（逗号分隔）。
+    # 留空或文件缺失 / 加载失败 / 查询失败 / 私有 IP 一律放行（fail-open）。
+    asn_database_path: ""

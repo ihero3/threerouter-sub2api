@@ -2056,14 +2056,6 @@ burst AS (
     WHERE inviter_id = ANY($1)
       AND created_at > NOW() - INTERVAL '24 hours'
     GROUP BY inviter_id
-),
-pw AS (
-    SELECT u2.password_hash, COUNT(*)::int AS cnt
-    FROM users u2
-    WHERE u2.deleted_at IS NULL
-      AND u2.password_hash <> ''
-      AND u2.password_hash IN (SELECT password_hash FROM users WHERE id = ANY($1))
-    GROUP BY u2.password_hash
 )
 SELECT u.id,
        COALESCE(u.email, ''),
@@ -2072,13 +2064,12 @@ SELECT u.id,
        COALESCE(down_agg.depth, 0),
        (contagion.origin IS NOT NULL),
        COALESCE(burst.cnt, 0),
-       COALESCE(pw.cnt, 1)
+       (FLOOR(EXTRACT(EPOCH FROM NOW() - u.created_at) / 86400))::int
 FROM users u
 LEFT JOIN (SELECT origin, MAX(depth) AS depth FROM up GROUP BY origin) up_agg ON up_agg.origin = u.id
 LEFT JOIN (SELECT origin, MAX(depth) AS depth FROM down GROUP BY origin) down_agg ON down_agg.origin = u.id
 LEFT JOIN contagion ON contagion.origin = u.id
 LEFT JOIN burst ON burst.inviter_id = u.id
-LEFT JOIN pw ON pw.password_hash = u.password_hash
 WHERE u.id = ANY($1)`,
 		pq.Array(userIDs),
 		service.AffiliateRiskChainDepthMaxScan,
@@ -2095,7 +2086,7 @@ WHERE u.id = ANY($1)`,
 		if err := rows.Scan(
 			&s.UserID, &s.Email, &s.PasswordHash,
 			&s.AncestorDepth, &s.DescendantDepth, &s.ChainContagion,
-			&s.InvitesIn24h, &s.SharedPasswordCount,
+			&s.InvitesIn24h, &s.AccountAgeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -2104,8 +2095,31 @@ WHERE u.id = ANY($1)`,
 	return signals, rows.Err()
 }
 
-// BumpUserRiskMarks 批量写入风险标记，语义为「只升不降」：
+// bumpUserRiskMarksSQL 批量写入风险标记，语义为「只升不降」：
 // 仅当新等级不低于当前等级时才覆盖，绝不会把已标记的用户改回正常。
+//
+// 打标即停用：v.level = 'abnormal' 时把 status 置为 disabled，suspect 保持原 status。
+// 管理员账号一律排除（WHERE 与 status CASE 两处都带 COALESCE(u.role,'') <> 'admin' 双保险）：
+// 批量扫描绝不能把管理员停掉，否则会造成无法登录后台的事故。排除后 admin 也不会被
+// 打上 abnormal 标记，避免其 status 被「禁止复活」保护长期锁死。
+//
+// 抽成包级常量便于在不依赖真库的情况下对 SQL 安全契约做单元测试。
+const bumpUserRiskMarksSQL = `
+UPDATE users u
+SET risk_level = v.level,
+    risk_reasons = v.reasons,
+    risk_updated_at = NOW(),
+    status = CASE
+        WHEN v.level = 'abnormal' AND COALESCE(u.role, '') <> 'admin' THEN 'disabled'
+        ELSE u.status
+    END
+FROM unnest($1::bigint[], $2::text[], $3::text[]) AS v(id, level, reasons)
+WHERE u.id = v.id
+  AND v.level <> ''
+  AND COALESCE(u.role, '') <> 'admin'
+  AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
+      >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`
+
 func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []service.UserRiskMark) (int, error) {
 	if len(marks) == 0 {
 		return 0, nil
@@ -2125,16 +2139,7 @@ func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []ser
 		return 0, nil
 	}
 	client := clientFromContext(ctx, r.client)
-	res, err := client.ExecContext(ctx, `
-UPDATE users u
-SET risk_level = v.level,
-    risk_reasons = v.reasons,
-    risk_updated_at = NOW()
-FROM unnest($1::bigint[], $2::text[], $3::text[]) AS v(id, level, reasons)
-WHERE u.id = v.id
-  AND v.level <> ''
-  AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
-      >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`,
+	res, err := client.ExecContext(ctx, bumpUserRiskMarksSQL,
 		pq.Array(ids), pq.Array(levels), pq.Array(reasons))
 	if err != nil {
 		return 0, fmt.Errorf("bump user risk marks: %w", err)
@@ -2146,17 +2151,31 @@ WHERE u.id = v.id
 	return int(affected), nil
 }
 
-// ListUserIDsForRiskScan 按 ID 游标分批取待扫描的用户 ID（仅未软删除）。
+// listUserIDsForRiskScanSQL 全量风险扫描按 ID 游标分批取用户。
+//
+// 已人工复核放行的账号（迁移 253 的 user_risk_review_exemptions）直接跳过：
+// 管理员已经看过同一批静态证据并放行，扫描不该把它标回 suspect/abnormal，
+// 让「复核通过」按钮反复出现。
+//
+// 豁免只作用于全量扫描，不覆盖实时邀请绑定（EvaluateInviteRisk）：新的邀请
+// 关系属于新增证据，实时路径仍可重新打标，账号回到待复核后由管理员再次复核。
+// 抽成常量便于在无真库的单测里对 SQL 契约做断言（见 user_risk_review_sql_test.go）。
+const listUserIDsForRiskScanSQL = `
+SELECT u.id FROM users u
+WHERE u.deleted_at IS NULL AND u.id > $1
+  AND NOT EXISTS (
+      SELECT 1 FROM user_risk_review_exemptions e WHERE e.user_id = u.id
+  )
+ORDER BY u.id
+LIMIT $2`
+
+// ListUserIDsForRiskScan 按 ID 游标分批取待扫描的用户 ID（仅未软删除、未被人工放行豁免）。
 func (r *affiliateRepository) ListUserIDsForRiskScan(ctx context.Context, afterID int64, limit int) ([]int64, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
 	client := clientFromContext(ctx, r.client)
-	rows, err := client.QueryContext(ctx, `
-SELECT id FROM users
-WHERE deleted_at IS NULL AND id > $1
-ORDER BY id
-LIMIT $2`, afterID, limit)
+	rows, err := client.QueryContext(ctx, listUserIDsForRiskScanSQL, afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list user ids for risk scan: %w", err)
 	}

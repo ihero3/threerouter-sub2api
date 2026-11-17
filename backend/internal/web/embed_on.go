@@ -101,6 +101,15 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 
 		// For index.html or SPA routes, serve with injected settings
 		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+			// A missing hashed asset must not fall back to index.html: serving HTML for
+			// a JS/CSS request makes browsers reject the module with "text/html is not
+			// a valid JavaScript MIME type" and hides the stale-deployment cause.
+			// Returning 404 lets the SPA chunk-error handler reload the latest build.
+			if cleanPath != "index.html" && isBuildAssetPath(cleanPath) {
+				c.Status(http.StatusNotFound)
+				c.Abort()
+				return
+			}
 			s.serveIndexHTML(c)
 			return
 		}
@@ -115,6 +124,12 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
+}
+
+// isBuildAssetPath reports whether path targets a bundled asset instead of an SPA route.
+// Vite emits all hashed JS/CSS files under assets/.
+func isBuildAssetPath(path string) bool {
+	return strings.HasPrefix(path, "assets/")
 }
 
 func (s *FrontendServer) fileExists(path string) bool {

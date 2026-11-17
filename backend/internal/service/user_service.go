@@ -208,6 +208,36 @@ type UserFollowUpMarkRepository interface {
 	SetTicketFlag(ctx context.Context, id int64, flagged bool) error
 }
 
+// UserRiskMarkRepository 是生产用户仓储为 IP 一致性风控提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现。
+type UserRiskMarkRepository interface {
+	// BumpIPInconsistencyMark 给用户打「窗口内 IP 不一致」可疑标记：
+	// risk_level 只升不降（abnormal 保持 abnormal，否则置 suspect）；
+	// reason 以逗号追加的方式并入 risk_reasons（已存在则不重复），并刷新 risk_updated_at。
+	BumpIPInconsistencyMark(ctx context.Context, id int64, reason string) error
+}
+
+// UserRiskReviewRepository 是生产用户仓储为「管理员复核放行」提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现这一管理端专用方法。
+// 它是「风险标记只升不降」规则的唯一显式例外入口，仅由管理员人工动作调用
+// （见 adminServiceImpl.AdminReviewUserRisk）。
+type UserRiskReviewRepository interface {
+	// ClearUserRiskReview 清空 risk_level / risk_reasons / risk_updated_at，
+	// 把 status 恢复 active，并登记全量扫描豁免（迁移 253：已人工放行的账号
+	// 不再被 AdminScanAffiliateRisk 标回待复核）；用户不存在时返回 ErrUserNotFound。
+	// 豁免不覆盖实时邀请绑定打标，新证据仍会让账号回到待复核。
+	ClearUserRiskReview(ctx context.Context, userID int64) error
+}
+
+// IPPenaltyRefundRepository 是生产用户仓储为「复核放行自动返还 IP 风控扣减」提供的可选能力。
+// 独立于 UserRepository，避免无关测试桩被迫实现这一管理端专用方法。
+type IPPenaltyRefundRepository interface {
+	// RefundIPBalancePenalties 把该用户所有「未返还的 IP 一致性扣减」加回当前余额，
+	// 返回实际返还金额；同一条扣减流水只会返还一次（返还流水 code 唯一约束）。
+	// 用加法而非设回旧值，避免抹掉扣减之后发生的充值或消费。
+	RefundIPBalancePenalties(ctx context.Context, userID int64) (float64, error)
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 // RegistrationEmailDomainRepository 的窗口参数 since：
@@ -1248,6 +1278,18 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status str
 	}
 
 	return nil
+}
+
+// MarkIPInconsistent 给用户打「窗口内出现多个客户端 IP」的可疑标记（IP 一致性风控）。
+// 仓储不支持时静默跳过：风控标记是旁路能力，不能影响主流程。
+func (s *UserService) MarkIPInconsistent(ctx context.Context, userID int64, reason string) {
+	marker, ok := s.userRepo.(UserRiskMarkRepository)
+	if !ok {
+		return
+	}
+	if err := marker.BumpIPInconsistencyMark(ctx, userID, reason); err != nil {
+		slog.Warn("failed to mark user ip inconsistent", "user_id", userID, "error", err)
+	}
 }
 
 // Delete 删除用户（管理员功能）

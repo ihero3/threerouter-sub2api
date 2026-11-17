@@ -295,6 +295,7 @@ export default {
     clickCaptchaTokenInvalid: 'Human verification expired or already used. Please complete the verification again',
     clickCaptchaInvalid: 'Verification failed. Please complete the human verification again',
     clickCaptchaDisabled: 'Human verification is currently unavailable. Please contact support',
+    clickCaptchaSendLimit: 'This human verification is already tied to a different email address. Please start over and complete the verification again',
     emailDomainRegistrationLimit:
       'This email domain cannot register another account. Please use a mainstream email, or contact support to add your enterprise domain to the allowlist.',
     emailDomainBlacklisted:
