@@ -82,11 +82,13 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
+  // 类型检查非常吃内存（本项目依赖重），默认禁用；需要时设 VITE_ENABLE_CHECKER=true 开启
+  const enableChecker = env.VITE_ENABLE_CHECKER === 'true'
 
   return {
     plugins: [
       vue(),
-      ...(mode === 'development' ? [checker({ vueTsc: true })] : []),
+      ...(mode === 'development' && enableChecker ? [checker({ vueTsc: true })] : []),
       injectPublicSettings(backendUrl)
   ],
   resolve: {
