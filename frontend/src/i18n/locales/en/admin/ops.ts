@@ -747,6 +747,8 @@ export default {
         ignoreNoAvailableAccountsHint: 'When enabled, "No available accounts" errors will not be written to the error log (not recommended; usually a config issue).',
         ignoreInsufficientBalanceErrors: 'Ignore Insufficient Errors',
         ignoreInsufficientBalanceErrorsHint: 'Enabled by default. Any error containing "Insufficient" (user balance, quota, credits, upstream out of credit, OAuth scope, etc.) is skipped from the error log so real failures stay visible. Turn this off to record them again.',
+        ignoreAuthFallbackAdminErrors: 'Ignore auth errors attributed to admin',
+        ignoreAuthFallbackAdminErrorsHint: 'Enabled by default. Login, registration and verification-code failures that cannot be attributed to a user (recorded under admin) are skipped from the error log to avoid noise. Turn this off to record them again.',
         autoRefresh: 'Auto Refresh',
         enableAutoRefresh: 'Enable auto refresh',
         enableAutoRefreshHint: 'Automatically refresh dashboard data at a fixed interval.',

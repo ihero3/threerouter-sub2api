@@ -63,7 +63,7 @@ type AdminUser struct {
 	// RiskReasons 为逗号分隔的原因 key。
 	RiskLevel   string `json:"risk_level"`
 	RiskReasons string `json:"risk_reasons"`
-	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥2 个不同用户），用于 Suspect 打标。
+	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥5 个不同用户），用于 Suspect 打标。
 	LastUsedIPShared bool `json:"last_used_ip_shared"`
 	// LookedCount / TicketFlag 为管理员人工跟进标记（仅管理端展示，不参与业务逻辑）：
 	// 看过次数只增不减；提过工单为可切换的布尔标记。

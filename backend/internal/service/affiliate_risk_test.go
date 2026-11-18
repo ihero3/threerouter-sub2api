@@ -11,12 +11,16 @@ func TestIsStuffedEmailAlias(t *testing.T) {
 		{"lanhsuychsieck.i.e.c11.23@gmail.com", true},
 		{"a.b.c.d.e.gmail1234567@gmail.com", true},
 		{"abc.d.ghi.jkl.mno12@googlemail.com", true},
+		// 阈值下界：3 个点仍应命中，防止放宽过度把规则架空。
+		{"lanhsuychsieck.i.e.c11@gmail.com", true},
 
 		// 真实姓名形态，不应误报。
 		{"firstname.lastname@gmail.com", false},
 		{"john.q.public@gmail.com", false},
 		{"zhangsan2024@gmail.com", false},
 		{"li.wei.2020@gmail.com", false},
+		// 阈值上界：2 个点 + 长姓名 + 中间名缩写，放宽后不命中。
+		{"alexander.q.public@gmail.com", false},
 
 		// 非点号别名服务商，不适用本规则。
 		{"lanhsuychsieck.i.e.c11.23@outlook.com", false},

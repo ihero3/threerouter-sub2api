@@ -385,6 +385,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
 		IgnoreInvalidApiKeyErrors:       true,  // Legacy compatibility field; admission rejects are always excluded.
 		IgnoreInsufficientBalanceErrors: true,
+		IgnoreAuthFallbackAdminErrors:   true, // 登录/注册失败兜底到 admin 的错误默认不写日志，避免刷屏
 		SchemaVersion:                   opsAdvancedSettingsSchemaVersion,
 		DisplayOpenAITokenStats:         false,
 		DisplayAlertEvents:              true,

@@ -19,7 +19,7 @@ type fakePenaltyLocker struct {
 	lastKey       string
 	lastTTL       time.Duration
 	claimSet      bool
-	returnOnCalls map[int]bool // 第 N 次调用的返回值，用于模拟「3 IP 抢到、4 IP 没抢到」
+	returnOnCalls map[int]bool // 第 N 次调用的返回值，用于模拟冷却期内锁已被占用
 }
 
 func (f *fakePenaltyLocker) TryClaimPenalty(_ context.Context, key string, ttl time.Duration) (bool, error) {
@@ -177,10 +177,10 @@ func TestIPConsistency_TwoIPsNeverSchedulesPenalty(t *testing.T) {
 		t.Fatalf("two ips must not block, got %+v", got)
 	}
 	if calls, _, _, _ := locker.snapshot(); calls != 0 {
-		t.Fatalf("penalty lock must not be touched below 3 ips, got %d claims", calls)
+		t.Fatalf("penalty lock must not be touched below the mark threshold, got %d claims", calls)
 	}
 	if len(penalty.snapshot()) != 0 {
-		t.Fatal("penalty must not run below 3 ips")
+		t.Fatal("penalty must not run below the mark threshold")
 	}
 }
 
@@ -220,7 +220,7 @@ func TestIPConsistency_PenaltyFailureReleasesLock(t *testing.T) {
 }
 
 func TestIPConsistency_FeatureBOnlyNeverDisables(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
 	updater := &fakeUserStatusUpdater{}
 	settings := DefaultIPConsistencySettings()
 	settings.Enabled = false // 功能A 关闭
@@ -229,7 +229,7 @@ func TestIPConsistency_FeatureBOnlyNeverDisables(t *testing.T) {
 	locker := &fakePenaltyLocker{}
 	svc.SetPenaltyService(&fakePenalty{started: make(chan struct{}, 1)}, locker)
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4"); got != nil {
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
 		t.Fatalf("feature B alone must never disable or block the account, got %+v", got)
 	}
 	if updater.status != "" || updater.markedUserID != 0 {

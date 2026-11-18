@@ -727,6 +727,14 @@ type adminServiceImpl struct {
 	compositeResolver    *CompositeRouteResolver
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
+	// 管理端改工单标记 / 复核放行后主动失效豁免缓存，让豁免立即生效（可选依赖）
+	riskExemptionInvalidator RiskExemptionInvalidator
+}
+
+// RiskExemptionInvalidator 失效某用户的全局风控豁免缓存。
+// 窄接口，仅管理端写路径需要；与 RiskExemptionChecker.IsExempt 共用一个实例。
+type RiskExemptionInvalidator interface {
+	Invalidate(userID int64)
 }
 
 // ChannelCacheInvalidator 失效渠道缓存。

@@ -22,6 +22,15 @@ export interface ListBlogsResult {
   page_size: number
 }
 
+/** 后台上传的图片（首页图片库/博客图片共用同一存储） */
+export interface AdminUploadedImage {
+  name: string
+  url: string
+  thumb_url: string
+  size: number
+  created_at: string
+}
+
 // 公开博客接口（无需认证）
 export const publicBlogAPI = {
   async list(params: ListBlogsParams = {}): Promise<ListBlogsResult> {
@@ -79,6 +88,14 @@ export const adminBlogAPI = {
       timeout: 60000
     })
     return data?.url || ''
+  },
+  /** 列出已上传的图片（按上传时间倒序），首页图片库复用 */
+  async listImages(limit = 100): Promise<{ items: AdminUploadedImage[]; total: number }> {
+    const { data } = await apiClient.get<{ items: AdminUploadedImage[]; total: number }>(
+      '/admin/uploads/images',
+      { params: { limit } }
+    )
+    return { items: data.items || [], total: data.total || 0 }
   }
 }
 

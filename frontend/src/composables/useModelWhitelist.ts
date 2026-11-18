@@ -152,7 +152,10 @@ const qwenModels = [
   'qwen2.5-7b-instruct', 'qwen2.5-3b-instruct', 'qwen2.5-1.5b-instruct',
   'qwen2.5-coder-32b-instruct', 'qwen2.5-coder-14b-instruct', 'qwen2.5-coder-7b-instruct',
   'qwen3-235b-a22b',
-  'qwq-32b', 'qwq-32b-preview'
+  'qwq-32b', 'qwq-32b-preview',
+  // 千问 Qwen-Audio-TTS 非实时语音合成（SpeechSynthesizer）
+  'qwen-audio-3.1-tts-flash', 'qwen-audio-3.1-tts-plus',
+  'qwen-audio-3.0-tts-flash', 'qwen-audio-3.0-tts-plus'
 ]
 
 // DeepSeek
@@ -258,7 +261,12 @@ const minimaxModels = [
   'MiniMax-M2',
   'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
   'abab6-chat',
-  'abab5.5-chat', 'abab5.5s-chat'
+  'abab5.5-chat', 'abab5.5s-chat',
+  // MiniMax T2A v2 同步语音合成（/v1/t2a_v2）
+  'speech-2.8-hd', 'speech-2.8-turbo',
+  'speech-2.6-hd', 'speech-2.6-turbo',
+  'speech-02-hd', 'speech-02-turbo',
+  'speech-01-hd', 'speech-01-turbo'
 ]
 
 // 百度 文心

@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 // TestAPIKeyAuthSnapshotVersionIsBumpedForRiskLevel 保证快照结构变更时
-// 版本号同步递增，否则旧缓存（无 risk_level）会被当成新快照直接命中，
-// 闸门静默失效。
+// 版本号同步递增，否则旧缓存（无 risk_level / register_ip）会被当成新快照
+// 直接命中，闸门静默失效。
 func TestAPIKeyAuthSnapshotVersionIsBumpedForRiskLevel(t *testing.T) {
-	if apiKeyAuthSnapshotVersion != 26 {
-		t.Fatalf("apiKeyAuthSnapshotVersion = %d, want 26 (user risk_level gate)", apiKeyAuthSnapshotVersion)
+	if apiKeyAuthSnapshotVersion != 27 {
+		t.Fatalf("apiKeyAuthSnapshotVersion = %d, want 27 (new-user first-use IP guard)", apiKeyAuthSnapshotVersion)
 	}
 }
 
@@ -94,5 +95,43 @@ func TestAPIKeyAuthSnapshotRiskLevelJSONTag(t *testing.T) {
 	}
 	if decoded.User.RiskLevel != AffiliateRiskLevelSuspect {
 		t.Fatalf("decoded User.RiskLevel = %q, want %q", decoded.User.RiskLevel, AffiliateRiskLevelSuspect)
+	}
+}
+
+// TestAPIKeyAuthSnapshotRoundTripsNewUserFirstUseFields 验证注册 IP 与注册时间
+// 在快照往返和 L2 JSON 序列化后都不丢失；丢字段会让首调严格规则静默失效。
+func TestAPIKeyAuthSnapshotRoundTripsNewUserFirstUseFields(t *testing.T) {
+	svc := &APIKeyService{}
+	createdAt := time.Now().UTC().Truncate(time.Second)
+	in := &APIKey{
+		ID:     1,
+		UserID: 7,
+		Status: StatusActive,
+		User: &User{
+			ID:         7,
+			Status:     StatusActive,
+			RegisterIP: "1.1.1.1",
+			CreatedAt:  createdAt,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), in)
+	if snapshot.User.RegisterIP != "1.1.1.1" || !snapshot.User.CreatedAt.Equal(createdAt) {
+		t.Fatalf("snapshot lost first-use fields: %+v", snapshot.User)
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	if !bytes.Contains(raw, []byte(`"register_ip":"1.1.1.1"`)) {
+		t.Fatalf("snapshot JSON is missing register_ip: %s", raw)
+	}
+	var decoded APIKeyAuthSnapshot
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+	out := svc.snapshotToAPIKey("test-key", &decoded)
+	if out.User.RegisterIP != "1.1.1.1" || !out.User.CreatedAt.Equal(createdAt) {
+		t.Fatalf("round-tripped first-use fields mismatch: %+v", out.User)
 	}
 }

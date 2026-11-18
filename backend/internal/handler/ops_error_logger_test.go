@@ -333,26 +333,46 @@ func TestOpsErrorLoggerMiddleware_OrdinaryPermissionStillRecords(t *testing.T) {
 
 // TestOpsErrorLoggerMiddlewareWithDefaultUser_FallsBackToDefaultUser 验证登录/注册入口
 // 的 WithDefaultUser 变体：当 4xx 无法确定归属用户（entry.UserID 为 nil）时，兜底记为
-// defaultUserID（admin id=1），使其能在「使用记录 → 错误请求」（按当前登录用户过滤）中被观测，
-// 防止登录坍塌（Login Collapse）毫不知情。
+// defaultUserID（admin id=1），使其能在「使用记录 → 错误请求」（按当前登录用户过滤）中被观测。
+// 该兜底归属行为现由 IgnoreAuthFallbackAdminErrors 开关控制：默认开启时这类错误不再
+// 落库（登录/注册失败多为预期行为，避免刷屏），管理员关闭开关后恢复记录并兜底归属 admin。
 func TestOpsErrorLoggerMiddlewareWithDefaultUser_FallsBackToDefaultUser(t *testing.T) {
-	setupOpsErrorLogTestQueue(t, 2)
-	gin.SetMode(gin.TestMode)
-	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	router := gin.New()
-	router.Use(OpsErrorLoggerMiddlewareWithDefaultUser(ops, 1))
-	router.POST("/api/v1/auth/login", func(c *gin.Context) {
-		c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid credentials"})
+	serve := func(t *testing.T, ops *service.OpsService) *httptest.ResponseRecorder {
+		t.Helper()
+		setupOpsErrorLogTestQueue(t, 2)
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(OpsErrorLoggerMiddlewareWithDefaultUser(ops, 1))
+		router.POST("/api/v1/auth/login", func(c *gin.Context) {
+			c.JSON(http.StatusUnauthorized, gin.H{"detail": "invalid credentials"})
+		})
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil))
+		return recorder
+	}
+
+	t.Run("default on skips fallback", func(t *testing.T) {
+		ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		require.NoError(t, ops.RefreshRuntimeSettings(t.Context()))
+		require.True(t, ops.OpsAdvancedSettingsSnapshot().IgnoreAuthFallbackAdminErrors)
+		recorder := serve(t, ops)
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		require.Zero(t, OpsErrorLogQueueLength(), "默认开关开启时 auth 兜底错误不写日志")
 	})
 
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil))
-
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.Equal(t, int64(1), OpsErrorLogQueueLength())
-	job := <-opsErrorLogQueue
-	require.NotNil(t, job.entry.UserID, "auth 4xx 无法确定用户时必须兜底归属 admin")
-	require.Equal(t, int64(1), *job.entry.UserID, "兜底用户应为 admin(id=1)")
+	t.Run("switch off falls back to admin", func(t *testing.T) {
+		ops := service.NewOpsService(nil, &opsAdvancedSettingsRepoStub{
+			advanced: `{"ignore_auth_fallback_admin_errors":false,"schema_version":2}`,
+		}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		require.NoError(t, ops.RefreshRuntimeSettings(t.Context()))
+		require.False(t, ops.OpsAdvancedSettingsSnapshot().IgnoreAuthFallbackAdminErrors)
+		recorder := serve(t, ops)
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		require.Equal(t, int64(1), OpsErrorLogQueueLength())
+		job := <-opsErrorLogQueue
+		require.NotNil(t, job.entry.UserID, "关闭开关后 auth 4xx 无法确定用户时必须兜底归属 admin")
+		require.Equal(t, int64(1), *job.entry.UserID, "兜底用户应为 admin(id=1)")
+	})
 }
 
 // TestOpsErrorLoggerMiddlewareWithoutDefaultUser_LeavesUserNil 反向验证：普通

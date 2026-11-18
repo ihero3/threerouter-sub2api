@@ -78,9 +78,14 @@
         }}
       </button>
     </div>
-    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
-      {{ t('auth.codeSentSuccess') }}
-    </p>
+    <template v-if="emailVerifyEnabled && sendCodeSuccess">
+      <p class="text-sm text-green-600 dark:text-green-400">
+        {{ t('auth.codeSentSuccess') }}
+      </p>
+      <p class="rounded-lg bg-green-50 px-3 py-2 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
+        {{ t('auth.spamFolderHint') }}
+      </p>
+    </template>
     <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>

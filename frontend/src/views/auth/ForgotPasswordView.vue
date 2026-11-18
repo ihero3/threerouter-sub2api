@@ -26,6 +26,10 @@
                 {{ t('auth.resetEmailSentHint') }}
               </p>
             </div>
+            <p class="flex items-start justify-center gap-2 rounded-lg bg-green-100/70 px-3 py-2 text-left text-sm font-medium text-green-800 dark:bg-green-800/40 dark:text-green-200">
+              <Icon name="mail" size="sm" class="mt-0.5 flex-shrink-0" />
+              <span>{{ t('auth.spamFolderHint') }}</span>
+            </p>
           </div>
         </div>
 

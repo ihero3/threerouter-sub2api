@@ -7634,6 +7634,11 @@
                 <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
                   {{ t("admin.settings.site.homeContentIframeWarning") }}
                 </p>
+                <!-- 首页图片库：上传后复制 URL 或直接插入首页内容 -->
+                <HomeContentImageLibrary
+                  class="mt-3"
+                  @insert="insertHomeImage"
+                />
               </div>
 
               <!-- Compact Home Page -->
@@ -10183,6 +10188,7 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
+import HomeContentImageLibrary from "@/components/admin/HomeContentImageLibrary.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
@@ -10325,6 +10331,13 @@ function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void 
 }
 
 const { copyToClipboard } = useClipboard();
+
+// 首页图片库：把选中图片插入首页自定义 HTML
+function insertHomeImage(url: string): void {
+  const snippet = `<img src="${url}" alt="" style="max-width:100%;height:auto;" />`;
+  const current = form.home_content.trimEnd();
+  form.home_content = current ? `${current}\n${snippet}` : snippet;
+}
 
 const loading = ref(true);
 const loadFailed = ref(false);

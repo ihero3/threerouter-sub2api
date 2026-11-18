@@ -433,6 +433,10 @@ func (s *adminServiceImpl) AdminReviewUserRisk(ctx context.Context, userID int64
 	if err := reviewRepo.ClearUserRiskReview(ctx, userID); err != nil {
 		return err
 	}
+	// 复核放行写入了 user_risk_review_exemptions，立即失效豁免缓存让「全豁免」生效。
+	if s.riskExemptionInvalidator != nil {
+		s.riskExemptionInvalidator.Invalidate(userID)
+	}
 	// 放行后失效认证缓存（内含 risk_level/status 快照）与余额缓存；失败只记日志，
 	// 不回滚已提交的放行。adminServiceImpl 自身即持有这两个 invalidator。
 	if s.authCacheInvalidator != nil {
@@ -725,13 +729,29 @@ func (s *adminServiceImpl) IncrementUserLookedCount(ctx context.Context, userID 
 	return repo.IncrementLookedCount(ctx, userID)
 }
 
+// SetRiskExemptionInvalidator 注入豁免缓存失效器（可选依赖，仿 SetPenaltyService）。
+// 必须传入与 IPConsistencyService 共用的同一个 *RiskExemptionChecker 实例。
+func (s *adminServiceImpl) SetRiskExemptionInvalidator(invalidator RiskExemptionInvalidator) {
+	if s == nil {
+		return
+	}
+	s.riskExemptionInvalidator = invalidator
+}
+
 // SetUserTicketFlag 设置该账号的「提过工单」标记。
 func (s *adminServiceImpl) SetUserTicketFlag(ctx context.Context, userID int64, flagged bool) error {
 	repo, ok := s.userRepo.(UserFollowUpMarkRepository)
 	if !ok {
 		return fmt.Errorf("user repository does not support follow-up marks")
 	}
-	return repo.SetTicketFlag(ctx, userID, flagged)
+	if err := repo.SetTicketFlag(ctx, userID, flagged); err != nil {
+		return err
+	}
+	// 工单标记改变后立即失效豁免缓存：设成豁免要立刻免于处罚，撤销也要立刻恢复处罚。
+	if s.riskExemptionInvalidator != nil {
+		s.riskExemptionInvalidator.Invalidate(userID)
+	}
+	return nil
 }
 
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {

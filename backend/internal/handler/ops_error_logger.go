@@ -52,6 +52,11 @@ const (
 	// 关闭后台开关即可恢复记录。
 	opsErrInsufficientKeyword = "insufficient"
 
+	// opsAPIKeyQuotaExhaustedKeyword 是「API key 额度已用完」的匹配口径。
+	// 这是本地 API key 额度耗尽（API_KEY_QUOTA_EXHAUSTED），属预期业务限制，
+	// 无条件不写入错误日志（不需要后台开关）。
+	opsAPIKeyQuotaExhaustedKeyword = "api key 额度已用完"
+
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
 	opsCodeUsageLimitExceeded    = "USAGE_LIMIT_EXCEEDED"
@@ -221,8 +226,10 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 		return
 	}
 	// 兜底过滤：2xx 上游恢复行、cyber 专用记录等路径不经过 shouldSkipOpsErrorLog，
-	// 在这里统一收口，保证「凡含 insufficient 的错误都不写入 ops_error_logs」。
-	if shouldSkipEnqueuedInsufficientError(ops.OpsAdvancedSettingsSnapshot(), entry) {
+	// 在这里统一收口，保证「凡含 insufficient 的错误都不写入 ops_error_logs」，
+	// 以及「API key 额度已用完」在任何路径下都不落库（无条件）。
+	if shouldSkipEnqueuedInsufficientError(ops.OpsAdvancedSettingsSnapshot(), entry) ||
+		shouldSkipEnqueuedAPIKeyQuotaExhausted(entry) {
 		return
 	}
 	entry.UserAgent = normalizeOpsPersistentUserAgent(entry.UserAgent)
@@ -298,6 +305,29 @@ func shouldSkipEnqueuedInsufficientError(settings service.OpsAdvancedSettings, e
 	}
 	for _, text := range texts {
 		if strings.Contains(strings.ToLower(text), opsErrInsufficientKeyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipEnqueuedAPIKeyQuotaExhausted 是「API key 额度已用完」在落库前的最后
+// 一道过滤，覆盖不经 shouldSkipOpsErrorLog 的路径。与 insufficient 兜底同一口径：
+// 只看最终错误文本字段，不看 RequestPreview（用户输入里恰好出现该文案不该吞掉
+// 真正需要排查的错误日志），也不展开 UpstreamErrors 事件数组。
+func shouldSkipEnqueuedAPIKeyQuotaExhausted(entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	texts := []string{entry.ErrorMessage, entry.ErrorBody}
+	if entry.UpstreamErrorMessage != nil {
+		texts = append(texts, *entry.UpstreamErrorMessage)
+	}
+	if entry.UpstreamErrorDetail != nil {
+		texts = append(texts, *entry.UpstreamErrorDetail)
+	}
+	for _, text := range texts {
+		if strings.Contains(strings.ToLower(text), opsAPIKeyQuotaExhaustedKeyword) {
 			return true
 		}
 	}
@@ -1325,7 +1355,14 @@ func newOpsErrorLogger(ops *service.OpsService, riskControlFn func(context.Conte
 
 		// 登录/注册入口：无法确定归属用户时兜底记为 defaultUserID（admin id=1），
 		// 让这些异常错误能在「使用记录 → 错误请求」中被观测到。
+		// 若开启了 IgnoreAuthFallbackAdminErrors，这类「归属不明、兜底到 admin」
+		// 的错误直接不落库（登录/注册/验证码失败多为预期行为，刷屏会淹没真实故障）。
+		// 注意判定必须同时满足 UserID == nil：admin 本人带 API key 的请求 UserID
+		// 已由 applyOpsAPIKeyFields 带出，不受此开关影响，仍照常记录。
 		if defaultUserID != 0 && entry.UserID == nil {
+			if ops.OpsAdvancedSettingsSnapshot().IgnoreAuthFallbackAdminErrors {
+				return
+			}
 			fallbackUID := defaultUserID
 			entry.UserID = &fallbackUID
 		}
@@ -2575,6 +2612,11 @@ func shouldSkipOpsErrorLog(ops *service.OpsService, message, body, code, request
 	msgLower := strings.ToLower(message)
 	bodyLower := strings.ToLower(body)
 
+	// 「API key 额度已用完」无条件过滤，与后台开关无关。
+	if shouldSkipAPIKeyQuotaExhausted(message, body, code) {
+		return true
+	}
+
 	// Check if count_tokens errors should be ignored
 	if settings.IgnoreCountTokensErrors && isTokenCountRequestPath(requestPath) {
 		return true
@@ -2623,6 +2665,18 @@ func shouldSkipInsufficientError(settings service.OpsAdvancedSettings, message, 
 		}
 	}
 	return false
+}
+
+// shouldSkipAPIKeyQuotaExhausted 判定「API key 额度已用完」——本地额度耗尽是预期
+// 业务限制，无条件不写入错误日志（不受后台开关控制，与「忽略余额不足」的开关
+// 语义刻意不同）。匹配口径：错误码 API_KEY_QUOTA_EXHAUSTED，或文案含该关键字。
+// 大小写不敏感（中文无大小写，兼容大小写混排的 "API key" 前缀）。
+func shouldSkipAPIKeyQuotaExhausted(message, body, code string) bool {
+	if strings.EqualFold(strings.TrimSpace(code), opsCodeAPIKeyQuotaExhausted) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(message), opsAPIKeyQuotaExhaustedKeyword) ||
+		strings.Contains(strings.ToLower(body), opsAPIKeyQuotaExhaustedKeyword)
 }
 
 // shouldSkipOpsClientClosed 按 IgnoreContextCanceled 过滤纯客户端取消的 499。

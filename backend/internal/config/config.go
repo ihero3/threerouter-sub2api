@@ -2188,8 +2188,12 @@ func setDefaults() {
 		"api.moonshot.ai",
 		"api.moonshot.cn",
 		"open.bigmodel.cn",
-		"api.minimaxi.com", // MiniMax CN quota + inference
-		"api.minimax.io",   // MiniMax intl; frozen allowlists must add this host to use the intl site
+		"api.minimaxi.com",    // MiniMax CN quota + inference
+		"api.minimax.cn",      // MiniMax T2A HTTP default host
+		"api-bj.minimaxi.com", // MiniMax CN north low-latency host
+		"api.minimax.io",      // MiniMax intl; frozen allowlists must add this host to use the intl site
+		"*.maas.aliyuncs.com",
+		"maas.qianwenaiapi.com",
 		"opencode.ai",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",

@@ -909,6 +909,12 @@ var ProviderSet = wire.NewSet(
 	NewIPConsistencyService,
 	wire.Bind(new(UserStatusUpdater), new(*UserService)),
 	wire.Bind(new(IPConsistencySettingsProvider), new(*SettingService)),
+	// 全局自动风控豁免检查器（工单标记 / 复核放行），供 IP 一致性热路径与共享 IP 扫描共用。
+	// 依赖的 RiskExemptionRepository 由 *repository.userRepository 实现，装配见 cmd/server/wire_gen.go
+	// （本文件不能用 go generate 重生成，手工同步）。
+	NewRiskExemptionChecker,
+	// 共享 IP 风险周期扫描（单 IP 关联过多用户 → 批量打标 + 扣减）。
+	NewSharedIPRiskScanService,
 	NewMCPOAuthService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
@@ -1101,6 +1107,7 @@ func ProvideMediaAdapter() *MediaAdapterRegistry {
 		NewImageMediaAdapter(),
 		// 音频厂商（独立）
 		NewMiniMaxTTSAdapter(),
+		NewQwenAudioTTSAdapter(),
 		NewVolcanoTTSAdapter(),
 		NewAliyunTTSAdapter(),
 		NewAudioMediaAdapter(),

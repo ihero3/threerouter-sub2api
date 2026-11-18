@@ -32,6 +32,30 @@ func TestBumpUserRiskMarksSQL_AdminNeverDisabled(t *testing.T) {
 	if !strings.Contains(sql, "status = CASE") {
 		t.Fatal("SQL must set status via a CASE expression")
 	}
+	// 全局豁免：提过工单 / 已复核放行的用户不接受任何自动打标。
+	for _, want := range []string{
+		"COALESCE(u.ticket_flag, FALSE) = FALSE",
+		"NOT EXISTS (SELECT 1 FROM user_risk_review_exemptions e WHERE e.user_id = u.id)",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("bump SQL missing exemption guard %q", want)
+		}
+	}
+}
+
+// TestIsRiskExemptByIDSQL_ChecksTicketAndReview 覆盖「豁免查询同时看工单标记与复核放行」。
+func TestIsRiskExemptByIDSQL_ChecksTicketAndReview(t *testing.T) {
+	sql := isRiskExemptByIDSQL
+	for _, want := range []string{
+		"ticket_flag = TRUE",
+		"user_risk_review_exemptions",
+		"OR EXISTS",
+		"deleted_at IS NULL",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("exemption lookup SQL missing %q", want)
+		}
+	}
 }
 
 // TestClearUserRiskReviewSQL_ClearsMarksAndReactivates 覆盖「复核放行清标记 + 恢复 active」的 SQL 契约。

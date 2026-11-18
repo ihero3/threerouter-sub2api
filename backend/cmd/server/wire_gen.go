@@ -46,6 +46,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		return nil, err
 	}
 	userRepository := repository.NewUserRepository(client, db)
+	// 全局自动风控豁免检查器（工单标记 / 复核放行），带进程内 TTL 缓存。
+	// 与 IP 一致性热路径、管理端写路径、共享 IP 扫描共用同一个实例。
+	// IsRiskExemptByID 是 *userRepository 的可选能力，用类型断言取，避免往 UserRepository
+	// 大接口加方法（否则所有测试桩都要实现）。
+	riskExemptionRepo, _ := userRepository.(service.RiskExemptionRepository)
+	riskExemptionChecker := service.NewRiskExemptionChecker(riskExemptionRepo, 0)
 	redeemCodeRepository := repository.NewRedeemCodeRepository(client)
 	redisClient := repository.ProvideRedis(configConfig)
 	refreshTokenCache := repository.NewRefreshTokenCache(redisClient)
@@ -92,6 +98,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	ipConsistencyCache := repository.NewIPConsistencyCache(redisClient)
 	ipConsistencyService := service.NewIPConsistencyService(ipConsistencyCache, settingService, userService)
+	// 注入全局豁免检查器：命中工单 / 复核放行的用户跳过 IP 一致性的标记 / 扣减 / 禁用。
+	ipConsistencyService.SetRiskExemptionChecker(riskExemptionChecker)
+	// 新用户首调 IP 不一致需要真实 suspect 标记（进复核队列 + 禁建 Key），
+	// 复用 affiliateService 的只升不降打标与缓存失效能力。
+	ipConsistencyService.SetNewUserRiskMarker(affiliateService)
 	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService, mcpoAuthService, ipConsistencyService)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
@@ -220,6 +231,20 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	ipConsistencyPenaltyService := service.NewIPConsistencyPenaltyService(adminService, emailService)
 	ipConsistencyPenaltyLocker := service.ProvideIPConsistencyPenaltyLocker(ipConsistencyCache)
 	ipConsistencyService.SetPenaltyService(ipConsistencyPenaltyService, ipConsistencyPenaltyLocker)
+	// 管理端改工单标记 / 复核放行后立即失效豁免缓存，让「全豁免」即时生效。
+	// SetRiskExemptionInvalidator 是 *adminServiceImpl 的可选能力，类型断言取，
+	// 不往 AdminService 大接口加方法（否则所有测试桩都要实现）。
+	if adminWithExemption, ok := adminService.(interface {
+		SetRiskExemptionInvalidator(service.RiskExemptionInvalidator)
+	}); ok {
+		adminWithExemption.SetRiskExemptionInvalidator(riskExemptionChecker)
+	}
+	// 共享 IP 风险周期扫描：单 IP 关联 ≥5 用户 → 批量打 suspect + 扣减。
+	// lister 从 *usageLogRepository 断言取得，markWriter 用 affiliateService，penalty 复用 IP 处罚执行器。
+	sharedIPUserLister, _ := usageLogRepository.(service.SharedIPUserLister)
+	sharedIPRiskScanService := service.NewSharedIPRiskScanService(sharedIPUserLister, affiliateService, ipConsistencyPenaltyService, riskExemptionChecker, settingService)
+	sharedIPRiskScanService.SetLeaderLock(leaderLockCache, db)
+	sharedIPRiskScanService.Start()
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
 	groupHandler := admin.NewGroupHandlerWithConfig(adminService, dashboardService, groupCapacityService, configConfig)
@@ -444,7 +469,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService, sharedIPRiskScanService)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -541,6 +566,7 @@ func provideCleanup(
 	videoWorker *service.VideoWorker,
 	mediaWorker *service.MediaWorker,
 	teamAggregation *service.TeamAggregationService,
+	sharedIPRiskScan *service.SharedIPRiskScanService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -585,6 +611,12 @@ func provideCleanup(
 			{"TeamAggregationService", func() error {
 				if teamAggregation != nil {
 					teamAggregation.Stop()
+				}
+				return nil
+			}},
+			{"SharedIPRiskScanService", func() error {
+				if sharedIPRiskScan != nil {
+					sharedIPRiskScan.Stop()
 				}
 				return nil
 			}},

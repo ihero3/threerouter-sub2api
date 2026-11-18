@@ -324,6 +324,7 @@ export default {
     resendCode: '重新发送验证码',
     sendCodeDesc: '我们将发送验证码到',
     codeSentSuccess: '验证码已发送！请查收您的邮箱。',
+    spamFolderHint: '收件箱里没收到？请检查垃圾邮件（垃圾箱）文件夹。',
     verifying: '验证中...',
     verifyAndCreate: '验证并创建账户',
     resendCountdown: '{countdown}秒后可重新发送',
@@ -471,7 +472,7 @@ export default {
     sendResetLinkFailed: '发送重置链接失败，请重试。',
     resetEmailSent: '重置链接已发送',
     resetEmailSentHint:
-      '如果该邮箱已注册，您将很快收到密码重置链接。请检查您的收件箱和垃圾邮件文件夹。',
+      '如果该邮箱已注册，您将很快收到密码重置链接，请查收收件箱。',
     backToLogin: '返回登录',
     rememberedPassword: '想起密码了？',
     // 重置密码

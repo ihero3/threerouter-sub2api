@@ -108,6 +108,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // videoWorker
 		nil, // mediaWorker
 		nil, // teamAggregation
+		nil, // sharedIPRiskScan
 	)
 
 	require.NotPanics(t, func() {

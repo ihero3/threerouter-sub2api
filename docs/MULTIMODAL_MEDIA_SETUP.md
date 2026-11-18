@@ -120,15 +120,22 @@
 
 ### 音频厂商
 
-#### MiniMax TTS
+#### MiniMax TTS（同步语音合成 T2A v2）
 | 项 | 值 |
 |---|---|
-| 端点 | `POST /v1/t2a_v2` |
-| 适配模型 | `minimax-tts`、`speech-01`、`tts` |
+| 对外端点 | `POST /v1/audio/speech`（OpenAI 兼容，同步返回 `audio/mpeg` 音频字节） |
+| 上游端点 | `POST /v1/t2a_v2` |
+| 适配模型 | `speech-2.8-hd`、`speech-2.8-turbo`、`speech-2.6-hd`、`speech-2.6-turbo`、`speech-02-hd`、`speech-02-turbo`、`speech-01-hd`、`speech-01-turbo`；兼容旧别名 `minimax-tts`、`speech-01`、`tts` |
+| 参数 | OpenAI 风格 `input`（文本）、`voice`、`speed`、`response_format`（`mp3` / `flac` / `pcm`）；MiniMax 原生 `voice_setting`、`audio_setting`、`pronunciation_dict`、`language_boost`、`text_normalization_mode` 等原样透传 |
+| 返回 | 默认 `output_format=hex`，服务端解码后直接返回音频字节；显式传 `output_format=url` 时 302 到 24h 有效下载链接 |
 
 **配置**：
-- `base_url`: `https://api.minimax.cn`
-- `model_mapping`: `{"minimax-tts": "MiniMax-TTS"}`
+- `base_url`: `https://api.minimaxi.com`（也可用文档默认 `https://api.minimax.cn`、华北 `https://api-bj.minimaxi.com`）
+- `model_mapping`: 可选，用于把对外模型名映射到上游模型名
+
+> 计费沿用分组音频价（按秒 / 百万字符），不按 `speech-*` 模型分别定价。
+> 本端点只支持同步 HTTP；WebSocket / 双向流式暂不支持，请求里的 `stream` 会被强制为 `false`。
+> `response_format` 指定 `flac` / `pcm` 时字节格式正确，但响应 `Content-Type` 目前固定 `audio/mpeg`，需客户端自行处理。
 
 #### 火山 TTS
 | 项 | 值 |
@@ -149,6 +156,23 @@
 **配置**：
 - `base_url`: `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com`
 - `model_mapping`: `{"cosyvoice": "cosyvoice-v1"}`
+
+#### 千问 Qwen-Audio-TTS（非实时语音合成）
+| 项 | 值 |
+|---|---|
+| 对外端点 | `POST /v1/audio/speech`（OpenAI 兼容，同步返回音频字节） |
+| 上游端点 | `POST /api/v1/services/audio/tts/SpeechSynthesizer` |
+| 适配模型 | `qwen-audio-3.1-tts-flash`、`qwen-audio-3.1-tts-plus`、`qwen-audio-3.0-tts-flash`、`qwen-audio-3.0-tts-plus` |
+| 参数 | OpenAI 风格 `input`（文本）、`voice`（音色）、`response_format`（`wav` / `mp3` / `flac` 等）；千问原生 `instruction`、`language_hints`、`hot_fix`、`sample_rate` 等透传到 `input` |
+| 返回 | 上游返回 `output.audio.url` 临时链接，服务端二次下载后直接返回音频字节；下载失败判失败且不计费 |
+
+**配置**：
+- `base_url`: `https://llm-<id>.cn-beijing.maas.aliyuncs.com`（阿里云百炼 MaaS 专属端点）或官方 `https://maas.qianwenaiapi.com`
+- 默认音色 `longanhuan_v3.1`，默认格式 `wav`、24kHz；可用 `voice` / `response_format` 覆盖
+
+> 上面的「阿里 TTS」与本节是两套协议：`cosyvoice` / `qwen-tts` 走 `multimodal-generation`，`qwen-audio-*` 走 `SpeechSynthesizer`。
+> 上游临时 URL 只接受 HTTPS，下载超时 30s、上限 64MB；SSE 流式暂不支持。
+> 默认 `wav` 输出与固定的 `Content-Type: audio/mpeg` 不一致，需客户端按实际格式处理。
 
 ### OpenAI 兼容（聚合站 / TTS / Whisper）
 | 项 | 值 |

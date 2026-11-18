@@ -504,6 +504,8 @@ func RegisterGatewayRoutes(
 	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	// Gemini 原生端点使用独立的 Google 风格鉴权，需单独挂 IP 一致性校验
 	gemini.Use(middleware.UserIPConsistencyGuard(ipConsistencyGuard))
+	// 新用户首调 IP 严格规则：Google 风格错误响应，不随主 apiKeyAuth 自动生效。
+	gemini.Use(middleware.NewUserFirstUseIPGuard(ipConsistencyGuard, true))
 	gemini.Use(groupModelAllowlist)
 	gemini.Use(compositeGeminiTarget)
 	gemini.Use(requireGroupGoogle)
@@ -679,6 +681,8 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(endpointNorm)
 	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
+	// 与主 v1beta 一样补上首调严格规则（该组原本未挂 UserIPConsistencyGuard，本次不扩大改动范围）。
+	antigravityV1Beta.Use(middleware.NewUserFirstUseIPGuard(ipConsistencyGuard, true))
 	antigravityV1Beta.Use(groupModelAllowlist)
 	antigravityV1Beta.Use(requireGroupGoogle)
 	{

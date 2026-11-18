@@ -938,10 +938,11 @@ const (
 	// 规则 10：链路传染的扫描半径（向上/向下各几跳）——收窄到 1 跳。
 	AffiliateRiskContagionRadius = 1
 	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
-	AffiliateRiskAliasStuffingMinDots   = 2
+	AffiliateRiskAliasStuffingMinDots   = 3
 	AffiliateRiskAliasStuffingMinLength = 16
 	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
-	AffiliateRiskRegistrationIPCorrelationThreshold = 3
+	// 最近一次调整：3→4（放宽尺度，避免共享 NAT/办公网误伤）。
+	AffiliateRiskRegistrationIPCorrelationThreshold = 4
 
 	// 存量扫描每批处理的用户数，避免一次性写满事务。
 	AffiliateRiskScanBatchSize = 500

@@ -154,46 +154,6 @@ export default {
         desc: 'Our prices are only 1/33 of flagship providers, helping you reduce AI costs by up to 97%'
       }
     },
-    easyrouterFaq: {
-      eyebrow: 'FAQ',
-      title: 'Frequently Asked Questions',
-      subtitle: 'Everything you need to know about service, billing, and integration.',
-      tabs: {
-        service: 'About Service',
-        billing: 'Pricing & Billing',
-        integration: 'Integration & Usage'
-      },
-      service: {
-        q1: 'Are you a proxy or reseller?',
-        a1: 'Neither. We are an enterprise-grade AI API gateway. Our upstream providers are official top-tier cloud vendors such as AWS, GCP, and Azure. For open-source models, our sources are directly from model providers or globally recognized inference services. The pipeline is legal, transparent, and auditable.',
-        q2: 'Where do your model resources come from?',
-        a2: 'Our resources come from official cloud providers, AI platforms, model vendors, and globally recognized inference services. This ensures stable access, compliant procurement, and traceable delivery.',
-        q3: 'Do you store user request data?',
-        a3: 'No. The gateway is designed for secure pass-through routing. We do not use customer prompts or responses for model training, and we minimize data retention for operational security.',
-        q4: 'Which models are supported?',
-        a4: 'We cover DeepSeek, Qwen, Kimi, MiniMax, GLM, and Seedance video generation models. More coming soon.'
-      },
-      billing: {
-        q1: 'Is this a monthly subscription?',
-        a1: 'No. Credits are deducted based on actual model usage. You pay for what you consume — no fixed monthly fee for unused capacity.',
-        q2: 'How is usage billed?',
-        a2: 'Text models are billed by token usage. Image, video, speech, and other multimodal models follow their provider-specific billing units (image count, video seconds, audio duration).',
-        q3: 'Are prices transparent?',
-        a3: 'Yes. Pricing is displayed by model and billing unit. Estimate costs before use and monitor actual consumption in your dashboard.',
-        q4: 'Can teams share credits?',
-        a4: 'Yes. Team and enterprise usage can be managed through shared quota pools, permission controls, and usage analytics.'
-      },
-      integration: {
-        q1: 'Is it compatible with the OpenAI API?',
-        a1: 'Yes. The gateway is fully compatible with the OpenAI API format. Replace the base URL and API key, and you\'re ready to go.',
-        q2: 'How much migration work is required?',
-        a2: 'One line of code. SDKs, agents, and workflow tools continue using familiar request formats — just point them at threerouter.com/v1.',
-        q3: 'Do you support failover and smart routing?',
-        a3: 'Yes. We use multi-provider routing, load balancing, and failover strategies to improve availability and reduce disruptions.',
-        q4: 'Can it be used in production systems?',
-        a4: 'Yes. The gateway is designed for production with standardized APIs, high availability routing, usage observability, and enterprise compliance.'
-      }
-    },
     comparison: {
       headers: {
         official: 'Direct API Subscriptions',
@@ -202,11 +162,6 @@ export default {
     },
     providers: {
       loginToView: 'Login to View'
-    },
-    cta: {
-      title: 'Stop paying 33x for the same intelligence.',
-      description: 'Get $10 ≈ 330M free tokens. No credit card required.',
-      button: 'Get $10 ≈ 330M Free Tokens — No credit card →'
     },
     reviews: {
       title: 'Built for developers and enterprises',
@@ -250,26 +205,6 @@ export default {
         text: 'Models available',
         name: '15+',
         role: 'and growing'
-      }
-    },
-    testimonials: {
-      eyebrow: 'Customer Stories',
-      title: 'What developers say',
-      subtitle: 'Real feedback from production workloads',
-      t1: {
-        name: 'Alex Chen',
-        role: 'SaaS Founder',
-        quote: 'After switching to Three Router, our AI inference bill dropped from $4,000 to $120 per month. API-compatible, migration took 10 minutes.'
-      },
-      t2: {
-        name: 'Maria Rodriguez',
-        role: 'Full-stack Engineer',
-        quote: 'DeepSeek V4-Pro through the US local endpoint has low latency and costs 1/12 of OpenAI. It is our default for production now.'
-      },
-      t3: {
-        name: 'Sam Liu',
-        role: 'CTO, AI Startup',
-        quote: 'Moving all production LLM calls to Three Router cut our costs by over 90% while staying rock-solid stable.'
       }
     },
     compliancePromo: {

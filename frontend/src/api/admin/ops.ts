@@ -805,6 +805,8 @@ export interface OpsAdvancedSettings {
   ignore_no_available_accounts: boolean
   ignore_invalid_api_key_errors: boolean
   ignore_insufficient_balance_errors: boolean
+  // 登录/注册失败等无法确定用户、兜底记为 admin 的错误是否不写错误日志（默认开启）
+  ignore_auth_fallback_admin_errors: boolean
   // v2：读取路径迁移存量配置用；写入时后端会强制打当前版本号。
   schema_version: number
   display_openai_token_stats: boolean
