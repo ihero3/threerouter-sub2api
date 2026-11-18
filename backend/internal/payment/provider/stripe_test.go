@@ -5,7 +5,11 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
@@ -67,4 +71,50 @@ func TestStripeRefundUsesStableAmountSpecificIdempotencyKey(t *testing.T) {
 	require.Equal(t, int64(1235), *backend.params[2].Amount)
 	require.Equal(t, "re-sub2_order_456-1235", *backend.params[2].IdempotencyKey)
 	require.NotEqual(t, *backend.params[0].IdempotencyKey, *backend.params[2].IdempotencyKey)
+}
+
+const stripeFailedPaymentPayload = `{"id":"evt_1","object":"event","api_version":"2026-03-25.dahlia","type":"payment_intent.payment_failed","data":{"object":{"id":"pi_123","object":"payment_intent","amount":1000,"currency":"usd","metadata":{"orderId":"sub2_order_1"}}}}`
+
+func stripeSignPayload(payload, secret string, timestamp int64) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(fmt.Sprintf("%d.%s", timestamp, payload)))
+	return fmt.Sprintf("t=%d,v1=%x", timestamp, mac.Sum(nil))
+}
+
+func TestStripeVerifyNotificationAcceptsAnyConfiguredWebhookSecret(t *testing.T) {
+	provider := &Stripe{
+		config: map[string]string{
+			"currency":      "USD",
+			"webhookSecret": "whsec_first, whsec_second",
+		},
+		initialized: true,
+	}
+
+	headers := map[string]string{
+		"stripe-signature": stripeSignPayload(stripeFailedPaymentPayload, "whsec_second", time.Now().Unix()),
+	}
+
+	notification, err := provider.VerifyNotification(context.Background(), stripeFailedPaymentPayload, headers)
+	require.NoError(t, err)
+	require.NotNil(t, notification)
+	require.Equal(t, "pi_123", notification.TradeNo)
+	require.Equal(t, "sub2_order_1", notification.OrderID)
+	require.Equal(t, payment.ProviderStatusFailed, notification.Status)
+}
+
+func TestStripeVerifyNotificationRejectsUnknownSignature(t *testing.T) {
+	provider := &Stripe{
+		config: map[string]string{
+			"currency":      "USD",
+			"webhookSecret": "whsec_first\nwhsec_second",
+		},
+		initialized: true,
+	}
+
+	headers := map[string]string{
+		"stripe-signature": stripeSignPayload(stripeFailedPaymentPayload, "whsec_other", time.Now().Unix()),
+	}
+
+	_, err := provider.VerifyNotification(context.Background(), stripeFailedPaymentPayload, headers)
+	require.Error(t, err)
 }

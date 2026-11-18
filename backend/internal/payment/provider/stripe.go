@@ -159,8 +159,8 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
 	s.ensureInit()
 
-	webhookSecret := s.config["webhookSecret"]
-	if webhookSecret == "" {
+	secrets := splitStripeWebhookSecrets(s.config["webhookSecret"])
+	if len(secrets) == 0 {
 		return nil, fmt.Errorf("stripe webhookSecret not configured")
 	}
 
@@ -169,9 +169,24 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 		return nil, fmt.Errorf("stripe notification missing stripe-signature header")
 	}
 
-	event, err := webhook.ConstructEvent([]byte(rawBody), sig, webhookSecret)
-	if err != nil {
-		return nil, fmt.Errorf("stripe verify notification: %w", err)
+	// Stripe 的签名密钥按 webhook endpoint 分配。当多个 endpoint（例如按事件类型
+	// 拆分）指向同一个回调 URL 时，每个 endpoint 有各自的密钥，因此逐个尝试，
+	// 用第一个能验签通过的密钥处理事件。
+	var event stripe.Event
+	verified := false
+	var lastErr error
+	for _, secret := range secrets {
+		parsed, err := webhook.ConstructEvent([]byte(rawBody), sig, secret)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		event = parsed
+		verified = true
+		break
+	}
+	if !verified {
+		return nil, fmt.Errorf("stripe verify notification (tried %d secret(s)): %w", len(secrets), lastErr)
 	}
 
 	switch event.Type {
@@ -182,6 +197,21 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 	}
 
 	return nil, nil
+}
+
+// splitStripeWebhookSecrets 将配置的 webhookSecret 拆分为多个签名密钥。
+// 后台只有一个输入框，多个 endpoint 的场景用逗号、分号或换行分隔。
+func splitStripeWebhookSecrets(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+	secrets := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			secrets = append(secrets, trimmed)
+		}
+	}
+	return secrets
 }
 
 func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string) (*payment.PaymentNotification, error) {

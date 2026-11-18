@@ -1043,6 +1043,7 @@ export default {
         field_apiKey: 'API Key',
         field_publishableKey: '公开密钥',
         field_webhookSecret: 'Webhook 密钥',
+        field_stripeWebhookSecretHint: 'Stripe 的签名密钥按 webhook endpoint 分配。若多个 endpoint 指向同一回调地址，可在此填写多个密钥并用逗号分隔，系统会逐个尝试验签。',
         field_countryCode: '国家/地区代码',
         field_currency: '支付币种',
         field_accountId: 'Airwallex 账户 ID',

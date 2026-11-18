@@ -149,7 +149,7 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   stripe: [
     { key: 'secretKey', label: '', sensitive: true },
     { key: 'publishableKey', label: '', sensitive: false },
-    { key: 'webhookSecret', label: '', sensitive: true },
+    { key: 'webhookSecret', label: '', sensitive: true, hintKey: 'admin.settings.payment.field_stripeWebhookSecretHint' },
     { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
   ],
   airwallex: [

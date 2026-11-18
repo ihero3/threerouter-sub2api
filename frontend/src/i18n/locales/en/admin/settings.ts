@@ -1048,6 +1048,7 @@ export default {
         field_apiKey: 'API Key',
         field_publishableKey: 'Publishable Key',
         field_webhookSecret: 'Webhook Secret',
+        field_stripeWebhookSecretHint: 'Stripe assigns a signing secret per webhook endpoint. If several endpoints point at the same URL, enter each secret separated by commas; the system tries them one by one.',
         field_countryCode: 'Country/region code',
         field_currency: 'Payment currency',
         field_accountId: 'Airwallex Account ID',
