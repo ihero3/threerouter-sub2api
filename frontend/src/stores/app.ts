@@ -5,7 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Toast, ToastType, PublicSettings } from '@/types'
+import type { Toast, ToastType, PublicSettings, SiteProfile } from '@/types'
 import { i18n } from '@/i18n'
 import {
   checkUpdates as checkUpdatesAPI,
@@ -51,6 +51,14 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+
+  // Dual-frontend site switch: active site id and its resolved profile.
+  const activeSite = computed(() => cachedPublicSettings.value?.active_site || 'site_a')
+  const activeSiteProfile = computed<SiteProfile | null>(() => {
+    const profiles = cachedPublicSettings.value?.site_profiles
+    if (!profiles) return null
+    return profiles[activeSite.value] ?? profiles['site_a'] ?? null
+  })
 
   const loadingCount = ref<number>(0)
 
@@ -342,6 +350,8 @@ export const useAppStore = defineStore('app', () => {
         site_name: siteName.value,
         site_logo: siteLogo.value,
         site_subtitle: '',
+        active_site: 'site_a',
+        site_profiles: {},
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
         doc_url: docUrl.value,
@@ -467,6 +477,8 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    activeSite,
+    activeSiteProfile,
 
     // Actions
     toggleSidebar,

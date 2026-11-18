@@ -1,6 +1,8 @@
 <template>
   <footer class="relative z-10 border-t border-gray-100 px-6 py-8">
-    <div class="mx-auto max-w-7xl">
+    <!-- B 站可在后台配置自定义页脚 HTML；未配置时保留默认页脚 -->
+    <div v-if="footerHtml" class="mx-auto max-w-7xl text-sm text-gray-500" v-html="footerHtml"></div>
+    <div v-else class="mx-auto max-w-7xl">
       <div class="flex flex-col items-center justify-center gap-4 text-center text-sm text-gray-500 sm:flex-row sm:text-left">
         <p>&copy; {{ currentYear }} Three Router. {{ t('home.footer.allRightsReserved') }}</p>
         <div class="flex items-center gap-6">
@@ -98,6 +100,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const currentYear = computed(() => new Date().getFullYear())
+const footerHtml = computed(() => appStore.activeSiteProfile?.footer_html?.trim() || '')
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
 // 语言切换只对未登录访客和管理员展示，普通登录用户隐藏
 const showLanguageSwitcher = computed(() => !authStore.isAuthenticated || authStore.isAdmin)

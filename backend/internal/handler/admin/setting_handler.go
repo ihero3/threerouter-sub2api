@@ -275,6 +275,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SiteName:                                               settings.SiteName,
 		SiteLogo:                                               settings.SiteLogo,
 		SiteSubtitle:                                           settings.SiteSubtitle,
+		ActiveSite:                                             settings.ActiveSite,
+		SiteProfiles:                                           service.ParseSiteProfiles(settings.SiteProfiles),
 		APIBaseURL:                                             settings.APIBaseURL,
 		ContactInfo:                                            settings.ContactInfo,
 		DocURL:                                                 settings.DocURL,

@@ -165,6 +165,8 @@ type SystemSettings struct {
 	SiteName                    string           `json:"site_name"`
 	SiteLogo                    string           `json:"site_logo"`
 	SiteSubtitle                string           `json:"site_subtitle"`
+	ActiveSite                  string           `json:"active_site"`
+	SiteProfiles                map[string]service.SiteProfile `json:"site_profiles"`
 	APIBaseURL                  string           `json:"api_base_url"`
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
@@ -412,6 +414,8 @@ type PublicSettings struct {
 	SiteName                            string                   `json:"site_name"`
 	SiteLogo                            string                   `json:"site_logo"`
 	SiteSubtitle                        string                   `json:"site_subtitle"`
+	ActiveSite                          string                   `json:"active_site"`
+	SiteProfiles                        map[string]service.SiteProfile `json:"site_profiles"`
 	APIBaseURL                          string                   `json:"api_base_url"`
 	ContactInfo                         string                   `json:"contact_info"`
 	DocURL                              string                   `json:"doc_url"`
@@ -667,6 +671,12 @@ type PreviewEmailTemplateRequest struct {
 type EmailTemplatePreviewResponse struct {
 	Subject string `json:"subject"`
 	HTML    string `json:"html"`
+}
+
+// SiteSettings is the admin response payload for the dual frontend site switch.
+type SiteSettings struct {
+	ActiveSite   string                        `json:"active_site"`
+	SiteProfiles map[string]service.SiteProfile `json:"site_profiles"`
 }
 
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.

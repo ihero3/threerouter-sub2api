@@ -11,6 +11,7 @@ import type {
   CustomMenuItem,
   LoginAgreementDocument,
   NotifyEmailEntry,
+  SiteProfile,
 } from "@/types";
 import type { RechargeBonusTier } from "@/utils/rechargeBonus";
 
@@ -512,6 +513,8 @@ export interface SystemSettings {
   site_name: string;
   site_logo: string;
   site_subtitle: string;
+  active_site?: string;
+  site_profiles?: Record<string, SiteProfile>;
   api_base_url: string;
   contact_info: string;
   doc_url: string;
@@ -1132,6 +1135,32 @@ export interface UpdateSettingsRequest {
  */
 export async function getSettings(): Promise<SystemSettings> {
   const { data } = await apiClient.get<SystemSettings>("/admin/settings");
+  return data;
+}
+
+export interface SiteSettings {
+  active_site: string;
+  site_profiles: Record<string, SiteProfile>;
+}
+
+/**
+ * Get dual-frontend site configuration (global switch + per-site branding)
+ */
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const { data } = await apiClient.get<SiteSettings>("/admin/settings/site");
+  return data;
+}
+
+/**
+ * Update dual-frontend site configuration
+ */
+export async function updateSiteSettings(
+  settings: SiteSettings,
+): Promise<SiteSettings> {
+  const { data } = await apiClient.put<SiteSettings>(
+    "/admin/settings/site",
+    settings,
+  );
   return data;
 }
 

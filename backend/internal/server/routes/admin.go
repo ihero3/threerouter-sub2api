@@ -724,6 +724,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		// 双前台站点切换（全局开关 + 两套品牌内容）
+		adminSettings.GET("/site", h.Admin.Setting.GetSiteSettings)
+		adminSettings.PUT("/site", h.Admin.Setting.UpdateSiteSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)

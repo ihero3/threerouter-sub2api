@@ -167,6 +167,8 @@ type SystemSettings struct {
 	SiteName                    string
 	SiteLogo                    string
 	SiteSubtitle                string
+	ActiveSite                  string
+	SiteProfiles                string // JSON object keyed by site id (site_a / site_b)
 	APIBaseURL                  string
 	ContactInfo                 string
 	DocURL                      string
@@ -376,6 +378,8 @@ type PublicSettings struct {
 	SiteName                            string
 	SiteLogo                            string
 	SiteSubtitle                        string
+	ActiveSite                          string
+	SiteProfiles                        map[string]SiteProfile
 	APIBaseURL                          string
 	ContactInfo                         string
 	DocURL                              string

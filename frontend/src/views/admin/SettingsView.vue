@@ -44,6 +44,11 @@
           </nav>
         </div>
 
+        <!-- Tab: Sites — 双前台站点切换 -->
+        <div v-show="activeTab === 'sites'" class="space-y-6">
+          <SiteSettingsPanel />
+        </div>
+
         <!-- Tab: Security — Admin API Key -->
         <div v-show="activeTab === 'security'" class="space-y-6">
           <AdminAccessKeysSettings />
@@ -10198,6 +10203,7 @@ import {
   stepUpBlockReason,
 } from "@/composables/useStepUp";
 import AdminAccessKeysSettings from "@/components/admin/settings/AdminAccessKeysSettings.vue";
+import SiteSettingsPanel from "@/components/admin/SiteSettingsPanel.vue";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -10245,6 +10251,7 @@ const paymentMethodsHref = computed(() =>
 
 type SettingsTab =
   | "general"
+  | "sites"
   | "agreement"
   | "features"
   | "security"
@@ -10256,6 +10263,7 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "sites" as SettingsTab, icon: "globe" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },

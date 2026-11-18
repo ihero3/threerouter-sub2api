@@ -279,6 +279,21 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface SitePromoConfig {
+  badge: string
+  title: string
+  cta: string
+  items: string[]
+}
+
+export interface SiteProfile {
+  name: string
+  logo: string
+  subtitle: string
+  footer_html: string
+  promo: SitePromoConfig
+}
+
 export interface LoginAgreementDocument {
   id: string
   title: string
@@ -315,6 +330,8 @@ export interface PublicSettings {
   site_name: string
   site_logo: string
   site_subtitle: string
+  active_site?: string
+  site_profiles?: Record<string, SiteProfile>
   api_base_url: string
   contact_info: string
   doc_url: string
