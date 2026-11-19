@@ -31,6 +31,17 @@ func TestSharedIPRiskUserIDsSQL_Contracts(t *testing.T) {
 	}
 }
 
+// TestGetSharedUsageIPsSQLWindowIsTenDays 锁住管理端展示口径与处罚扫描一致：
+// 展示 SQL 必须用 10 天窗口，否则会出现「处罚按 10 天、展示按 180 天」的口径分裂。
+func TestGetSharedUsageIPsSQLWindowIsTenDays(t *testing.T) {
+	if !strings.Contains(sharedUsageIPsSQL, "interval '10 days'") {
+		t.Fatal("GetSharedUsageIPs SQL must use a 10-day window to match the risk scan")
+	}
+	if strings.Contains(sharedUsageIPsSQL, "interval '180 days'") {
+		t.Fatal("GetSharedUsageIPs SQL still references the old 180-day window")
+	}
+}
+
 func TestListUserIDsBySharedIP_NoExecutorReturnsError(t *testing.T) {
 	// 无 sql 执行器时返回错误而不是 panic。
 	r := &usageLogRepository{}

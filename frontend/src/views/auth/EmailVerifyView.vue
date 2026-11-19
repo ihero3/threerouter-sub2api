@@ -232,7 +232,7 @@ import {
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode } from '@/utils/apiError'
-import { getDeviceFingerprint } from '@/utils/deviceFingerprint'
+import { getDeviceFingerprintSignals } from '@/utils/deviceFingerprint'
 import { getHoneypotValue } from '@/utils/honeypot'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
@@ -348,6 +348,11 @@ const captchaEnabled = computed(
     (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
 )
 const clickCaptchaToken = ref<string>('')
+const captchaProofToken = ref<string>('')
+const deviceFingerprint = ref<string>('')
+const deviceSignals = ref<
+  { ua: string; tz: string; lang: string; screen: string; canvas: string } | undefined
+>(undefined)
 
 const errors = ref({
   code: '',
@@ -388,6 +393,9 @@ onMounted(async () => {
       promoCode.value = registerData.promo_code || ''
       invitationCode.value = registerData.invitation_code || ''
       clickCaptchaToken.value = registerData.click_captcha_token || ''
+      captchaProofToken.value = registerData.captcha_proof_token || ''
+      deviceFingerprint.value = registerData.device_fingerprint || ''
+      deviceSignals.value = registerData.device_signals || undefined
       affCode.value = registerData.aff_code || loadAffiliateReferralCode()
       pendingAuthToken.value = registerData.pending_auth_token || activePendingSession?.token || ''
       pendingAuthTokenField.value = registerData.pending_auth_token_field || activePendingSession?.token_field || 'pending_auth_token'
@@ -591,9 +599,11 @@ async function sendCode(): Promise<void> {
       return
     }
 
+    const fingerprintPayload = currentDeviceFingerprintPayload()
     const requestPayload = {
       email: email.value,
-      device_fingerprint: getDeviceFingerprint() || undefined,
+      device_fingerprint: fingerprintPayload.device_fingerprint || undefined,
+      device_signals: fingerprintPayload.device_signals,
       click_captcha_token: clickCaptchaToken.value || undefined,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       company_website: getHoneypotValue() || undefined,
@@ -616,6 +626,10 @@ async function sendCode(): Promise<void> {
       ? await sendPendingOAuthVerifyCode(requestPayload)
       : await sendVerifyCode(requestPayload)
     requestSucceeded = true
+
+    if (!isPendingOAuthFlow() && response.captcha_proof_token) {
+      persistCaptchaProofToken(response.captcha_proof_token)
+    }
 
     const pendingSendCodeSession = isPendingOAuthFlow()
       ? getPendingOAuthSendCodeSessionResponse(response as PendingOAuthSendVerifyCodeResponse)
@@ -651,6 +665,30 @@ async function sendCode(): Promise<void> {
       }
     }
     isSendingCode.value = false
+  }
+}
+
+function currentDeviceFingerprintPayload() {
+  if (deviceFingerprint.value && deviceSignals.value) {
+    return { device_fingerprint: deviceFingerprint.value, device_signals: deviceSignals.value }
+  }
+  const payload = getDeviceFingerprintSignals()
+  deviceFingerprint.value = payload.device_fingerprint
+  deviceSignals.value = payload.device_signals
+  return payload
+}
+
+function persistCaptchaProofToken(token: string): void {
+  captchaProofToken.value = token || ''
+  const registerDataStr = sessionStorage.getItem('register_data')
+  if (!registerDataStr) return
+
+  try {
+    const registerData = JSON.parse(registerDataStr) as Record<string, unknown>
+    registerData.captcha_proof_token = token
+    sessionStorage.setItem('register_data', JSON.stringify(registerData))
+  } catch {
+    // Invalid registration state is handled by the existing onMounted parser.
   }
 }
 
@@ -728,10 +766,13 @@ async function handleVerify(): Promise<void> {
 
   try {
     if (isPendingOAuthFlow()) {
+      const fingerprintPayload = currentDeviceFingerprintPayload()
       const payload: Record<string, unknown> = {
         email: email.value,
         password: password.value,
         verify_code: verifyCode.value.trim(),
+        device_fingerprint: fingerprintPayload.device_fingerprint || undefined,
+        device_signals: fingerprintPayload.device_signals,
         ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) &&
         createAccountTurnstileToken.value
           ? { turnstile_token: createAccountTurnstileToken.value }
@@ -773,12 +814,15 @@ async function handleVerify(): Promise<void> {
       authStore.clearPendingAuthSession?.()
     } else {
       // Register with verification code
+      const fingerprintPayload = currentDeviceFingerprintPayload()
       await authStore.register({
         email: email.value,
         password: password.value,
         verify_code: verifyCode.value.trim(),
-        device_fingerprint: getDeviceFingerprint() || undefined,
+        device_fingerprint: fingerprintPayload.device_fingerprint || undefined,
+        device_signals: fingerprintPayload.device_signals,
         click_captcha_token: clickCaptchaToken.value || undefined,
+        captcha_proof_token: captchaProofToken.value || undefined,
         turnstile_token:
           turnstileEnabled.value || aliyunCaptchaEnabled.value
             ? initialTurnstileToken.value || undefined

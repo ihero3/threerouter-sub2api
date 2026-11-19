@@ -66,16 +66,18 @@ type bindPendingOAuthLoginRequest struct {
 }
 
 type createPendingOAuthAccountRequest struct {
-	Email                 string `json:"email" binding:"required,email"`
-	VerifyCode            string `json:"verify_code,omitempty"`
-	Password              string `json:"password" binding:"required,min=8,max=72"`
-	TurnstileToken        string `json:"turnstile_token,omitempty"`
-	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
-	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
-	InvitationCode        string `json:"invitation_code,omitempty"`
-	AffCode               string `json:"aff_code,omitempty"`
-	AdoptDisplayName      *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar           *bool  `json:"adopt_avatar,omitempty"`
+	Email                 string                            `json:"email" binding:"required,email"`
+	VerifyCode            string                            `json:"verify_code,omitempty"`
+	Password              string                            `json:"password" binding:"required,min=8,max=72"`
+	TurnstileToken        string                            `json:"turnstile_token,omitempty"`
+	TencentCaptchaTicket  string                            `json:"tencent_captcha_ticket,omitempty"`
+	TencentCaptchaRandstr string                            `json:"tencent_captcha_randstr,omitempty"`
+	InvitationCode        string                            `json:"invitation_code,omitempty"`
+	AffCode               string                            `json:"aff_code,omitempty"`
+	AdoptDisplayName      *bool                             `json:"adopt_display_name,omitempty"`
+	AdoptAvatar           *bool                             `json:"adopt_avatar,omitempty"`
+	DeviceFingerprint     string                            `json:"device_fingerprint,omitempty"`
+	DeviceSignals         *service.DeviceFingerprintSignals `json:"device_signals,omitempty"`
 }
 
 type sendPendingOAuthVerifyCodeRequest struct {
@@ -1775,20 +1777,35 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	// Pending OAuth 建号与邮箱注册同口径：设备指纹（缺失时 UA 降级桶）+ IP 小时限 + IP 一致性。
+	clientIP := middleware2.SecurityClientIP(c)
+	registrationCtx, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint, req.DeviceSignals)
+	if !ok {
+		return
+	}
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
+	}
+	if err := h.authService.CheckRegistrationIPConsistency(c.Request.Context(), email, clientIP); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, middleware2.SecurityClientIP(c)); err != nil {
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, clientIP); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	tokenPair, user, err := h.authService.RegisterOAuthEmailAccount(
-		c.Request.Context(),
+		registrationCtx,
 		email,
 		req.Password,
 		strings.TrimSpace(req.VerifyCode),
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
-		middleware2.SecurityClientIP(c),
+		clientIP,
 	)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {
@@ -1808,6 +1825,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.authService.RecordRegistrationDeviceFingerprint(registrationCtx, user.ID, clientIP)
 
 	rollbackCreatedUser := func(originalErr error) bool {
 		if user == nil || user.ID <= 0 {

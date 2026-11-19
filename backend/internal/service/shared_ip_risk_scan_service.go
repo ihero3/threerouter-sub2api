@@ -14,7 +14,7 @@ import (
 //
 // 与 IP 一致性风控（一个用户用了几个 IP）是两个正交维度：
 //   - IP 一致性：按用户维度统计窗口内客户端 IP 数，命中打 ip_suspect / 禁用 / 扣钱；
-//   - 本扫描：按 IP 维度统计近 180 天关联的不同用户数，命中则把这些用户批量打
+//   - 本扫描：按 IP 维度统计近 10 天关联的不同用户数，命中则把这些用户批量打
 //     suspect（进人工复核队列）+ 扣减到 floor。
 //
 // 阈值与豁免：
@@ -38,8 +38,9 @@ const (
 	sharedIPRiskLeaderLockTTL = 6 * time.Minute
 	// sharedIPRiskMinUsers 触发处罚的「同一 IP 关联最少不同用户数」。
 	sharedIPRiskMinUsers = 5
-	// sharedIPRiskWindow 统计窗口：与 GetSharedUsageIPs 的展示口径一致（180 天）。
-	sharedIPRiskWindow = 180 * 24 * time.Hour
+	// sharedIPRiskWindow 统计窗口：与 GetSharedUsageIPs 的展示口径一致（10 天）。
+	// 最近一次调整：180→10 天，缩短窗口以减少公司/NAT 长期累积命中。
+	sharedIPRiskWindow = 10 * 24 * time.Hour
 	// sharedIPRiskReason 写入 risk_reasons 的原因码。
 	sharedIPRiskReason = "shared_ip_abuse"
 )

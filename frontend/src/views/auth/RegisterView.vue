@@ -417,7 +417,7 @@ import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import RegistrationCaptcha from '@/components/RegistrationCaptcha.vue'
-import { getDeviceFingerprint } from '@/utils/deviceFingerprint'
+import { getDeviceFingerprintSignals } from '@/utils/deviceFingerprint'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   buildOAuthLoginStartURL,
@@ -1060,7 +1060,8 @@ async function handleRegister(): Promise<void> {
   // Clear previous error
   errorMessage.value = ''
   // 同一会话内采集一次，保证发码与最终注册使用同一个指纹
-  const deviceFingerprint = getDeviceFingerprint() || undefined
+  const fingerprintPayload = getDeviceFingerprintSignals()
+  const deviceFingerprint = fingerprintPayload.device_fingerprint || undefined
   alreadyRegistered.value = false
 
   // Validate form
@@ -1154,6 +1155,7 @@ async function handleRegister(): Promise<void> {
           invitation_code: formData.invitation_code || undefined,
           company_website: getHoneypotValue() || undefined,
           device_fingerprint: deviceFingerprint,
+          device_signals: fingerprintPayload.device_signals,
           ...(affCode ? { aff_code: affCode } : {})
         })
       )
@@ -1176,6 +1178,7 @@ async function handleRegister(): Promise<void> {
       invitation_code: formData.invitation_code || undefined,
       company_website: getHoneypotValue() || undefined,
       device_fingerprint: deviceFingerprint,
+      device_signals: fingerprintPayload.device_signals,
       ...(affCode ? { aff_code: affCode } : {})
     })
     clearAffiliateReferralCode()

@@ -368,23 +368,39 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		return
 	}
 
+	// OAuth 邮箱注册同样复用注册侧风控：设备指纹（缺失时用 UA 降级桶）+
+	// 同 IP 小时限 + 同邮箱 IP 一致性，避免第三方邮箱成为绕过入口。
+	clientIP := middleware2.SecurityClientIP(c)
+	registrationCtx, ok := h.registrationDeviceFingerprintContext(c, "", nil)
+	if !ok {
+		return
+	}
+	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
+	}
+	if err := h.authService.CheckRegistrationIPConsistency(c.Request.Context(), strings.TrimSpace(session.ResolvedEmail), clientIP); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	affiliateCode := strings.TrimSpace(req.AffCode)
 	if affiliateCode == "" {
 		affiliateCode = pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code")
 	}
 
 	tokenPair, user, err := h.authService.RegisterVerifiedOAuthEmailAccount(
-		c.Request.Context(),
+		registrationCtx,
 		strings.TrimSpace(session.ResolvedEmail),
 		req.Password,
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
-		middleware2.SecurityClientIP(c),
+		clientIP,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.authService.RecordRegistrationDeviceFingerprint(registrationCtx, user.ID, clientIP)
 
 	client := h.entClient()
 	if client == nil {

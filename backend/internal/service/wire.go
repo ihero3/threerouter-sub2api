@@ -1059,6 +1059,7 @@ var ProviderSet = wire.NewSet(
 	// 自建验证码服务经此 provider 装配 ASN 可选依赖（setter 注入，不改构造函数签名）。
 	NewASNRiskService,
 	ProvideRegistrationClickCaptchaService,
+	NewRegistrationCaptchaProofService,
 	ProvideComplianceService,
 	ProvidePolicyTemplateService,
 	ProvideComplianceMappingService,

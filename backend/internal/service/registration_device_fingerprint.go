@@ -3,13 +3,17 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf16"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/locallimit"
 )
 
 // 注册设备指纹风控。
@@ -32,9 +36,9 @@ const (
 	SettingKeyRegistrationDeviceFingerprintLimit = "registration_device_fingerprint_limit"
 
 	RegistrationDeviceFingerprintLimitDefault = 3
-	RegistrationDeviceFingerprintLimitMin    = 1
-	RegistrationDeviceFingerprintLimitMax    = 50
-	RegistrationDeviceFingerprintWindow      = 24 * time.Hour
+	RegistrationDeviceFingerprintLimitMin     = 1
+	RegistrationDeviceFingerprintLimitMax     = 50
+	RegistrationDeviceFingerprintWindow       = 24 * time.Hour
 
 	registrationDeviceFingerprintClientMinLength = 16
 	registrationDeviceFingerprintClientMaxLength = 64
@@ -44,6 +48,75 @@ var ErrRegistrationDeviceFingerprintLimit = infraerrors.TooManyRequests(
 	"REGISTRATION_DEVICE_LIMIT",
 	"too many accounts registered from this device, please try again later",
 )
+
+var (
+	// ErrRegistrationDeviceSignalMismatch UA 分字段哈希与请求头不一致。
+	ErrRegistrationDeviceSignalMismatch = infraerrors.TooManyRequests(
+		"REGISTRATION_DEVICE_SIGNAL_MISMATCH",
+		"device verification does not match this browser; reload the page and try again",
+	)
+	// ErrRegistrationDeviceSignalEntropy 同一 IP 短窗口内出现过多不同设备信号，判定为随机化。
+	ErrRegistrationDeviceSignalEntropy = infraerrors.TooManyRequests(
+		"REGISTRATION_DEVICE_SIGNAL_ENTROPY",
+		"too many device variations from this network; please try again later",
+	)
+)
+
+// DeviceFingerprintSignals 前端分字段上报的信号摘要（均为 32 位 hex）。
+// 服务端只校验 UA 与请求头一致，并把整组摘要当作关联/熵检测信号，不还原原始值。
+type DeviceFingerprintSignals struct {
+	UA     string `json:"ua"`
+	TZ     string `json:"tz"`
+	Lang   string `json:"lang"`
+	Screen string `json:"screen"`
+	Canvas string `json:"canvas"`
+}
+
+const (
+	deviceSignalEntropyWindow    = 10 * time.Minute
+	deviceSignalEntropyThreshold = 8
+	deviceSignalEntropyMaxKeys   = 4096
+)
+
+type deviceSignalWindow struct {
+	seen      map[string]struct{}
+	expiresAt time.Time
+}
+
+type deviceSignalEntropyTracker struct {
+	mu      sync.Mutex
+	windows map[string]*deviceSignalWindow
+}
+
+func (t *deviceSignalEntropyTracker) observe(ip, signalKey string) bool {
+	if t == nil || strings.TrimSpace(ip) == "" {
+		return true
+	}
+	now := time.Now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.windows == nil {
+		t.windows = make(map[string]*deviceSignalWindow)
+	}
+	if len(t.windows) >= deviceSignalEntropyMaxKeys {
+		for key, window := range t.windows {
+			if now.After(window.expiresAt) {
+				delete(t.windows, key)
+			}
+		}
+		if len(t.windows) >= deviceSignalEntropyMaxKeys {
+			return true
+		}
+	}
+	key := hashRegistrationProofPart(ip)
+	window := t.windows[key]
+	if window == nil || now.After(window.expiresAt) {
+		window = &deviceSignalWindow{seen: make(map[string]struct{}), expiresAt: now.Add(deviceSignalEntropyWindow)}
+		t.windows[key] = window
+	}
+	window.seen[signalKey] = struct{}{}
+	return len(window.seen) < deviceSignalEntropyThreshold
+}
 
 // RegistrationDeviceFingerprintRepository 是注册设备指纹记录的持久化能力。
 // 与 RegistrationIPQuotaRepository 一样采用可选接口：单测桩不实现时风控自动跳过。
@@ -139,6 +212,66 @@ func (s *AuthService) registrationDeviceFingerprintRepo() (RegistrationDeviceFin
 	return repo, ok
 }
 
+// fnv1aDeviceSignal 与前端 utils/deviceFingerprint.ts 的 FNV-1a 实现逐字节对齐，
+// 使用 UTF-16 code unit 的低 8 位（与 JS charCodeAt(i) & 0xff 一致）。
+func fnv1aDeviceSignal(input string, seed uint32) uint32 {
+	hash := seed
+	for _, unit := range utf16.Encode([]rune(input)) {
+		hash ^= uint32(unit & 0xff)
+		hash *= 0x01000193
+	}
+	return hash
+}
+
+// HashDeviceFingerprintSignal 生成单个前端信号摘要（32 位 hex）。
+func HashDeviceFingerprintSignal(value string) string {
+	seeds := [...]uint32{0x811c9dc5, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35}
+	var b strings.Builder
+	for _, seed := range seeds {
+		part := strconv.FormatUint(uint64(fnv1aDeviceSignal(value, seed)), 16)
+		for len(part) < 8 {
+			part = "0" + part
+		}
+		b.WriteString(part)
+	}
+	return b.String()
+}
+
+// DeviceFingerprintSignalKey 把一组分字段摘要压成熵检测用的关联键。
+func DeviceFingerprintSignalKey(signals *DeviceFingerprintSignals) string {
+	if signals == nil {
+		return ""
+	}
+	raw := strings.ToLower(strings.Join([]string{
+		signals.UA, signals.TZ, signals.Lang, signals.Screen, signals.Canvas,
+	}, "|"))
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
+// ValidateRegistrationDeviceSignals 校验 UA 摘要与请求头一致，并对同一 IP
+// 短窗口内的随机化做熵检测。signals 为空时保持旧客户端兼容，不新增拦截。
+func (s *AuthService) ValidateRegistrationDeviceSignals(ctx context.Context, signals *DeviceFingerprintSignals, requestUA, clientIP string) error {
+	_ = ctx
+	if signals == nil {
+		return nil
+	}
+	expectedUA := HashDeviceFingerprintSignal(requestUA)
+	if len(signals.UA) != len(expectedUA) || subtle.ConstantTimeCompare([]byte(signals.UA), []byte(expectedUA)) != 1 {
+		return ErrRegistrationDeviceSignalMismatch
+	}
+	if s == nil {
+		return nil
+	}
+	s.deviceSignalEntropyOnce.Do(func() {
+		s.deviceSignalEntropy = &deviceSignalEntropyTracker{windows: make(map[string]*deviceSignalWindow)}
+	})
+	if !s.deviceSignalEntropy.observe(clientIP, DeviceFingerprintSignalKey(signals)) {
+		return ErrRegistrationDeviceSignalEntropy
+	}
+	return nil
+}
+
 // RegistrationDeviceFingerprintLimit 返回当前生效阈值（0 = 关闭）。
 func (s *AuthService) RegistrationDeviceFingerprintLimit(ctx context.Context) int {
 	if s == nil || s.settingService == nil {
@@ -165,7 +298,16 @@ func (s *AuthService) EnforceRegistrationDeviceFingerprint(ctx context.Context, 
 
 	count, err := repo.CountRegistrationDeviceFingerprints(ctx, fingerprint, time.Now().Add(-RegistrationDeviceFingerprintWindow))
 	if err != nil {
-		slog.Warn("registration.device_fingerprint_count_failed", "error", err)
+		// 计数存储故障时不全放行：退化为进程内窗口，避免攻击诱导 DB 异常后批量绕过。
+		slog.Warn("registration.device_fingerprint_count_failed, using local fallback", "error", err)
+		s.deviceFingerprintOnce.Do(func() {
+			if s.deviceFingerprintFallback == nil {
+				s.deviceFingerprintFallback = locallimit.New(8192)
+			}
+		})
+		if !s.deviceFingerprintFallback.Allow("registration-device:"+fingerprint, limit, RegistrationDeviceFingerprintWindow, time.Now()) {
+			return ErrRegistrationDeviceFingerprintLimit
+		}
 		return nil
 	}
 	if count >= limit {

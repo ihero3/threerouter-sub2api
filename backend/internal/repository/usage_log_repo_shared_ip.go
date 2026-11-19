@@ -11,7 +11,7 @@ import (
 // 与 GetSharedUsageIPs 同源（同一张 usage_logs、同一窗口），但直接返回用户 ID 集合
 // 供周期扫描批量打标 + 扣减，而不是给管理端做展示标记。分层设计：
 //   - $1: 最少不同用户数（运营尺度，当前 5）
-//   - $2: 统计时间窗口起点（如 now()-180d）
+//   - $2: 统计时间窗口起点（如 now()-10d）
 //
 // 刻意 DISTINCT：同一用户可能用多个命中 IP，也只处理一次。
 // 软删除用户排除，避免给已注销账号写标记/扣减。
@@ -50,7 +50,7 @@ func (r *usageLogRepository) ListUserIDsBySharedIP(ctx context.Context, minUsers
 		minUsers = 2
 	}
 	if window <= 0 {
-		window = 180 * 24 * time.Hour
+		window = 10 * 24 * time.Hour
 	}
 	since := time.Now().Add(-window)
 	rows, err := r.sql.QueryContext(ctx, sharedIPRiskUserIDsSQL, minUsers, since)

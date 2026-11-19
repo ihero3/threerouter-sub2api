@@ -190,11 +190,21 @@ export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequest
   turnstile_token?: string
 }
 
+export interface DeviceFingerprintSignalsPayload {
+  ua: string
+  tz: string
+  lang: string
+  screen: string
+  canvas: string
+}
+
 export interface RegisterRequest {
   email: string
   password: string
   verify_code?: string
   click_captcha_token?: string
+  /** 发码成功后服务端签发的一次性人机验证凭据，注册时必须回传 */
+  captcha_proof_token?: string
   turnstile_token?: string
   tencent_captcha_ticket?: string
   tencent_captcha_randstr?: string
@@ -205,6 +215,7 @@ export interface RegisterRequest {
   company_website?: string
   /** 设备指纹（UA/时区/语言/屏幕/canvas 摘要），用于关联跨 IP 批量注册 */
   device_fingerprint?: string
+  device_signals?: DeviceFingerprintSignalsPayload
 }
 
 /** 返利类型：invite=邀请返利（注册奖励），recharge=充值返利（充值/兑换按比例计提） */
@@ -255,11 +266,13 @@ export interface SendVerifyCodeRequest {
   company_website?: string
   /** 设备指纹，需与后续注册请求保持同值 */
   device_fingerprint?: string
+  device_signals?: DeviceFingerprintSignalsPayload
 }
 
 export interface SendVerifyCodeResponse {
   message: string
   countdown: number
+  captcha_proof_token?: string
 }
 
 export interface CustomMenuItem {

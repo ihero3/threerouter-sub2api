@@ -14,6 +14,14 @@ type fakeSharedIPLister struct {
 	err error
 }
 
+// TestSharedIPRiskWindowIsTenDays 锁住共享 IP 统计窗口尺度：从 180 天收紧到 10 天，
+// 避免公司/NAT 账号长期累积命中。改回旧值会让本测试变红。
+func TestSharedIPRiskWindowIsTenDays(t *testing.T) {
+	if sharedIPRiskWindow != 10*24*time.Hour {
+		t.Fatalf("sharedIPRiskWindow = %s, want 10 days", sharedIPRiskWindow)
+	}
+}
+
 func (f *fakeSharedIPLister) ListUserIDsBySharedIP(_ context.Context, _ int, _ time.Duration) ([]int64, error) {
 	return f.ids, f.err
 }

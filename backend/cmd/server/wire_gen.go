@@ -104,6 +104,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	// 复用 affiliateService 的只升不降打标与缓存失效能力。
 	ipConsistencyService.SetNewUserRiskMarker(affiliateService)
 	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService, mcpoAuthService, ipConsistencyService)
+	registrationCaptchaProofCache := repository.NewRegistrationCaptchaProofCache(redisClient)
+	registrationCaptchaProofService := service.NewRegistrationCaptchaProofService(registrationCaptchaProofCache)
+	authService.SetRegistrationCaptchaProofService(registrationCaptchaProofService)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)

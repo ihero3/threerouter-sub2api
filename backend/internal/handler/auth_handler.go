@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/locallimit"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -21,15 +22,17 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
-	cfg                  *config.Config
-	authService          *service.AuthService
-	userService          *service.UserService
-	settingSvc           *service.SettingService
-	promoService         *service.PromoService
-	redeemService        *service.RedeemService
-	totpService          *service.TotpService
-	userAttributeService *service.UserAttributeService
-	clickCaptcha         *service.RegistrationClickCaptchaService
+	cfg                          *config.Config
+	authService                  *service.AuthService
+	userService                  *service.UserService
+	settingSvc                   *service.SettingService
+	promoService                 *service.PromoService
+	redeemService                *service.RedeemService
+	totpService                  *service.TotpService
+	userAttributeService         *service.UserAttributeService
+	clickCaptcha                 *service.RegistrationClickCaptchaService
+	registrationIPHourlyFallback *locallimit.Limiter
+	registrationIPFallbackOnce   sync.Once
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
@@ -43,14 +46,15 @@ func (h *AuthHandler) SetRegistrationClickCaptchaService(svc *service.Registrati
 // NewAuthHandler creates a new AuthHandler
 func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, redeemService *service.RedeemService, totpService *service.TotpService, userAttributeService *service.UserAttributeService) *AuthHandler {
 	return &AuthHandler{
-		cfg:                  cfg,
-		authService:          authService,
-		userService:          userService,
-		settingSvc:           settingService,
-		promoService:         promoService,
-		redeemService:        redeemService,
-		totpService:          totpService,
-		userAttributeService: userAttributeService,
+		cfg:                          cfg,
+		authService:                  authService,
+		userService:                  userService,
+		settingSvc:                   settingService,
+		promoService:                 promoService,
+		redeemService:                redeemService,
+		totpService:                  totpService,
+		userAttributeService:         userAttributeService,
+		registrationIPHourlyFallback: locallimit.New(8192),
 	}
 }
 
@@ -59,17 +63,19 @@ type RegisterRequest struct {
 	Email string `json:"email" binding:"required,email"`
 	// 下限 8 位（NIST SP 800-63B 最低要求）；上限 72 字节是 bcrypt 硬限制，
 	// 超过会导致 HashPassword 直接报错并让注册返回 500。
-	Password              string `json:"password" binding:"required,min=8,max=72"`
-	VerifyCode            string `json:"verify_code"`
-	ClickCaptchaToken     string `json:"click_captcha_token"`
-	TurnstileToken        string `json:"turnstile_token"`
-	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
-	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
-	PromoCode             string `json:"promo_code"`      // 注册优惠码
-	InvitationCode        string `json:"invitation_code"` // 邀请码
-	AffCode               string `json:"aff_code"`        // 邀请返利码
-	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
-	DeviceFingerprint     string `json:"device_fingerprint"` // 前端设备摘要（UA/时区/语言/屏幕/canvas），服务端再混合 UA 哈希
+	Password              string                            `json:"password" binding:"required,min=8,max=72"`
+	VerifyCode            string                            `json:"verify_code"`
+	ClickCaptchaToken     string                            `json:"click_captcha_token"`
+	CaptchaProofToken     string                            `json:"captcha_proof_token"` // 发码阶段签发的一次性凭据
+	TurnstileToken        string                            `json:"turnstile_token"`
+	TencentCaptchaTicket  string                            `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string                            `json:"tencent_captcha_randstr"`
+	PromoCode             string                            `json:"promo_code"`         // 注册优惠码
+	InvitationCode        string                            `json:"invitation_code"`    // 邀请码
+	AffCode               string                            `json:"aff_code"`           // 邀请返利码
+	CompanyWebsite        string                            `json:"company_website"`    // 蜜罐：非空即拦截
+	DeviceFingerprint     string                            `json:"device_fingerprint"` // 前端设备摘要（UA/时区/语言/屏幕/canvas），服务端再混合 UA 哈希
+	DeviceSignals         *service.DeviceFingerprintSignals `json:"device_signals,omitempty"`
 }
 
 // honeypotFilled 蜜罐被自动填充：非空白即判定为脚本机器人。
@@ -85,19 +91,21 @@ func honeypotFilled(value string) bool {
 
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
-	Email                 string `json:"email" binding:"required,email"`
-	ClickCaptchaToken     string `json:"click_captcha_token"`
-	TurnstileToken        string `json:"turnstile_token"`
-	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
-	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
-	CompanyWebsite        string `json:"company_website"` // 蜜罐：非空即拦截
-	DeviceFingerprint     string `json:"device_fingerprint"` // 与注册接口同值，用于在发码前拦截同设备批量注册
+	Email                 string                            `json:"email" binding:"required,email"`
+	ClickCaptchaToken     string                            `json:"click_captcha_token"`
+	TurnstileToken        string                            `json:"turnstile_token"`
+	TencentCaptchaTicket  string                            `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string                            `json:"tencent_captcha_randstr"`
+	CompanyWebsite        string                            `json:"company_website"`    // 蜜罐：非空即拦截
+	DeviceFingerprint     string                            `json:"device_fingerprint"` // 与注册接口同值，用于在发码前拦截同设备批量注册
+	DeviceSignals         *service.DeviceFingerprintSignals `json:"device_signals,omitempty"`
 }
 
 // SendVerifyCodeResponse 发送验证码响应
 type SendVerifyCodeResponse struct {
-	Message   string `json:"message"`
-	Countdown int    `json:"countdown"` // 倒计时秒数
+	Message           string `json:"message"`
+	Countdown         int    `json:"countdown"` // 倒计时秒数
+	CaptchaProofToken string `json:"captcha_proof_token,omitempty"`
 }
 
 // LoginRequest represents the login request payload
@@ -235,12 +243,23 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 	if h == nil || h.authService == nil {
 		return true
 	}
+	limit := h.authService.GetRegistrationIPHourlyLimit(c.Request.Context())
 	count, err := h.authService.CountRecentRegistrationsByIP(c.Request.Context(), clientIP)
 	if err != nil {
-		slog.Warn("[Register] count recent registrations by IP failed", "ip", clientIP, "error", err)
+		// 计数存储故障时不再全放行：退化为进程内固定窗口，宁可保守也不给机器人空窗。
+		slog.Warn("[Register] count recent registrations by IP failed, using local fallback", "ip", clientIP, "error", err)
+		h.registrationIPFallbackOnce.Do(func() {
+			if h.registrationIPHourlyFallback == nil {
+				h.registrationIPHourlyFallback = locallimit.New(8192)
+			}
+		})
+		if !h.registrationIPHourlyFallback.Allow("registration-ip-hourly:"+clientIP, limit, time.Hour, time.Now()) {
+			response.ErrorFrom(c, service.ErrRegistrationIPHourlyLimit)
+			return false
+		}
 		return true
 	}
-	if count >= h.authService.GetRegistrationIPHourlyLimit(c.Request.Context()) {
+	if count >= limit {
 		response.ErrorFrom(c, service.ErrRegistrationIPHourlyLimit)
 		return false
 	}
@@ -252,10 +271,14 @@ func (h *AuthHandler) enforceRegistrationIPHourlyRisk(c *gin.Context, clientIP s
 //
 // 放在发码与注册两个入口之前：发码前拦截可避免攻击者消耗邮件额度与探测风控规则；
 // 注册入口复查可防止绕过前端直接调注册接口。
-func (h *AuthHandler) registrationDeviceFingerprintContext(c *gin.Context, clientFingerprint string) (context.Context, bool) {
+func (h *AuthHandler) registrationDeviceFingerprintContext(c *gin.Context, clientFingerprint string, signals *service.DeviceFingerprintSignals) (context.Context, bool) {
 	reqCtx := c.Request.Context()
 	if h == nil || h.authService == nil {
 		return reqCtx, true
+	}
+	if err := h.authService.ValidateRegistrationDeviceSignals(reqCtx, signals, c.Request.UserAgent(), middleware2.SecurityClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return nil, false
 	}
 	fingerprint, clientReported := service.BuildRegistrationDeviceFingerprint(clientFingerprint, c.Request.UserAgent())
 	if err := h.authService.EnforceRegistrationDeviceFingerprint(reqCtx, fingerprint, clientReported); err != nil {
@@ -263,6 +286,17 @@ func (h *AuthHandler) registrationDeviceFingerprintContext(c *gin.Context, clien
 		return nil, false
 	}
 	return service.WithRegistrationDeviceFingerprint(reqCtx, fingerprint), true
+}
+
+// restoreRegistrationProof 建号失败后归还一次性 proof，避免用户重新走发码。
+// 与点击验证码归还同口径：必须脱离请求上下文，客户端取消不会让归还静默失败。
+func (h *AuthHandler) restoreRegistrationProof(registrationCtx context.Context, token string, payload *service.RegistrationCaptchaProofPayload) {
+	if payload == nil || h == nil || h.authService == nil {
+		return
+	}
+	restoreCtx, restoreCancel := context.WithTimeout(context.WithoutCancel(registrationCtx), 3*time.Second)
+	_ = h.authService.RestoreRegistrationCaptchaProof(restoreCtx, token, payload)
+	restoreCancel()
 }
 
 // CheckRegistrationEmail 注册邮箱预检：规则校验 + 重复注册拦截，不发送验证码。
@@ -314,17 +348,38 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// 由 SessionBindingContext 中间件统一解析，避免与其他链路取值不一致。
 	clientIP := middleware2.SecurityClientIP(c)
 	// 设备指纹风控：与 IP 维度独立，专治代理池轮换出口 IP 的批量注册。
-	registrationCtx, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint)
+	registrationCtx, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint, req.DeviceSignals)
 	if !ok {
 		return
 	}
-	// 验证当前启用的验证码（邮箱验证码注册场景避免重复校验一次性票据）
-	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptchaForRegister(registrationCtx, proof, clientIP, req.VerifyCode); err != nil {
+	// 注册阶段校验发码时签发的一次性 proof token：不再根据客户端提交的
+	// verify_code 是否为空跳过第三方人机验证链路。
+	if err := h.authService.VerifyCaptchaForRegister(
+		registrationCtx,
+		req.CaptchaProofToken,
+		req.Email,
+		clientIP,
+		c.Request.UserAgent(),
+		req.DeviceFingerprint,
+	); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	if !h.enforceRegistrationIPHourlyRisk(c, clientIP) {
+		return
+	}
+
+	// 原子消费发码 proof，防止同一个 proof 并发注册多个账号。
+	consumedProof, err := h.authService.ConsumeRegistrationCaptchaProof(
+		registrationCtx,
+		req.CaptchaProofToken,
+		req.Email,
+		clientIP,
+		c.Request.UserAgent(),
+		req.DeviceFingerprint,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -335,6 +390,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		ipHash := service.HashFingerprint(clientIP, c.Request.UserAgent())
 		payload, err := h.clickCaptcha.ConsumeToken(registrationCtx, req.ClickCaptchaToken, ipHash, ipHash)
 		if err != nil {
+			h.restoreRegistrationProof(registrationCtx, req.CaptchaProofToken, consumedProof)
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -362,6 +418,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			_ = h.clickCaptcha.RestoreToken(restoreCtx, req.ClickCaptchaToken, consumedCaptcha)
 			restoreCancel()
 		}
+		h.restoreRegistrationProof(registrationCtx, req.CaptchaProofToken, consumedProof)
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -390,7 +447,7 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	clientIP := middleware2.SecurityClientIP(c)
 
 	// 发码前先做同设备注册数预检：命中后连验证码都不下发，避免消耗发信额度。
-	if _, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint); !ok {
+	if _, ok := h.registrationDeviceFingerprintContext(c, req.DeviceFingerprint, req.DeviceSignals); !ok {
 		return
 	}
 
@@ -426,9 +483,24 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
+	// 发码成功后签发一次性 proof：注册必须回传同一 token，且邮箱/可信 IP/UA/设备指纹匹配。
+	proofToken, err := h.authService.IssueRegistrationCaptchaProof(
+		c.Request.Context(),
+		req.Email,
+		clientIP,
+		c.Request.UserAgent(),
+		req.DeviceFingerprint,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	result.ProofToken = proofToken
+
 	response.Success(c, SendVerifyCodeResponse{
-		Message:   "Verification code sent successfully",
-		Countdown: result.Countdown,
+		Message:           "Verification code sent successfully",
+		Countdown:         result.Countdown,
+		CaptchaProofToken: result.ProofToken,
 	})
 }
 

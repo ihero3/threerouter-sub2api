@@ -12,12 +12,14 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/locallimit"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 
@@ -158,24 +160,29 @@ type JWTClaims struct {
 
 // AuthService 认证服务
 type AuthService struct {
-	entClient             *dbent.Client
-	userRepo              UserRepository
-	redeemRepo            RedeemCodeRepository
-	refreshTokenCache     RefreshTokenCache
-	cfg                   *config.Config
-	settingService        *SettingService
-	emailService          *EmailService
-	turnstileService      *TurnstileService
-	tencentCaptchaService *TencentCaptchaService
-	aliyunCaptchaService  *AliyunCaptchaService
-	emailQueueService     *EmailQueueService
-	promoService          *PromoService
-	affiliateService      *AffiliateService
-	defaultSubAssigner    DefaultSubscriptionAssigner
-	userPlatformQuotaRepo UserPlatformQuotaRepository
-	geoIPService          *GeoIPService
-	mcpGrantRevoker       MCPGrantRevoker
-	ipConsistency         *IPConsistencyService
+	entClient                 *dbent.Client
+	userRepo                  UserRepository
+	redeemRepo                RedeemCodeRepository
+	refreshTokenCache         RefreshTokenCache
+	cfg                       *config.Config
+	settingService            *SettingService
+	emailService              *EmailService
+	turnstileService          *TurnstileService
+	tencentCaptchaService     *TencentCaptchaService
+	aliyunCaptchaService      *AliyunCaptchaService
+	emailQueueService         *EmailQueueService
+	promoService              *PromoService
+	affiliateService          *AffiliateService
+	defaultSubAssigner        DefaultSubscriptionAssigner
+	userPlatformQuotaRepo     UserPlatformQuotaRepository
+	geoIPService              *GeoIPService
+	mcpGrantRevoker           MCPGrantRevoker
+	ipConsistency             *IPConsistencyService
+	registrationCaptchaProof  *RegistrationCaptchaProofService
+	deviceSignalEntropy       *deviceSignalEntropyTracker
+	deviceSignalEntropyOnce   sync.Once
+	deviceFingerprintFallback *locallimit.Limiter
+	deviceFingerprintOnce     sync.Once
 }
 
 type CaptchaProof struct {
@@ -277,6 +284,19 @@ func (s *AuthService) SetMCPGrantRevoker(revoker MCPGrantRevoker) {
 // 通过 setter 注入（而非构造器参数），保持 NewAuthService 与既有测试的兼容性。
 func (s *AuthService) SetIPConsistencyService(ipConsistency *IPConsistencyService) {
 	s.ipConsistency = ipConsistency
+}
+
+// CheckRegistrationIPConsistency 供 OAuth 等非邮箱码注册路径复用注册 IP 一致性预检。
+func (s *AuthService) CheckRegistrationIPConsistency(ctx context.Context, email, clientIP string) error {
+	if s == nil || s.ipConsistency == nil {
+		return nil
+	}
+	return s.ipConsistency.CheckRegistration(ctx, email, clientIP)
+}
+
+// SetRegistrationCaptchaProofService 注入发码阶段人机验证凭据服务。
+func (s *AuthService) SetRegistrationCaptchaProofService(proof *RegistrationCaptchaProofService) {
+	s.registrationCaptchaProof = proof
 }
 
 // Register 用户注册，返回token和用户
@@ -481,7 +501,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 
 // SendVerifyCodeResult 发送验证码返回结果
 type SendVerifyCodeResult struct {
-	Countdown int `json:"countdown"` // 倒计时秒数
+	Countdown  int    `json:"countdown"`                     // 倒计时秒数
+	ProofToken string `json:"captcha_proof_token,omitempty"` // 发码阶段人机验证成功后签发的一次性凭据
 }
 
 // SendVerifyCode 发送邮箱验证码（同步方式）
@@ -609,15 +630,18 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	}, nil
 }
 
-// VerifyCaptchaForRegister 在注册场景下验证当前启用的验证码。
-// 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成验证码校验，
-// 此处跳过二次校验，避免一次性 token 在注册提交时重复使用导致误报失败。
-func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, proof CaptchaProof, remoteIP, verifyCode string) error {
-	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate captcha check on register")
+// VerifyCaptchaForRegister 注册阶段校验发码时签发的一次性 proof token。
+// 不再根据客户端提交的 verify_code 是否为空跳过校验：邮箱验证开启时，注册必须
+// 携带发码接口返回的 proof token，且邮箱/可信 IP/UA/设备指纹哈希全部匹配。
+func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, proofToken, email, remoteIP, userAgent, deviceFingerprint string) error {
+	if s == nil || s.settingService == nil || !s.IsEmailVerifyEnabled(ctx) {
 		return nil
 	}
-	return s.VerifyCaptcha(ctx, proof, remoteIP)
+	if s.registrationCaptchaProof == nil {
+		return ErrRegistrationCaptchaProofUnavailable
+	}
+	_, err := s.registrationCaptchaProof.Validate(ctx, proofToken, email, remoteIP, userAgent, deviceFingerprint)
+	return err
 }
 
 func (s *AuthService) VerifyCaptcha(ctx context.Context, proof CaptchaProof, remoteIP string) error {
@@ -714,8 +738,10 @@ func (s *AuthService) VerifyActionCaptchaIfEnabled(ctx context.Context, proof Ca
 }
 
 // VerifyTurnstileForRegister 保留旧内部接口，生产 handler 使用 VerifyCaptchaForRegister。
-func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
-	return s.VerifyCaptchaForRegister(ctx, CaptchaProof{TurnstileToken: token}, remoteIP, verifyCode)
+// 旧接口没有服务端 proof token 可校验，因此直接走第三方票据校验，不再根据
+// verify_code 是否为空跳过。
+func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, _ string) error {
+	return s.VerifyCaptcha(ctx, CaptchaProof{TurnstileToken: token}, remoteIP)
 }
 
 // VerifyTurnstile 保留旧内部接口，生产 handler 使用 VerifyCaptcha。

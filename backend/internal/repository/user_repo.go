@@ -927,7 +927,19 @@ func (r *userRepository) GetLatestUsedIPByUserIDs(ctx context.Context, userIDs [
 	return result, nil
 }
 
-// GetSharedUsageIPs 返回「最近 180 天内被 ≥5 个不同用户使用过」的客户端 IP 集合。
+// sharedUsageIPsSQL 管理端展示用：最近 10 天内被 ≥5 个不同用户使用过的 IP。
+// 窗口必须与处罚扫描 sharedIPRiskWindow 一致，抽成常量便于测试锁定口径。
+const sharedUsageIPsSQL = `
+	SELECT ip_address
+	FROM usage_logs
+	WHERE ip_address IS NOT NULL
+	  AND ip_address <> ''
+	  AND created_at >= now() - interval '10 days'
+	GROUP BY ip_address
+	HAVING COUNT(DISTINCT user_id) >= 5
+`
+
+// GetSharedUsageIPs 返回「最近 10 天内被 ≥5 个不同用户使用过」的客户端 IP 集合。
 // 用于管理端 Suspect 打标：某用户的最后使用 IP 若落在此集合，说明该 IP 同时被多个账号共用。
 // 阈值 5 为运营尺度（原为 2）；放宽以兼容公司/NAT/代理下的正常多人共用。
 // 注：usage_logs.ip_address 未建索引，海量数据下该全表聚合可能偏慢；如有性能压力，
@@ -938,17 +950,7 @@ func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool
 		return nil, fmt.Errorf("sql executor is not configured")
 	}
 
-	const query = `
-		SELECT ip_address
-		FROM usage_logs
-		WHERE ip_address IS NOT NULL
-		  AND ip_address <> ''
-		  AND created_at >= now() - interval '180 days'
-		GROUP BY ip_address
-		HAVING COUNT(DISTINCT user_id) >= 5
-	`
-
-	rows, err := r.sql.QueryContext(ctx, query)
+	rows, err := r.sql.QueryContext(ctx, sharedUsageIPsSQL)
 	if err != nil {
 		return nil, err
 	}
