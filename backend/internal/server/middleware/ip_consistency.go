@@ -52,8 +52,8 @@ func UserIPConsistencyGuard(ipConsistency *service.IPConsistencyService) gin.Han
 	}
 }
 
-// enforceNewUserFirstUseIP 校验新用户首调 IP 严格规则；返回 false 表示请求已中断。
-// 只在 API Key 鉴权链路调用，JWT 控制台链路不参与（该规则针对 API Key 首调）。
+// enforceNewUserFirstUseIP 校验新用户注册 IP 严格规则（注册后 3 分钟内任意一次调用）；
+// 返回 false 表示请求已中断。只在 API Key 鉴权链路调用，JWT 控制台链路不参与。
 func enforceNewUserFirstUseIP(
 	c *gin.Context,
 	ipConsistency *service.IPConsistencyService,
@@ -75,7 +75,7 @@ func enforceNewUserFirstUseIP(
 		return true
 	}
 	MarkIngressRejected(c, IngressRejectUserInactive)
-	message := "Account disabled: registration IP mismatch on first API request"
+	message := "Account disabled: registration IP mismatch detected shortly after signup"
 	if googleStyle {
 		abortWithGoogleError(c, http.StatusForbidden, message)
 	} else {
@@ -84,7 +84,7 @@ func enforceNewUserFirstUseIP(
 	return false
 }
 
-// NewUserFirstUseIPGuard 给「API Key 已从 context 取出」的鉴权链路补上首调 IP 校验。
+// NewUserFirstUseIPGuard 给「API Key 已从 context 取出」的鉴权链路补上新用户注册 IP 校验。
 // 用于 Google 风格鉴权（/v1beta、/antigravity/v1beta），避免在多个鉴权构造函数间反复传参。
 func NewUserFirstUseIPGuard(ipConsistency *service.IPConsistencyService, googleStyle bool) gin.HandlerFunc {
 	return func(c *gin.Context) {

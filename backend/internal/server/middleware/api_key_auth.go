@@ -183,7 +183,7 @@ func apiKeyAuthWithSubscription(
 		if !enforceUserIPConsistency(c, ipConsistency, apiKey.User.ID, apiKey.User.Role) {
 			return
 		}
-		// 新用户注册后 10 分钟内首次 API Key 调用：IP 与注册 IP 不一致即严格重罚。
+		// 新用户注册后 3 分钟内任意一次 API Key 调用：IP 与注册 IP 不一致即严格重罚。
 		if !enforceNewUserFirstUseIP(c, ipConsistency, apiKey.User, false) {
 			return
 		}

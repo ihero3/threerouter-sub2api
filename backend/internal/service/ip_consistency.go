@@ -85,15 +85,18 @@ const (
 	ipConsistencyRegisterKeyPrefix = "ipguard:register:"
 	// ipConsistencyPenaltyKeyPrefix 处罚幂等锁 Redis key 前缀
 	ipConsistencyPenaltyKeyPrefix = "ipguard:penalty:"
-	// ipConsistencyNewUserKeyPrefix 新用户「首调令牌」前缀。SETNX 成功者才有权判定，
-	// 天然同时保证「只罚第一次」与「不重复扣钱 / 不发重复邮件」。
-	ipConsistencyNewUserKeyPrefix = "ipguard:newuser:"
 	// ipConsistencyNewUserPenaltyKeyPrefix 新用户严格规则的独立扣减幂等键。
 	// 刻意与 3/4 IP 规则的 penalty key 分开，避免两条规则互相吞掉处罚。
+	// 该键同时承担「窗口内只罚一次」的职责（24h 冷却），防止同一用户在窗口内
+	// 多次换 IP 被重复扣钱 / 重复发信；与判定解耦，IP 一致的调用不占用它。
 	ipConsistencyNewUserPenaltyKeyPrefix = "ipguard:newuser-penalty:"
-	// newUserFirstUseWindow 新用户首调严格校验窗口：注册后 10 分钟内。
-	newUserFirstUseWindow = 10 * time.Minute
+	// newUserIPMismatchWindow 新用户注册后 IP 严格校验窗口：注册后 3 分钟内。
+	// 窗口内任意一次 API 调用的客户端 IP 与注册 IP 不一致即禁用 + 扣减 + 邮件；
+	// 超过窗口则回落到 CheckUser 的 3/4 IP 滚动窗口规则。
+	// 最近一次调整：10 分钟 → 3 分钟，且从「仅首调」改为「窗口内任意一次」（用户拍板 2026-11-20）。
+	newUserIPMismatchWindow = 3 * time.Minute
 	// newUserIPMismatchReason 真实 suspect 标记的原因码（进人工复核队列）。
+	// 保留旧值 new_user_first_use_ip_mismatch 以兼容历史数据，语义已扩展为窗口内任意一次。
 	newUserIPMismatchReason = "new_user_first_use_ip_mismatch"
 )
 
@@ -370,14 +373,18 @@ func (s *IPConsistencyService) SetNewUserRiskMarker(marker NewUserRiskMarker) {
 	s.newUserRiskMarker = marker
 }
 
-// CheckNewUserFirstUseIP 新用户注册后 10 分钟内「首次 API Key 调用」的 IP 严格校验。
+// CheckNewUserFirstUseIP 新用户注册后 3 分钟内「客户端 IP 与注册 IP 不一致」的严格校验。
 //
-// 与按窗口统计 IP 数量的 CheckUser 是两条独立规则：这里只看注册 IP 与首调 IP，
-// 不一致即 suspect + 禁用 + 扣减，并中断本次请求。返回非 nil 表示命中。
+// 与按窗口统计 IP 数量的 CheckUser 是两条独立规则：这里只比对注册 IP 与当前 IP，
+// 窗口内任意一次不一致即 suspect + 禁用 + 扣减 + 邮件，并中断本次请求。返回非 nil 表示命中。
 //
-// 「首次」由 Redis SETNX 令牌判定，不查 usage_logs：
-//   - 首调 IP 一致：消费令牌，窗口内后续换 IP 不追罚（符合「首次」语义）；
-//   - 首调 IP 不一致：消费令牌并执行处罚，后续请求因令牌已存在直接放行。
+// 与旧版「仅首调」语义的关键差异（用户拍板 2026-11-20）：
+//   - 旧版用 Redis SETNX 首调令牌，首调 IP 一致就消费令牌，之后换 IP 不追罚；
+//   - 新版不消费任何令牌，窗口内每次调用都比对，第一次出现不一致就命中。
+//
+// 「只罚一次」由独立的扣减幂等键（ipConsistencyNewUserPenaltyKeyPrefix + 24h 冷却）保证：
+// 禁用本身是幂等的，扣减/发信由该键去重，因此窗口内多次换 IP 不会重复扣钱 / 重复发信。
+// IP 一致的调用直接放行，不占用该键，保证窗口内后续一旦换 IP 仍能被抓到。
 //
 // Redis 不可用、字段缺失、超过窗口、管理员、白名单与工单/复核豁免均 fail-open。
 func (s *IPConsistencyService) CheckNewUserFirstUseIP(
@@ -390,7 +397,7 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 		return nil
 	}
 	age := time.Since(createdAt)
-	if age < 0 || age >= newUserFirstUseWindow {
+	if age < 0 || age >= newUserIPMismatchWindow {
 		return nil
 	}
 
@@ -415,18 +422,7 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 		return nil
 	}
 
-	// TTL 只覆盖注册后的剩余窗口；窗口一过令牌自然消失，不留下长期状态。
-	ttl := newUserFirstUseWindow - age
-	key := ipConsistencyNewUserKeyPrefix + fmt.Sprintf("%d", userID)
-	claimed, err := s.penaltyLocker.TryClaimPenalty(ctx, key, ttl)
-	if err != nil {
-		slog.Warn("new-user first-use ip check skipped: lock unavailable",
-			"user_id", userID, "error", err)
-		return nil
-	}
-	if !claimed {
-		return nil // 首调已经发生过（无论当时是否命中），不重复处罚
-	}
+	// 窗口内 IP 一致：直接放行，绝不消费扣减幂等键——否则后续换 IP 就罚不到了。
 	if clientIP == registerIP {
 		return nil
 	}
@@ -436,15 +432,16 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 	}
 	if s.userStatusUpdater != nil {
 		if err := s.userStatusUpdater.UpdateStatus(ctx, userID, StatusDisabled); err != nil {
-			slog.Error("failed to disable user after new-user first-use ip mismatch",
+			slog.Error("failed to disable user after new-user registration ip mismatch",
 				"user_id", userID, "error", err)
 		}
 	}
-	// 严格规则无条件扣钱，不受「3/4 IP」规则的功能B 开关影响；使用独立幂等键。
+	// 严格规则无条件扣钱，不受「3/4 IP」规则的功能B 开关影响；使用独立幂等键，
+	// 该键的 24h 冷却保证窗口内多次命中只扣一次钱、只发一封邮件。
 	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor,
 		settings.PenaltyNotifyEmail, ipConsistencyNewUserPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
 
-	slog.Warn("account disabled: new-user first api call ip differs from registration ip",
+	slog.Warn("account disabled: new-user client ip differs from registration ip within guard window",
 		"audit", true,
 		"user_id", userID,
 		"current_ip", clientIP,

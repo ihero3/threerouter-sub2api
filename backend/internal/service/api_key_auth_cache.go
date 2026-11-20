@@ -54,7 +54,7 @@ type APIKeyAuthUserSnapshot struct {
 	// 管理端复核放行后缓存会被失效并重建。空值 = 正常。
 	RiskLevel string `json:"risk_level,omitempty"`
 
-	// RegisterIP / CreatedAt 新用户首调 IP 严格校验所需（注册后 10 分钟内首次
+	// RegisterIP / CreatedAt 新用户 IP 严格校验所需（注册后 3 分钟内任意一次
 	// API Key 调用的 IP 必须与注册 IP 一致）。必须随快照缓存，否则鉴权热路径
 	// 拿不到注册信息，规则会静默失效。
 	RegisterIP string    `json:"register_ip,omitempty"`
