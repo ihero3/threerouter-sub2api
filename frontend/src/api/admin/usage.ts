@@ -74,7 +74,6 @@ export interface UsageIPUser {
   last_used_at?: string | null
   deleted: boolean
   recharged: boolean
-  looked_count: number
   ticket_flagged: boolean
   /** 当前余额 */
   balance: number

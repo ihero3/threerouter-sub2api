@@ -387,6 +387,9 @@ type UpdateSettingsRequest struct {
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
+	// 请求内容预览采集开关（独立于风控中心，默认关闭以保持 ZDR）
+	UsageRequestPreviewEnabled *bool `json:"usage_request_preview_enabled"`
+
 	// cyber 会话屏蔽开关 + TTL
 	CyberSessionBlockEnabled    *bool   `json:"cyber_session_block_enabled"`
 	CyberPolicyUserAllowlist    *string `json:"cyber_policy_user_allowlist"`
@@ -2129,6 +2132,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		UsageRequestPreviewEnabled: func() bool {
+			if req.UsageRequestPreviewEnabled != nil {
+				return *req.UsageRequestPreviewEnabled
+			}
+			return previousSettings.UsageRequestPreviewEnabled
+		}(),
 		CyberPolicyUserAllowlist: func() string {
 			if req.CyberPolicyUserAllowlist != nil {
 				return *req.CyberPolicyUserAllowlist
@@ -2579,6 +2588,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
+		UsageRequestPreviewEnabled:  updatedSettings.UsageRequestPreviewEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberPolicyUserAllowlist:    updatedSettings.CyberPolicyUserAllowlist,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,

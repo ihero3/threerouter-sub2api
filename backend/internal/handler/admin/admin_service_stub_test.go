@@ -18,7 +18,6 @@ type stubAdminService struct {
 	openAISchedulerScorePoolAccounts    []service.Account
 	schedulerScoreFilterCalls           int
 	openAISchedulerScorePoolCalls       int
-	lookedCount                         int
 	ticketFlagUserID                    int64
 	ticketFlagged                       bool
 	proxies                             []service.Proxy
@@ -225,13 +224,6 @@ func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, pag
 
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userID}, nil
-}
-
-// IncrementUserLookedCount 计数桩：返回递增后的值。
-// 接口已新增该方法，测试桩缺失会导致整个 admin 包无法编译。
-func (s *stubAdminService) IncrementUserLookedCount(ctx context.Context, userID int64) (int, error) {
-	s.lookedCount++
-	return s.lookedCount, nil
 }
 
 // SetUserTicketFlag 工单标记桩：仅记录入参，供断言使用。

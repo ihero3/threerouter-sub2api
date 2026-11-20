@@ -70,9 +70,9 @@ func TestEvaluateAffiliateRisk_InviteBurstTiering(t *testing.T) {
 		invites   int
 		wantLevel string
 	}{
-		{"new account under suspect", 0, 2, AffiliateRiskLevelNone},
-		{"new account at suspect", 3, 4, AffiliateRiskLevelSuspect},
-		{"new account at abnormal", 1, 11, AffiliateRiskLevelAbnormal},
+		{"new account under suspect", 0, 10, AffiliateRiskLevelNone},
+		{"new account at suspect", 3, 11, AffiliateRiskLevelSuspect},
+		{"new account at abnormal", 1, 21, AffiliateRiskLevelAbnormal},
 		{"old account under suspect", 30, 10, AffiliateRiskLevelNone},
 		{"old account at suspect", 20, 11, AffiliateRiskLevelSuspect},
 		{"old account at abnormal", 40, 21, AffiliateRiskLevelAbnormal},

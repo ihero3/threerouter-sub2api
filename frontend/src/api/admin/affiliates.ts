@@ -263,8 +263,6 @@ export interface AffiliateRelationUser {
   last_used_at?: string | null
   /** 非空表示该账号已被软删除 */
   deleted_at?: string | null
-  /** 管理员「看过」次数（只增不减，仅管理端展示） */
-  looked_count: number
   /** 管理员「提过工单」标记（仅管理端展示） */
   ticket_flagged: boolean
   /** 累计充值金额；> 0 表示充过钱（付费用户），仅查询用户本人返回 */
@@ -286,8 +284,6 @@ export interface AffiliateRelationNode {
   depth: number
   /** 该用户为其**直接上级**贡献的返利合计（返利只向上走一级） */
   rebate_amount: number
-  /** 管理员「看过」次数（只增不减，仅管理端展示） */
-  looked_count: number
   /** 管理员「提过工单」标记（仅管理端展示） */
   ticket_flagged: boolean
   /** 充过值派生标记：含历史充值记录，便于直接展示 */

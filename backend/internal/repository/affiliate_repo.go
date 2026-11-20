@@ -2103,9 +2103,10 @@ WHERE u.id = ANY($1)`,
 // 批量扫描绝不能把管理员停掉，否则会造成无法登录后台的事故。排除后 admin 也不会被
 // 打上 abnormal 标记，避免其 status 被「禁止复活」保护长期锁死。
 //
-// 全局豁免：提过工单（ticket_flag）或已人工复核放行（user_risk_review_exemptions）的用户
-// 不再接受任何自动打标——这是运营尺度拍板结果，覆盖实时邀请绑定、注册 IP 关联、
-// 全量扫描等所有走本 SQL 的自动链路。注意这里只挡「写标记」，不撤销历史标记。
+// 全局豁免：提过工单（管理员标记 ticket_flag 或用户真实提交过 tickets）、
+// 已人工复核放行（user_risk_review_exemptions）的用户不再接受任何自动打标——
+// 这是运营尺度拍板结果，覆盖实时邀请绑定、注册 IP 关联、全量扫描等所有走本
+// SQL 的自动链路。注意这里只挡「写标记」，不撤销历史标记。
 //
 // 抽成包级常量便于在不依赖真库的情况下对 SQL 安全契约做单元测试。
 const bumpUserRiskMarksSQL = `
@@ -2123,6 +2124,7 @@ WHERE u.id = v.id
   AND COALESCE(u.role, '') <> 'admin'
   AND COALESCE(u.ticket_flag, FALSE) = FALSE
   AND NOT EXISTS (SELECT 1 FROM user_risk_review_exemptions e WHERE e.user_id = u.id)
+  AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.user_id = u.id)
   AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
       >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`
 

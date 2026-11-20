@@ -719,16 +719,6 @@ func (s *adminServiceImpl) BatchUpdateLimits(ctx context.Context, userIDs []int6
 	return affected, nil
 }
 
-// IncrementUserLookedCount 把管理员「看过」该账号的次数加一，返回累加后的值。
-// 该标记只用于管理端展示，不改变任何业务行为。
-func (s *adminServiceImpl) IncrementUserLookedCount(ctx context.Context, userID int64) (int, error) {
-	repo, ok := s.userRepo.(UserFollowUpMarkRepository)
-	if !ok {
-		return 0, fmt.Errorf("user repository does not support follow-up marks")
-	}
-	return repo.IncrementLookedCount(ctx, userID)
-}
-
 // SetRiskExemptionInvalidator 注入豁免缓存失效器（可选依赖，仿 SetPenaltyService）。
 // 必须传入与 IPConsistencyService 共用的同一个 *RiskExemptionChecker 实例。
 func (s *adminServiceImpl) SetRiskExemptionInvalidator(invalidator RiskExemptionInvalidator) {

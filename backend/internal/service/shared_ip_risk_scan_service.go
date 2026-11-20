@@ -164,7 +164,9 @@ func (s *SharedIPRiskScanService) runOnce() {
 		floor = s.settings.GetIPConsistencySettingsCached(ctx).BalancePenaltyFloor
 	}
 
-	notes := "The system detected a shared IP address associated with multiple accounts."
+	// notes 必须与复核返还 SQL 的匹配条件（IPAbnormalityMessage）一致，
+	// 否则共享 IP 扣掉的钱在人工复核放行时无法返还。
+	notes := IPAbnormalityMessage
 	marked := 0
 	penalized := 0
 	for _, userID := range ids {

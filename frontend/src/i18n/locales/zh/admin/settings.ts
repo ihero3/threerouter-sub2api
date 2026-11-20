@@ -105,6 +105,8 @@ export default {
           configureLink: '前往 风控中心 配置内容审计',
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
+          usageRequestPreviewEnabled: '记录请求内容预览',
+          usageRequestPreviewEnabledHint: '开启后「使用记录」与「错误请求」将保存每条请求用户输入的前 200 字（脱敏），便于排查问题。独立于风控中心，默认关闭以符合零数据保留（ZDR）承诺；开启前请确认合规要求。',
           cyberSessionBlock: 'cyber 会话自动屏蔽',
           cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
           riskControlUserAllowlist: '风控白名单',

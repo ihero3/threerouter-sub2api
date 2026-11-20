@@ -46,7 +46,9 @@ func RegisterGatewayRoutes(
 	// 挂在所有模型转发路径最前，认证前拦截单 IP 聚合洪水。
 	ipLimit := gatewayIPRateLimiter.Middleware()
 	clientRequestID := middleware.ClientRequestID()
-	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService, h.Gateway.RiskControlEnabled)
+	// 请求内容预览（ops_error_logs.request_preview）由独立开关 usage_request_preview_enabled
+	// 门控，与风控中心解耦；登录/注册入口的 WithDefaultUser 变体不传回调，保持不采集。
+	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService, h.Gateway.UsageRequestPreviewEnabled)
 	endpointNorm := handler.InboundEndpointMiddleware()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)

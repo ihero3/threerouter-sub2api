@@ -8379,6 +8379,18 @@
               <Toggle v-model="form.risk_control_enabled" />
             </div>
 
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.riskControl.usageRequestPreviewEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.usageRequestPreviewEnabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.usage_request_preview_enabled" />
+            </div>
+
             <div>
               <label class="input-label">
                 {{ t('admin.settings.features.riskControl.riskControlUserAllowlist') }}
@@ -11053,6 +11065,7 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   payment_enabled: false,
   risk_control_enabled: false,
+  usage_request_preview_enabled: false,
   cyber_policy_user_allowlist: "",
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
@@ -13148,6 +13161,7 @@ async function saveSettings() {
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
+      usage_request_preview_enabled: form.usage_request_preview_enabled,
       cyber_policy_user_allowlist: form.cyber_policy_user_allowlist,
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:

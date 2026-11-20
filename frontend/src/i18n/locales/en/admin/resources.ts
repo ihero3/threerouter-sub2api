@@ -578,7 +578,6 @@ export default {
         marks: {
           deleted: 'Deleted',
           recharged: 'Recharged',
-          looked: 'Viewed +{count}',
           ticket: 'Has ticket'
         }
       },

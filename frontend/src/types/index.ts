@@ -161,9 +161,7 @@ export interface AdminUser extends User {
   // risk_reasons 为逗号分隔的原因 key，见 admin.users.risk.reasons.*。
   risk_level?: string
   risk_reasons?: string
-  // 管理员人工跟进标记（仅管理端返回）：
-  // looked_count 为「看过」次数（只增不减），ticket_flagged 为「提过工单」开关。
-  looked_count?: number
+  // 管理员人工跟进标记（仅管理端返回）：ticket_flagged 为「提过工单」开关。
   ticket_flagged?: boolean
   // 「充过值」标注：存在成功的正数充值记录即为 true（列表接口计算）。
   recharged?: boolean
@@ -2046,7 +2044,7 @@ export interface UsageLog {
   // User-Agent
   user_agent: string | null
   ip_address?: string | null
-  // 请求内容预览：用户输入的前 200 个字符（仅风控中心启用时记录）
+  // 请求内容预览：用户输入的前 200 个字符（由独立开关 usage_request_preview_enabled 控制，默认关闭）
   request_preview?: string | null
 
   // Cache TTL Override

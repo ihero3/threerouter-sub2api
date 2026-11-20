@@ -458,8 +458,6 @@ export default {
         truncated: '结果已达到层数或行数上限，可能不完整',
         rebateHint: '金额 = 该用户为其直接上级贡献的返利（邀请返利 + 充值返利）。返利只向上走一级，只有一级的金额属于当前用户。',
         marks: {
-          lookedButton: '看过',
-          looked: '看过+{count}',
           ticketButton: '提过工单',
           ticketUnmark: '取消工单标记',
           recharged: '充过值'
@@ -656,7 +654,6 @@ export default {
       },
       marks: {
         filterLabel: '标注',
-        looked: '看过+{count}',
         ticket: '提过工单',
         recharged: '充过值'
       },

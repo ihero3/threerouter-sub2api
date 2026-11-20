@@ -433,18 +433,6 @@ export async function resetPlatformQuotaWindow(
 }
 
 /**
- * Increment the admin "看过" counter for a user (each call adds one)
- */
-export async function incrementLookedCount(
-  id: number
-): Promise<{ user_id: number; looked_count: number }> {
-  const { data } = await apiClient.post<{ user_id: number; looked_count: number }>(
-    `/admin/users/${id}/looked`
-  )
-  return data
-}
-
-/**
  * Toggle the admin "提过工单" flag for a user
  */
 export async function setTicketFlag(
@@ -488,7 +476,6 @@ export const usersAPI = {
   getPlatformQuotas,
   updatePlatformQuotas,
   resetPlatformQuotaWindow,
-  incrementLookedCount,
   setTicketFlag,
   reviewUserRisk,
 }

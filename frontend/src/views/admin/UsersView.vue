@@ -1455,9 +1455,6 @@ const userMarkLabels = (row: AdminUser): string[] => {
   if (row.recharged) {
     labels.push(t('admin.users.marks.recharged'))
   }
-  if ((row.looked_count ?? 0) > 0) {
-    labels.push(t('admin.users.marks.looked', { count: row.looked_count }))
-  }
   if (row.ticket_flagged) {
     labels.push(t('admin.users.marks.ticket'))
   }

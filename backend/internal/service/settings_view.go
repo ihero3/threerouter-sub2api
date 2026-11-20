@@ -185,6 +185,7 @@ type SystemSettings struct {
 	DefaultConcurrency           int
 	DefaultBalance               float64
 	RiskControlEnabled           bool
+	UsageRequestPreviewEnabled   bool
 	CyberSessionBlockEnabled     bool
 	CyberPolicyUserAllowlist     string
 	CyberSessionBlockTTLSeconds  int

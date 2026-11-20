@@ -1147,14 +1147,15 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 // - It buffers response bodies only for status >= 400 or terminal SSE frames.
 //   - Streaming errors after the response has started (SSE) may still need explicit logging.
 //
-// riskControlEnabled 可选：传入风控中心开关探测函数后，仅在启用时捕获每个请求的
-// 用户输入前 200 字符（写入 ops_error_logs.request_preview）；未传入或返回 false 时保持原行为。
-func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...func(context.Context) bool) gin.HandlerFunc {
-	riskControlFn := func(context.Context) bool { return false }
-	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
-		riskControlFn = riskControlEnabled[0]
+// previewEnabled 可选：传入「请求内容预览」独立开关（usage_request_preview_enabled）
+// 探测函数后，仅在启用时捕获每个请求的用户输入前 200 字符
+// （写入 ops_error_logs.request_preview）；未传入或返回 false 时保持原行为（ZDR）。
+func OpsErrorLoggerMiddleware(ops *service.OpsService, previewEnabled ...func(context.Context) bool) gin.HandlerFunc {
+	previewEnabledFn := func(context.Context) bool { return false }
+	if len(previewEnabled) > 0 && previewEnabled[0] != nil {
+		previewEnabledFn = previewEnabled[0]
 	}
-	return newOpsErrorLogger(ops, riskControlFn, 0)
+	return newOpsErrorLogger(ops, previewEnabledFn, 0)
 }
 
 // OpsErrorLoggerMiddlewareWithDefaultUser 与 OpsErrorLoggerMiddleware 行为一致，但额外在
@@ -1163,19 +1164,19 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService, riskControlEnabled ...fun
 // 用于登录/注册入口：登录/注册失败往往没有已认证用户，统一归属 admin(id=1) 才能在
 // 「使用记录 → 错误请求」（按当前登录用户过滤）中观测到，防止登录坍塌（Login Collapse）
 // 时毫不知情。仅登录/注册路由组使用该变体，模型网关等其它入口保持原行为不变。
-func OpsErrorLoggerMiddlewareWithDefaultUser(ops *service.OpsService, defaultUserID int64, riskControlEnabled ...func(context.Context) bool) gin.HandlerFunc {
-	riskControlFn := func(context.Context) bool { return false }
-	if len(riskControlEnabled) > 0 && riskControlEnabled[0] != nil {
-		riskControlFn = riskControlEnabled[0]
+func OpsErrorLoggerMiddlewareWithDefaultUser(ops *service.OpsService, defaultUserID int64, previewEnabled ...func(context.Context) bool) gin.HandlerFunc {
+	previewEnabledFn := func(context.Context) bool { return false }
+	if len(previewEnabled) > 0 && previewEnabled[0] != nil {
+		previewEnabledFn = previewEnabled[0]
 	}
-	return newOpsErrorLogger(ops, riskControlFn, defaultUserID)
+	return newOpsErrorLogger(ops, previewEnabledFn, defaultUserID)
 }
 
 // newOpsErrorLogger 是 OpsErrorLoggerMiddleware 与 WithDefaultUser 变体的共享实现。
 // defaultUserID != 0 时，若最终 entry.UserID 仍为空（无法确定用户），则兜底记为该用户。
-func newOpsErrorLogger(ops *service.OpsService, riskControlFn func(context.Context) bool, defaultUserID int64) gin.HandlerFunc {
-	if riskControlFn == nil {
-		riskControlFn = func(context.Context) bool { return false }
+func newOpsErrorLogger(ops *service.OpsService, previewEnabledFn func(context.Context) bool, defaultUserID int64) gin.HandlerFunc {
+	if previewEnabledFn == nil {
+		previewEnabledFn = func(context.Context) bool { return false }
 	}
 	return func(c *gin.Context) {
 		var reqCtx context.Context
@@ -1183,7 +1184,7 @@ func newOpsErrorLogger(ops *service.OpsService, riskControlFn func(context.Conte
 			reqCtx = c.Request.Context()
 		}
 		var previewBody []byte
-		if reqCtx != nil && riskControlFn(reqCtx) {
+		if reqCtx != nil && previewEnabledFn(reqCtx) {
 			previewBody = captureOpsRequestBodyPrefix(c)
 			// 缓存到 context，供流式错误、恢复指标、cyber 等专用记录路径复用。
 			c.Set(opsRequestPreviewKey, service.ExtractRequestPreview(previewBody))

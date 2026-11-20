@@ -952,7 +952,7 @@ export interface OpsErrorLog {
   upstream_model?: string
   request_type?: number | null
   user_agent?: string
-  // 用户输入前 200 字符预览；仅在启用风控中心（risk_control_enabled=true）时采集，未启用为空。
+  // 用户输入前 200 字符预览；由独立开关 usage_request_preview_enabled 控制采集，未开启为空。
   request_preview?: string | null
 
 }

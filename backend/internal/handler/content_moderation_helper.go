@@ -54,26 +54,43 @@ func (h *OpenAIGatewayHandler) postModerateOutput(c *gin.Context, apiKey *servic
 	postModerateOutput(c, h.contentModerationService, apiKey, subject, protocol, model, requestBody, output)
 }
 
-// RiskControlEnabled 报告全局风控中心是否启用，供网关中间件用于门控请求内容预览采集。
-// nil 安全：handler 或依赖缺失时返回 false（保持原行为，不采集）。
-func (h *GatewayHandler) RiskControlEnabled(ctx context.Context) bool {
-	if h == nil || h.contentModerationService == nil || ctx == nil {
+// UsageRequestPreviewEnabled 报告「请求内容预览」独立开关是否开启。
+// 供 OpsErrorLoggerMiddleware 门控 ops_error_logs.request_preview 采集；
+// 与风控中心（risk_control_enabled）解耦，nil 安全，默认关闭（ZDR）。
+func (h *GatewayHandler) UsageRequestPreviewEnabled(ctx context.Context) bool {
+	if h == nil || h.settingService == nil || ctx == nil {
 		return false
 	}
-	return h.contentModerationService.RiskControlEnabled(ctx)
+	return h.settingService.IsUsageRequestPreviewEnabled(ctx)
 }
 
-// usageRequestPreview 返回写入 usage_logs 的用户输入前 200 字符预览。
-// 仅当全局风控中心启用（risk_control_enabled=true）时才提取；未启用（默认）时返回空串，
-// 保持 usage_logs 原行为、不落地任何提示词内容（符合 ZERO_DATA_RETENTION 合规声明）。
-func (h *GatewayHandler) usageRequestPreview(c *gin.Context, body []byte) string {
-	if h == nil || h.contentModerationService == nil || c == nil || c.Request == nil {
-		return ""
-	}
-	if !h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
+// usageRequestPreview 根据独立开关决定是否提取用户输入前 200 字符预览。
+// enabled 由各 Handler 注入开关探测函数，保证两套网关（GatewayHandler /
+// OpenAIGatewayHandler）写入 usage_logs.request_preview 的口径完全一致。
+func usageRequestPreview(c *gin.Context, body []byte, enabled func(context.Context) bool) string {
+	if c == nil || c.Request == nil || enabled == nil || !enabled(c.Request.Context()) {
 		return ""
 	}
 	return service.ExtractRequestPreview(body)
+}
+
+// usageRequestPreview 返回写入 usage_logs 的用户输入前 200 字符预览（GatewayHandler 路径）。
+// 由独立开关 usage_request_preview_enabled 控制，与风控中心（risk_control_enabled）解耦：
+// 默认关闭，不落地任何提示词内容（ZERO_DATA_RETENTION）；管理员可单独开启预览采集。
+func (h *GatewayHandler) usageRequestPreview(c *gin.Context, body []byte) string {
+	if h == nil || h.settingService == nil {
+		return ""
+	}
+	return usageRequestPreview(c, body, h.settingService.IsUsageRequestPreviewEnabled)
+}
+
+// usageRequestPreview 返回写入 usage_logs 的用户输入前 200 字符预览（OpenAIGatewayHandler 路径）。
+// 该 Handler 未直接持有 SettingService，经 gatewayService 转发读取同一个独立开关。
+func (h *OpenAIGatewayHandler) usageRequestPreview(c *gin.Context, body []byte) string {
+	if h == nil || h.gatewayService == nil {
+		return ""
+	}
+	return usageRequestPreview(c, body, h.gatewayService.UsageRequestPreviewEnabled)
 }
 
 func postModerateOutput(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, requestBody []byte, output string) {

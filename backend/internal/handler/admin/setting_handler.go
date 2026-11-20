@@ -292,6 +292,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                                     settings.DefaultConcurrency,
 		DefaultBalance:                                         settings.DefaultBalance,
 		RiskControlEnabled:                                     settings.RiskControlEnabled,
+		UsageRequestPreviewEnabled:                             settings.UsageRequestPreviewEnabled,
 		CyberSessionBlockEnabled:                               settings.CyberSessionBlockEnabled,
 		CyberPolicyUserAllowlist:                               settings.CyberPolicyUserAllowlist,
 		CyberSessionBlockTTLSeconds:                            settings.CyberSessionBlockTTLSeconds,

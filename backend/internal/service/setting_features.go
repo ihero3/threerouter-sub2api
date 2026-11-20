@@ -29,6 +29,15 @@ func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return found && value == "true"
 }
 
+// IsUsageRequestPreviewEnabled 是否采集 usage_logs.request_preview（用户输入脱敏预览）。
+//
+// 独立于风控中心开关：默认关闭以保持 ZDR（不落地提示词内容），仅当管理员显式
+// 开启 usage_request_preview_enabled 后才返回 true。走进程内缓存，热路径安全。
+func (s *SettingService) IsUsageRequestPreviewEnabled(ctx context.Context) bool {
+	value, found := s.getCachedSettingValue(ctx, SettingKeyUsageRequestPreviewEnabled)
+	return found && value == "true"
+}
+
 // IsRegistrationClickCaptchaEnabled 检查是否启用自建顺序点击验证码。
 // 仅当设置值显式为 "true" 时生效，安全默认关闭（向后兼容）。
 func (s *SettingService) IsRegistrationClickCaptchaEnabled(ctx context.Context) bool {

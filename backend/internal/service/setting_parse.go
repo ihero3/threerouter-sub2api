@@ -233,6 +233,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
+		// 请求内容预览采集（独立开关，默认关闭以保持 ZDR）。
+		SettingKeyUsageRequestPreviewEnabled: "false",
 
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 		SettingKeyCyberSessionBlockEnabled:    "false",
@@ -908,6 +910,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
+
+	// 请求内容预览采集（独立开关，默认关闭，严格 true 才启用）
+	result.UsageRequestPreviewEnabled = settings[SettingKeyUsageRequestPreviewEnabled] == "true"
 
 	// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 	result.CyberSessionBlockEnabled = settings[SettingKeyCyberSessionBlockEnabled] == "true"

@@ -49,7 +49,6 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   last_used_at: '2026-11-09T10:00:00Z',
   deleted: false,
   recharged: false,
-  looked_count: 0,
   ticket_flagged: false,
   balance: 12.345,
   status: 'active',

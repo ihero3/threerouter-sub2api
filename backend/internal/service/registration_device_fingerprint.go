@@ -21,7 +21,7 @@ import (
 // 背景：代理池可以让每次注册都换一个真实出口 IP，单 IP 配额/限流全部失效，
 // 但同一台设备连续注册时浏览器侧信号是稳定的。这里把前端上报的
 // UA + 时区 + 语言 + 屏幕 + canvas 摘要，与服务端可信的 User-Agent 再混合
-// 一次 SHA-256，按「同一指纹 24 小时内成功注册数」做关联拦截。
+// 一次 SHA-256，按「同一指纹 1 小时内成功注册数」做关联拦截。
 //
 // 边界：
 //   - 指纹由前端上报，可被主动随机化；本机制用于抬高对抗成本、串联跨 IP
@@ -35,10 +35,10 @@ const (
 	// SettingKeyRegistrationDeviceFingerprintLimit 是后台设置项：0 表示关闭。
 	SettingKeyRegistrationDeviceFingerprintLimit = "registration_device_fingerprint_limit"
 
-	RegistrationDeviceFingerprintLimitDefault = 3
+	RegistrationDeviceFingerprintLimitDefault = 2
 	RegistrationDeviceFingerprintLimitMin     = 1
 	RegistrationDeviceFingerprintLimitMax     = 50
-	RegistrationDeviceFingerprintWindow       = 24 * time.Hour
+	RegistrationDeviceFingerprintWindow       = 1 * time.Hour
 
 	registrationDeviceFingerprintClientMinLength = 16
 	registrationDeviceFingerprintClientMaxLength = 64
@@ -157,7 +157,7 @@ func clampRegistrationDeviceFingerprintLimit(limit int) int {
 	return limit
 }
 
-// GetRegistrationDeviceFingerprintLimit 读取同一指纹 24 小时内允许的注册数上限。
+// GetRegistrationDeviceFingerprintLimit 读取同一指纹 1 小时内允许的注册数上限。
 // 0 表示关闭；设置缺失或非法时回退默认值。
 func (s *SettingService) GetRegistrationDeviceFingerprintLimit(ctx context.Context) int {
 	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationDeviceFingerprintLimit)

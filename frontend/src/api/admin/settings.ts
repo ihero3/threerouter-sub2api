@@ -696,6 +696,8 @@ export interface SystemSettings {
   // Payment configuration
   payment_enabled: boolean;
   risk_control_enabled: boolean;
+  // 请求内容预览独立开关：与风控中心解耦，默认关闭（ZDR）
+  usage_request_preview_enabled: boolean;
 
   // Cyber session block
   cyber_policy_user_allowlist: string;
@@ -1038,6 +1040,8 @@ export interface UpdateSettingsRequest {
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
+  // 请求内容预览独立开关：与风控中心解耦，默认关闭（ZDR）
+  usage_request_preview_enabled?: boolean;
 
   // Cyber session block
   cyber_policy_user_allowlist?: string;

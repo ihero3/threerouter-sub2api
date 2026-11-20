@@ -31,7 +31,7 @@ type OpenAIRecordUsageInput struct {
 	UserAgent          string // 请求的 User-Agent
 	IPAddress          string // 请求的客户端 IP 地址
 	SessionID          string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPreview     string // 用户输入前缀预览（受风控中心门控，空串/零值时落库为 NULL）
+	RequestPreview     string // 用户输入前缀预览（受独立开关 usage_request_preview_enabled 门控，空串/零值时落库为 NULL）
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.

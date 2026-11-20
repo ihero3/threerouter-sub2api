@@ -133,14 +133,6 @@
             <div class="flex items-center gap-3 whitespace-nowrap">
               <button
                 v-if="!relation.user.deleted_at"
-                class="text-xs text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400"
-                :disabled="markingUserId === relation.user.user_id"
-                @click="markLooked(relation.user)"
-              >
-                {{ t('admin.affiliates.relations.marks.lookedButton') }}
-              </button>
-              <button
-                v-if="!relation.user.deleted_at"
                 class="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 :class="relation.user.ticket_flagged
                   ? 'text-amber-600 dark:text-amber-400'
@@ -250,14 +242,6 @@
                   <td class="px-2 py-2 text-right font-mono text-gray-900 dark:text-white">${{ formatAmount(node.rebate_amount) }}</td>
                   <td class="px-2 py-2 text-right">
                     <div class="flex items-center justify-end gap-2 whitespace-nowrap">
-                      <button
-                        v-if="!node.deleted_at"
-                        class="text-xs text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400"
-                        :disabled="markingUserId === node.user_id"
-                        @click="markLooked(node)"
-                      >
-                        {{ t('admin.affiliates.relations.marks.lookedButton') }}
-                      </button>
                       <button
                         v-if="!node.deleted_at"
                         class="text-xs hover:underline disabled:cursor-not-allowed disabled:opacity-50"
@@ -579,24 +563,11 @@ function requestDeleteDescendant(node: AffiliateRelationNode) {
   deleteTarget.value = { userId: node.user_id, email: node.email, node }
 }
 
-// 管理员人工标记：看过次数（+1）与提过工单（开关），均只用于管理端展示。
+// 管理员人工标记：提过工单（开关），只用于管理端展示。
 const markingUserId = ref<number | null>(null)
 
 // 查询用户本人（AffiliateRelationUser）与下游节点（AffiliateRelationNode）都可标记。
-type MarkableUser = { user_id: number; looked_count: number; ticket_flagged: boolean }
-
-async function markLooked(node: MarkableUser) {
-  if (markingUserId.value !== null) return
-  markingUserId.value = node.user_id
-  try {
-    const res = await adminAPI.users.incrementLookedCount(node.user_id)
-    node.looked_count = res.looked_count
-  } catch (error) {
-    appStore.showError(extractI18nErrorMessage(error, t, 'admin.affiliates', '标记失败'))
-  } finally {
-    markingUserId.value = null
-  }
-}
+type MarkableUser = { user_id: number; ticket_flagged: boolean }
 
 async function toggleTicketFlag(node: MarkableUser) {
   if (markingUserId.value !== null) return
@@ -617,9 +588,6 @@ function userMarkLabel(node: AffiliateRelationNode): string {
   if (node.recharged) {
     labels.push(t('admin.affiliates.relations.marks.recharged'))
   }
-  if (node.looked_count > 0) {
-    labels.push(t('admin.affiliates.relations.marks.looked', { count: node.looked_count }))
-  }
   if (node.ticket_flagged) {
     labels.push(t('admin.affiliates.relations.marks.ticketButton'))
   }
@@ -627,13 +595,10 @@ function userMarkLabel(node: AffiliateRelationNode): string {
 }
 
 // 顶部用户卡片 / 邀请人使用的文本标记（AffiliateRelationUser）。
-function userMarkLabelsUser(user: { recharged?: boolean; looked_count?: number; ticket_flagged?: boolean }): string[] {
+function userMarkLabelsUser(user: { recharged?: boolean; ticket_flagged?: boolean }): string[] {
   const labels: string[] = []
   if (user.recharged) {
     labels.push(t('admin.affiliates.relations.marks.recharged'))
-  }
-  if ((user.looked_count ?? 0) > 0) {
-    labels.push(t('admin.affiliates.relations.marks.looked', { count: user.looked_count }))
   }
   if (user.ticket_flagged) {
     labels.push(t('admin.affiliates.relations.marks.ticketButton'))

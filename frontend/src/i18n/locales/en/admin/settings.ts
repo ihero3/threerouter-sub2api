@@ -105,6 +105,8 @@ export default {
           configureLink: 'Configure content moderation in Risk Control',
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
+          usageRequestPreviewEnabled: 'Record request previews',
+          usageRequestPreviewEnabledHint: 'When enabled, Usage Logs and Error Requests store a sanitised 200-character preview of each request\'s user input for troubleshooting. Independent of Risk Control; off by default to honour zero data retention (ZDR). Confirm your compliance requirements before enabling.',
           cyberSessionBlock: 'Cyber session auto-block',
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
           riskControlUserAllowlist: 'Risk control allowlist',

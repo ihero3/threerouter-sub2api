@@ -443,7 +443,6 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.PUT("/:id", h.Admin.User.Update)
 		users.DELETE("/:id", h.Admin.User.Delete)
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
-		users.POST("/:id/looked", h.Admin.User.IncrementLooked)
 		users.PUT("/:id/ticket-flag", h.Admin.User.SetTicketFlag)
 		// 管理员复核放行待复核账号（给前端的固定契约，勿改名）。
 		users.POST("/:id/risk-review", h.Admin.User.ReviewRisk)

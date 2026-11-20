@@ -575,7 +575,6 @@ export default {
         marks: {
           deleted: '已删除',
           recharged: '充过值',
-          looked: '看过+{count}',
           ticket: '提过工单'
         }
       },

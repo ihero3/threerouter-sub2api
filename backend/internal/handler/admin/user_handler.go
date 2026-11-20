@@ -466,22 +466,6 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	})
 }
 
-// IncrementLooked handles the admin "看过" counter: each call adds one.
-// POST /api/v1/admin/users/:id/looked
-func (h *UserHandler) IncrementLooked(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || userID <= 0 {
-		response.BadRequest(c, "Invalid user ID")
-		return
-	}
-	count, err := h.adminService.IncrementUserLookedCount(c.Request.Context(), userID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, gin.H{"user_id": userID, "looked_count": count})
-}
-
 // SetTicketFlag handles the admin "提过工单" toggle.
 // PUT /api/v1/admin/users/:id/ticket-flag
 func (h *UserHandler) SetTicketFlag(c *gin.Context) {

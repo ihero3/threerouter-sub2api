@@ -609,6 +609,16 @@ func (s *OpenAIGatewayService) IsDisableSameAccountRetryEnabled(ctx context.Cont
 	return s.settingService.IsDisableSameAccountRetryEnabled(ctx)
 }
 
+// UsageRequestPreviewEnabled 检查请求内容预览采集的独立开关。
+// OpenAIGatewayHandler 未直接持有 SettingService，经本服务转发（进程内缓存），
+// 供 usage_logs.request_preview 采集使用；nil 安全，默认关闭（ZDR）。
+func (s *OpenAIGatewayService) UsageRequestPreviewEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	return s.settingService.IsUsageRequestPreviewEnabled(ctx)
+}
+
 // IsModelRestricted 检查模型是否被渠道限制（代理到 ChannelService）
 func (s *OpenAIGatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
 	if s.channelService == nil {

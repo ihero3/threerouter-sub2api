@@ -11,12 +11,14 @@ import (
 //
 // 用户命中以下任一条件时，跳过一切自动处罚（自动标注异常、扣减余额、自动禁用）：
 //   - 管理员标记「提过工单」（users.ticket_flag）
+//   - 用户真实提交过工单（tickets 表，迁移 154，user_id 有索引）
 //   - 已人工复核放行（user_risk_review_exemptions，迁移 253）
 //   - IP 白名单（IPConsistencySettings.WhitelistUserIDs / WhitelistIPs）
 //
 // 白名单判断本就在 IPConsistencyService.CheckUser 内用进程内设置缓存完成、零 DB，
-// 本检查器只负责需要查库的前两项（工单标记 / 复核豁免），并用进程内 TTL 缓存兜住
-// 鉴权热路径：一个用户在 TTL 内最多查一次库，绝不让豁免判断拖慢每个 API 请求。
+// 本检查器只负责需要查库的前三项（工单标记 / 真实提单 / 复核豁免），并用进程内
+// TTL 缓存兜住鉴权热路径：一个用户在 TTL 内最多查一次库，绝不让豁免判断拖慢每个
+// API 请求。前三项用 OR 合并为一次 DB 往返（isRiskExemptByIDSQL）。
 //
 // 失效语义：
 //   - 管理端 SetUserTicketFlag / AdminReviewUserRisk 成功后主动 Invalidate，立即生效；
@@ -55,7 +57,7 @@ func NewRiskExemptionChecker(repo RiskExemptionRepository, ttl time.Duration) *R
 	return &RiskExemptionChecker{repo: repo, ttl: ttl, cache: make(map[int64]riskExemptionEntry)}
 }
 
-// IsExempt 判断用户是否命中工单标记 / 复核放行豁免。
+// IsExempt 判断用户是否命中工单标记 / 真实提单 / 复核放行豁免。
 // 命中缓存直接返回；未命中查一次库并写缓存。异常一律 fail-open 为「不豁免」。
 func (c *RiskExemptionChecker) IsExempt(ctx context.Context, userID int64) bool {
 	if c == nil || c.repo == nil || userID <= 0 {

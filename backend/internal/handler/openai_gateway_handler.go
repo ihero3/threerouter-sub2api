@@ -873,10 +873,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			var requestPreview string
-			if h.contentModerationService != nil && h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
-				requestPreview = service.ExtractRequestPreview(body)
-			}
+			requestPreview := h.usageRequestPreview(c, body)
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel)
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -1517,10 +1514,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-			var requestPreview string
-			if h.contentModerationService != nil && h.contentModerationService.RiskControlEnabled(c.Request.Context()) {
-				requestPreview = service.ExtractRequestPreview(body)
-			}
+			requestPreview := h.usageRequestPreview(c, body)
 			channelUsageFields := clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel)
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

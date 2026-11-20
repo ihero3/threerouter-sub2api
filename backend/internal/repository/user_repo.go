@@ -1318,44 +1318,22 @@ func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, i
 	return nil
 }
 
-// IncrementLookedCount 原子地把管理员「看过」次数加一，返回累加后的值。
-func (r *userRepository) IncrementLookedCount(ctx context.Context, id int64) (int, error) {
-	const updateSQL = `
-		UPDATE users
-		SET looked_count = looked_count + 1, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING looked_count
-	`
-	rows, err := r.sql.QueryContext(ctx, updateSQL, id)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = rows.Close() }()
-	var count int
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return 0, err
-		}
-		return 0, service.ErrUserNotFound
-	}
-	if err := rows.Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-// isRiskExemptByIDSQL 判断用户是否命中「提过工单 / 人工复核放行」豁免。
+// isRiskExemptByIDSQL 判断用户是否命中自动风控豁免。
 // 命中任一即豁免：
 //   - users.ticket_flag（迁移 246，管理员工单跟进时置位）
 //   - user_risk_review_exemptions（迁移 253，人工复核放行时写入）
+//   - tickets（迁移 154，用户真实提交过工单；user_id 有 idx_tickets_user_id 索引）
 //
-// 两条 EXISTS 用 OR 合并，一次往返；抽成常量便于在无真库的单测里断言 SQL 契约。
+// 三条 EXISTS 用 OR 合并，一次往返；抽成常量便于在无真库的单测里断言 SQL 契约。
+// tickets 放在最后，前两条命中即短路，绝大多数用户不会走这条索引查找。
 const isRiskExemptByIDSQL = `
 SELECT EXISTS (
     SELECT 1 FROM users
     WHERE id = $1 AND deleted_at IS NULL AND ticket_flag = TRUE
 ) OR EXISTS (
     SELECT 1 FROM user_risk_review_exemptions WHERE user_id = $1
+) OR EXISTS (
+    SELECT 1 FROM tickets WHERE user_id = $1
 )
 `
 

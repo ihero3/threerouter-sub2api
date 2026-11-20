@@ -458,8 +458,6 @@ export default {
         truncated: 'Result hit the depth or row limit and may be incomplete',
         rebateHint: 'Amount = rebates this user generated for their direct inviter (invite + recharge). Rebates only flow one level up, so only level 1 amounts belong to the queried user.',
         marks: {
-          lookedButton: 'Viewed',
-          looked: 'Viewed +{count}',
           ticketButton: 'Has ticket',
           ticketUnmark: 'Clear ticket mark',
           recharged: 'Recharged'
@@ -656,7 +654,6 @@ export default {
       },
       marks: {
         filterLabel: 'Marks',
-        looked: 'Viewed +{count}',
         ticket: 'Has ticket',
         recharged: 'Recharged'
       },

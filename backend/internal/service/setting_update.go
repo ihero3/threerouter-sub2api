@@ -497,6 +497,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
+	// 请求内容预览采集开关（独立于风控中心，默认关闭）
+	updates[SettingKeyUsageRequestPreviewEnabled] = strconv.FormatBool(settings.UsageRequestPreviewEnabled)
+
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
 	if _, err := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist); err != nil {
