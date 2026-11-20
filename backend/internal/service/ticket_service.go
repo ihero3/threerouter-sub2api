@@ -10,6 +10,36 @@ import (
 
 type TicketService struct {
 	ticketRepo TicketRepository
+
+	// 提单后自动打「提过工单」标记所需的可选依赖，均为 setter 注入以免扩大
+	// 构造签名、避免无关测试桩被迫实现。未注入时行为与旧版一致（只建工单）。
+	followUpMarkRepo UserFollowUpMarkRepository
+	exemptionChecker RiskExemptionCheck
+}
+
+// SetFollowUpMarkDeps 注入「提单后自动打标 + 失效豁免缓存」的依赖。
+func (s *TicketService) SetFollowUpMarkDeps(markRepo UserFollowUpMarkRepository, checker RiskExemptionCheck) {
+	if s == nil {
+		return
+	}
+	s.followUpMarkRepo = markRepo
+	s.exemptionChecker = checker
+}
+
+// markTicketFollowUp 在工单创建成功后把用户标记为「提过工单」并立即失效豁免缓存。
+// 失败只记日志不影响工单创建结果：豁免判定本身还会直接查 tickets 表，用户即使
+// 这一步失败也已享受免检测；这里只是让 users.ticket_flag 与管理端展示口径一致。
+func (s *TicketService) markTicketFollowUp(ctx context.Context, userID int64) {
+	if s == nil || s.followUpMarkRepo == nil || userID <= 0 {
+		return
+	}
+	if err := s.followUpMarkRepo.SetTicketFlag(ctx, userID, true); err != nil {
+		fmt.Printf("[TicketService] mark ticket_flag failed: user_id=%d err=%v\n", userID, err)
+		return
+	}
+	if s.exemptionChecker != nil {
+		s.exemptionChecker.Invalidate(userID)
+	}
 }
 
 func NewTicketService(ticketRepo TicketRepository) *TicketService {
@@ -48,6 +78,10 @@ func (s *TicketService) Create(ctx context.Context, input *CreateTicketInput) (*
 	}
 	if err := s.ticketRepo.Create(ctx, ticket, content); err != nil {
 		return nil, fmt.Errorf("create ticket: %w", err)
+	}
+	// 登录用户提单成功后自动打「提过工单」标记；游客工单 UserID 为 nil，跳过。
+	if ticket.UserID != nil {
+		s.markTicketFollowUp(ctx, *ticket.UserID)
 	}
 	return ticket, nil
 }

@@ -65,10 +65,11 @@ type AdminUser struct {
 	RiskReasons string `json:"risk_reasons"`
 	// LastUsedIPShared 表示该 IP 是否同时被其他用户使用过（≥5 个不同用户），用于 Suspect 打标。
 	LastUsedIPShared bool `json:"last_used_ip_shared"`
-	// TicketFlag 为管理员人工跟进标记（仅管理端展示，不参与业务逻辑）：
-	// 提过工单为可切换的布尔标记。
+	// TicketFlag 为「提过工单」标记：登录用户提单成功后自动置位，管理员亦可手动
+	// 切换。命中此标记（或 tickets 表有真实工单）的用户免于一切自动风控处罚。
 	TicketFlag bool `json:"ticket_flagged"`
 	// Recharged 为「充过值」标注：存在成功的正数充值记录即为 true。
+	// 注意：这只是展示标注，不参与自动风控豁免判断。
 	Recharged bool `json:"recharged"`
 }
 

@@ -524,6 +524,7 @@ type ContentModerationService struct {
 	userRepo                 UserRepository
 	proxyRepo                ProxyRepository
 	authCacheInvalidator     APIKeyAuthCacheInvalidator
+	exemptionChecker         RiskExemptionCheck
 	emailService             *EmailService
 	httpClient               *http.Client
 	moderationProxyCache     atomic.Pointer[moderationProxyURLCacheEntry]
@@ -645,6 +646,15 @@ func NewContentModerationService(
 		go svc.cleanupWorker()
 	}
 	return svc
+}
+
+// SetRiskExemptionChecker 注入全局豁免检查器（可选依赖）。未注入时豁免不生效、
+// 自动封号照常，与注入失败时的行为一致。
+func (s *ContentModerationService) SetRiskExemptionChecker(checker RiskExemptionCheck) {
+	if s == nil {
+		return
+	}
+	s.exemptionChecker = checker
 }
 
 func (s *ContentModerationService) GetConfig(ctx context.Context) (*ContentModerationConfigView, error) {
@@ -2203,6 +2213,13 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 		if user.IsAdmin() {
 			slog.Warn("content_moderation.autoban_skipped_admin", "user_id", *log.UserID, "role", user.Role, "count", count, "threshold", cfg.BanThreshold)
 			// TODO: Disable the triggering API key instead when API key mutation is available here.
+			return false
+		}
+		// 全局自动风控豁免：提过工单 / 人工复核放行的用户免于自动封号，
+		// 与 IP 一致性、邀请风险等其它自动处罚口径一致。检查器未注入或查询
+		// 异常时 fail-open 为「不豁免」，处罚照常。
+		if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, *log.UserID) {
+			slog.Info("content_moderation.autoban_skipped_exempt", "user_id", *log.UserID, "count", count, "threshold", cfg.BanThreshold)
 			return false
 		}
 		if user.Status != StatusDisabled {

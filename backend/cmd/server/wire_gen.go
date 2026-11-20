@@ -337,6 +337,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	contentModerationRepository := repository.NewContentModerationRepository(db)
 	contentModerationHashCache := repository.NewContentModerationHashCache(redisClient)
 	contentModerationService := service.NewContentModerationService(settingRepository, contentModerationRepository, contentModerationHashCache, groupRepository, userRepository, proxyRepository, apiKeyAuthCacheInvalidator, emailService)
+	// 内容风控自动封号接入全局豁免（提过工单 / 人工复核放行）。
+	contentModerationService.SetRiskExemptionChecker(riskExemptionChecker)
 	contentModerationHandler := admin.NewContentModerationHandler(contentModerationService)
 	configManager := securityaudit.NewConfigManager(db, settingRepository, redisClient, secretEncryptor, configConfig)
 	postgreSQLRepository := securityaudit.NewPostgreSQLRepository(db)
@@ -370,6 +372,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	moderationRuleHandler := admin.NewModerationRuleHandler(moderationRuleService)
 	ticketRepository := repository.NewTicketRepository(client)
 	ticketService := service.NewTicketService(ticketRepository)
+	// 用户提单成功后自动打「提过工单」标记并失效豁免缓存（用户侧与管理侧共用此实例）。
+	// userRepository 同时实现 UserFollowUpMarkRepository，用类型断言取，避免扩宽大接口。
+	followUpMarkRepo, _ := userRepository.(service.UserFollowUpMarkRepository)
+	ticketService.SetFollowUpMarkDeps(followUpMarkRepo, riskExemptionChecker)
 	ticketHandler := admin.NewTicketHandler(ticketService)
 	auditLogRepository := repository.NewAuditLogRepository(db)
 	auditLogService := service.ProvideAuditLogService(auditLogRepository, settingService)
