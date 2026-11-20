@@ -44,6 +44,12 @@ func TestWireGenSideEffectProvidersArePresent(t *testing.T) {
 	require.Contains(t, src, "sharedIPRiskScanService.Start()")
 	require.Contains(t, src, "sharedIPRiskScan.Stop()")
 
+	// 多维关联团伙风险扫描同样是手工同步：漏了会导致该规则从不启动。
+	require.Contains(t, string(providerSrc), "NewLinkedClusterRiskScanService,")
+	require.Contains(t, src, "service.NewLinkedClusterRiskScanService(")
+	require.Contains(t, src, "linkedClusterRiskScanService.Start()")
+	require.Contains(t, src, "linkedClusterRiskScan.Stop()")
+
 	// 新用户首调 IP 严格规则：打标器必须手工注入，漏了会只禁用扣钱但不进复核队列。
 	require.Contains(t, src, "SetNewUserRiskMarker(")
 	routeSrc, err := os.ReadFile("routes/gateway.go")

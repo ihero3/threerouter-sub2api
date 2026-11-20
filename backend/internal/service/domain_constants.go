@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -303,15 +304,15 @@ const (
 	// SettingKeyUsageRequestPreviewEnabled 独立控制 usage_logs.request_preview 的采集。
 	// 与风控中心解耦：默认关闭，保持 ZDR（不落地提示词内容）；仅在管理员显式开启后
 	// 才写入用户输入前 200 字符的脱敏预览。
-	SettingKeyUsageRequestPreviewEnabled = "usage_request_preview_enabled"
-	SettingKeyContentModerationConfig    = "content_moderation_config" // 内容审计配置（JSON）
-	SettingKeyCyberSessionBlockEnabled      = "cyber_session_block_enabled"      // cyber 命中后会话级自动屏蔽总开关(默认关)
-	SettingKeyCyberPolicyUserAllowlist      = "cyber_policy_user_allowlist"      // Platform user IDs with log-only cyber handling
-	SettingKeyCyberSessionBlockTTLSeconds   = "cyber_session_block_ttl_seconds"  // 会话屏蔽 TTL 秒数(默认 3600)
-	SettingKeyLoginAgreementEnabled         = "login_agreement_enabled"          // 登录前是否要求同意条款
-	SettingKeyLoginAgreementMode            = "login_agreement_mode"             // 条款确认展示模式：modal / checkbox
-	SettingKeyLoginAgreementUpdatedAt       = "login_agreement_updated_at"       // 条款更新日期（展示用）
-	SettingKeyLoginAgreementDocuments       = "login_agreement_documents"        // 条款文档列表（JSON，Markdown 内容）
+	SettingKeyUsageRequestPreviewEnabled  = "usage_request_preview_enabled"
+	SettingKeyContentModerationConfig     = "content_moderation_config"       // 内容审计配置（JSON）
+	SettingKeyCyberSessionBlockEnabled    = "cyber_session_block_enabled"     // cyber 命中后会话级自动屏蔽总开关(默认关)
+	SettingKeyCyberPolicyUserAllowlist    = "cyber_policy_user_allowlist"     // Platform user IDs with log-only cyber handling
+	SettingKeyCyberSessionBlockTTLSeconds = "cyber_session_block_ttl_seconds" // 会话屏蔽 TTL 秒数(默认 3600)
+	SettingKeyLoginAgreementEnabled       = "login_agreement_enabled"         // 登录前是否要求同意条款
+	SettingKeyLoginAgreementMode          = "login_agreement_mode"            // 条款确认展示模式：modal / checkbox
+	SettingKeyLoginAgreementUpdatedAt     = "login_agreement_updated_at"      // 条款更新日期（展示用）
+	SettingKeyLoginAgreementDocuments     = "login_agreement_documents"       // 条款文档列表（JSON，Markdown 内容）
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
@@ -947,6 +948,16 @@ const (
 	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
 	// 最近一次调整：3→4（放宽尺度，避免共享 NAT/办公网误伤）。
 	AffiliateRiskRegistrationIPCorrelationThreshold = 4
+
+	// 规则 11：多维关联团伙——共享注册 IP / 共享最后使用 IP 建图，连通分量达阈值即重罚。
+	// 用于抓「单维度都不够阈值、但组合明显是同一伙」的新号团伙（见功能台账 §7）。
+	AffiliateRiskReasonLinkedClusterAbuse = "linked_cluster_abuse"
+	// 团伙最小连通分量：≥3 个新号互相连通即判团伙（用户拍板取严格档）。
+	AffiliateRiskLinkedClusterMinSize = 3
+	// 建图时间窗：只看该窗口内注册的新号，避免跨月老关联被串成一伙。
+	AffiliateRiskLinkedClusterWindow = 24 * time.Hour
+	// 团伙成员年龄上限：注册超过该天数的账号不参与建图。复用新号定义 7 天。
+	AffiliateRiskLinkedClusterMaxAccountDays = 7
 
 	// 存量扫描每批处理的用户数，避免一次性写满事务。
 	AffiliateRiskScanBatchSize = 500

@@ -915,6 +915,9 @@ var ProviderSet = wire.NewSet(
 	NewRiskExemptionChecker,
 	// 共享 IP 风险周期扫描（单 IP 关联过多用户 → 批量打标 + 扣减）。
 	NewSharedIPRiskScanService,
+	// 多维关联团伙风险周期扫描（共享注册IP/使用IP建图，连通分量≥3 → 禁用+扣减）。
+	// 依赖 *userRepository 同时实现 LinkedClusterNodeLister + LinkedClusterUsedIPLister。
+	NewLinkedClusterRiskScanService,
 	NewMCPOAuthService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,

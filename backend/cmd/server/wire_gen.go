@@ -248,6 +248,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	sharedIPRiskScanService := service.NewSharedIPRiskScanService(sharedIPUserLister, affiliateService, ipConsistencyPenaltyService, riskExemptionChecker, settingService)
 	sharedIPRiskScanService.SetLeaderLock(leaderLockCache, db)
 	sharedIPRiskScanService.Start()
+	// 多维关联团伙风险周期扫描：共享注册IP/使用IP建图，连通分量≥3 → abnormal 禁用 + 扣减。
+	// lister/usedIP 从 *userRepository 断言取得，markWriter 用 affiliateService，penalty 复用 IP 处罚执行器。
+	linkedClusterNodeLister, _ := userRepository.(service.LinkedClusterNodeLister)
+	linkedClusterUsedIPLister, _ := userRepository.(service.LinkedClusterUsedIPLister)
+	linkedClusterRiskScanService := service.NewLinkedClusterRiskScanService(linkedClusterNodeLister, linkedClusterUsedIPLister, affiliateService, ipConsistencyPenaltyService, riskExemptionChecker, settingService)
+	linkedClusterRiskScanService.SetLeaderLock(leaderLockCache, db)
+	linkedClusterRiskScanService.Start()
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService, serviceUserPlatformQuotaRepository, billingCache, totpService, userService, settingService)
 	groupCapacityService := service.NewGroupCapacityService(accountRepository, groupRepository, concurrencyService, sessionLimitCache, rpmCache)
 	groupHandler := admin.NewGroupHandlerWithConfig(adminService, dashboardService, groupCapacityService, configConfig)
@@ -472,7 +479,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService, sharedIPRiskScanService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, accountAutoRecoveryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, balanceNotifyService, digestSessionStore, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager, videoWorker, mediaWorker, teamAggregationService, sharedIPRiskScanService, linkedClusterRiskScanService)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -570,6 +577,7 @@ func provideCleanup(
 	mediaWorker *service.MediaWorker,
 	teamAggregation *service.TeamAggregationService,
 	sharedIPRiskScan *service.SharedIPRiskScanService,
+	linkedClusterRiskScan *service.LinkedClusterRiskScanService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -620,6 +628,12 @@ func provideCleanup(
 			{"SharedIPRiskScanService", func() error {
 				if sharedIPRiskScan != nil {
 					sharedIPRiskScan.Stop()
+				}
+				return nil
+			}},
+			{"LinkedClusterRiskScanService", func() error {
+				if linkedClusterRiskScan != nil {
+					linkedClusterRiskScan.Stop()
 				}
 				return nil
 			}},
