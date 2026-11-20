@@ -64,8 +64,8 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 	s := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
 		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
 	h := &handler.Handlers{
-		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
-		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg),
+		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil),
+		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
 		AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 	}
 	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI,
@@ -74,8 +74,10 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 	RegisterGatewayRoutes(router, h, servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &group.ID, Group: group})
 		c.Next()
-	}), nil, nil, nil, nil, nil, cfg)
-	for _, path := range []string{"/v1/models", "/models", "/v1/models?client_version=", "/models?client_version="} {
+	}), nil, nil, nil, nil, nil, cfg, nil)
+	// /v1/models（含空 client_version，不构成版本信号）走 pinned account 代理，
+	// 返回上游模型对象数组；多次请求命中缓存，只 upstream 一次。
+	for _, path := range []string{"/v1/models", "/v1/models?client_version="} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		require.Equal(t, http.StatusOK, w.Code, "%s: %s", path, w.Body.String())
@@ -90,7 +92,25 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 		require.Len(t, response.Data, 1)
 		require.Equal(t, "ordinary-upstream-model", response.Data[0].ID)
 	}
-	for _, path := range []string{"/v1/models?client_version=" + service.CodexCanonicalClientVersion(), "/models?client_version=" + service.CodexCanonicalClientVersion(), "/backend-api/codex/models"} {
+
+	// 根路径 /models 是 PublicModels（本地可见名单），返回模型 ID 字符串数组，
+	// 且不做版本协商——即使带 client_version 也不走 pinned 代理或 Codex 目录。
+	for _, path := range []string{"/models", "/models?client_version=", "/models?client_version=" + service.CodexCanonicalClientVersion()} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, w.Code, "%s: %s", path, w.Body.String())
+		var response struct {
+			Object string   `json:"object"`
+			Data   []string `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, "list", response.Object)
+		require.NotEmpty(t, response.Data)
+	}
+	require.Zero(t, upstream.codexCalls.Load(), "root /models never dispatches a Codex manifest")
+
+	// 只有 /v1/models 带非空版本信号、以及 /backend-api/codex/models 走 Codex 目录。
+	for _, path := range []string{"/v1/models?client_version=" + service.CodexCanonicalClientVersion(), "/backend-api/codex/models"} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		require.Equal(t, http.StatusOK, w.Code, "%s: %s", path, w.Body.String())
@@ -113,8 +133,8 @@ func TestGatewayRoutesRetrievePinnedModel(t *testing.T) {
 	s := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
 		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
 	h := &handler.Handlers{
-		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
-		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg),
+		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil),
+		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
 		AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 	}
 	group := &service.Group{ID: 1, Platform: service.PlatformOpenAI,
@@ -127,7 +147,7 @@ func TestGatewayRoutesRetrievePinnedModel(t *testing.T) {
 		}
 		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &group.ID, Group: group})
 		c.Next()
-	}), nil, nil, nil, nil, nil, cfg)
+	}), nil, nil, nil, nil, nil, cfg, nil)
 	request := func(path, key, etag string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
