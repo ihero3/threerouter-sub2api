@@ -57,6 +57,16 @@ const (
 	// 无条件不写入错误日志（不需要后台开关）。
 	opsAPIKeyQuotaExhaustedKeyword = "api key 额度已用完"
 
+	// 两类「预期内、量大的模型相关错误」无条件跳过错误日志的匹配口径。
+	// 都是本地网关生成的英文文案，模型名多变，故只匹配稳定短语、与模型名无关。
+	// opsErrModelAccountsBusyBlocked: "All available accounts for model %q are temporarily busy or blocked, please try again later"
+	//   ——该模型所有账号暂时忙/被封，属预期暂时状态。刻意只匹配此短语，
+	//   不含 "All available accounts exhausted / rate-limited"（用户拍板保留这两类）。
+	opsErrModelAccountsBusyBlocked = "temporarily busy or blocked"
+	// opsErrModelNotAvailableForGroup: "Model %q does not exist or is not available for this group"
+	//   ——用户乱写模型名导致的 404；同时覆盖变体 "Model %q is not available for this group"。
+	opsErrModelNotAvailableForGroup = "is not available for this group"
+
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
 	opsCodeUsageLimitExceeded    = "USAGE_LIMIT_EXCEEDED"
@@ -229,7 +239,8 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 	// 在这里统一收口，保证「凡含 insufficient 的错误都不写入 ops_error_logs」，
 	// 以及「API key 额度已用完」在任何路径下都不落库（无条件）。
 	if shouldSkipEnqueuedInsufficientError(ops.OpsAdvancedSettingsSnapshot(), entry) ||
-		shouldSkipEnqueuedAPIKeyQuotaExhausted(entry) {
+		shouldSkipEnqueuedAPIKeyQuotaExhausted(entry) ||
+		shouldSkipEnqueuedBenignModelError(entry) {
 		return
 	}
 	entry.UserAgent = normalizeOpsPersistentUserAgent(entry.UserAgent)
@@ -328,6 +339,28 @@ func shouldSkipEnqueuedAPIKeyQuotaExhausted(entry *service.OpsInsertErrorLogInpu
 	}
 	for _, text := range texts {
 		if strings.Contains(strings.ToLower(text), opsAPIKeyQuotaExhaustedKeyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipEnqueuedBenignModelError 是「账号忙/封」「模型名乱写」在落库前的兜底过滤，
+// 覆盖 2xx 恢复行等不经 shouldSkipOpsErrorLog 的路径。与主路径同一口径：
+// 只看最终错误文本字段，不看 RequestPreview，也不展开 UpstreamErrors 事件数组。
+func shouldSkipEnqueuedBenignModelError(entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	texts := []string{entry.ErrorMessage, entry.ErrorBody}
+	if entry.UpstreamErrorMessage != nil {
+		texts = append(texts, *entry.UpstreamErrorMessage)
+	}
+	if entry.UpstreamErrorDetail != nil {
+		texts = append(texts, *entry.UpstreamErrorDetail)
+	}
+	for _, text := range texts {
+		if shouldSkipBenignModelError(text, "", "") {
 			return true
 		}
 	}
@@ -2618,6 +2651,11 @@ func shouldSkipOpsErrorLog(ops *service.OpsService, message, body, code, request
 		return true
 	}
 
+	// 两类预期内、量大的模型错误（账号忙/封、模型名乱写）无条件过滤，与后台开关无关。
+	if shouldSkipBenignModelError(message, body, code) {
+		return true
+	}
+
 	// Check if count_tokens errors should be ignored
 	if settings.IgnoreCountTokensErrors && isTokenCountRequestPath(requestPath) {
 		return true
@@ -2678,6 +2716,25 @@ func shouldSkipAPIKeyQuotaExhausted(message, body, code string) bool {
 	}
 	return strings.Contains(strings.ToLower(message), opsAPIKeyQuotaExhaustedKeyword) ||
 		strings.Contains(strings.ToLower(body), opsAPIKeyQuotaExhaustedKeyword)
+}
+
+// shouldSkipBenignModelError 判定两类「预期内、量大」的模型相关错误，无条件不写入日志：
+//   - 该模型所有账号暂时忙/被封："All available accounts for model %q are temporarily busy or blocked..."
+//   - 模型名乱写导致 404："Model %q does not exist or is not available for this group"
+//
+// 两者都是本地网关生成的英文文案，模型名多变，故只匹配稳定短语、与模型名无关。
+// 刻意只匹配 message / body，不看 code 也不看 RequestPreview：
+// 前者这两类没有专属错误码（复用 api_error / model_not_found），后者避免用户输入里
+// 恰好出现这些短语把真正需要排查的上游故障吞掉。schema_version 2 口径。
+func shouldSkipBenignModelError(message, body, code string) bool {
+	for _, text := range []string{message, body} {
+		lower := strings.ToLower(text)
+		if strings.Contains(lower, opsErrModelAccountsBusyBlocked) ||
+			strings.Contains(lower, opsErrModelNotAvailableForGroup) {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldSkipOpsClientClosed 按 IgnoreContextCanceled 过滤纯客户端取消的 499。
