@@ -10,23 +10,27 @@ import (
 	"github.com/google/uuid"
 )
 
-// 共享 IP 风险周期扫描（单 IP 关联过多用户 → 批量打 suspect + 扣减）。
+// 共享 IP 风险周期扫描（单 IP 关联过多用户 → 分档打标 + 扣减）。
 //
 // 与 IP 一致性风控（一个用户用了几个 IP）是两个正交维度：
 //   - IP 一致性：按用户维度统计窗口内客户端 IP 数，命中打 ip_suspect / 禁用 / 扣钱；
-//   - 本扫描：按 IP 维度统计近 10 天关联的不同用户数，命中则把这些用户批量打
-//     suspect（进人工复核队列）+ 扣减到 floor。
+//   - 本扫描：按 IP 维度统计窗口内关联的不同用户数，分两档处置（用户拍板 2026-11-20）：
+//       1) 快速档：1 天窗口内同 IP ≥3 用户 → suspect + 扣减到 floor（抓短时间批量建号团伙）；
+//       2) 长期禁用档：10 天窗口内同 IP ≥5 用户 → abnormal（打标即自动禁用）+ 扣减到 floor
+//          （长期多人共用，与管理端展示口径 GetSharedUsageIPs 的 ≥5 对齐）。
 //
 // 阈值与豁免：
-//   - 触发阈值 sharedIPRiskMinUsers = 3（收紧，捕获「同使用 IP 仅 3 个」的团伙；用户拍板 2026-11-20）。
+//   - 快速档 sharedIPRiskShortMinUsers = 3 / 1 天；长期档 sharedIPRiskMinUsers = 5 / 10 天。
+//     演化：单一档 5→3（2026-11-20 上午）→ 拆双档：3 归 1 天快速档，10 天档回到 5 并升级为禁用。
 //   - 命中 ticket_flag / 复核豁免表 / IP 白名单的用户跳过（前两者由 BumpUserRiskMarksSQL
 //     的豁免守卫 + 本服务的 IsExempt 双重拦截，白名单由设置缓存判断）。
-//   - 打标走「只升不降」，不会把 abnormal 降级成 suspect。
+//   - 打标走「只升不降」，abnormal 不会被 suspect 覆盖；abnormal 打标即同步置 disabled
+//     （admin 除外，见 BumpUserRiskMarks）。
 //
 // 幂等与安全：
 //   - 多实例用 leader 锁选主，避免 N 份全表扫描和重复扣减；
 //   - 扣减复用 AdminService.ApplyIPBalancePenalty 的条件 UPDATE（降到 floor 后不再扣），
-//     即使重复扫描也不会重复扣钱；打标 SQL 只升不降且标记幂等追加；
+//     即使两档同时命中同一用户也不会重复扣钱；打标 SQL 只升不降且标记幂等追加；
 //   -  DB / 缓存异常一律 fail-open：只记日志，绝不阻断业务。
 
 const (
@@ -36,13 +40,17 @@ const (
 	// sharedIPRiskLeaderLockKey / TTL 保证多实例只有一个跑全表扫描。
 	sharedIPRiskLeaderLockKey = "shared_ip:risk:scan:leader"
 	sharedIPRiskLeaderLockTTL = 6 * time.Minute
-	// sharedIPRiskMinUsers 触发处罚的「同一 IP 关联最少不同用户数」。
-	// 最近一次调整：5→3（收紧，捕获「同使用 IP 仅 3 个」的团伙；用户拍板 2026-11-20）。
-	sharedIPRiskMinUsers = 3
+	// sharedIPRiskShortMinUsers / sharedIPRiskShortWindow 快速档：1 天窗口内同 IP ≥3 用户。
+	// 抓「短时间批量注册+共用出口 IP」的团伙；窗口收紧到 1 天避免慢速共享误伤 NAT。
+	sharedIPRiskShortMinUsers = 3
+	sharedIPRiskShortWindow   = 24 * time.Hour
+	// sharedIPRiskMinUsers / sharedIPRiskWindow 长期禁用档：10 天窗口内同 IP ≥5 用户。
+	// 与管理端展示口径 GetSharedUsageIPs（≥5）一致；命中打 abnormal 即自动禁用。
+	sharedIPRiskMinUsers = 5
 	// sharedIPRiskWindow 统计窗口：与 GetSharedUsageIPs 的展示口径一致（10 天）。
 	// 最近一次调整：180→10 天，缩短窗口以减少公司/NAT 长期累积命中。
 	sharedIPRiskWindow = 10 * 24 * time.Hour
-	// sharedIPRiskReason 写入 risk_reasons 的原因码。
+	// sharedIPRiskReason 写入 risk_reasons 的原因码（两档共用，level 区分处置档位）。
 	sharedIPRiskReason = "shared_ip_abuse"
 )
 
@@ -150,24 +158,31 @@ func (s *SharedIPRiskScanService) runOnce() {
 	defer release()
 
 	// minUsers 与窗口暂用常量（运营要后台可调再接设置项）；floor 复用 IP 一致性设置。
-	minUsers := sharedIPRiskMinUsers
-	ids, err := s.userLister.ListUserIDsBySharedIP(ctx, minUsers, sharedIPRiskWindow)
+	floor := DefaultIPBalancePenaltyFloor
+	if s.settings != nil {
+		floor = s.settings.GetIPConsistencySettingsCached(ctx).BalancePenaltyFloor
+	}
+	// notes 必须与复核返还 SQL 的匹配条件（IPAbnormalityMessage）一致，
+	// 否则共享 IP 扣掉的钱在人工复核放行时无法返还。
+	notes := IPAbnormalityMessage
+
+	// 快速档：1 天 ≥3 用户 → suspect + 扣费（处置同旧单档）。
+	s.scanTier(ctx, sharedIPRiskShortMinUsers, sharedIPRiskShortWindow, AffiliateRiskLevelSuspect, floor, notes, "short")
+	// 长期禁用档：10 天 ≥5 用户 → abnormal（打标即自动禁用）+ 扣费。
+	s.scanTier(ctx, sharedIPRiskMinUsers, sharedIPRiskWindow, AffiliateRiskLevelAbnormal, floor, notes, "long")
+}
+
+// scanTier 跑单档扫描：查命中用户 → 豁免过滤 → 打标（只升不降）→ 扣减到 floor。
+// 两档共用同一 reason、同一扣减通道；同用户被两档命中时扣减由条件 UPDATE 幂等兜底。
+func (s *SharedIPRiskScanService) scanTier(ctx context.Context, minUsers int, window time.Duration, level string, floor float64, notes, tier string) {
+	ids, err := s.userLister.ListUserIDsBySharedIP(ctx, minUsers, window)
 	if err != nil {
-		slog.Warn("shared ip risk scan: list users failed", "audit", true, "error", err)
+		slog.Warn("shared ip risk scan: list users failed", "audit", true, "tier", tier, "error", err)
 		return
 	}
 	if len(ids) == 0 {
 		return
 	}
-
-	floor := DefaultIPBalancePenaltyFloor
-	if s.settings != nil {
-		floor = s.settings.GetIPConsistencySettingsCached(ctx).BalancePenaltyFloor
-	}
-
-	// notes 必须与复核返还 SQL 的匹配条件（IPAbnormalityMessage）一致，
-	// 否则共享 IP 扣掉的钱在人工复核放行时无法返还。
-	notes := IPAbnormalityMessage
 	marked := 0
 	penalized := 0
 	for _, userID := range ids {
@@ -181,7 +196,7 @@ func (s *SharedIPRiskScanService) runOnce() {
 		if s.markWriter != nil {
 			s.markWriter.BumpUserRiskMarksBatch(ctx, []UserRiskMark{{
 				UserID:  userID,
-				Level:   AffiliateRiskLevelSuspect,
+				Level:   level,
 				Reasons: []string{sharedIPRiskReason},
 			}})
 			marked++
@@ -195,11 +210,13 @@ func (s *SharedIPRiskScanService) runOnce() {
 			penalized++
 		}
 	}
-	slog.Info("shared ip risk scan completed",
+	slog.Info("shared ip risk scan tier completed",
 		"audit", true,
+		"tier", tier,
 		"candidates", len(ids),
 		"marked", marked,
 		"penalized", penalized,
 		"min_users", minUsers,
+		"window", window.String(),
 	)
 }

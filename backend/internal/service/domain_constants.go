@@ -945,9 +945,9 @@ const (
 	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
 	AffiliateRiskAliasStuffingMinDots   = 3
 	AffiliateRiskAliasStuffingMinLength = 16
-	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
-	// 最近一次调整：4→2（收紧，捕获「单维度只差 1 个」的团伙；用户拍板 2026-11-20）。
-	AffiliateRiskRegistrationIPCorrelationThreshold = 2
+	// 同注册 IP 24 小时关联账号数达到该值 → suspect 打标 + 自动扣费 + 邮件。
+	// 演化：3→4→2→3；2026-11-20 处置从「仅打标」升级为「打标+扣费+邮件」（用户拍板）。
+	AffiliateRiskRegistrationIPCorrelationThreshold = 3
 
 	// 规则 11：多维关联团伙——共享注册 IP / 共享最后使用 IP 建图，连通分量达阈值即重罚。
 	// 用于抓「单维度都不够阈值、但组合明显是同一伙」的新号团伙（见功能台账 §7）。

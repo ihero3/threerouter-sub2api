@@ -440,13 +440,17 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 记录设备指纹流水：只在建号成功后写入，供后续注册按同设备 24 小时窗口计数。
 	// 指纹由 handler 注入 ctx，不改变本函数签名及其调用点。
 	s.RecordRegistrationDeviceFingerprint(ctx, user.ID, registerIP)
-	// 同注册 IP 24h 关联账号数超阈值 → 软性存疑（冻结建 Key/网关直到人工复核）。
+	// 同注册 IP 24h 关联账号数超阈值 → suspect 打标 + 自动扣费 + 通知邮件（用户拍板 2026-11-20）。
 	// 与设备指纹硬拒（registration_device_fingerprint_limit）互补：IP 维度用更宽的
-	// 24h 窗口做软性标记，避免误伤共享 NAT / 办公网络下的正常用户。
+	// 24h 窗口做团伙识别，扣减走 IP 一致性同款通道（异步、幂等、复核可返还）。
 	if s.affiliateService != nil && registerIP != "" {
 		if ipRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
 			if cnt, ipErr := ipRepo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-24*time.Hour)); ipErr == nil && cnt >= AffiliateRiskRegistrationIPCorrelationThreshold {
 				s.affiliateService.MarkUserRisk(ctx, user.ID, AffiliateRiskLevelSuspect, []string{AffiliateRiskReasonRegistrationIPCorrelation})
+				// 自动处罚：扣到 floor + 邮件（异步幂等；ipConsistency 未注入时跳过，不阻断注册）。
+				if s.ipConsistency != nil {
+					s.ipConsistency.ScheduleRegistrationIPCorrelationPenalty(ctx, user.ID)
+				}
 			}
 		}
 	}

@@ -641,7 +641,11 @@ export default {
           email_alias_stuffing: '邮箱点号别名填充（同一 Gmail 派生多个账号）',
           shared_password: '多个账号使用相同密码',
           chain_contagion: '关联链路中存在异常账号',
-          ip_inconsistent: '监控窗口内出现多个客户端 IP'
+          ip_inconsistent: '监控窗口内出现多个客户端 IP',
+          registration_ip_correlation: '24 小时内同注册 IP 关联过多账号',
+          shared_ip_abuse: '同一使用 IP 被过多账号共用',
+          linked_cluster_abuse: '多维关联团伙（注册/使用 IP 交叉成团）',
+          new_user_first_use_ip_mismatch: '新用户注册后短期内更换 IP'
         },
         tooltipFallback: '账号存在风险，请人工核查',
         review: {

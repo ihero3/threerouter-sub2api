@@ -928,7 +928,8 @@ func (r *userRepository) GetLatestUsedIPByUserIDs(ctx context.Context, userIDs [
 }
 
 // sharedUsageIPsSQL 管理端展示用：最近 10 天内被 ≥5 个不同用户使用过的 IP。
-// 窗口必须与处罚扫描 sharedIPRiskWindow 一致，抽成常量便于测试锁定口径。
+// 口径与共享 IP 扫描的长期禁用档一致（sharedIPRiskMinUsers=5/10 天）：
+// 展示标「可疑」的 IP 同时会被扫描自动 abnormal 禁用 + 扣费（用户拍板 2026-11-20）。
 const sharedUsageIPsSQL = `
 	SELECT ip_address
 	FROM usage_logs

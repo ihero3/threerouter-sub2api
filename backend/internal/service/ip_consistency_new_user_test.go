@@ -257,3 +257,31 @@ func TestNewUserFirstUseIP_LockErrorFailsOpen(t *testing.T) {
 		t.Fatalf("disable + mark must still happen, got status=%q marks=%+v", updater.status, marker.calls)
 	}
 }
+
+// TestScheduleRegistrationIPCorrelationPenalty 锁死注册 IP 关联规则的自动处罚通道：
+// 使用独立幂等键 ipguard:regip-penalty:<id>，异步扣到 floor 并通知（用户拍板 2026-11-20）。
+func TestScheduleRegistrationIPCorrelationPenalty(t *testing.T) {
+	svc, locker, penalty, _, _ := newNewUserFixture()
+
+	svc.ScheduleRegistrationIPCorrelationPenalty(context.Background(), 42)
+
+	calls, _, lastKey, _ := locker.snapshot()
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 penalty claim, got %d", calls)
+	}
+	if lastKey != ipConsistencyRegIPCorrelationPenaltyKeyPrefix+"42" {
+		t.Fatalf("penalty key = %q, want %q", lastKey, ipConsistencyRegIPCorrelationPenaltyKeyPrefix+"42")
+	}
+	penaltyCall := waitPenaltyCall(t, penalty)
+	if penaltyCall.userID != 42 || penaltyCall.floor != DefaultIPBalancePenaltyFloor || !penaltyCall.notify {
+		t.Fatalf("penalty contract mismatch: %+v", penaltyCall)
+	}
+	if penaltyCall.notes != IPAbnormalityMessage {
+		t.Fatalf("notes must keep IPAbnormalityMessage for review refund, got %q", penaltyCall.notes)
+	}
+
+	// nil 服务与非法 userID 必须安全跳过
+	var nilSvc *IPConsistencyService
+	nilSvc.ScheduleRegistrationIPCorrelationPenalty(context.Background(), 42)
+	svc.ScheduleRegistrationIPCorrelationPenalty(context.Background(), 0)
+}

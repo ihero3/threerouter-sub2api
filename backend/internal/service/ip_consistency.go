@@ -90,6 +90,9 @@ const (
 	// 该键同时承担「窗口内只罚一次」的职责（24h 冷却），防止同一用户在窗口内
 	// 多次换 IP 被重复扣钱 / 重复发信；与判定解耦，IP 一致的调用不占用它。
 	ipConsistencyNewUserPenaltyKeyPrefix = "ipguard:newuser-penalty:"
+	// ipConsistencyRegIPCorrelationPenaltyKeyPrefix 注册 IP 关联规则的独立扣减幂等键。
+	// 与新用户规则、3/4 IP 规则分开，避免互相吞掉处罚；24h 冷却保证只扣一次。
+	ipConsistencyRegIPCorrelationPenaltyKeyPrefix = "ipguard:regip-penalty:"
 	// newUserIPMismatchWindow 新用户注册后 IP 严格校验窗口：注册后 3 分钟内。
 	// 窗口内任意一次 API 调用的客户端 IP 与注册 IP 不一致即禁用 + 扣减 + 邮件；
 	// 超过窗口则回落到 CheckUser 的 3/4 IP 滚动窗口规则。
@@ -544,6 +547,25 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 func (s *IPConsistencyService) scheduleBalancePenalty(ctx context.Context, userID int64, settings IPConsistencySettings) {
 	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor, settings.PenaltyNotifyEmail,
 		ipConsistencyPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
+}
+
+// ScheduleRegistrationIPCorrelationPenalty 注册 IP 关联规则命中后的自动处罚：
+// 扣到 floor + 通知邮件（确实发生扣减才发信，notes 沿用 IPAbnormalityMessage
+// 保证人工复核放行时可返还）。异步执行，独立幂等键 24h 冷却内只扣一次。
+// 供注册流程（auth_service）在 suspect 打标后调用；依赖未注入时静默跳过不阻断注册。
+func (s *IPConsistencyService) ScheduleRegistrationIPCorrelationPenalty(ctx context.Context, userID int64) {
+	if s == nil || userID <= 0 {
+		return
+	}
+	floor := DefaultIPBalancePenaltyFloor
+	notify := true
+	if s.settingsProvider != nil {
+		settings := s.settingsProvider.GetIPConsistencySettingsCached(ctx)
+		floor = settings.BalancePenaltyFloor
+		notify = settings.PenaltyNotifyEmail
+	}
+	s.scheduleBalancePenaltyWithKey(ctx, userID, floor, notify,
+		ipConsistencyRegIPCorrelationPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
 }
 
 // scheduleBalancePenaltyWithKey 是处罚调度的唯一实现；不同规则通过不同 key 隔离幂等。

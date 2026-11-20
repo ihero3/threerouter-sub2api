@@ -641,7 +641,11 @@ export default {
           email_alias_stuffing: 'Email dot-alias stuffing (one Gmail, many accounts)',
           shared_password: 'Shared password across accounts',
           chain_contagion: 'Linked to abnormal accounts',
-          ip_inconsistent: 'Multiple client IPs within the monitoring window'
+          ip_inconsistent: 'Multiple client IPs within the monitoring window',
+          registration_ip_correlation: 'Too many accounts registered from the same IP within 24h',
+          shared_ip_abuse: 'Usage IP shared by too many accounts',
+          linked_cluster_abuse: 'Linked account cluster (registration/usage IP graph)',
+          new_user_first_use_ip_mismatch: 'New account used a different IP shortly after signup'
         },
         tooltipFallback: 'Account risk detected, please review manually',
         review: {

@@ -9,21 +9,70 @@ import (
 
 // ---------------- 共享 IP 风险扫描单测（不依赖 DB / Redis） ----------------
 
-type fakeSharedIPLister struct {
+// listCall 记录一次 ListUserIDsBySharedIP 的查询参数，用于断言双档口径。
+type listCall struct {
+	minUsers int
+	window   time.Duration
+}
+
+// listResult 是 fake 按调用顺序吐出的结果（runOnce 固定先快速档后长期档）。
+type listResult struct {
 	ids []int64
 	err error
 }
 
-// TestSharedIPRiskWindowIsTenDays 锁住共享 IP 统计窗口尺度：从 180 天收紧到 10 天，
-// 避免公司/NAT 账号长期累积命中。改回旧值会让本测试变红。
-func TestSharedIPRiskWindowIsTenDays(t *testing.T) {
-	if sharedIPRiskWindow != 10*24*time.Hour {
-		t.Fatalf("sharedIPRiskWindow = %s, want 10 days", sharedIPRiskWindow)
+type fakeSharedIPLister struct {
+	queue []listResult
+	calls []listCall
+}
+
+func (f *fakeSharedIPLister) ListUserIDsBySharedIP(_ context.Context, minUsers int, window time.Duration) ([]int64, error) {
+	f.calls = append(f.calls, listCall{minUsers: minUsers, window: window})
+	if len(f.queue) == 0 {
+		return nil, nil
+	}
+	r := f.queue[0]
+	f.queue = f.queue[1:]
+	return r.ids, r.err
+}
+
+// TestSharedIPScan_DoubleTierQueryParams 锁死双档口径：先查 1 天 ≥3（快速档 suspect），
+// 再查 10 天 ≥5（长期档 abnormal 自动禁用）。改口径必须有意为之并同步本测试。
+func TestSharedIPScan_DoubleTierQueryParams(t *testing.T) {
+	lister := &fakeSharedIPLister{queue: []listResult{{}, {}}}
+	writer := &fakeSharedIPMarkWriter{}
+	penalty := &fakeSharedIPPenalty{}
+	svc := newScanServiceForTest(lister, writer, penalty, &fakeExemptionCheck{})
+
+	svc.runOnce()
+
+	if len(lister.calls) != 2 {
+		t.Fatalf("expected 2 tier queries, got %d", len(lister.calls))
+	}
+	if lister.calls[0].minUsers != sharedIPRiskShortMinUsers || lister.calls[0].window != sharedIPRiskShortWindow {
+		t.Fatalf("short tier = %d/%s, want %d/%s",
+			lister.calls[0].minUsers, lister.calls[0].window, sharedIPRiskShortMinUsers, sharedIPRiskShortWindow)
+	}
+	if lister.calls[1].minUsers != sharedIPRiskMinUsers || lister.calls[1].window != sharedIPRiskWindow {
+		t.Fatalf("long tier = %d/%s, want %d/%s",
+			lister.calls[1].minUsers, lister.calls[1].window, sharedIPRiskMinUsers, sharedIPRiskWindow)
 	}
 }
 
-func (f *fakeSharedIPLister) ListUserIDsBySharedIP(_ context.Context, _ int, _ time.Duration) ([]int64, error) {
-	return f.ids, f.err
+// TestSharedIPScan_TierConstants 锁死双档常量（用户拍板 2026-11-20）。
+func TestSharedIPScan_TierConstants(t *testing.T) {
+	if sharedIPRiskShortWindow != 24*time.Hour {
+		t.Fatalf("short window = %s, want 24h", sharedIPRiskShortWindow)
+	}
+	if sharedIPRiskShortMinUsers != 3 {
+		t.Fatalf("short minUsers = %d, want 3", sharedIPRiskShortMinUsers)
+	}
+	if sharedIPRiskWindow != 10*24*time.Hour {
+		t.Fatalf("long window = %s, want 10 days", sharedIPRiskWindow)
+	}
+	if sharedIPRiskMinUsers != 5 {
+		t.Fatalf("long minUsers = %d, want 5", sharedIPRiskMinUsers)
+	}
 }
 
 type fakeSharedIPMarkWriter struct {
@@ -78,8 +127,12 @@ func newScanServiceForTest(lister *fakeSharedIPLister, writer *fakeSharedIPMarkW
 	return NewSharedIPRiskScanService(lister, writer, penalty, exempt, nil)
 }
 
-func TestSharedIPScan_MarksAndPenalizesNonExempt(t *testing.T) {
-	lister := &fakeSharedIPLister{ids: []int64{1, 2, 3}}
+// TestSharedIPScan_ShortTierMarksSuspect 快速档命中 → suspect + 扣费。
+func TestSharedIPScan_ShortTierMarksSuspect(t *testing.T) {
+	lister := &fakeSharedIPLister{queue: []listResult{
+		{ids: []int64{1, 2, 3}}, // 快速档命中
+		{},                      // 长期档无命中
+	}}
 	writer := &fakeSharedIPMarkWriter{}
 	penalty := &fakeSharedIPPenalty{}
 	svc := newScanServiceForTest(lister, writer, penalty, &fakeExemptionCheck{})
@@ -103,8 +156,40 @@ func TestSharedIPScan_MarksAndPenalizesNonExempt(t *testing.T) {
 	}
 }
 
+// TestSharedIPScan_LongTierMarksAbnormal 长期档命中 → abnormal（打标即自动禁用）+ 扣费。
+func TestSharedIPScan_LongTierMarksAbnormal(t *testing.T) {
+	lister := &fakeSharedIPLister{queue: []listResult{
+		{},                   // 快速档无命中
+		{ids: []int64{7, 8}}, // 长期档命中
+	}}
+	writer := &fakeSharedIPMarkWriter{}
+	penalty := &fakeSharedIPPenalty{}
+	svc := newScanServiceForTest(lister, writer, penalty, &fakeExemptionCheck{})
+
+	svc.runOnce()
+
+	marks := writer.snapshot()
+	if len(marks) != 2 {
+		t.Fatalf("expected 2 marks, got %d", len(marks))
+	}
+	for _, m := range marks {
+		if m.Level != AffiliateRiskLevelAbnormal {
+			t.Fatalf("long tier must mark abnormal (auto-disable), got %q", m.Level)
+		}
+		if len(m.Reasons) != 1 || m.Reasons[0] != sharedIPRiskReason {
+			t.Fatalf("unexpected reasons: %v", m.Reasons)
+		}
+	}
+	if calls := penalty.snapshot(); len(calls) != 2 {
+		t.Fatalf("expected 2 penalties, got %d", len(calls))
+	}
+}
+
 func TestSharedIPScan_SkipsExemptUsers(t *testing.T) {
-	lister := &fakeSharedIPLister{ids: []int64{1, 2, 3}}
+	lister := &fakeSharedIPLister{queue: []listResult{
+		{ids: []int64{1, 2, 3}}, // 快速档命中，用户 2 豁免
+		{},                      // 长期档无命中
+	}}
 	writer := &fakeSharedIPMarkWriter{}
 	penalty := &fakeSharedIPPenalty{}
 	exempt := &fakeExemptionCheck{exempt: map[int64]bool{2: true}} // 用户 2 提过工单/复核豁免
@@ -129,7 +214,7 @@ func TestSharedIPScan_SkipsExemptUsers(t *testing.T) {
 }
 
 func TestSharedIPScan_NoCandidatesIsNoop(t *testing.T) {
-	lister := &fakeSharedIPLister{ids: nil}
+	lister := &fakeSharedIPLister{}
 	writer := &fakeSharedIPMarkWriter{}
 	penalty := &fakeSharedIPPenalty{}
 	svc := newScanServiceForTest(lister, writer, penalty, &fakeExemptionCheck{})
@@ -142,12 +227,15 @@ func TestSharedIPScan_NoCandidatesIsNoop(t *testing.T) {
 }
 
 func TestSharedIPScan_ListFailureIsNoop(t *testing.T) {
-	lister := &fakeSharedIPLister{err: context.DeadlineExceeded}
+	lister := &fakeSharedIPLister{queue: []listResult{
+		{err: context.DeadlineExceeded}, // 快速档查询失败
+		{},                              // 长期档仍执行
+	}}
 	writer := &fakeSharedIPMarkWriter{}
 	penalty := &fakeSharedIPPenalty{}
 	svc := newScanServiceForTest(lister, writer, penalty, &fakeExemptionCheck{})
 
-	svc.runOnce() // 不应 panic，也不写任何东西
+	svc.runOnce() // 不应 panic
 
 	if len(writer.snapshot()) != 0 || len(penalty.snapshot()) != 0 {
 		t.Fatal("list failure must not mark or penalize anyone")
