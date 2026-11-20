@@ -18,7 +18,7 @@ import (
 //     suspect（进人工复核队列）+ 扣减到 floor。
 //
 // 阈值与豁免：
-//   - 触发阈值 sharedIPRiskMinUsers = 5（原只读展示阈值为 2，放宽以兼容公司/NAT/代理）。
+//   - 触发阈值 sharedIPRiskMinUsers = 3（收紧，捕获「同使用 IP 仅 3 个」的团伙；用户拍板 2026-11-20）。
 //   - 命中 ticket_flag / 复核豁免表 / IP 白名单的用户跳过（前两者由 BumpUserRiskMarksSQL
 //     的豁免守卫 + 本服务的 IsExempt 双重拦截，白名单由设置缓存判断）。
 //   - 打标走「只升不降」，不会把 abnormal 降级成 suspect。
@@ -37,7 +37,8 @@ const (
 	sharedIPRiskLeaderLockKey = "shared_ip:risk:scan:leader"
 	sharedIPRiskLeaderLockTTL = 6 * time.Minute
 	// sharedIPRiskMinUsers 触发处罚的「同一 IP 关联最少不同用户数」。
-	sharedIPRiskMinUsers = 5
+	// 最近一次调整：5→3（收紧，捕获「同使用 IP 仅 3 个」的团伙；用户拍板 2026-11-20）。
+	sharedIPRiskMinUsers = 3
 	// sharedIPRiskWindow 统计窗口：与 GetSharedUsageIPs 的展示口径一致（10 天）。
 	// 最近一次调整：180→10 天，缩短窗口以减少公司/NAT 长期累积命中。
 	sharedIPRiskWindow = 10 * 24 * time.Hour

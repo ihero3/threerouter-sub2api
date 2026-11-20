@@ -946,8 +946,8 @@ const (
 	AffiliateRiskAliasStuffingMinDots   = 3
 	AffiliateRiskAliasStuffingMinLength = 16
 	// 同注册 IP 24 小时关联账号数达到该值 → 软性存疑。
-	// 最近一次调整：3→4（放宽尺度，避免共享 NAT/办公网误伤）。
-	AffiliateRiskRegistrationIPCorrelationThreshold = 4
+	// 最近一次调整：4→2（收紧，捕获「单维度只差 1 个」的团伙；用户拍板 2026-11-20）。
+	AffiliateRiskRegistrationIPCorrelationThreshold = 2
 
 	// 规则 11：多维关联团伙——共享注册 IP / 共享最后使用 IP 建图，连通分量达阈值即重罚。
 	// 用于抓「单维度都不够阈值、但组合明显是同一伙」的新号团伙（见功能台账 §7）。
