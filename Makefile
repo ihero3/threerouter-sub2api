@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical setup-merge-driver
 
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
@@ -56,3 +56,9 @@ test-frontend:
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
+
+# 配置上游合并保护：.gitattributes 中标记了 merge=ours 的本地权威文件，
+# 需要此 driver 才生效。克隆后 / 合并 upstream 前先执行一次。
+setup-merge-driver:
+	@git config merge.ours.driver true
+	@echo "merge.ours.driver 已启用；本地权威文件在合并 upstream 时自动保留本地版本。"

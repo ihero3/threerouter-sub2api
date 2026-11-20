@@ -20,3 +20,22 @@ backend/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# ---------- 上游合并保护（业务为主）----------
+# 这些路径是本地自研权威区，与 upstream/main 合并时永远保留本地版本，
+# 避免 v0.2.19+ 上游重构反复污染业务代码。需先在本机/ CI 执行:
+#   git config merge.ours.driver true
+# 否则属性不生效。吸收上游具体修复请用 git cherry-pick 手工移植，
+# 不要用 -X ours（会把上游非冲突改动全收进来导致签名不匹配）。
+backend/ent/**                                   merge=ours
+backend/cmd/server/wire_gen.go                   merge=ours
+backend/internal/service/wire.go                 merge=ours
+backend/internal/service/auth_service.go         merge=ours
+backend/internal/service/geoip_service.go        merge=ours
+backend/internal/service/asn_risk_service.go     merge=ours
+backend/internal/service/media_vendor_image_adapter.go merge=ours
+backend/internal/handler/image_task_handler.go   merge=ours
+backend/internal/handler/openai_gateway_handler.go merge=ours
+frontend/src/views/user/PaymentView.vue          merge=ours
+frontend/src/i18n/locales/en/admin/settings.ts   merge=ours
+frontend/src/i18n/locales/zh/admin/settings.ts   merge=ours
