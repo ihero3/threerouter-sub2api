@@ -1495,6 +1495,14 @@ type GatewayOpenAISchedulerConfig struct {
 	StickyEscapeTTFTMs int `mapstructure:"sticky_escape_ttft_ms"`
 	// StickyEscapeErrorRate: 错误率 EWMA 超过该阈值时跳过 sticky
 	StickyEscapeErrorRate float64 `mapstructure:"sticky_escape_error_rate"`
+
+	// IdentityStickyEnabled: 无显式会话锚点（session-id / conversation_id /
+	// prompt_cache_key）时，是否改用「调用方身份（API Key / 用户）」派生稳定的
+	// sticky seed，替代内容回退哈希。
+	// 开启后同一 Key 的请求默认复用同一上游账号，仅在账号报错/冷却/并发满时才
+	// 走既有 failover 与 sticky escape 切换；关闭时回退到内容回退哈希的原有行为。
+	// 默认 true；显式设为 false 可恢复旧行为。
+	IdentityStickyEnabled bool `mapstructure:"identity_sticky_enabled"`
 }
 
 // GatewayUsageRecordConfig 使用量记录异步队列配置
@@ -2764,6 +2772,9 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_enabled", true)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_error_rate", 0.0)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_ttft_ms", 0)
+	// Identity sticky: 无显式会话锚点时按调用方身份粘账号，避免同 Key 短时间
+	// 被分散到多个上游账号。默认开启，显式 false 回退到内容回退哈希的旧行为。
+	viper.SetDefault("gateway.openai_scheduler.identity_sticky_enabled", true)
 
 	// server.trusted_proxies and security.forwarded_client_ip_headers are the
 	// other exception: load() distinguishes explicit configuration from absence

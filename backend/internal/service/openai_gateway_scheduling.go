@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
@@ -144,6 +145,36 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 	return currentHash
 }
 
+// openAIIdentityStickyEnabled reports whether identity-based sticky fallback is on.
+// A nil config defaults to false so zero-value services in tests keep the legacy
+// content-based behavior; production defaults are supplied via viper.SetDefault.
+func (s *OpenAIGatewayService) openAIIdentityStickyEnabled() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	return s.cfg.Gateway.OpenAIScheduler.IdentityStickyEnabled
+}
+
+// openAIIdentityStickySeed derives a stable sticky seed from the authenticated
+// caller when the request carries no explicit conversation anchor. It prefers
+// the API Key ID (finest granularity) and falls back to the user ID. The
+// identity is read from ctxkey values written by the API Key auth middleware,
+// never from client-controlled headers or body. The "identity-sticky:" prefix
+// namespaces these seeds away from explicit IDs and content-derived seeds.
+func (s *OpenAIGatewayService) openAIIdentityStickySeed(c *gin.Context) string {
+	if !s.openAIIdentityStickyEnabled() || c == nil || c.Request == nil {
+		return ""
+	}
+	ctx := c.Request.Context()
+	if apiKeyID, _ := ctx.Value(ctxkey.APIKeyID).(int64); apiKeyID > 0 {
+		return "identity-sticky:key:" + strconv.FormatInt(apiKeyID, 10)
+	}
+	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
+		return "identity-sticky:user:" + strconv.FormatInt(userID, 10)
+	}
+	return ""
+}
+
 // GenerateSessionHash generates a sticky-session hash for OpenAI requests.
 //
 // Priority:
@@ -153,7 +184,8 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 //  4. Header: x-conversation-id (CodeBuddy)
 //  5. Header: x-grok-conv-id (Grok groups only)
 //  6. Body:   prompt_cache_key
-//  7. Body:   content-based fallback (model + system + tools + first user message)
+//  7. Identity fallback (switch on): API Key ID / user ID from auth context
+//  8. Body:   content-based fallback (model + system + tools + first user message)
 //
 // Grok sticky affinity is intentionally separate from the upstream
 // prompt_cache_key identity (resolveGrokCacheIdentity): sticky pins an OAuth
@@ -167,6 +199,15 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	}
 
 	sessionID := explicitOpenAIRequestSessionID(c, body)
+	if sessionID == "" {
+		// Identity sticky: when the client sends no conversation anchor, derive a
+		// stable seed from the authenticated caller (API Key, then user) so the
+		// same caller sticks to one upstream account instead of being scattered
+		// across the group by content-hash churn on every independent request.
+		// Explicit anchors always win; identity is only a fallback before the
+		// content-based seed, and stays disabled when the switch is off.
+		sessionID = s.openAIIdentityStickySeed(c)
+	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
 	}
