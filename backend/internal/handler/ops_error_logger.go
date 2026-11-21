@@ -66,6 +66,9 @@ const (
 	// opsErrModelNotAvailableForGroup: "Model %q does not exist or is not available for this group"
 	//   ——用户乱写模型名导致的 404；同时覆盖变体 "Model %q is not available for this group"。
 	opsErrModelNotAvailableForGroup = "is not available for this group"
+	// opsErrModelNotSupportedByAnyAccount: "Model %q is not supported by any configured account in this group"
+	//   ——该分组下没有任何账号支持该模型（no_account_error.go 本地生成），模型名任意。
+	opsErrModelNotSupportedByAnyAccount = "not supported by any configured account"
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
@@ -2718,19 +2721,21 @@ func shouldSkipAPIKeyQuotaExhausted(message, body, code string) bool {
 		strings.Contains(strings.ToLower(body), opsAPIKeyQuotaExhaustedKeyword)
 }
 
-// shouldSkipBenignModelError 判定两类「预期内、量大」的模型相关错误，无条件不写入日志：
+// shouldSkipBenignModelError 判定三类「预期内、量大」的模型相关错误，无条件不写入日志：
 //   - 该模型所有账号暂时忙/被封："All available accounts for model %q are temporarily busy or blocked..."
 //   - 模型名乱写导致 404："Model %q does not exist or is not available for this group"
+//   - 分组无账号支持该模型："Model %q is not supported by any configured account in this group"
 //
-// 两者都是本地网关生成的英文文案，模型名多变，故只匹配稳定短语、与模型名无关。
+// 三者都是本地网关生成的英文文案，模型名多变，故只匹配稳定短语、与模型名无关。
 // 刻意只匹配 message / body，不看 code 也不看 RequestPreview：
-// 前者这两类没有专属错误码（复用 api_error / model_not_found），后者避免用户输入里
+// 前者这些错误没有专属错误码（复用 api_error / model_not_found），后者避免用户输入里
 // 恰好出现这些短语把真正需要排查的上游故障吞掉。schema_version 2 口径。
 func shouldSkipBenignModelError(message, body, code string) bool {
 	for _, text := range []string{message, body} {
 		lower := strings.ToLower(text)
 		if strings.Contains(lower, opsErrModelAccountsBusyBlocked) ||
-			strings.Contains(lower, opsErrModelNotAvailableForGroup) {
+			strings.Contains(lower, opsErrModelNotAvailableForGroup) ||
+			strings.Contains(lower, opsErrModelNotSupportedByAnyAccount) {
 			return true
 		}
 	}

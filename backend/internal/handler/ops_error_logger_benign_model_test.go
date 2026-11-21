@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestShouldSkipBenignModelError 锁死两类「预期内、量大」模型错误的无条件过滤口径：
+// TestShouldSkipBenignModelError 锁死三类「预期内、量大」模型错误的无条件过滤口径：
 //   - 该模型所有账号暂时忙/被封（temporarily busy or blocked），模型名任意；
-//   - 模型名乱写导致 404（does not exist / is not available for this group），模型名任意。
+//   - 模型名乱写导致 404（does not exist / is not available for this group），模型名任意；
+//   - 分组无账号支持该模型（not supported by any configured account），模型名任意。
 //
 // 模型名多变，只能匹配文案里的稳定短语；大小写不敏感。
 func TestShouldSkipBenignModelError(t *testing.T) {
@@ -31,11 +32,15 @@ func TestShouldSkipBenignModelError(t *testing.T) {
 		{"not available short variant", `Model "foo" is not available for this group`, "", true},
 		{"not available uppercase", `MODEL "BAR" DOES NOT EXIST OR IS NOT AVAILABLE FOR THIS GROUP`, "", true},
 		{"not available in body", "", `{"error":{"code":"model_not_found","message":"Model \"plaza\" does not exist or is not available for this group"}}`, true},
+		// 第三类：分组无账号支持该模型（no_account_error.go 本地生成），模型名多样
+		{"not supported deepseek", `Model "deepseek-v4.1-flash-1017" is not supported by any configured account in this group`, "", true},
+		{"not supported arbitrary model", `Model "zzz-made-up-name" is not supported by any configured account in this group`, "", true},
+		{"not supported uppercase", `MODEL "BAR" IS NOT SUPPORTED BY ANY CONFIGURED ACCOUNT IN THIS GROUP`, "", true},
+		{"not supported in body", "", `{"error":{"type":"model_not_found","message":"Model \"plaza\" is not supported by any configured account in this group"}}`, true},
 		// 正常错误 / 相似但不命中的错误必须保留
 		{"all accounts exhausted stays", "All available accounts exhausted", "", false},
 		{"rate limited stays", "All available accounts are currently rate-limited. Please retry later.", "", false},
 		{"generic no available accounts stays", "no available accounts", "", false},
-		{"model not supported stays", `Model "gpt-5.5" is not supported by any configured account in this group`, "", false},
 		{"retired model guidance stays", `Model "gpt-5.5" targets GPT-5.5, which retired from Codex with ChatGPT sign-in`, "", false},
 		{"insufficient stays", "Insufficient balance", "", false},
 		{"upstream timeout stays", "upstream timeout", "", false},
@@ -60,6 +65,7 @@ func TestShouldSkipBenignModelErrorIgnoresSettings(t *testing.T) {
 	for _, msg := range []string{
 		`All available accounts for model "deepseek-flash" are temporarily busy or blocked, please try again later`,
 		`Model "plaza" does not exist or is not available for this group`,
+		`Model "deepseek-v4.1-flash-1017" is not supported by any configured account in this group`,
 	} {
 		require.True(t, shouldSkipOpsErrorLog(svc, msg, "", "", "/v1/chat/completions"), msg)
 	}
@@ -79,6 +85,7 @@ func TestShouldSkipEnqueuedBenignModelError(t *testing.T) {
 		{"error body", &service.OpsInsertErrorLogInput{ErrorBody: `{"error":{"message":"are temporarily busy or blocked"}}`}, true},
 		{"upstream message", &service.OpsInsertErrorLogInput{UpstreamErrorMessage: &upstreamMsg}, true},
 		{"upstream detail", &service.OpsInsertErrorLogInput{UpstreamErrorDetail: &detail}, true},
+		{"not supported message", &service.OpsInsertErrorLogInput{ErrorMessage: `Model "x" is not supported by any configured account in this group`}, true},
 		{"normal error", &service.OpsInsertErrorLogInput{ErrorMessage: "upstream timeout", ErrorBody: `{"error":"timeout"}`}, false},
 		{"exhausted stays", &service.OpsInsertErrorLogInput{ErrorMessage: "All available accounts exhausted"}, false},
 		{"rate limited stays", &service.OpsInsertErrorLogInput{ErrorMessage: "All available accounts are currently rate-limited. Please retry later."}, false},
