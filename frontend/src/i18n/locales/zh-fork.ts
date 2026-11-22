@@ -355,7 +355,7 @@ export default {
     invalidCode: '请输入有效的验证码'
   },
   keys: {
-    departmentLabel: '部门',
+    departmentLabel: '部门（可选）',
     consumerLabel: '消费者（员工）',
     selectDepartment: '选择部门',
     selectConsumer: '选择消费者',

@@ -222,6 +222,58 @@ func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, i
 	return total, rows.Close()
 }
 
+func (r *affiliateRepository) GetCompletedRechargeTotal(ctx context.Context, userID int64) (float64, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+SELECT COALESCE(SUM(
+    CASE
+        WHEN order_type = 'balance' AND bonus_amount >= amount THEN 0
+        WHEN order_type = 'balance' AND bonus_amount > 0 THEN amount - bonus_amount
+        ELSE amount
+    END
+), 0)::double precision
+FROM payment_orders
+WHERE user_id = $1
+  AND status = 'COMPLETED'
+  AND paid_at IS NOT NULL
+  AND order_type IN ('balance', 'subscription')`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("query completed recharge total: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var total float64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+		}
+	}
+	return total, rows.Close()
+}
+
+func (r *affiliateRepository) GetAccruedRebateTotal(ctx context.Context, inviterID int64) (float64, error) {
+	if inviterID <= 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0)::double precision FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'accrue'`,
+		inviterID)
+	if err != nil {
+		return 0, fmt.Errorf("query accrued rebate total: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var total float64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+		}
+	}
+	return total, rows.Close()
+}
+
 func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {
 	var thawed float64
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {

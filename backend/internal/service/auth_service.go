@@ -55,6 +55,11 @@ var (
 		"REGISTRATION_IP_LIMIT",
 		"too many accounts have been registered from this IP address today; try again tomorrow",
 	)
+	// ErrRegistrationIPMonthlyLimit 同一 IP 30 天滚动窗口内注册账号数超过上限。
+	ErrRegistrationIPMonthlyLimit = infraerrors.BadRequest(
+		"REGISTRATION_IP_MONTHLY_LIMIT",
+		"too many accounts have been registered from this IP address in the last 30 days",
+	)
 	// ErrRegistrationIPHourlyLimit 同一 IP 1 小时内注册账号数超过上限。
 	ErrRegistrationIPHourlyLimit = infraerrors.TooManyRequests(
 		"REGISTRATION_IP_HOURLY_LIMIT",
@@ -99,6 +104,18 @@ func BuildRegistrationIPLimitError(limit int) error {
 	return infraerrors.BadRequest(
 		"REGISTRATION_IP_LIMIT",
 		fmt.Sprintf("this IP address has reached today's registration limit of %d account(s); try again tomorrow", limit),
+	)
+}
+
+// BuildRegistrationIPMonthlyLimitError 构造同一 IP 30 天滚动窗口注册数超限的客户端错误。
+// reason 恒为 REGISTRATION_IP_MONTHLY_LIMIT；文案必须纯英文（客户端可见）。
+func BuildRegistrationIPMonthlyLimitError(limit int) error {
+	if limit < RegistrationIPQuotaMonthlyLimitMin {
+		limit = RegistrationIPQuotaMonthlyLimitDefault
+	}
+	return infraerrors.BadRequest(
+		"REGISTRATION_IP_MONTHLY_LIMIT",
+		fmt.Sprintf("this IP address has reached its registration limit of %d account(s) within the last 30 days", limit),
 	)
 }
 
@@ -441,15 +458,39 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 指纹由 handler 注入 ctx，不改变本函数签名及其调用点。
 	s.RecordRegistrationDeviceFingerprint(ctx, user.ID, registerIP)
 	// 同注册 IP 24h 关联账号数超阈值 → suspect 打标 + 自动扣费 + 通知邮件（用户拍板 2026-11-20）。
+	// 回溯补打标（用户拍板 2026-11-21）：阈值命中时把窗口内同注册 IP 的全部账号一并
+	// suspect + 扣到 floor + 邮件，消除「先注册的老号永不打标」的盲区。打标只升不降且
+	// 处罚幂等（24h 冷却），重复扫描/注册不会重复扣钱。
 	// 与设备指纹硬拒（registration_device_fingerprint_limit）互补：IP 维度用更宽的
 	// 24h 窗口做团伙识别，扣减走 IP 一致性同款通道（异步、幂等、复核可返还）。
 	if s.affiliateService != nil && registerIP != "" {
 		if ipRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
 			if cnt, ipErr := ipRepo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-24*time.Hour)); ipErr == nil && cnt >= AffiliateRiskRegistrationIPCorrelationThreshold {
-				s.affiliateService.MarkUserRisk(ctx, user.ID, AffiliateRiskLevelSuspect, []string{AffiliateRiskReasonRegistrationIPCorrelation})
-				// 自动处罚：扣到 floor + 邮件（异步幂等；ipConsistency 未注入时跳过，不阻断注册）。
-				if s.ipConsistency != nil {
-					s.ipConsistency.ScheduleRegistrationIPCorrelationPenalty(ctx, user.ID)
+				if lister, ok := s.userRepo.(RegistrationIPLister); ok {
+					ids, listErr := lister.ListUserIDsByRegisterIP(ctx, registerIP, time.Now().Add(-24*time.Hour))
+					if listErr != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] Failed to list users by register IP %s: %v", registerIP, listErr)
+						ids = []int64{user.ID}
+					}
+					if len(ids) == 0 {
+						ids = []int64{user.ID}
+					}
+					for _, correlatedID := range ids {
+						if correlatedID <= 0 {
+							continue
+						}
+						s.affiliateService.MarkUserRisk(ctx, correlatedID, AffiliateRiskLevelSuspect, []string{AffiliateRiskReasonRegistrationIPCorrelation})
+						// 自动处罚：扣到 floor + 邮件（异步幂等；ipConsistency 未注入时跳过，不阻断注册）。
+						if s.ipConsistency != nil {
+							s.ipConsistency.ScheduleRegistrationIPCorrelationPenalty(ctx, correlatedID)
+						}
+					}
+				} else {
+					// 仓储不支持列表查询时退化为旧行为：只处理当前新号。
+					s.affiliateService.MarkUserRisk(ctx, user.ID, AffiliateRiskLevelSuspect, []string{AffiliateRiskReasonRegistrationIPCorrelation})
+					if s.ipConsistency != nil {
+						s.ipConsistency.ScheduleRegistrationIPCorrelationPenalty(ctx, user.ID)
+					}
 				}
 			}
 		}
@@ -1496,6 +1537,18 @@ func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string
 	return s.settingService.GetRegistrationIPQuotaLimit(ctx), timezone.Today()
 }
 
+// registrationIPMonthlyQuota 返回当前生效的「同一 IP 30 天滚动窗口注册数」配额。
+// 与每日档共用同一开关；limit <= 0 表示未启用。
+func (s *AuthService) registrationIPMonthlyQuota(ctx context.Context, registerIP string) (int, time.Time) {
+	if s == nil || s.settingService == nil || strings.TrimSpace(registerIP) == "" {
+		return 0, time.Time{}
+	}
+	if !s.settingService.IsRegistrationIPQuotaEnabled(ctx) {
+		return 0, time.Time{}
+	}
+	return s.settingService.GetRegistrationIPQuotaMonthlyLimit(ctx), time.Now().Add(-RegistrationIPQuotaMonthlyWindow)
+}
+
 // GetRegistrationIPHourlyLimit 返回同一 IP 每小时允许注册的账号数上限。
 // 超过后直接拦截后续注册请求（辅助风控规则，始终生效）。
 // 取值来自管理后台设置，缺失或非法时回退 RegistrationIPHourlyLimitDefault。
@@ -1523,11 +1576,12 @@ func (s *AuthService) CountRecentRegistrationsByIP(ctx context.Context, register
 	return repo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-time.Hour))
 }
 
-// validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 当天超额的注册请求。
+// validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 当天超额与 30 天滚动窗口超额的注册请求。
 // 真正的并发兜底由创建用户事务内的复查完成（见 createUserWithRegistrationEmailGuard）。
 func (s *AuthService) validateRegistrationIPQuota(ctx context.Context, registerIP string) error {
 	limit, since := s.registrationIPQuota(ctx, registerIP)
-	if limit <= 0 {
+	monthlyLimit, monthlySince := s.registrationIPMonthlyQuota(ctx, registerIP)
+	if limit <= 0 && monthlyLimit <= 0 {
 		return nil
 	}
 	repo, ok := s.userRepo.(RegistrationIPQuotaRepository)
@@ -1539,14 +1593,27 @@ func (s *AuthService) validateRegistrationIPQuota(ctx context.Context, registerI
 		return nil
 	}
 	registerIP = strings.TrimSpace(registerIP)
-	count, err := repo.CountUsersByRegisterIP(ctx, registerIP, since)
-	if err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to count registrations by IP %s: %v", registerIP, err)
-		return ErrServiceUnavailable
+	if limit > 0 {
+		count, err := repo.CountUsersByRegisterIP(ctx, registerIP, since)
+		if err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to count registrations by IP %s: %v", registerIP, err)
+			return ErrServiceUnavailable
+		}
+		if count >= limit {
+			logRegistrationIPQuotaRejected(registerIP, count, limit, "precheck", since)
+			return BuildRegistrationIPLimitError(limit)
+		}
 	}
-	if count >= limit {
-		logRegistrationIPQuotaRejected(registerIP, count, limit, "precheck", since)
-		return BuildRegistrationIPLimitError(limit)
+	if monthlyLimit > 0 {
+		count, err := repo.CountUsersByRegisterIP(ctx, registerIP, monthlySince)
+		if err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to count monthly registrations by IP %s: %v", registerIP, err)
+			return ErrServiceUnavailable
+		}
+		if count >= monthlyLimit {
+			logRegistrationIPQuotaRejected(registerIP, count, monthlyLimit, "precheck-monthly", monthlySince)
+			return BuildRegistrationIPMonthlyLimitError(monthlyLimit)
+		}
 	}
 	return nil
 }
@@ -1560,6 +1627,11 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		guard.RegisterIP = strings.TrimSpace(user.RegisterIP)
 		guard.RegisterIPLimit = ipLimit
 		guard.RegisterIPSince = ipSince
+	}
+	if monthlyLimit, monthlySince := s.registrationIPMonthlyQuota(ctx, user.RegisterIP); monthlyLimit > 0 {
+		guard.RegisterIP = strings.TrimSpace(user.RegisterIP)
+		guard.RegisterIPMonthlyLimit = monthlyLimit
+		guard.RegisterIPMonthlySince = monthlySince
 	}
 	whitelist := []string{}
 	if s.settingService != nil {
@@ -1582,12 +1654,15 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 		guard.EmailDomainSince = since
 	}
 
-	if guard.RegisterIPLimit > 0 {
-		// IP 配额必须与建号在同一事务内复查：并发注册可能同时通过预检。
+	if guard.RegisterIPLimit > 0 || guard.RegisterIPMonthlyLimit > 0 {
+		// IP 配额（每日档 + 30 天档）必须与建号在同一事务内复查：并发注册可能同时通过预检。
 		if quotaRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
 			err := quotaRepo.CreateWithRegistrationGuards(ctx, user, guard)
 			if errors.Is(err, ErrRegistrationIPLimit) {
 				logRegistrationIPQuotaRejected(guard.RegisterIP, -1, guard.RegisterIPLimit, "create", guard.RegisterIPSince)
+			}
+			if errors.Is(err, ErrRegistrationIPMonthlyLimit) {
+				logRegistrationIPQuotaRejected(guard.RegisterIP, -1, guard.RegisterIPMonthlyLimit, "create-monthly", guard.RegisterIPMonthlySince)
 			}
 			if errors.Is(err, ErrEmailDomainRegistrationLimit) {
 				logRegistrationEmailDomainQuotaRejected(guard.EmailDomain, -1, guard.EmailDomainLimit, domainWindow, "create", "", guard.EmailDomainSince)

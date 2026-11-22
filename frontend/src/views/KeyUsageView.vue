@@ -10,7 +10,7 @@
           <span class="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">{{ siteName }}</span>
         </router-link>
         <div class="flex items-center gap-3">
-          <LocaleSwitcher />
+          <LocaleSwitcher v-if="showLanguageSwitcher" />
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -422,6 +422,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -432,6 +433,7 @@ import { sanitizeUrl } from '@/utils/url'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 const subscriptionFeatureEnabled = computed(() => resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.subscription))
 
 // ==================== Site Settings (same as HomeView) ====================

@@ -1578,10 +1578,20 @@ const formGroupOptions = computed(() => showEditModal.value
   : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
 )
 
+// 创建 Key 时默认选中的分组：优先当前厂商下第一个标准（非订阅）分组，
+// 没有标准分组时退回第一个可用分组，再没有则 null（由 handleSubmit 兜底提示）。
+// 选项已按 sort_order/id 排序，因此第一个标准组通常就是默认组；不硬编码组名/ID。
+const defaultCreateGroupID = (): number | null => {
+  const options = formGroupOptions.value
+  if (options.length === 0) return null
+  const standard = options.find((group) => group.subscriptionType !== 'subscription')
+  return (standard ?? options[0]).value
+}
+
 const selectCreateProvider = (provider: KeyGroupProvider) => {
   if (createProvider.value === provider) return
   createProvider.value = provider
-  formData.value.group_id = null
+  formData.value.group_id = defaultCreateGroupID()
 }
 
 // Also handles groups arriving after the create dialog has already opened.
@@ -1591,7 +1601,9 @@ watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen])
     selectCreateProvider(providers.find((provider) => provider.count > 0)?.value ?? 'anthropic')
   }
   if (!formGroupOptions.value.some((group) => group.value === formData.value.group_id)) {
-    formData.value.group_id = null
+    // 原值不在当前可选列表里时，预选一个默认分组，省去用户手动选择；
+    // 无可用分组则保持 null，继续由 handleSubmit 给出"请选择分组"提示。
+    formData.value.group_id = defaultCreateGroupID()
   }
 })
 

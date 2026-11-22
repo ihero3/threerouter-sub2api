@@ -100,7 +100,7 @@ func newPenaltyFixture(ips []string) (*IPConsistencyService, *fakeIPConsistencyC
 	cache := &fakeIPConsistencyCache{ips: ips}
 	locker := &fakePenaltyLocker{}
 	penalty := &fakePenalty{started: make(chan struct{}, 4)}
-	svc := NewIPConsistencyService(cache, penaltySettings(), &fakeUserStatusUpdater{})
+	svc := NewIPConsistencyService(cache, penaltySettings())
 	svc.SetPenaltyService(penalty, locker)
 	return svc, cache, locker, penalty
 }
@@ -122,8 +122,8 @@ func waitPenaltyCall(t *testing.T, p *fakePenalty) penaltyCall {
 func TestIPConsistency_ThreeIPsSchedulesPenaltyWithContract(t *testing.T) {
 	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
-		t.Fatalf("three ips must not block the request, got %+v", got)
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got == nil {
+		t.Fatalf("three ips must now trigger the unified disposition and block the request")
 	}
 	calls, _, key, ttl := locker.snapshot()
 	if calls != 1 {
@@ -151,7 +151,8 @@ func TestIPConsistency_ThreeIPsSchedulesPenaltyWithContract(t *testing.T) {
 	}
 }
 
-func TestIPConsistency_FourIPsDisablesButNeverDoublePenalizes(t *testing.T) {
+// 统一处置后不再有独立禁用档：4 个 IP 与 3 个 IP 同档，冷却期内锁被占用仍照常 suspect + 拦截，只是不重复扣钱。
+func TestIPConsistency_FourIPsMarksSuspectButNeverDoublePenalizes(t *testing.T) {
 	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
 	locker.returnOnCalls = map[int]bool{1: false} // 冷却期内已处罚过
 
@@ -188,8 +189,8 @@ func TestIPConsistency_PenaltyLockFailureFailsOpen(t *testing.T) {
 	svc, _, locker, penalty := newPenaltyFixture([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 	locker.claimErr = errors.New("redis down")
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
-		t.Fatalf("lock failure must never block the request, got %+v", got)
+	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got == nil {
+		t.Fatalf("lock failure must not suppress the suspect disposition, only skip the deduction")
 	}
 	select {
 	case <-penalty.started:
@@ -221,19 +222,20 @@ func TestIPConsistency_PenaltyFailureReleasesLock(t *testing.T) {
 
 func TestIPConsistency_FeatureBOnlyNeverDisables(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
-	updater := &fakeUserStatusUpdater{}
+	marker := &fakeNewUserRiskMarker{}
 	settings := DefaultIPConsistencySettings()
 	settings.Enabled = false // 功能A 关闭
 	settings.WindowSeconds = 600
-	svc := NewIPConsistencyService(cache, &fakeIPConsistencySettings{settings: *settings}, updater)
+	svc := NewIPConsistencyService(cache, &fakeIPConsistencySettings{settings: *settings})
+	svc.SetNewUserRiskMarker(marker)
 	locker := &fakePenaltyLocker{}
 	svc.SetPenaltyService(&fakePenalty{started: make(chan struct{}, 1)}, locker)
 
 	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
-		t.Fatalf("feature B alone must never disable or block the account, got %+v", got)
+		t.Fatalf("feature B alone must never block the account, got %+v", got)
 	}
-	if updater.status != "" || updater.markedUserID != 0 {
-		t.Fatalf("feature A is off: no status change or tagging expected, got %q/%d", updater.status, updater.markedUserID)
+	if len(marker.calls) != 0 {
+		t.Fatalf("feature A is off: no suspect mark expected, got %+v", marker.calls)
 	}
 	if calls, _, _, _ := locker.snapshot(); calls != 1 {
 		t.Fatalf("feature B should still claim the penalty lock, got %d", calls)
@@ -245,7 +247,7 @@ func TestIPConsistency_BothFeaturesOffSkipsCache(t *testing.T) {
 	settings := DefaultIPConsistencySettings()
 	settings.Enabled = false
 	settings.BalancePenaltyEnabled = false
-	svc := NewIPConsistencyService(cache, &fakeIPConsistencySettings{settings: *settings}, &fakeUserStatusUpdater{})
+	svc := NewIPConsistencyService(cache, &fakeIPConsistencySettings{settings: *settings})
 
 	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
 		t.Fatalf("both features off should pass through, got %+v", got)
@@ -262,7 +264,7 @@ func TestIPConsistencySettings_DefaultsBothFeaturesOn(t *testing.T) {
 	if !s.Enabled || !s.BalancePenaltyEnabled || !s.PenaltyNotifyEmail {
 		t.Fatalf("both features and email notification must default on: %+v", s)
 	}
-	if s.BalancePenaltyFloor != 0.03 || s.WindowSeconds != 600 || s.SchemaVersion != 2 {
+	if s.BalancePenaltyFloor != 0.03 || s.WindowSeconds != 600 || s.LongWindowSeconds != 3600 || s.SchemaVersion != 2 {
 		t.Fatalf("unexpected defaults: %+v", s)
 	}
 }

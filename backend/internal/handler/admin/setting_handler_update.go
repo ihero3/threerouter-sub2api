@@ -34,8 +34,9 @@ type UpdateSettingsRequest struct {
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
 	RegistrationEmailDomainQuotaLimit   *int                         `json:"registration_email_domain_quota_limit"`   // 非白名单域名每域配额（省略=保持现值）
 	RegistrationEmailDomainQuotaWindow  *string                      `json:"registration_email_domain_quota_window"`  // 配额统计窗口：total | daily（省略=保持现值）
-	RegistrationIPQuotaEnabled          *bool                        `json:"registration_ip_quota_enabled"`           // 同一 IP 每日注册数限制开关（省略=保持现值）
+	RegistrationIPQuotaEnabled          *bool                        `json:"registration_ip_quota_enabled"`           // 同一 IP 注册数限制开关（省略=保持现值）
 	RegistrationIPQuotaLimit            *int                         `json:"registration_ip_quota_limit"`             // 同一 IP 每天允许注册的账户数（省略=保持现值）
+	RegistrationIPQuotaMonthlyLimit     *int                         `json:"registration_ip_quota_monthly_limit"`     // 同一 IP 30 天滚动窗口内允许注册的账户数（省略=保持现值）
 	RegistrationIPHourlyLimit           *int                         `json:"registration_ip_hourly_limit"`            // 同一 IP 每小时允许注册的账户数（省略=保持现值）
 	RegistrationDeviceFingerprintLimit  *int                         `json:"registration_device_fingerprint_limit"`   // 同一设备指纹 24 小时注册数上限，0=关闭（省略=保持现值）
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
@@ -192,6 +193,8 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
+	AffiliateRequireInviterRecharged          *bool                             `json:"affiliate_require_inviter_recharged"`
+	AffiliateRebateCapByInviterRecharge       *bool                             `json:"affiliate_rebate_cap_by_inviter_recharge"`
 	AffiliateRegisterReward                   *float64                          `json:"affiliate_register_reward"`
 	AffiliateIPGuardMode                      *string                           `json:"affiliate_ip_guard_mode"`
 	AffiliateIPGuardMaxAccounts               *int                              `json:"affiliate_ip_guard_max_accounts"`
@@ -572,6 +575,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.RegistrationIPQuotaLimit != nil {
 		registrationIPQuotaLimit = *req.RegistrationIPQuotaLimit
 	}
+	registrationIPQuotaMonthlyLimit := previousSettings.RegistrationIPQuotaMonthlyLimit
+	if req.RegistrationIPQuotaMonthlyLimit != nil {
+		registrationIPQuotaMonthlyLimit = *req.RegistrationIPQuotaMonthlyLimit
+	}
 	registrationIPHourlyLimit := previousSettings.RegistrationIPHourlyLimit
 	if req.RegistrationIPHourlyLimit != nil {
 		registrationIPHourlyLimit = *req.RegistrationIPHourlyLimit
@@ -656,6 +663,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	adminRechargeRebateEnabled := previousSettings.AdminRechargeRebateEnabled
 	if req.AdminRechargeRebateEnabled != nil {
 		adminRechargeRebateEnabled = *req.AdminRechargeRebateEnabled
+	}
+	affiliateRequireInviterRecharged := previousSettings.AffiliateRequireInviterRecharged
+	if req.AffiliateRequireInviterRecharged != nil {
+		affiliateRequireInviterRecharged = *req.AffiliateRequireInviterRecharged
+	}
+	affiliateRebateCapByInviterRecharge := previousSettings.AffiliateRebateCapByInviterRecharge
+	if req.AffiliateRebateCapByInviterRecharge != nil {
+		affiliateRebateCapByInviterRecharge = *req.AffiliateRebateCapByInviterRecharge
 	}
 	affiliateRegisterReward := previousSettings.AffiliateRegisterReward
 	if req.AffiliateRegisterReward != nil {
@@ -1623,6 +1638,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailDomainQuotaWindow:  registrationEmailDomainQuotaWindow,
 		RegistrationIPQuotaEnabled:          registrationIPQuotaEnabled,
 		RegistrationIPQuotaLimit:            registrationIPQuotaLimit,
+		RegistrationIPQuotaMonthlyLimit:     registrationIPQuotaMonthlyLimit,
 		RegistrationIPHourlyLimit:           registrationIPHourlyLimit,
 		RegistrationDeviceFingerprintLimit:  registrationDeviceFingerprintLimit,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
@@ -1759,6 +1775,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
+		AffiliateRequireInviterRecharged:       affiliateRequireInviterRecharged,
+		AffiliateRebateCapByInviterRecharge:    affiliateRebateCapByInviterRecharge,
 		AffiliateRegisterReward:                affiliateRegisterReward,
 		AffiliateIPGuardMode:                   affiliateIPGuardMode,
 		AffiliateIPGuardMaxAccounts:            affiliateIPGuardMaxAccounts,
@@ -2322,6 +2340,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailDomainQuotaWindow:                     updatedSettings.RegistrationEmailDomainQuotaWindow,
 		RegistrationIPQuotaEnabled:                             updatedSettings.RegistrationIPQuotaEnabled,
 		RegistrationIPQuotaLimit:                               updatedSettings.RegistrationIPQuotaLimit,
+		RegistrationIPQuotaMonthlyLimit:                        updatedSettings.RegistrationIPQuotaMonthlyLimit,
 		RegistrationIPHourlyLimit:                              updatedSettings.RegistrationIPHourlyLimit,
 		RegistrationDeviceFingerprintLimit:                     updatedSettings.RegistrationDeviceFingerprintLimit,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
@@ -2457,6 +2476,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
+		AffiliateRequireInviterRecharged:                       updatedSettings.AffiliateRequireInviterRecharged,
+		AffiliateRebateCapByInviterRecharge:                    updatedSettings.AffiliateRebateCapByInviterRecharge,
 		AffiliateRegisterReward:                                updatedSettings.AffiliateRegisterReward,
 		AffiliateIPGuardMode:                                   updatedSettings.AffiliateIPGuardMode,
 		AffiliateIPGuardMaxAccounts:                            updatedSettings.AffiliateIPGuardMaxAccounts,

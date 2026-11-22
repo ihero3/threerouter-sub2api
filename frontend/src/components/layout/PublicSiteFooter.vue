@@ -90,20 +90,19 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale } from '@/i18n'
-import { useAppStore, useAuthStore } from '@/stores'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
+import { useAppStore } from '@/stores'
 import type { CustomMenuItem } from '@/types'
 import { resolveContactHref } from '@/utils/contactLink'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
-const authStore = useAuthStore()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 
 const currentYear = computed(() => new Date().getFullYear())
 const footerHtml = computed(() => appStore.activeSiteProfile?.footer_html?.trim() || '')
 const currentLang = computed<'zh' | 'en'>(() => (locale.value === 'zh' ? 'zh' : 'en'))
-// 语言切换只对未登录访客和管理员展示，普通登录用户隐藏
-const showLanguageSwitcher = computed(() => !authStore.isAuthenticated || authStore.isAdmin)
 
 const contactInfo = computed(() => appStore.contactInfo)
 const contactHref = computed(() => resolveContactHref(contactInfo.value))

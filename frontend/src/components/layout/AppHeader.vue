@@ -50,8 +50,8 @@
           <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
         </router-link>
 
-        <!-- Language Switcher（仅管理员可见，普通用户隐藏） -->
-        <LocaleSwitcher v-if="authStore.isAdmin" />
+        <!-- Language Switcher（管理员、Site B 用户和访客可见；Site A 普通用户隐藏） -->
+        <LocaleSwitcher v-if="showLanguageSwitcher" />
 
         <!-- Subscription Progress (for users with active subscriptions; not mounted at all when the feature is off) -->
         <SubscriptionProgressMini v-if="user && subscriptionFeatureEnabled" />
@@ -256,6 +256,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
@@ -273,6 +274,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)

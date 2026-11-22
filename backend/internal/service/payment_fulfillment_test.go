@@ -142,6 +142,14 @@ func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateFromInvitee(contex
 	return 0, nil
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) GetCompletedRechargeTotal(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateTotal(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) AccrueRegistrationReward(context.Context, int64, int64, float64) (bool, error) {
 	panic("unexpected AccrueRegistrationReward call")
 }

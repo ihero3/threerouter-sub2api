@@ -292,7 +292,7 @@ export default {
       geminiCliDesc: '导入为 Gemini CLI 配置'
     },
     // 配额和有效期
-    quotaLimit: '额度限制',
+    quotaLimit: '额度限制（可选）',
     quotaAmount: '额度金额 (USD)',
     quotaAmountPlaceholder: '输入 USD 额度限制',
     quotaAmountHint: '设置此密钥可消费的最大金额。0 = 无限制。',

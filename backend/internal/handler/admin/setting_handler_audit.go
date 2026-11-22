@@ -388,6 +388,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AdminRechargeRebateEnabled != after.AdminRechargeRebateEnabled {
 		changed = append(changed, "affiliate_admin_recharge_enabled")
 	}
+	if before.AffiliateRequireInviterRecharged != after.AffiliateRequireInviterRecharged {
+		changed = append(changed, "affiliate_require_inviter_recharged")
+	}
+	if before.AffiliateRebateCapByInviterRecharge != after.AffiliateRebateCapByInviterRecharge {
+		changed = append(changed, "affiliate_rebate_cap_by_inviter_recharge")
+	}
 	if before.AffiliateIPGuardMode != after.AffiliateIPGuardMode {
 		changed = append(changed, "affiliate_ip_guard_mode")
 	}

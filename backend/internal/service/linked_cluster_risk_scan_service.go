@@ -19,7 +19,8 @@ import (
 // 但截图实测的作弊团伙「单维度都不够、组合明显是一伙」：4 个新号里同注册 IP 只有 3 个、
 // 同使用 IP 也只有 3 个，两条规则都差一口气温和放过。本服务把「共享注册 IP」和
 // 「共享最后使用 IP」当作图的两类边，用并查集求连通分量：只要一个连通分量里有
-// ≥3 个新号（且注册时间集中），就判为团伙重罚（abnormal 禁用 + 扣钱 + 邮件）。
+// ≥3 个新号（且注册时间集中），就判为团伙重罚（suspect + 扣钱 + 邮件；
+// 2026-11-21 起不再打 abnormal 自动禁用，由人工复核队列与冻结闸门承担拦截）。
 //
 // 阈值（用户 2026-11-20 拍板取严格档）：
 //   - 连通分量最小成员数 AffiliateRiskLinkedClusterMinSize = 3；
@@ -191,7 +192,7 @@ func (s *LinkedClusterRiskScanService) runOnce() {
 		if s.markWriter != nil {
 			s.markWriter.BumpUserRiskMarksBatch(ctx, []UserRiskMark{{
 				UserID:  userID,
-				Level:   AffiliateRiskLevelAbnormal,
+				Level:   AffiliateRiskLevelSuspect,
 				Reasons: []string{AffiliateRiskReasonLinkedClusterAbuse},
 			}})
 			marked++

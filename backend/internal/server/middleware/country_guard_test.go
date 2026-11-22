@@ -47,8 +47,11 @@ func newCountryGuardTestRouter(t *testing.T, settingsJSON string, geoIP CountryL
 		"/api/v1/admin/settings",
 		"/api/v1/payment/webhook/easypay",
 		"/health",
+		"/setup/status",
 		"/assets/index.js",
 		"/",
+		"/login",
+		"/admin/settings",
 	} {
 		router.GET(path, func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 		router.POST(path, func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
@@ -126,18 +129,36 @@ func TestCountryGuardExemptPaths(t *testing.T) {
 	geo := &fakeCountryLookup{available: true, country: "CN"}
 	router, _ := newCountryGuardTestRouter(t, `{"enabled":true,"countries":["CN"]}`, geo)
 
-	// 管理端豁免：封禁自己所在地区时，管理员仍能进后台撤销
+	// 仅两类豁免：管理端 API（管理员自救）+ 健康检查（探针）。
 	require.Equal(t, http.StatusOK,
 		performCountryGuardRequest(router, http.MethodGet, "/api/v1/admin/settings", "203.0.113.9:1000").Code)
 	require.Equal(t, http.StatusOK,
-		performCountryGuardRequest(router, http.MethodPost, "/api/v1/payment/webhook/easypay", "203.0.113.9:1000").Code)
-	require.Equal(t, http.StatusOK,
 		performCountryGuardRequest(router, http.MethodGet, "/health", "203.0.113.9:1000").Code)
 	require.Equal(t, http.StatusOK,
+		performCountryGuardRequest(router, http.MethodGet, "/setup/status", "203.0.113.9:1000").Code)
+	require.Equal(t, 0, geo.lookups, "豁免路径不该触发 GeoIP 查询")
+
+	// 其余所有路径全部拦截：支付回调、静态资源、首页、SPA 路由。
+	require.Equal(t, http.StatusForbidden,
+		performCountryGuardRequest(router, http.MethodPost, "/api/v1/payment/webhook/easypay", "203.0.113.9:1000").Code)
+	require.Equal(t, http.StatusForbidden,
 		performCountryGuardRequest(router, http.MethodGet, "/assets/index.js", "203.0.113.9:1000").Code)
-	require.Equal(t, http.StatusOK,
+	require.Equal(t, http.StatusForbidden,
 		performCountryGuardRequest(router, http.MethodGet, "/", "203.0.113.9:1000").Code)
-	require.Zero(t, geo.lookups, "豁免路径不该触发 GeoIP 查询")
+	require.Equal(t, http.StatusForbidden,
+		performCountryGuardRequest(router, http.MethodGet, "/login", "203.0.113.9:1000").Code)
+	require.Equal(t, http.StatusForbidden,
+		performCountryGuardRequest(router, http.MethodGet, "/admin/settings", "203.0.113.9:1000").Code)
+}
+
+// 非 /api/ 路径（首页等）命中封禁时返回 OpenAI 兼容格式的 403 JSON。
+func TestCountryGuardBlocksHomepageWithOpenAIFormat(t *testing.T) {
+	geo := &fakeCountryLookup{available: true, country: "CN"}
+	router, _ := newCountryGuardTestRouter(t, `{"enabled":true,"countries":["CN"]}`, geo)
+
+	resp := performCountryGuardRequest(router, http.MethodGet, "/", "203.0.113.9:1000")
+	require.Equal(t, http.StatusForbidden, resp.Code)
+	require.Contains(t, resp.Body.String(), "region_blocked")
 }
 
 func TestCountryGuardFailOpenOnGeoIPProblems(t *testing.T) {

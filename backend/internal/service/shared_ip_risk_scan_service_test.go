@@ -156,8 +156,8 @@ func TestSharedIPScan_ShortTierMarksSuspect(t *testing.T) {
 	}
 }
 
-// TestSharedIPScan_LongTierMarksAbnormal 长期档命中 → abnormal（打标即自动禁用）+ 扣费。
-func TestSharedIPScan_LongTierMarksAbnormal(t *testing.T) {
+// TestSharedIPScan_LongTierMarksSuspect 长期档命中 → suspect（2026-11-21 起不再 abnormal 自动禁用）+ 扣费。
+func TestSharedIPScan_LongTierMarksSuspect(t *testing.T) {
 	lister := &fakeSharedIPLister{queue: []listResult{
 		{},                   // 快速档无命中
 		{ids: []int64{7, 8}}, // 长期档命中
@@ -173,8 +173,8 @@ func TestSharedIPScan_LongTierMarksAbnormal(t *testing.T) {
 		t.Fatalf("expected 2 marks, got %d", len(marks))
 	}
 	for _, m := range marks {
-		if m.Level != AffiliateRiskLevelAbnormal {
-			t.Fatalf("long tier must mark abnormal (auto-disable), got %q", m.Level)
+		if m.Level != AffiliateRiskLevelSuspect {
+			t.Fatalf("long tier must mark suspect, got %q", m.Level)
 		}
 		if len(m.Reasons) != 1 || m.Reasons[0] != sharedIPRiskReason {
 			t.Fatalf("unexpected reasons: %v", m.Reasons)

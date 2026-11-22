@@ -17,10 +17,11 @@ import (
 
 // IP 一致性风控（IP consistency guard）。
 //
-// 两档处罚（滚动窗口，默认 10 分钟）：
-//   - 恰好 ipMarkThreshold(3) 个不同客户端 IP：打「IP 可疑」轻标记 + 把余额降到
-//     只剩 $0.03 + 写调账备注 + 给用户发一封通知邮件。账号仍可正常调用，不冻结。
-//   - ≥ipDisableThreshold(4) 个不同客户端 IP：直接禁用账号（Status=disabled，管理员可解封）。
+// 处置统一为「suspect + 扣到 floor + 邮件」（用户拍板 2026-11-21，不再自动禁用）：
+// 滚动窗口内（默认 10 分钟窗口 + 可选 1 小时长窗口，长窗口 0 = 关闭）出现
+// ≥ipMarkThreshold(3) 个不同客户端 IP 时：写真实 suspect 标记（进入人工复核队列，
+// 同时被待复核冻结闸门拦截网关调用与建 Key）+ 把余额降到只剩 $0.03 + 写调账备注 +
+// 给用户发一封通知邮件，并中断本次请求。账号状态不再自动置为 disabled。
 //
 // 命中工单标记 / 人工复核豁免 / IP 白名单的用户整体跳过本风控（见 CheckUser）。
 //
@@ -29,7 +30,7 @@ import (
 //
 // 覆盖入口：
 //   - 注册：同一邮箱在窗口内从不同 IP 反复提交注册 → 拒绝。
-//   - 登录：登录成功后按用户维度校验，命中 → 禁用并拒绝本次登录。
+//   - 登录：登录成功后按用户维度校验，命中 → 打标扣费并拒绝本次登录。
 //   - 控制台：JWT 鉴权后校验。
 //   - 模型网关：API Key 鉴权后校验。
 //
@@ -45,11 +46,16 @@ const (
 	minIPConsistencyWindowSeconds     = 60
 	maxIPConsistencyWindowSeconds     = 24 * 3600
 
-	// ipMarkThreshold / ipDisableThreshold IP 一致性的两档阈值。
-	// 达到 ipMarkThreshold 个不同 IP 打轻标记并触发扣减；达到 ipDisableThreshold 个直接禁用。
-	// 刻意分开命名，便于后续按运营尺度调整（最近一次调整：标记 4→3、禁用 5→4）。
-	ipMarkThreshold    = 3
-	ipDisableThreshold = 4
+	// ipMarkThreshold IP 一致性阈值：窗口内达到该数量的不同客户端 IP 即触发统一处置
+	// （suspect 标记 + 扣减 + 邮件 + 中断请求）。最近一次调整：标记 4→3、禁用 5→4，
+	// 2026-11-21 起取消独立禁用档，3 个 IP 即统一处置。
+	ipMarkThreshold = 3
+
+	// defaultIPConsistencyLongWindowSeconds 长窗口默认 1 小时（与 10 分钟主窗口互补，
+	// 抓「每 10 分钟窗口都不超标、但 1 小时内缓慢换 IP」的慢速滥用）。
+	defaultIPConsistencyLongWindowSeconds = 3600
+	// ipConsistencyUserLongKeyPrefix 长窗口的用户维度 Redis key 前缀。0 = 长窗口关闭。
+	ipConsistencyUserLongKeyPrefix = "ipguard:user-long:"
 
 	// ipConsistencySettingsVersion 配置结构版本。v1 只有「标记可疑 + 禁用」且默认关闭；
 	// v2 拆成两个独立功能且默认都开。存量 v1 在读取时一次性迁移，保证升级后立即生效。
@@ -106,15 +112,18 @@ const (
 // ErrIPConsistencyBlocked IP 一致性校验未通过（注册/登录返回 403）。
 var ErrIPConsistencyBlocked = infraerrors.Forbidden(
 	"USER_IP_MISMATCH",
-	"account disabled: client IP changed within the monitoring window",
+	"account restricted: client IP changed within the monitoring window",
 )
 
 // IPConsistencySettings IP 一致性风控配置（v2）。
 type IPConsistencySettings struct {
-	// Enabled 功能A：ipMarkThreshold 个 IP 打「IP 可疑」轻标记、≥ipDisableThreshold 个 IP 禁用账号（默认开启）。
+	// Enabled 功能A：≥ipMarkThreshold 个 IP 打真实 suspect 标记并中断请求（默认开启）。
 	Enabled bool `json:"enabled"`
 	// WindowSeconds 滚动窗口秒数（默认 600，取值区间 60 ~ 86400）
 	WindowSeconds int `json:"window_seconds"`
+	// LongWindowSeconds 长窗口秒数（默认 3600；0 = 关闭；开启时取值区间 60 ~ 86400）。
+	// 与主窗口独立计数，任一窗口达到阈值即触发统一处置。
+	LongWindowSeconds int `json:"long_window_seconds"`
 	// WhitelistUserIDs 豁免的用户 ID 列表
 	WhitelistUserIDs []int64 `json:"whitelist_user_ids"`
 	// WhitelistIPs 豁免的 IP / CIDR 列表
@@ -130,11 +139,12 @@ type IPConsistencySettings struct {
 	PenaltyNotifyEmail bool `json:"penalty_notify_email"`
 }
 
-// DefaultIPConsistencySettings 返回 v2 默认配置：两个功能都开启 + 10 分钟窗口。
+// DefaultIPConsistencySettings 返回 v2 默认配置：两个功能都开启 + 10 分钟主窗口 + 1 小时长窗口。
 func DefaultIPConsistencySettings() *IPConsistencySettings {
 	return &IPConsistencySettings{
 		Enabled:               true,
 		WindowSeconds:         defaultIPConsistencyWindowSeconds,
+		LongWindowSeconds:     defaultIPConsistencyLongWindowSeconds,
 		SchemaVersion:         ipConsistencySettingsVersion,
 		BalancePenaltyEnabled: true,
 		BalancePenaltyFloor:   DefaultIPBalancePenaltyFloor,
@@ -167,6 +177,18 @@ func normalizeIPConsistencySettings(s *IPConsistencySettings) {
 	}
 	if s.WindowSeconds > maxIPConsistencyWindowSeconds {
 		s.WindowSeconds = maxIPConsistencyWindowSeconds
+	}
+	// 长窗口：0 表示关闭；负数视为未配置回落默认；开启时与主窗口同区间收敛。
+	if s.LongWindowSeconds < 0 {
+		s.LongWindowSeconds = defaultIPConsistencyLongWindowSeconds
+	}
+	if s.LongWindowSeconds > 0 {
+		if s.LongWindowSeconds < minIPConsistencyWindowSeconds {
+			s.LongWindowSeconds = minIPConsistencyWindowSeconds
+		}
+		if s.LongWindowSeconds > maxIPConsistencyWindowSeconds {
+			s.LongWindowSeconds = maxIPConsistencyWindowSeconds
+		}
 	}
 	if s.BalancePenaltyFloor <= 0 || s.BalancePenaltyFloor > 100 {
 		s.BalancePenaltyFloor = DefaultIPBalancePenaltyFloor
@@ -277,15 +299,6 @@ type IPConsistencyCache interface {
 	Clear(ctx context.Context, key string) error
 }
 
-// UserStatusUpdater IP 一致性风控对用户状态/标记的能力要求（*UserService 实现）。
-type UserStatusUpdater interface {
-	UpdateStatus(ctx context.Context, userID int64, status string) error
-	// MarkIPInconsistent 给用户打「窗口内 IP 不一致」轻标记（risk_level=ip_suspect）。
-	// 刻意不写 risk_level=suspect：后者会触发上一轮的待复核冻结闸门（禁建 Key +
-	// 网关 403），比达到禁用阈值才禁用还早生效，梯度倒挂且误伤真实用户。
-	MarkIPInconsistent(ctx context.Context, userID int64, reason string)
-}
-
 // RiskExemptionCheck 全局豁免判断能力（由 *RiskExemptionChecker 实现）。
 // 独立成窄接口便于测试桩，且同样是可选依赖：未注入时豁免不生效，处罚照常。
 type RiskExemptionCheck interface {
@@ -294,7 +307,7 @@ type RiskExemptionCheck interface {
 }
 
 // NewUserRiskMarker 写入「真实 suspect」标记的能力（由 *AffiliateService 实现）。
-// suspect 会触发 RiskAccessBlocked，并在管理端复核队列中可见；与 ip_suspect
+// suspect 会触发 RiskAccessBlocked，并在管理端复核队列中可见；与旧 ip_suspect
 // 轻标记完全不同的处置档位。独立成窄接口便于测试与可选注入。
 type NewUserRiskMarker interface {
 	MarkUserRisk(ctx context.Context, userID int64, level string, reasons []string)
@@ -328,7 +341,6 @@ type IPConsistencyViolation struct {
 type IPConsistencyService struct {
 	cache             IPConsistencyCache
 	settingsProvider  IPConsistencySettingsProvider
-	userStatusUpdater UserStatusUpdater
 	penalty           IPConsistencyPenalty
 	penaltyLocker     IPConsistencyPenaltyLocker
 	exemptionChecker  RiskExemptionCheck
@@ -339,12 +351,10 @@ type IPConsistencyService struct {
 func NewIPConsistencyService(
 	cache IPConsistencyCache,
 	settingsProvider IPConsistencySettingsProvider,
-	userStatusUpdater UserStatusUpdater,
 ) *IPConsistencyService {
 	return &IPConsistencyService{
-		cache:             cache,
-		settingsProvider:  settingsProvider,
-		userStatusUpdater: userStatusUpdater,
+		cache:            cache,
+		settingsProvider: settingsProvider,
 	}
 }
 
@@ -379,7 +389,7 @@ func (s *IPConsistencyService) SetNewUserRiskMarker(marker NewUserRiskMarker) {
 // CheckNewUserFirstUseIP 新用户注册后 3 分钟内「客户端 IP 与注册 IP 不一致」的严格校验。
 //
 // 与按窗口统计 IP 数量的 CheckUser 是两条独立规则：这里只比对注册 IP 与当前 IP，
-// 窗口内任意一次不一致即 suspect + 禁用 + 扣减 + 邮件，并中断本次请求。返回非 nil 表示命中。
+// 窗口内任意一次不一致即 suspect + 扣减 + 邮件（2026-11-21 起不再自动禁用），并中断本次请求。返回非 nil 表示命中。
 //
 // 与旧版「仅首调」语义的关键差异（用户拍板 2026-11-20）：
 //   - 旧版用 Redis SETNX 首调令牌，首调 IP 一致就消费令牌，之后换 IP 不追罚；
@@ -433,18 +443,14 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 	if s.newUserRiskMarker != nil {
 		s.newUserRiskMarker.MarkUserRisk(ctx, userID, AffiliateRiskLevelSuspect, []string{newUserIPMismatchReason})
 	}
-	if s.userStatusUpdater != nil {
-		if err := s.userStatusUpdater.UpdateStatus(ctx, userID, StatusDisabled); err != nil {
-			slog.Error("failed to disable user after new-user registration ip mismatch",
-				"user_id", userID, "error", err)
-		}
-	}
-	// 严格规则无条件扣钱，不受「3/4 IP」规则的功能B 开关影响；使用独立幂等键，
+	// 统一处置（用户拍板 2026-11-21）：suspect + 扣到 floor + 邮件，不再自动禁用账号；
+	// suspect 触发的待复核冻结闸门（禁建 Key + 网关 403）承担后续拦截。
+	// 严格规则无条件扣钱，不受「3 IP」规则的功能B 开关影响；使用独立幂等键，
 	// 该键的 24h 冷却保证窗口内多次命中只扣一次钱、只发一封邮件。
 	s.scheduleBalancePenaltyWithKey(ctx, userID, settings.BalancePenaltyFloor,
 		settings.PenaltyNotifyEmail, ipConsistencyNewUserPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
 
-	slog.Warn("account disabled: new-user client ip differs from registration ip within guard window",
+	slog.Warn("account marked suspect: new-user client ip differs from registration ip within guard window",
 		"audit", true,
 		"user_id", userID,
 		"current_ip", clientIP,
@@ -457,8 +463,9 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 	}
 }
 
-// CheckUser 记录并校验已认证用户的客户端 IP 一致性。
-// 返回 nil 表示放行；返回非 nil 表示命中 ≥ipDisableThreshold 个 IP，账号已被自动禁用。
+// CheckUser 记录并校验已认证用户的客户端 IP 一致性（主窗口 + 可选长窗口）。
+// 返回 nil 表示放行；返回非 nil 表示任一窗口内命中 ≥ipMarkThreshold 个不同 IP，
+// 已写真实 suspect 标记、触发扣减并中断本次请求。
 func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role, clientIP string) *IPConsistencyViolation {
 	if s == nil || s.cache == nil || s.settingsProvider == nil || userID <= 0 {
 		return nil
@@ -481,63 +488,70 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 		return nil
 	}
 	// 全局豁免：提过工单 / 人工复核放行 / IP 白名单命中者，跳过一切自动处罚
-	// （轻标记 + 扣减 + 禁用）。白名单已在上面判断；这里查工单标记与复核豁免。
+	// （suspect 标记 + 扣减）。白名单已在上面判断；这里查工单标记与复核豁免。
 	if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, userID) {
 		return nil
 	}
 
-	key := ipConsistencyUserKeyPrefix + fmt.Sprintf("%d", userID)
-	ips, err := s.cache.RecordAndListIPs(ctx, key, clientIP, time.Now(), time.Duration(settings.WindowSeconds)*time.Second)
+	// 主窗口（默认 10 分钟）与长窗口（默认 1 小时，0 = 关闭）独立计数；
+	// 任一窗口达到阈值即触发统一处置。两个窗口共用同一处罚幂等键（24h 冷却），
+	// 保证同一次滥用只扣一次钱、只发一封邮件。
+	mainKey := ipConsistencyUserKeyPrefix + fmt.Sprintf("%d", userID)
+	ips, err := s.cache.RecordAndListIPs(ctx, mainKey, clientIP, time.Now(), time.Duration(settings.WindowSeconds)*time.Second)
 	if err != nil {
 		// 降级放行：Redis 故障不应导致整站 403。
 		slog.Warn("ip consistency check skipped: cache unavailable", "user_id", userID, "error", err)
 		return nil
 	}
+	var longIPs []string
+	if settings.LongWindowSeconds > 0 {
+		longKey := ipConsistencyUserLongKeyPrefix + fmt.Sprintf("%d", userID)
+		recorded, longErr := s.cache.RecordAndListIPs(ctx, longKey, clientIP, time.Now(), time.Duration(settings.LongWindowSeconds)*time.Second)
+		if longErr != nil {
+			// 长窗口降级不影响主窗口判定（fail-open）。
+			slog.Warn("ip consistency long-window check skipped: cache unavailable", "user_id", userID, "error", longErr)
+		} else {
+			longIPs = recorded
+		}
+	}
 
-	// 功能B：达到 ipMarkThreshold 个 IP 触发减额度处罚。幂等锁保证一个冷却期内只扣一次、只发一封信，
-	// 即使 IP 继续上涨也不会重复处罚。
-	if settings.BalancePenaltyEnabled && len(ips) >= ipMarkThreshold {
+	mainHit := len(ips) >= ipMarkThreshold
+	longHit := len(longIPs) >= ipMarkThreshold
+	if !mainHit && !longHit {
+		return nil
+	}
+
+	hitIPs := ips
+	hitWindow := settings.WindowSeconds
+	if !mainHit {
+		hitIPs = longIPs
+		hitWindow = settings.LongWindowSeconds
+	}
+
+	// 功能B：扣到 floor + 通知邮件。幂等锁保证一个冷却期内只扣一次、只发一封信。
+	if settings.BalancePenaltyEnabled {
 		s.scheduleBalancePenalty(ctx, userID, settings)
 	}
 
-	// 功能A：恰好 ipMarkThreshold 个 IP 打轻标记；≥ipDisableThreshold 个 IP 禁用账号并中断本次请求。
-	if !settings.Enabled {
-		return nil
-	}
-	switch {
-	case len(ips) >= ipDisableThreshold:
-		if s.userStatusUpdater != nil {
-			if err := s.userStatusUpdater.UpdateStatus(ctx, userID, StatusDisabled); err != nil {
-				slog.Error("failed to disable user after ip consistency violation",
-					"user_id", userID, "error", err)
-			}
+	// 功能A：写真实 suspect 标记（进人工复核队列，并由待复核冻结闸门拦截后续调用），
+	// 中断本次请求。不再自动禁用账号（用户拍板 2026-11-21）。
+	if settings.Enabled {
+		if s.newUserRiskMarker != nil {
+			s.newUserRiskMarker.MarkUserRisk(ctx, userID, AffiliateRiskLevelSuspect, []string{ipInconsistencyReason})
 		}
-		_ = s.cache.Clear(ctx, key)
-
-		slog.Warn("account disabled: multiple client ips within monitoring window",
+		slog.Warn("user marked suspect: threshold client ips within monitoring window",
 			"audit", true,
 			"user_id", userID,
 			"current_ip", clientIP,
-			"known_ips", ips,
-			"window_seconds", settings.WindowSeconds,
+			"known_ips", hitIPs,
+			"window_seconds", hitWindow,
+			"long_window_hit", !mainHit,
 		)
-
 		return &IPConsistencyViolation{
 			UserID:    userID,
 			CurrentIP: clientIP,
-			KnownIPs:  ips,
+			KnownIPs:  hitIPs,
 		}
-	case len(ips) == ipMarkThreshold:
-		if s.userStatusUpdater != nil {
-			s.userStatusUpdater.MarkIPInconsistent(ctx, userID, ipInconsistencyReason)
-		}
-		slog.Warn("user marked ip-suspect: threshold client ips within monitoring window",
-			"audit", true,
-			"user_id", userID,
-			"current_ip", clientIP,
-			"known_ips", ips,
-			"window_seconds", settings.WindowSeconds,
-		)
 	}
 	return nil
 }
@@ -639,7 +653,7 @@ func (s *IPConsistencyService) CheckRegistration(ctx context.Context, email, cli
 	return ErrIPConsistencyBlocked
 }
 
-// RecordUserIP 把账号的首次 IP（如注册 IP）写入用户维度窗口，
+// RecordUserIP 把账号的首次 IP（如注册 IP）写入用户维度主窗口与长窗口，
 // 让后续登录/控制台/API 访问能与之比对。
 func (s *IPConsistencyService) RecordUserIP(ctx context.Context, userID int64, clientIP string) {
 	if s == nil || s.cache == nil || s.settingsProvider == nil || userID <= 0 {
@@ -654,9 +668,23 @@ func (s *IPConsistencyService) RecordUserIP(ctx context.Context, userID int64, c
 	if clientIP == "" {
 		return
 	}
-	key := ipConsistencyUserKeyPrefix + fmt.Sprintf("%d", userID)
-	if _, err := s.cache.RecordAndListIPs(ctx, key, clientIP, time.Now(), time.Duration(settings.WindowSeconds)*time.Second); err != nil {
-		slog.Warn("failed to record registration ip", "user_id", userID, "error", err)
+	now := time.Now()
+	windows := []struct {
+		key    string
+		window time.Duration
+	}{
+		{ipConsistencyUserKeyPrefix + fmt.Sprintf("%d", userID), time.Duration(settings.WindowSeconds) * time.Second},
+	}
+	if settings.LongWindowSeconds > 0 {
+		windows = append(windows, struct {
+			key    string
+			window time.Duration
+		}{ipConsistencyUserLongKeyPrefix + fmt.Sprintf("%d", userID), time.Duration(settings.LongWindowSeconds) * time.Second})
+	}
+	for _, w := range windows {
+		if _, err := s.cache.RecordAndListIPs(ctx, w.key, clientIP, now, w.window); err != nil {
+			slog.Warn("failed to record registration ip", "user_id", userID, "error", err)
+		}
 	}
 }
 

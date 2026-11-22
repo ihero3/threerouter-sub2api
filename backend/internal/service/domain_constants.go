@@ -35,6 +35,18 @@ const (
 	AffiliateRebateDurationDaysMax      = 3650  // ~10 年
 	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上限
 	AdminRechargeRebateEnabledDefault   = false // 管理员充值默认不产生返利
+	// 邀请人必须自己充过值才产生返利（默认关闭，保持历史行为）。
+	AffiliateRequireInviterRechargedDefault = false
+	// 返利总额不超过邀请人自己累计实充金额（默认关闭，保持历史行为）。
+	AffiliateRebateCapByInviterRechargeDefault = false
+)
+
+// 邀请返利：邀请人自身充值门槛设置项。
+const (
+	// 邀请人自己必须充过值，被邀请人的充值才产生返利（双方都充值才返）。
+	SettingKeyAffiliateRequireInviterRecharged = "affiliate_require_inviter_recharged"
+	// 邀请人累计拿到的充值返利不超过其本人累计实充金额。
+	SettingKeyAffiliateRebateCapByInviterRecharge = "affiliate_rebate_cap_by_inviter_recharge"
 )
 
 // 注册邮箱域名配额设置
@@ -56,12 +68,20 @@ const (
 	RegistrationEmailDomainQuotaWindowDefault = RegistrationEmailDomainQuotaWindowTotal
 )
 
-// 注册 IP 每日注册数配额设置（按服务器时区自然日统计，次日 0 点自动重置）。
+// 注册 IP 注册数配额设置（每日档按服务器时区自然日统计，次日 0 点自动重置；
+// 30 天档为滚动窗口）。两档共用同一开关。
 const (
 	// RegistrationIPQuotaLimitDefault 是同一 IP 每天可注册账户数的默认值。
-	RegistrationIPQuotaLimitDefault = 3
+	RegistrationIPQuotaLimitDefault = 2
 	RegistrationIPQuotaLimitMin     = 1
 	RegistrationIPQuotaLimitMax     = 1000
+	// RegistrationIPQuotaMonthlyLimitDefault 是同一 IP 30 天滚动窗口内可注册账户数的默认值。
+	// 抓「每天不超日配额、但长期缓慢批量建号」的慢速团伙。
+	RegistrationIPQuotaMonthlyLimitDefault = 3
+	RegistrationIPQuotaMonthlyLimitMin     = 1
+	RegistrationIPQuotaMonthlyLimitMax     = 1000
+	// RegistrationIPQuotaMonthlyWindow 30 天档的滚动统计窗口。
+	RegistrationIPQuotaMonthlyWindow = 30 * 24 * time.Hour
 )
 
 // 注册 IP 每小时注册数限流设置（固定 1 小时滚动窗口）。
@@ -272,10 +292,12 @@ const (
 	SettingKeyRegistrationEmailDomainQuotaLimit = "registration_email_domain_quota_limit"
 	// 上面配额的统计窗口：total（累计，默认）| daily（每天 0 点重置）。
 	SettingKeyRegistrationEmailDomainQuotaWindow = "registration_email_domain_quota_window"
-	// 同一注册 IP 每天可注册账户数的限制开关（默认关闭）。
+	// 同一注册 IP 注册数限制开关（默认开启；同时控制每日档与 30 天档）。
 	SettingKeyRegistrationIPQuotaEnabled = "registration_ip_quota_enabled"
 	// 同一注册 IP 每天可注册的账户数（仅在上面的开关开启时生效）。
 	SettingKeyRegistrationIPQuotaLimit = "registration_ip_quota_limit"
+	// 同一注册 IP 30 天滚动窗口内可注册的账户数（与每日档共用开关）。
+	SettingKeyRegistrationIPQuotaMonthlyLimit = "registration_ip_quota_monthly_limit"
 	// 同一注册 IP 每小时可注册账户数（固定 1 小时滚动窗口，始终生效）。
 	SettingKeyRegistrationIPHourlyLimit = "registration_ip_hourly_limit"
 	// 注册邮箱精确黑名单（JSON 数组，按收件箱身份匹配；不进 SystemSettings，由专用接口读写）。

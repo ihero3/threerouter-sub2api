@@ -22,6 +22,7 @@
           <a href="#faq" class="transition-colors hover:text-teal-600">常见问题</a>
         </div>
         <div class="flex shrink-0 items-center gap-2">
+          <LocaleSwitcher v-if="showLanguageSwitcher" />
           <router-link :to="dashboardPath" class="hidden h-9 items-center rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 sm:inline-flex">
             {{ isAuthenticated ? '控制台' : '登录' }}
           </router-link>
@@ -378,12 +379,15 @@ import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useSEO } from '@/composables/useSEO'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import { sanitizeUrl } from '@/utils/url'
+import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import PromoBanner from '@/components/common/PromoBanner.vue'
 import PublicSiteFooter from '@/components/layout/PublicSiteFooter.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => authStore.isAuthenticated ? (authStore.isAdmin ? '/admin' : '/dashboard') : '/login')

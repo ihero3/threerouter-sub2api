@@ -23,8 +23,9 @@ type SystemSettings struct {
 	RegistrationEmailDomainQuotaEnabled bool     // 白名单非空时放行非白名单域名限量注册（默认关闭）
 	RegistrationEmailDomainQuotaLimit   int      // 白名单外每个主域名允许注册的账户数（默认 1）
 	RegistrationEmailDomainQuotaWindow  string   // 上面配额的统计窗口：total（默认）| daily
-	RegistrationIPQuotaEnabled          bool     // 同一 IP 每日注册数限制开关（默认关闭）
+	RegistrationIPQuotaEnabled          bool     // 同一 IP 注册数限制开关（默认开启，同时控制每日档与 30 天档）
 	RegistrationIPQuotaLimit            int      // 同一 IP 每天允许注册的账户数
+	RegistrationIPQuotaMonthlyLimit     int      // 同一 IP 30 天滚动窗口内允许注册的账户数
 	RegistrationIPHourlyLimit           int      // 同一 IP 每小时允许注册的账户数（始终生效）
 	RegistrationDeviceFingerprintLimit  int      // 同一设备指纹 24 小时内允许注册的账户数（0 = 关闭）
 	PromoCodeEnabled                    bool
@@ -200,6 +201,11 @@ type SystemSettings struct {
 	AffiliateIPGuardMaxAccounts  int    // 同一 IP 允许绑定到同一邀请人的最大账号数
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
+
+	// AffiliateRequireInviterRecharged 开启后，邀请人自己没充过值则不产生充值返利。
+	AffiliateRequireInviterRecharged bool
+	// AffiliateRebateCapByInviterRecharge 开启后，邀请人累计充值返利不超过其本人累计实充。
+	AffiliateRebateCapByInviterRecharge bool
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

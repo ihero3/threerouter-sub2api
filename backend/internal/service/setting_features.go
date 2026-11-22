@@ -172,6 +172,31 @@ func (s *SettingService) GetRegistrationIPQuotaLimit(ctx context.Context) int {
 	return clampRegistrationIPQuotaLimit(limit)
 }
 
+// clampRegistrationIPQuotaMonthlyLimit 把同一 IP 30 天滚动窗口注册配额收敛到 [Min, Max]。
+func clampRegistrationIPQuotaMonthlyLimit(limit int) int {
+	if limit < RegistrationIPQuotaMonthlyLimitMin {
+		return RegistrationIPQuotaMonthlyLimitMin
+	}
+	if limit > RegistrationIPQuotaMonthlyLimitMax {
+		return RegistrationIPQuotaMonthlyLimitMax
+	}
+	return limit
+}
+
+// GetRegistrationIPQuotaMonthlyLimit 返回同一 IP 30 天滚动窗口内允许注册的账户数。
+// 缺失或非法值回退默认值。
+func (s *SettingService) GetRegistrationIPQuotaMonthlyLimit(ctx context.Context) int {
+	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaMonthlyLimit)
+	if !found {
+		return RegistrationIPQuotaMonthlyLimitDefault
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return RegistrationIPQuotaMonthlyLimitDefault
+	}
+	return clampRegistrationIPQuotaMonthlyLimit(limit)
+}
+
 // clampRegistrationIPHourlyLimit 把同一 IP 每小时注册上限收敛到 [Min, Max]。
 func clampRegistrationIPHourlyLimit(limit int) int {
 	if limit < RegistrationIPHourlyLimitMin {
@@ -236,6 +261,27 @@ func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bo
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateAdminRechargeEnabled)
 	if err != nil {
 		return AdminRechargeRebateEnabledDefault
+	}
+	return value == "true"
+}
+
+// IsAffiliateRequireInviterRecharged reports whether an invitee's recharge
+// only produces a rebate when the inviter has completed a recharge of their
+// own. Missing / unparsable values fall back to the safe default (off).
+func (s *SettingService) IsAffiliateRequireInviterRecharged(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRequireInviterRecharged)
+	if err != nil {
+		return AffiliateRequireInviterRechargedDefault
+	}
+	return value == "true"
+}
+
+// IsAffiliateRebateCapByInviterRecharge reports whether an inviter's lifetime
+// recharge rebate is capped by their own lifetime completed recharge total.
+func (s *SettingService) IsAffiliateRebateCapByInviterRecharge(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateCapByInviterRecharge)
+	if err != nil {
+		return AffiliateRebateCapByInviterRechargeDefault
 	}
 	return value == "true"
 }

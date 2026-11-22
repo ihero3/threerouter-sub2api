@@ -41,6 +41,7 @@ type SystemSettings struct {
 	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
 	RegistrationIPQuotaEnabled          bool                     `json:"registration_ip_quota_enabled"`
 	RegistrationIPQuotaLimit            int                      `json:"registration_ip_quota_limit"`
+	RegistrationIPQuotaMonthlyLimit     int                      `json:"registration_ip_quota_monthly_limit"`
 	RegistrationIPHourlyLimit           int                      `json:"registration_ip_hourly_limit"`
 	RegistrationDeviceFingerprintLimit  int                      `json:"registration_device_fingerprint_limit"`
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
@@ -192,6 +193,10 @@ type SystemSettings struct {
 	AffiliateIPGuardMaxAccounts  int                          `json:"affiliate_ip_guard_max_accounts"`
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
+
+	// 邀请人自身充值门槛：邀请人必须先充值 / 返利不超过邀请人累计实充。
+	AffiliateRequireInviterRecharged    bool `json:"affiliate_require_inviter_recharged"`
+	AffiliateRebateCapByInviterRecharge bool `json:"affiliate_rebate_cap_by_inviter_recharge"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

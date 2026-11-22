@@ -905,9 +905,9 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewPasskeyService,
 	NewUserService,
-	// IP 一致性风控：依赖 Redis 窗口缓存 + SettingService + 用户状态更新能力。
+	// IP 一致性风控：依赖 Redis 窗口缓存 + SettingService（2026-11-21 起不再注入用户状态更新能力，
+	// 统一处置为 suspect 标记 + 扣费，不再自动禁用账号）。
 	NewIPConsistencyService,
-	wire.Bind(new(UserStatusUpdater), new(*UserService)),
 	wire.Bind(new(IPConsistencySettingsProvider), new(*SettingService)),
 	// 全局自动风控豁免检查器（工单标记 / 复核放行），供 IP 一致性热路径与共享 IP 扫描共用。
 	// 依赖的 RiskExemptionRepository 由 *repository.userRepository 实现，装配见 cmd/server/wire_gen.go

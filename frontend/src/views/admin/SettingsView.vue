@@ -8466,6 +8466,30 @@
                 <Toggle v-model="form.affiliate_admin_recharge_enabled" />
               </div>
 
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.features.affiliate.requireInviterRecharged') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.affiliate.requireInviterRechargedHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.affiliate_require_inviter_recharged" />
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.features.affiliate.rebateCapByInviterRecharge') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.affiliate.rebateCapByInviterRechargeHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="form.affiliate_rebate_cap_by_inviter_recharge" />
+              </div>
+
               <div>
                 <label class="input-label">
                   {{ t('admin.settings.features.affiliate.rebateRate') }}
@@ -11048,6 +11072,8 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
   affiliate_admin_recharge_enabled: false,
+  affiliate_require_inviter_recharged: false,
+  affiliate_rebate_cap_by_inviter_recharge: false,
   affiliate_register_reward: 1,
   default_concurrency: 1,
   default_subscriptions: [],
@@ -12946,6 +12972,8 @@ async function saveSettings() {
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
+      affiliate_require_inviter_recharged: form.affiliate_require_inviter_recharged,
+      affiliate_rebate_cap_by_inviter_recharge: form.affiliate_rebate_cap_by_inviter_recharge,
       affiliate_register_reward: Math.max(0, Math.min(100, Number(form.affiliate_register_reward) || 0)),
       affiliate_ip_guard_mode: ['off', 'block', 'review'].includes(form.affiliate_ip_guard_mode)
         ? form.affiliate_ip_guard_mode

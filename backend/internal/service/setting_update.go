@@ -194,6 +194,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRegistrationIPQuotaEnabled] = strconv.FormatBool(settings.RegistrationIPQuotaEnabled)
 	settings.RegistrationIPQuotaLimit = clampRegistrationIPQuotaLimit(settings.RegistrationIPQuotaLimit)
 	updates[SettingKeyRegistrationIPQuotaLimit] = strconv.Itoa(settings.RegistrationIPQuotaLimit)
+	settings.RegistrationIPQuotaMonthlyLimit = clampRegistrationIPQuotaMonthlyLimit(settings.RegistrationIPQuotaMonthlyLimit)
+	updates[SettingKeyRegistrationIPQuotaMonthlyLimit] = strconv.Itoa(settings.RegistrationIPQuotaMonthlyLimit)
 	settings.RegistrationIPHourlyLimit = clampRegistrationIPHourlyLimit(settings.RegistrationIPHourlyLimit)
 	updates[SettingKeyRegistrationIPHourlyLimit] = strconv.Itoa(settings.RegistrationIPHourlyLimit)
 	settings.RegistrationDeviceFingerprintLimit = clampRegistrationDeviceFingerprintLimit(settings.RegistrationDeviceFingerprintLimit)
@@ -425,6 +427,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
 	updates[SettingKeyAffiliateAdminRechargeEnabled] = strconv.FormatBool(settings.AdminRechargeRebateEnabled)
+	updates[SettingKeyAffiliateRequireInviterRecharged] = strconv.FormatBool(settings.AffiliateRequireInviterRecharged)
+	updates[SettingKeyAffiliateRebateCapByInviterRecharge] = strconv.FormatBool(settings.AffiliateRebateCapByInviterRecharge)
 	settings.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings.AffiliateIPGuardMode)
 	updates[SettingKeyAffiliateIPGuardMode] = settings.AffiliateIPGuardMode
 	if settings.AffiliateIPGuardMaxAccounts < 1 {

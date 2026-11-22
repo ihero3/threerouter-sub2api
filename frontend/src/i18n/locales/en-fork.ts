@@ -355,7 +355,7 @@ export default {
     invalidCode: 'Please enter a valid 6-character code'
   },
   keys: {
-    departmentLabel: 'Department',
+    departmentLabel: 'Department (optional)',
     consumerLabel: 'Consumer (Employee)',
     selectDepartment: 'Select a department',
     selectConsumer: 'Select a consumer',

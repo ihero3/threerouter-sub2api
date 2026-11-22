@@ -11,7 +11,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/locallimit"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -513,8 +512,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// 客户端 IP 口径与其余链路统一：SecurityClientIP 来自会话绑定上下文，不信任客户端自报头
+	// （2026-11-21 修复：此前这里用 ip.GetClientIP(c)，与验证码绑定 / 风控口径不一致）。
 	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
-	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, middleware2.SecurityClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

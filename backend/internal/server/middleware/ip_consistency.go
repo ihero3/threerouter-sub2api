@@ -10,8 +10,8 @@ import (
 
 // enforceUserIPConsistency 在鉴权通过后校验用户 IP 一致性。
 //
-// 判定与处罚都在 service 层：窗口内出现两个及以上不同客户端 IP 时，
-// 账号会被自动置为 disabled。返回 false 表示请求已被中断。
+// 判定与处罚都在 service 层：窗口内出现 3 个及以上不同客户端 IP 时，统一处置为
+// suspect 标记 + 扣减到 floor + 通知邮件（不再自动禁用）。返回 false 表示请求已被中断。
 func enforceUserIPConsistency(
 	c *gin.Context,
 	ipConsistency *service.IPConsistencyService,
@@ -27,7 +27,7 @@ func enforceUserIPConsistency(
 	}
 	MarkIngressRejected(c, IngressRejectUserInactive)
 	AbortWithError(c, http.StatusForbidden, "USER_IP_MISMATCH",
-		"Account disabled: client IP changed within the monitoring window")
+		"Account restricted: multiple client IPs detected within the monitoring window")
 	return false
 }
 
@@ -75,7 +75,7 @@ func enforceNewUserFirstUseIP(
 		return true
 	}
 	MarkIngressRejected(c, IngressRejectUserInactive)
-	message := "Account disabled: registration IP mismatch detected shortly after signup"
+	message := "Account restricted: registration IP mismatch detected shortly after signup"
 	if googleStyle {
 		abortWithGoogleError(c, http.StatusForbidden, message)
 	} else {

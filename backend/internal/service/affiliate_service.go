@@ -157,6 +157,11 @@ type AffiliateRepository interface {
 	// AccrueRegistrationReward 发放邀请注册奖励：被邀请人注册即计入邀请人可用配额（冻结 0 小时）。
 	AccrueRegistrationReward(ctx context.Context, inviterID, inviteeUserID int64, amount float64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+	// GetCompletedRechargeTotal 返回用户已完成订单（COMPLETED）的实充合计：
+	// 余额单剔除赠送额度、订阅单计入，与单笔返利基数同口径。
+	GetCompletedRechargeTotal(ctx context.Context, userID int64) (float64, error)
+	// GetAccruedRebateTotal 返回邀请人累计已计提的充值返利（账本 action=accrue）。
+	GetAccruedRebateTotal(ctx context.Context, inviterID int64) (float64, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	WithdrawQuota(ctx context.Context, userID int64, amount float64, operationID string) (*AffiliateWithdrawResult, error)
@@ -817,11 +822,37 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		}
 	}
 
+	// 邀请人自身充值门槛：
+	//   1) requireInviterRecharge：邀请人没充过值就完全不返（双方都充值才返）；
+	//   2) capByInviterRecharge：邀请人累计充值返利不超过其本人累计实充金额。
+	// 两个开关都关闭时不查库，保持与历史完全一致的路径。
+	var requireInviterRecharge, capByInviterRecharge bool
+	if s.settingService != nil {
+		requireInviterRecharge = s.settingService.IsAffiliateRequireInviterRecharged(ctx)
+		capByInviterRecharge = s.settingService.IsAffiliateRebateCapByInviterRecharge(ctx)
+	}
+	if requireInviterRecharge || capByInviterRecharge {
+		inviterRechargeTotal, err := s.repo.GetCompletedRechargeTotal(ctx, *inviteeSummary.InviterID)
+		if err != nil {
+			return 0, err
+		}
+		var inviterAccruedRebate float64
+		if capByInviterRecharge {
+			inviterAccruedRebate, err = s.repo.GetAccruedRebateTotal(ctx, *inviteeSummary.InviterID)
+			if err != nil {
+				return 0, err
+			}
+		}
+		rebate = applyInviterRechargeGate(rebate, inviterRechargeTotal, inviterAccruedRebate, requireInviterRecharge, capByInviterRecharge)
+		if rebate <= 0 {
+			return 0, nil
+		}
+	}
+
 	var freezeHours int
 	if s.settingService != nil {
 		freezeHours = s.settingService.GetAffiliateRebateFreezeHours(ctx)
 	}
-
 	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
 	if err != nil {
 		return 0, err
@@ -830,6 +861,32 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		return 0, nil
 	}
 	return rebate, nil
+}
+
+// applyInviterRechargeGate 把「邀请人自己也充值」的两个开关作用到一笔待计提返利上：
+//   - requireRecharge：邀请人累计实充为 0 时不产生返利（双方都充值才返）；
+//   - capByRecharge：邀请人历史累计充值返利 alreadyAccrued 加上本笔不得超过其累计实充，
+//     超出部分截断；额度用尽时返 0。
+//
+// 对应开关关闭时该约束不生效；两个都关闭时原样返回 rebate。
+func applyInviterRechargeGate(rebate, inviterRechargeTotal, alreadyAccrued float64, requireRecharge, capByRecharge bool) float64 {
+	if rebate <= 0 || math.IsNaN(rebate) || math.IsInf(rebate, 0) {
+		return 0
+	}
+	if requireRecharge && inviterRechargeTotal <= 0 {
+		return 0
+	}
+	if !capByRecharge {
+		return rebate
+	}
+	remaining := roundTo(inviterRechargeTotal-alreadyAccrued, 8)
+	if remaining <= 0 {
+		return 0
+	}
+	if rebate > remaining {
+		return remaining
+	}
+	return rebate
 }
 
 // resolveRebateRatePercent returns the inviter's exclusive rate when set,

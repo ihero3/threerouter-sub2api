@@ -29,7 +29,7 @@
           <span class="min-w-0 truncate text-base font-semibold">{{ siteName }}</span>
         </router-link>
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
-          <LocaleSwitcher />
+          <LocaleSwitcher v-if="showLanguageSwitcher" />
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -650,6 +650,7 @@
             {{ t('home.footer.compliance') }}
           </button>
           <button
+            v-if="showLanguageSwitcher"
             @click="toggleLanguage"
             class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
           >
@@ -677,6 +678,7 @@ import { useI18n } from 'vue-i18n'
 import { setLocale, getLocale } from '@/i18n'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import type { CustomMenuItem } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -691,6 +693,7 @@ const { t, locale } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => authStore.isAuthenticated ? (authStore.isAdmin ? '/admin' : '/dashboard') : '/login')

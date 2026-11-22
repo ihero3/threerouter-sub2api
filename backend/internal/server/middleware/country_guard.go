@@ -25,7 +25,8 @@ type CountryLookup interface {
 //
 // 设计要点：
 //   - 挂在全局中间件链（SessionBindingContext、IPBlacklistGuard 之后），
-//     作用路径与全站 IP 黑名单完全一致（见 ipBlacklistAppliesToPath）。
+//     覆盖所有路径（含首页/静态前端/SPA），仅豁免 admin API 与健康检查，
+//     见 countryGuardAppliesToPath；与 IP 黑名单的作用范围刻意区分。
 //   - 客户端 IP 取 SecurityClientIP（与审计日志 / 会话绑定同口径），
 //     不信任客户端自报头；「信任转发 IP」开启会污染该值，须保持关闭。
 //   - 默认关闭 + 空名单：功能关闭时完全不触碰 GeoIP，热路径零额外开销。
@@ -57,7 +58,7 @@ func (p *CountryGuard) Middleware() gin.HandlerFunc {
 			return
 		}
 		path := c.Request.URL.Path
-		if !ipBlacklistAppliesToPath(path) {
+		if !countryGuardAppliesToPath(path) {
 			c.Next()
 			return
 		}
@@ -91,6 +92,31 @@ func (p *CountryGuard) Middleware() gin.HandlerFunc {
 		p.recordCountryBlock(c, blocked, path)
 		abortCountryBlocklistBlocked(c, blocked, isAuthPath(path))
 	}
+}
+
+// countryGuardAppliesToPath 判断国家封禁是否覆盖该路径。
+//
+// 与全站 IP 黑名单（ipBlacklistAppliesToPath）刻意分离：IP 黑名单只覆盖面板与
+// 网关路由、豁免静态前端；国家封禁按运营要求覆盖**所有路径**——包括首页 `/`、
+// 静态资源、SPA 前端路由、支付回调与所有 API/网关端点，命中即 403。
+//
+// 仅保留两类必要豁免：
+//   - /api/v1/admin：管理员自助通道。管理员误把自己所在地区拉黑后，仍需能进后台
+//     撤销，否则只能进数据库手工改。注意后台「页面」是 SPA 路由（挂在 `/`），
+//     从被封地区仍打不开页面，但可用非被封出口或直接调豁免的 admin API 自救。
+//   - /health、/setup/status：部署探针。若探针出口在被封地区，拦截会导致实例被
+//     误判宕机并反复重启。
+//
+// 注意用前缀匹配覆盖所有 SPA 路由（`/login`、`/admin/settings`、`/foo` 等都会
+// 返回 index.html），不能只精确匹配 `/`。
+func countryGuardAppliesToPath(path string) bool {
+	if strings.HasPrefix(path, "/api/v1/admin") {
+		return false
+	}
+	if path == "/health" || path == "/setup/status" {
+		return false
+	}
+	return true
 }
 
 // isAuthPath 判断路径是否属于登录/注册等认证入口；命中时拦截文案会点名登录/注册。

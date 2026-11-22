@@ -287,7 +287,7 @@ export default {
       geminiCliDesc: 'Import as Gemini CLI configuration',
     },
     // Quota and expiration
-    quotaLimit: 'Quota Limit',
+    quotaLimit: 'Quota Limit (optional)',
     quotaAmount: 'Quota Amount (USD)',
     quotaAmountPlaceholder: 'Enter quota limit in USD',
     quotaAmountHint: 'Set the maximum amount this key can spend. 0 = unlimited.',

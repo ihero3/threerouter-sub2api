@@ -47,13 +47,13 @@ func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepos
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, false, "", 0, nil, "", 0, time.Time{})
+	return r.create(ctx, userIn, false, "", 0, nil, "", 0, time.Time{}, 0, time.Time{})
 }
 
 // CreateWithEmailAliasGuard 见 service.UserRepository：在邮箱唯一性锁内复查收件箱身份，
 // 供注册路径使用。
 func (r *userRepository) CreateWithEmailAliasGuard(ctx context.Context, userIn *service.User) error {
-	return r.create(ctx, userIn, true, "", 0, nil, "", 0, time.Time{})
+	return r.create(ctx, userIn, true, "", 0, nil, "", 0, time.Time{}, 0, time.Time{})
 }
 
 // CountUsersByEmailDomain 统计指定可注册主域名及其子域名下的未删除用户。
@@ -67,20 +67,37 @@ func (r *userRepository) CountUsersByRegisterIP(ctx context.Context, ip string, 
 	return countUsersByRegisterIPWithClient(ctx, clientFromContext(ctx, r.client), ip, since)
 }
 
+// ListUserIDsByRegisterIP 返回同一注册 IP 在 since 之后创建的未删除用户 ID 列表。
+// 供注册 IP 关联规则的回溯补打标使用（查询条件与 CountUsersByRegisterIP 完全一致，
+// 包括部分索引所需的 RegisterIPNEQ("") 谓词）。
+func (r *userRepository) ListUserIDsByRegisterIP(ctx context.Context, ip string, since time.Time) ([]int64, error) {
+	client := clientFromContext(ctx, r.client)
+	ip = strings.TrimSpace(ip)
+	if client == nil || ip == "" {
+		return nil, nil
+	}
+	query := client.User.Query().Where(dbuser.RegisterIPEQ(ip), dbuser.RegisterIPNEQ(""))
+	if !since.IsZero() {
+		query = query.Where(dbuser.CreatedAtGTE(since))
+	}
+	return query.IDs(ctx)
+}
+
 // CreateWithEmailAliasGuardAndDomainLimit 串行化非白名单域名的注册请求，
 // 并在用户写入的同一事务内复查域名额度。
 func (r *userRepository) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, userIn *service.User, domain string, limit int, since *time.Time) error {
-	return r.create(ctx, userIn, true, normalizeEmailDomain(domain), limit, since, "", 0, time.Time{})
+	return r.create(ctx, userIn, true, normalizeEmailDomain(domain), limit, since, "", 0, time.Time{}, 0, time.Time{})
 }
 
-// CreateWithRegistrationGuards 在同一事务内复查域名配额与「同一 IP 每日注册数」配额。
+// CreateWithRegistrationGuards 在同一事务内复查域名配额与「同一 IP 注册数」配额（每日档 + 30 天档）。
 // IP 配额按 IP 加锁串行化，避免并发注册同时通过预检后各自建号。
 func (r *userRepository) CreateWithRegistrationGuards(ctx context.Context, userIn *service.User, guard service.RegistrationCreateGuard) error {
 	return r.create(ctx, userIn, true, guard.EmailDomain, guard.EmailDomainLimit, guard.EmailDomainSince,
-		guard.RegisterIP, guard.RegisterIPLimit, guard.RegisterIPSince)
+		guard.RegisterIP, guard.RegisterIPLimit, guard.RegisterIPSince,
+		guard.RegisterIPMonthlyLimit, guard.RegisterIPMonthlySince)
 }
 
-func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string, domainLimitN int, domainLimitSince *time.Time, registerIP string, registerIPLimit int, registerIPSince time.Time) error {
+func (r *userRepository) create(ctx context.Context, userIn *service.User, guardEmailAlias bool, domainLimit string, domainLimitN int, domainLimitSince *time.Time, registerIP string, registerIPLimit int, registerIPSince time.Time, registerIPMonthlyLimit int, registerIPMonthlySince time.Time) error {
 	if userIn == nil {
 		return nil
 	}
@@ -122,7 +139,7 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	if domainLimit != "" {
 		lockKeys = append(lockKeys, registrationEmailDomainLockKey(domainLimit))
 	}
-	if registerIPLimit > 0 && strings.TrimSpace(registerIP) != "" {
+	if (registerIPLimit > 0 || registerIPMonthlyLimit > 0) && strings.TrimSpace(registerIP) != "" {
 		lockKeys = append(lockKeys, registrationIPLockKey(registerIP))
 	}
 	releaseEmailLock, err := lockRepositoryScopedKeys(
@@ -163,6 +180,15 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		if count >= registerIPLimit {
 			// 与预检保持同一 reason，并发挤掉配额时用户看到的文案与预检一致。
 			return service.BuildRegistrationIPLimitError(registerIPLimit)
+		}
+	}
+	if registerIPMonthlyLimit > 0 && strings.TrimSpace(registerIP) != "" {
+		count, err := countUsersByRegisterIPWithClient(txCtx, txClient, registerIP, registerIPMonthlySince)
+		if err != nil {
+			return err
+		}
+		if count >= registerIPMonthlyLimit {
+			return service.BuildRegistrationIPMonthlyLimitError(registerIPMonthlyLimit)
 		}
 	}
 

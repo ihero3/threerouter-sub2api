@@ -246,14 +246,17 @@ type RegistrationEmailDomainRepository interface {
 }
 
 // RegistrationCreateGuard 描述创建注册用户时必须在同一事务内原子复查的配额。
-// EmailDomain 为空表示不做域名配额校验；RegisterIPLimit <= 0 表示不做 IP 配额校验。
+// EmailDomain 为空表示不做域名配额校验；RegisterIPLimit / RegisterIPMonthlyLimit <= 0
+// 分别表示不做每日档 / 30 天档 IP 配额校验。
 type RegistrationCreateGuard struct {
-	EmailDomain      string
-	EmailDomainLimit int
-	EmailDomainSince *time.Time
-	RegisterIP       string
-	RegisterIPLimit  int
-	RegisterIPSince  time.Time
+	EmailDomain            string
+	EmailDomainLimit       int
+	EmailDomainSince       *time.Time
+	RegisterIP             string
+	RegisterIPLimit        int
+	RegisterIPSince        time.Time
+	RegisterIPMonthlyLimit int
+	RegisterIPMonthlySince time.Time
 }
 
 // RegistrationIPQuotaRepository 是生产用户仓储为「同一 IP 每日注册上限」提供的可选能力。
@@ -261,6 +264,12 @@ type RegistrationCreateGuard struct {
 type RegistrationIPQuotaRepository interface {
 	CountUsersByRegisterIP(ctx context.Context, ip string, since time.Time) (int, error)
 	CreateWithRegistrationGuards(ctx context.Context, user *User, guard RegistrationCreateGuard) error
+}
+
+// RegistrationIPLister 返回同一注册 IP 在窗口内关联的用户 ID 列表（由 *userRepository 实现）。
+// 供注册 IP 关联规则的回溯补打标使用；独立窄接口避免测试桩被迫实现。
+type RegistrationIPLister interface {
+	ListUserIDsByRegisterIP(ctx context.Context, ip string, since time.Time) ([]int64, error)
 }
 
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
@@ -1278,8 +1287,8 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status str
 	return nil
 }
 
-// MarkIPInconsistent 给用户打「窗口内出现多个客户端 IP」的可疑标记（IP 一致性风控）。
-// 仓储不支持时静默跳过：风控标记是旁路能力，不能影响主流程。
+// MarkIPInconsistent 已废弃（2026-11-21）：IP 一致性风控统一改写真实 suspect 标记
+// （AffiliateService.MarkUserRisk），不再使用 ip_suspect 轻标记。
 func (s *UserService) MarkIPInconsistent(ctx context.Context, userID int64, reason string) {
 	marker, ok := s.userRepo.(UserRiskMarkRepository)
 	if !ok {

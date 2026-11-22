@@ -241,6 +241,7 @@
     <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
       <!-- Language Toggle -->
       <button
+        v-if="showLanguageSwitcher"
         @click="toggleLanguage"
         class="sidebar-link mb-2 w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
@@ -295,6 +296,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale, getLocale } from '@/i18n'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -356,13 +358,14 @@ const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
+const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
-const currentLocale = ref(getLocale())
+const currentLocale = computed(() => getLocale())
 
 const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 
@@ -1154,8 +1157,7 @@ function toggleSidebar() {
 
 function toggleLanguage() {
   const newLocale = currentLocale.value === 'zh' ? 'en' : 'zh'
-  setLocale(newLocale)
-  currentLocale.value = newLocale
+  void setLocale(newLocale)
 }
 
 function toggleTheme() {

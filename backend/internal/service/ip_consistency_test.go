@@ -3,17 +3,20 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
 type fakeIPConsistencyCache struct {
 	ips        []string
+	longIPs    []string // 长窗口独立返回值；nil 时复用 ips
 	err        error
 	clearedKey string
 	lastKey    string
 	lastIP     string
 	lastWindow time.Duration
+	keys       []string
 }
 
 func (f *fakeIPConsistencyCache) RecordAndListIPs(
@@ -22,6 +25,10 @@ func (f *fakeIPConsistencyCache) RecordAndListIPs(
 	f.lastKey = key
 	f.lastIP = clientIP
 	f.lastWindow = window
+	f.keys = append(f.keys, key)
+	if strings.HasPrefix(key, ipConsistencyUserLongKeyPrefix) && f.longIPs != nil {
+		return f.longIPs, f.err
+	}
 	return f.ips, f.err
 }
 
@@ -38,141 +45,137 @@ func (f *fakeIPConsistencySettings) GetIPConsistencySettingsCached(context.Conte
 	return f.settings
 }
 
-type fakeUserStatusUpdater struct {
-	userID       int64
-	status       string
-	markedUserID int64
-	markReason   string
-	err          error
-}
-
-func (f *fakeUserStatusUpdater) UpdateStatus(_ context.Context, userID int64, status string) error {
-	f.userID = userID
-	f.status = status
-	return f.err
-}
-
-func (f *fakeUserStatusUpdater) MarkIPInconsistent(_ context.Context, userID int64, reason string) {
-	f.markedUserID = userID
-	f.markReason = reason
-}
-
 func enabledSettings(windowSeconds int) *fakeIPConsistencySettings {
 	return &fakeIPConsistencySettings{
-		settings: IPConsistencySettings{Enabled: true, WindowSeconds: windowSeconds},
+		settings: IPConsistencySettings{
+			Enabled:           true,
+			WindowSeconds:     windowSeconds,
+			LongWindowSeconds: defaultIPConsistencyLongWindowSeconds,
+		},
 	}
 }
 
 func TestIPConsistency_DisabledSkipsCheck(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
-	updater := &fakeUserStatusUpdater{}
 	svc := NewIPConsistencyService(cache, &fakeIPConsistencySettings{
 		settings: IPConsistencySettings{Enabled: false},
-	}, updater)
+	})
 
 	if got := svc.CheckUser(context.Background(), 1, "user", "1.1.1.1"); got != nil {
 		t.Fatalf("expected no violation when disabled, got %+v", got)
-	}
-	if updater.status != "" {
-		t.Fatalf("user should not be disabled when feature is off")
 	}
 }
 
 func TestIPConsistency_SingleIPAllowed(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	if got := svc.CheckUser(context.Background(), 7, "user", "1.1.1.1"); got != nil {
 		t.Fatalf("expected no violation for a single ip, got %+v", got)
 	}
-	if cache.lastKey != "ipguard:user:7" {
-		t.Fatalf("unexpected cache key: %s", cache.lastKey)
+	if len(cache.keys) != 2 || cache.keys[0] != "ipguard:user:7" || cache.keys[1] != "ipguard:user-long:7" {
+		t.Fatalf("both windows must be recorded, got %v", cache.keys)
 	}
-	if cache.lastWindow != 600*time.Second {
-		t.Fatalf("unexpected window: %s", cache.lastWindow)
-	}
-	if updater.status != "" {
-		t.Fatalf("user should not be disabled for a single ip")
+	if cache.lastKey != "ipguard:user-long:7" || cache.lastWindow != time.Hour {
+		t.Fatalf("unexpected long-window record: key=%s window=%s", cache.lastKey, cache.lastWindow)
 	}
 }
 
 func TestIPConsistency_TwoIPsNoAction(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+	marker := &fakeNewUserRiskMarker{}
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
+	svc.SetNewUserRiskMarker(marker)
 
 	if got := svc.CheckUser(context.Background(), 42, "user", "2.2.2.2"); got != nil {
 		t.Fatalf("two ips should not block the request, got %+v", got)
 	}
-	if updater.userID != 0 || updater.status != "" {
-		t.Fatalf("user should not be disabled with two ips, got %d/%s", updater.userID, updater.status)
-	}
-	if updater.markedUserID != 0 {
-		t.Fatalf("two ips must not tag the user, got %d/%q", updater.markedUserID, updater.markReason)
+	if len(marker.calls) != 0 {
+		t.Fatalf("two ips must not tag the user, got %+v", marker.calls)
 	}
 	if cache.clearedKey != "" {
 		t.Fatalf("window should be kept, cleared %q", cache.clearedKey)
 	}
 }
 
-func TestIPConsistency_ThreeIPsMarksSuspicious(t *testing.T) {
+// 2026-11-21 起 3 个 IP 即触发统一处置：suspect + 扣费 + 邮件 + 中断本次请求（不再只是轻标记放行）。
+func TestIPConsistency_ThreeIPsMarksSuspectAndBlocks(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+	marker := &fakeNewUserRiskMarker{}
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
+	svc.SetNewUserRiskMarker(marker)
 
-	if got := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3"); got != nil {
-		t.Fatalf("three ips must not block the request, got %+v", got)
+	violation := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3")
+	if violation == nil || violation.UserID != 42 || violation.CurrentIP != "3.3.3.3" {
+		t.Fatalf("three ips must block the request, got %+v", violation)
 	}
-	if updater.status != "" {
-		t.Fatalf("three ips must not disable the account, got %q", updater.status)
-	}
-	if updater.markedUserID != 42 || updater.markReason != ipInconsistencyReason {
-		t.Fatalf("expected user 42 marked ip-suspect, got %d/%q", updater.markedUserID, updater.markReason)
+	if len(marker.calls) != 1 || marker.calls[0].userID != 42 ||
+		marker.calls[0].level != AffiliateRiskLevelSuspect || marker.calls[0].reasons[0] != ipInconsistencyReason {
+		t.Fatalf("expected one real suspect mark, got %+v", marker.calls)
 	}
 	if cache.clearedKey != "" {
-		t.Fatalf("window must be kept so a 4th ip can still be detected, cleared %q", cache.clearedKey)
+		t.Fatalf("window must not be cleared, got %q", cache.clearedKey)
 	}
 }
 
-func TestIPConsistency_FourIPsDisableUser(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+// 独立禁用档已取消：4/5 个 IP 与 3 个 IP 同档处置，窗口不清空，账号不置 disabled。
+func TestIPConsistency_FourAndFiveIPsSameDisposition(t *testing.T) {
+	for _, ips := range [][]string{
+		{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"},
+		{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"},
+	} {
+		cache := &fakeIPConsistencyCache{ips: ips}
+		marker := &fakeNewUserRiskMarker{}
+		svc := NewIPConsistencyService(cache, enabledSettings(600))
+		svc.SetNewUserRiskMarker(marker)
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "4.4.4.4")
-	if violation == nil {
-		t.Fatal("expected a violation at 4 ips")
-	}
-	if violation.UserID != 42 || violation.CurrentIP != "4.4.4.4" {
-		t.Fatalf("unexpected violation: %+v", violation)
-	}
-	if updater.userID != 42 || updater.status != StatusDisabled {
-		t.Fatalf("expected user 42 to be disabled, got %d/%s", updater.userID, updater.status)
-	}
-	if cache.clearedKey != "ipguard:user:42" {
-		t.Fatalf("expected window to be cleared, got %q", cache.clearedKey)
+		violation := svc.CheckUser(context.Background(), 42, "user", "9.9.9.9")
+		if violation == nil {
+			t.Fatalf("expected a violation at %d ips", len(ips))
+		}
+		if len(marker.calls) != 1 || marker.calls[0].level != AffiliateRiskLevelSuspect {
+			t.Fatalf("expected one suspect mark, got %+v", marker.calls)
+		}
+		if cache.clearedKey != "" {
+			t.Fatalf("window must not be cleared, got %q", cache.clearedKey)
+		}
 	}
 }
 
-func TestIPConsistency_FiveIPsStillDisable(t *testing.T) {
-	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4", "5.5.5.5"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+// 长窗口 1 小时内累计 3 个 IP，即使 10 分钟主窗口只有 1 个也必须命中。
+func TestIPConsistency_LongWindowDetectsSlowRotation(t *testing.T) {
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1"}, longIPs: []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
+	marker := &fakeNewUserRiskMarker{}
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
+	svc.SetNewUserRiskMarker(marker)
 
-	violation := svc.CheckUser(context.Background(), 42, "user", "5.5.5.5")
-	if violation == nil {
-		t.Fatal("expected a violation above the disable threshold")
+	violation := svc.CheckUser(context.Background(), 42, "user", "3.3.3.3")
+	if violation == nil || len(violation.KnownIPs) != 3 {
+		t.Fatalf("long-window hit must block with long-window ips, got %+v", violation)
 	}
-	if updater.userID != 42 || updater.status != StatusDisabled {
-		t.Fatalf("expected user 42 to be disabled, got %d/%s", updater.userID, updater.status)
+	if len(marker.calls) != 1 {
+		t.Fatalf("long-window hit must mark suspect, got %+v", marker.calls)
+	}
+}
+
+// 长窗口关闭（0）时只写主窗口，不做第二组 Redis 往返。
+func TestIPConsistency_LongWindowDisabled(t *testing.T) {
+	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1"}}
+	settings := enabledSettings(600)
+	settings.settings.LongWindowSeconds = 0
+	svc := NewIPConsistencyService(cache, settings)
+
+	if got := svc.CheckUser(context.Background(), 42, "user", "1.1.1.1"); got != nil {
+		t.Fatalf("single ip must pass, got %+v", got)
+	}
+	if len(cache.keys) != 1 || cache.keys[0] != "ipguard:user:42" {
+		t.Fatalf("long window disabled must skip its cache call, got %v", cache.keys)
 	}
 }
 
 func TestIPConsistency_AdminExempt(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	if got := svc.CheckUser(context.Background(), 1, RoleAdmin, "2.2.2.2"); got != nil {
 		t.Fatalf("admin should be exempt, got %+v", got)
@@ -184,16 +187,16 @@ func TestIPConsistency_AdminExempt(t *testing.T) {
 
 func TestIPConsistency_WhitelistUserAndIP(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
-	updater := &fakeUserStatusUpdater{}
 	settings := &fakeIPConsistencySettings{
 		settings: IPConsistencySettings{
-			Enabled:          true,
-			WindowSeconds:    600,
-			WhitelistUserIDs: []int64{9},
-			WhitelistIPs:     []string{"10.0.0.0/8"},
+			Enabled:           true,
+			WindowSeconds:     600,
+			LongWindowSeconds: defaultIPConsistencyLongWindowSeconds,
+			WhitelistUserIDs:  []int64{9},
+			WhitelistIPs:      []string{"10.0.0.0/8"},
 		},
 	}
-	svc := NewIPConsistencyService(cache, settings, updater)
+	svc := NewIPConsistencyService(cache, settings)
 
 	if got := svc.CheckUser(context.Background(), 9, "user", "2.2.2.2"); got != nil {
 		t.Fatalf("whitelisted user should be exempt, got %+v", got)
@@ -205,27 +208,20 @@ func TestIPConsistency_WhitelistUserAndIP(t *testing.T) {
 	if cache.lastKey != "" {
 		t.Fatal("whitelisted ip should not touch the cache")
 	}
-	if updater.status != "" {
-		t.Fatal("no user should be disabled")
-	}
 }
 
 func TestIPConsistency_CacheErrorFailsOpen(t *testing.T) {
 	cache := &fakeIPConsistencyCache{err: errors.New("redis down")}
-	updater := &fakeUserStatusUpdater{}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), updater)
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	if got := svc.CheckUser(context.Background(), 1, "user", "1.1.1.1"); got != nil {
 		t.Fatalf("expected fail-open on cache error, got %+v", got)
-	}
-	if updater.status != "" {
-		t.Fatal("user should not be disabled when cache fails")
 	}
 }
 
 func TestIPConsistency_RegistrationMismatchRejected(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1", "2.2.2.2"}}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), &fakeUserStatusUpdater{})
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	err := svc.CheckRegistration(context.Background(), "USER@example.com", "2.2.2.2")
 	if !errors.Is(err, ErrIPConsistencyBlocked) {
@@ -238,20 +234,23 @@ func TestIPConsistency_RegistrationMismatchRejected(t *testing.T) {
 
 func TestIPConsistency_RegistrationSameIPAllowed(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1"}}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), &fakeUserStatusUpdater{})
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	if err := svc.CheckRegistration(context.Background(), "user@example.com", "1.1.1.1"); err != nil {
 		t.Fatalf("expected registration to pass, got %v", err)
 	}
 }
 
-func TestIPConsistency_RecordUserIPSeedsWindow(t *testing.T) {
+func TestIPConsistency_RecordUserIPSeedsBothWindows(t *testing.T) {
 	cache := &fakeIPConsistencyCache{ips: []string{"1.1.1.1"}}
-	svc := NewIPConsistencyService(cache, enabledSettings(600), &fakeUserStatusUpdater{})
+	svc := NewIPConsistencyService(cache, enabledSettings(600))
 
 	svc.RecordUserIP(context.Background(), 5, "1.1.1.1")
-	if cache.lastKey != "ipguard:user:5" || cache.lastIP != "1.1.1.1" {
-		t.Fatalf("unexpected record call: key=%q ip=%q", cache.lastKey, cache.lastIP)
+	if len(cache.keys) != 2 || cache.keys[0] != "ipguard:user:5" || cache.keys[1] != "ipguard:user-long:5" {
+		t.Fatalf("registration ip must seed both windows, got %v", cache.keys)
+	}
+	if cache.lastIP != "1.1.1.1" || cache.lastWindow != time.Hour {
+		t.Fatalf("unexpected long-window record: ip=%q window=%s", cache.lastIP, cache.lastWindow)
 	}
 }
 

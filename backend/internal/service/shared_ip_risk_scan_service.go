@@ -13,19 +13,21 @@ import (
 // 共享 IP 风险周期扫描（单 IP 关联过多用户 → 分档打标 + 扣减）。
 //
 // 与 IP 一致性风控（一个用户用了几个 IP）是两个正交维度：
-//   - IP 一致性：按用户维度统计窗口内客户端 IP 数，命中打 ip_suspect / 禁用 / 扣钱；
+//   - IP 一致性：按用户维度统计窗口内客户端 IP 数，命中打 suspect / 扣钱；
 //   - 本扫描：按 IP 维度统计窗口内关联的不同用户数，分两档处置（用户拍板 2026-11-20）：
 //       1) 快速档：1 天窗口内同 IP ≥3 用户 → suspect + 扣减到 floor（抓短时间批量建号团伙）；
-//       2) 长期禁用档：10 天窗口内同 IP ≥5 用户 → abnormal（打标即自动禁用）+ 扣减到 floor
-//          （长期多人共用，与管理端展示口径 GetSharedUsageIPs 的 ≥5 对齐）。
+//       2) 长期档：10 天窗口内同 IP ≥5 用户 → suspect + 扣减到 floor
+//          （与管理端展示口径 GetSharedUsageIPs 的 ≥5 对齐）。
+//
+//   2026-11-21 起两档处置统一为 suspect + 扣到 floor + 邮件（不再打 abnormal 自动禁用，
+//   由人工复核队列与待复核冻结闸门承担后续拦截）。
 //
 // 阈值与豁免：
 //   - 快速档 sharedIPRiskShortMinUsers = 3 / 1 天；长期档 sharedIPRiskMinUsers = 5 / 10 天。
 //     演化：单一档 5→3（2026-11-20 上午）→ 拆双档：3 归 1 天快速档，10 天档回到 5 并升级为禁用。
 //   - 命中 ticket_flag / 复核豁免表 / IP 白名单的用户跳过（前两者由 BumpUserRiskMarksSQL
 //     的豁免守卫 + 本服务的 IsExempt 双重拦截，白名单由设置缓存判断）。
-//   - 打标走「只升不降」，abnormal 不会被 suspect 覆盖；abnormal 打标即同步置 disabled
-//     （admin 除外，见 BumpUserRiskMarks）。
+//   - 打标走「只升不降」（2026-11-21 起两档均打 suspect，不再写 abnormal 自动禁用）。
 //
 // 幂等与安全：
 //   - 多实例用 leader 锁选主，避免 N 份全表扫描和重复扣减；
@@ -44,8 +46,9 @@ const (
 	// 抓「短时间批量注册+共用出口 IP」的团伙；窗口收紧到 1 天避免慢速共享误伤 NAT。
 	sharedIPRiskShortMinUsers = 3
 	sharedIPRiskShortWindow   = 24 * time.Hour
-	// sharedIPRiskMinUsers / sharedIPRiskWindow 长期禁用档：10 天窗口内同 IP ≥5 用户。
-	// 与管理端展示口径 GetSharedUsageIPs（≥5）一致；命中打 abnormal 即自动禁用。
+	// sharedIPRiskMinUsers / sharedIPRiskWindow 长期档：10 天窗口内同 IP ≥5 用户。
+	// 与管理端展示口径 GetSharedUsageIPs（≥5）一致；命中打 suspect（2026-11-21 起
+	// 不再打 abnormal 自动禁用）。
 	sharedIPRiskMinUsers = 5
 	// sharedIPRiskWindow 统计窗口：与 GetSharedUsageIPs 的展示口径一致（10 天）。
 	// 最近一次调整：180→10 天，缩短窗口以减少公司/NAT 长期累积命中。
@@ -166,10 +169,10 @@ func (s *SharedIPRiskScanService) runOnce() {
 	// 否则共享 IP 扣掉的钱在人工复核放行时无法返还。
 	notes := IPAbnormalityMessage
 
-	// 快速档：1 天 ≥3 用户 → suspect + 扣费（处置同旧单档）。
+	// 快速档：1 天 ≥3 用户 → suspect + 扣费 + 邮件。
 	s.scanTier(ctx, sharedIPRiskShortMinUsers, sharedIPRiskShortWindow, AffiliateRiskLevelSuspect, floor, notes, "short")
-	// 长期禁用档：10 天 ≥5 用户 → abnormal（打标即自动禁用）+ 扣费。
-	s.scanTier(ctx, sharedIPRiskMinUsers, sharedIPRiskWindow, AffiliateRiskLevelAbnormal, floor, notes, "long")
+	// 长期档：10 天 ≥5 用户 → suspect + 扣费 + 邮件（2026-11-21 起不再 abnormal 自动禁用）。
+	s.scanTier(ctx, sharedIPRiskMinUsers, sharedIPRiskWindow, AffiliateRiskLevelSuspect, floor, notes, "long")
 }
 
 // scanTier 跑单档扫描：查命中用户 → 豁免过滤 → 打标（只升不降）→ 扣减到 floor。

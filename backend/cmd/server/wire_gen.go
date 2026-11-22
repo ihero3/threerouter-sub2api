@@ -94,11 +94,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	geoIPService := service.NewGeoIPService(configConfig)
 	mcpoAuthRepository := repository.NewMCPOAuthRepository(client, db)
 	mcpoAuthService := service.NewMCPOAuthService(mcpoAuthRepository, userRepository)
-	// userService 提前构造：IP 一致性风控需要其 UpdateStatus 能力来自动禁用账号。
+	// userService 提前构造：供鉴权缓存失效等链路使用（IP 一致性风控 2026-11-21 起不再依赖它，
+	// 统一处置为 suspect 标记 + 扣费，不再自动禁用账号）。
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	ipConsistencyCache := repository.NewIPConsistencyCache(redisClient)
-	ipConsistencyService := service.NewIPConsistencyService(ipConsistencyCache, settingService, userService)
-	// 注入全局豁免检查器：命中工单 / 复核放行的用户跳过 IP 一致性的标记 / 扣减 / 禁用。
+	ipConsistencyService := service.NewIPConsistencyService(ipConsistencyCache, settingService)
+	// 注入全局豁免检查器：命中工单 / 复核放行的用户跳过 IP 一致性的标记 / 扣减。
 	ipConsistencyService.SetRiskExemptionChecker(riskExemptionChecker)
 	// 新用户首调 IP 不一致需要真实 suspect 标记（进复核队列 + 禁建 Key），
 	// 复用 affiliateService 的只升不降打标与缓存失效能力。

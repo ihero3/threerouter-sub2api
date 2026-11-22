@@ -62,8 +62,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRegistrationEmailDomainQuotaEnabled:       "false",
 		SettingKeyRegistrationEmailDomainQuotaLimit:         strconv.Itoa(RegistrationEmailDomainQuotaLimitDefault),
 		SettingKeyRegistrationEmailDomainQuotaWindow:        RegistrationEmailDomainQuotaWindowDefault,
-		SettingKeyRegistrationIPQuotaEnabled:                "false",
+		SettingKeyRegistrationIPQuotaEnabled:                "true",
 		SettingKeyRegistrationIPQuotaLimit:                  strconv.Itoa(RegistrationIPQuotaLimitDefault),
+		SettingKeyRegistrationIPQuotaMonthlyLimit:           strconv.Itoa(RegistrationIPQuotaMonthlyLimitDefault),
 		SettingKeyRegistrationIPHourlyLimit:                 strconv.Itoa(RegistrationIPHourlyLimitDefault),
 		SettingKeyRegistrationDeviceFingerprintLimit:        strconv.Itoa(RegistrationDeviceFingerprintLimitDefault),
 		SettingKeyRegistrationClickCaptchaEnabled:           "false",
@@ -145,6 +146,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRegisterReward:                   strconv.FormatFloat(AffiliateRegisterRewardDefault, 'f', 2, 64),
 		SettingKeyAffiliateIPGuardMode:                      AffiliateIPGuardModeDefault,
 		SettingKeyAffiliateIPGuardMaxAccounts:               strconv.Itoa(AffiliateIPGuardMaxAccountsDefault),
+		SettingKeyAffiliateRequireInviterRecharged:          strconv.FormatBool(AffiliateRequireInviterRechargedDefault),
+		SettingKeyAffiliateRebateCapByInviterRecharge:       strconv.FormatBool(AffiliateRebateCapByInviterRechargeDefault),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -457,6 +460,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.RegistrationIPQuotaLimit = RegistrationIPQuotaLimitDefault
 	}
+	if ipMonthlyQuotaLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationIPQuotaMonthlyLimit])); err == nil {
+		result.RegistrationIPQuotaMonthlyLimit = clampRegistrationIPQuotaMonthlyLimit(ipMonthlyQuotaLimit)
+	} else {
+		result.RegistrationIPQuotaMonthlyLimit = RegistrationIPQuotaMonthlyLimitDefault
+	}
 	if ipHourlyLimit, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyRegistrationIPHourlyLimit])); err == nil {
 		result.RegistrationIPHourlyLimit = clampRegistrationIPHourlyLimit(ipHourlyLimit)
 	} else {
@@ -483,6 +491,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
 	result.AdminRechargeRebateEnabled = settings[SettingKeyAffiliateAdminRechargeEnabled] == "true"
+	result.AffiliateRequireInviterRecharged = settings[SettingKeyAffiliateRequireInviterRecharged] == "true"
+	result.AffiliateRebateCapByInviterRecharge = settings[SettingKeyAffiliateRebateCapByInviterRecharge] == "true"
 	result.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings[SettingKeyAffiliateIPGuardMode])
 	if maxAccounts, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAffiliateIPGuardMaxAccounts])); err == nil && maxAccounts >= 1 {
 		if maxAccounts > AffiliateIPGuardMaxAccountsMax {

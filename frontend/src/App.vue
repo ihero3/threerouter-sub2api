@@ -8,6 +8,8 @@ import AdminMenuUnlockModal from '@/components/admin/AdminMenuUnlockModal.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
+import { getLocale, setLocale } from '@/i18n'
+import { useLocaleAccess } from '@/composables/useLocaleAccess'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
 import {
@@ -27,6 +29,22 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+const { forceEnglishLocale } = useLocaleAccess()
+
+// 普通登录用户在 Site A 只看英文；管理员、访客和 Site B 保留用户选择的语言。
+// 同时监听语言本身，防止页面级逻辑把锁定用户重新切回中文。
+watch(
+  [forceEnglishLocale, () => getLocale()],
+  async ([force, currentLocale]) => {
+    if (!force || currentLocale === 'en') return
+    try {
+      await setLocale('en')
+    } catch (error) {
+      console.error('Failed to enforce English locale:', error)
+    }
+  },
+  { immediate: true }
+)
 
 function updateDocumentTitle() {
   const customMenuItems = [

@@ -102,6 +102,11 @@ vi.mock('@/stores', () => ({
     showSuccess,
     showError,
   }),
+  useAuthStore: () => ({
+    isAuthenticated: false,
+    isAdmin: false,
+    user: null,
+  }),
 }))
 
 describe('KeyUsageView daily detail', () => {
