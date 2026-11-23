@@ -244,6 +244,10 @@ export interface UserAffiliateDetail {
   aff_history_quota: number
   /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
   effective_rebate_rate_percent: number
+  /** 全局开关：邀请人自己没充过值时，被邀请人的充值不产生返利（双方都充值才返）。 */
+  require_inviter_recharged?: boolean
+  /** 全局开关：邀请人累计返利不超过其本人累计实充金额。 */
+  rebate_cap_by_inviter_recharge?: boolean
   invitees: AffiliateInvitee[]
 }
 

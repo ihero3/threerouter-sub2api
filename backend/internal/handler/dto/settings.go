@@ -198,6 +198,9 @@ type SystemSettings struct {
 	AffiliateRequireInviterRecharged    bool `json:"affiliate_require_inviter_recharged"`
 	AffiliateRebateCapByInviterRecharge bool `json:"affiliate_rebate_cap_by_inviter_recharge"`
 
+	// 订阅余额回退：订阅任一档额度用完自动切换余额计费（默认关）。
+	SubscriptionBalanceFallbackEnabled bool `json:"subscription_balance_fallback_enabled"`
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`

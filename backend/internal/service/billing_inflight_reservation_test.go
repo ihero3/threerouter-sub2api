@@ -50,7 +50,7 @@ func TestEstimateInflightReservationCost(t *testing.T) {
 func TestReserveInflightBalance_NoReservationCacheFailsOpen(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation.Enabled = true
-	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(svc.Stop)
 	release, err := svc.ReserveInflightBalance(context.Background(), &User{ID: 1}, nil, nil, 100)
 	require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestReserveInflightBalance_NoReservationCacheFailsOpen(t *testing.T) {
 func TestReserveInflightBalance_SimpleModeDisabled(t *testing.T) {
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Billing.InflightReservation.Enabled = true
-	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(svc.Stop)
 	require.False(t, svc.InflightReservationEnabled())
 }
@@ -252,7 +252,7 @@ func newInflightSvc(t *testing.T, cache BillingCache, ttlSeconds int) *BillingCa
 	t.Helper()
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: ttlSeconds}
-	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(svc.Stop)
 	return svc
 }

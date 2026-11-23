@@ -70,12 +70,12 @@ func TestEvaluateAffiliateRisk_InviteBurstTiering(t *testing.T) {
 		invites   int
 		wantLevel string
 	}{
-		{"new account under suspect", 0, 10, AffiliateRiskLevelNone},
-		{"new account at suspect", 3, 11, AffiliateRiskLevelSuspect},
-		{"new account at abnormal", 1, 21, AffiliateRiskLevelAbnormal},
-		{"old account under suspect", 30, 10, AffiliateRiskLevelNone},
-		{"old account at suspect", 20, 11, AffiliateRiskLevelSuspect},
-		{"old account at abnormal", 40, 21, AffiliateRiskLevelAbnormal},
+		{"new account under suspect", 0, 5, AffiliateRiskLevelNone},
+		{"new account at suspect", 3, 6, AffiliateRiskLevelSuspect},
+		{"new account at abnormal", 1, 7, AffiliateRiskLevelAbnormal},
+		{"old account under suspect", 30, 5, AffiliateRiskLevelNone},
+		{"old account at suspect", 20, 6, AffiliateRiskLevelSuspect},
+		{"old account at abnormal", 40, 7, AffiliateRiskLevelAbnormal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,6 +85,32 @@ func TestEvaluateAffiliateRisk_InviteBurstTiering(t *testing.T) {
 			})
 			if level != tc.wantLevel {
 				t.Fatalf("age=%d invites=%d level=%q, want %q", tc.age, tc.invites, level, tc.wantLevel)
+			}
+		})
+	}
+}
+
+func TestEvaluateAffiliateRisk_ChainDepthTiering(t *testing.T) {
+	cases := []struct {
+		name       string
+		ancestor   int
+		descendant int
+		wantLevel  string
+	}{
+		{"depth 2 is clean", 2, 0, AffiliateRiskLevelNone},
+		{"ancestor depth 3 is suspect", 3, 0, AffiliateRiskLevelSuspect},
+		{"descendant depth 3 is suspect", 0, 3, AffiliateRiskLevelSuspect},
+		{"depth 4 is abnormal", 0, 4, AffiliateRiskLevelAbnormal},
+		{"deepest direction wins", 2, 4, AffiliateRiskLevelAbnormal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			level, _ := evaluateAffiliateRisk(AffiliateRiskSignal{
+				AncestorDepth:   tc.ancestor,
+				DescendantDepth: tc.descendant,
+			})
+			if level != tc.wantLevel {
+				t.Fatalf("depth(%d,%d) level=%q, want %q", tc.ancestor, tc.descendant, level, tc.wantLevel)
 			}
 		})
 	}

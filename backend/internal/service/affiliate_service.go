@@ -94,6 +94,9 @@ const (
 	AffiliateLedgerActionRegisterReward = "register_reward"
 	// AffiliateLedgerActionTransfer 返利额度转出到余额。**不是返利**，不进入返利明细。
 	AffiliateLedgerActionTransfer = "transfer"
+	// AffiliateLedgerActionClawback 退款/冲正时按比例扣回的充值返利。**不是返利**，不进入返利明细。
+	// amount 记为正数（扣回额），方向由 action 表达，与 accrue/transfer 的口径一致。
+	AffiliateLedgerActionClawback = "clawback"
 
 	// AffiliateRebateTypeInvite 邀请返利：被邀请人注册成功即发放（账本 action=AffiliateLedgerActionRegisterReward）。
 	AffiliateRebateTypeInvite = "invite"
@@ -145,7 +148,12 @@ type AffiliateDetail struct {
 	// EffectiveRebateRatePercent 是当前用户作为邀请人时实际生效的返利比例：
 	// 优先用户自己的专属比例（aff_rebate_rate_percent），否则回退到全局比例。
 	// 用于在用户的 /affiliate 页面直观展示「分享后能拿到多少」。
-	EffectiveRebateRatePercent float64            `json:"effective_rebate_rate_percent"`
+	EffectiveRebateRatePercent float64 `json:"effective_rebate_rate_percent"`
+	// RequireInviterRecharged / RebateCapByInviterRecharge 是面向邀请人展示的
+	// 全局规则开关：前端据此在邀请页提示「双方都充值才返」「返利不超过邀请人
+	// 自己累计实充」，让规则透明。关闭时前端不显示对应条目。
+	RequireInviterRecharged    bool               `json:"require_inviter_recharged"`
+	RebateCapByInviterRecharge bool               `json:"rebate_cap_by_inviter_recharge"`
 	Invitees                   []AffiliateInvitee `json:"invitees"`
 }
 
@@ -154,6 +162,9 @@ type AffiliateRepository interface {
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
 	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
+	// ClawbackQuotaByOrder 按订单扣回已计提的充值返利：找到 source_order_id 对应的 accrue 账本，
+	// 按比例扣回邀请人额度（先扣可用、再扣冻结），写一条 clawback 账本。返回实际扣回金额。
+	ClawbackQuotaByOrder(ctx context.Context, orderID int64, ratio float64) (float64, error)
 	// AccrueRegistrationReward 发放邀请注册奖励：被邀请人注册即计入邀请人可用配额（冻结 0 小时）。
 	AccrueRegistrationReward(ctx context.Context, inviterID, inviteeUserID int64, amount float64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
@@ -631,6 +642,12 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	if err != nil {
 		return nil, err
 	}
+	// 面向邀请人的规则开关展示值；settingService 缺失时按关闭处理。
+	var requireInviterRecharged, rebateCapByInviterRecharge bool
+	if s.settingService != nil {
+		requireInviterRecharged = s.settingService.IsAffiliateRequireInviterRecharged(ctx)
+		rebateCapByInviterRecharge = s.settingService.IsAffiliateRebateCapByInviterRecharge(ctx)
+	}
 	return &AffiliateDetail{
 		UserID:                     summary.UserID,
 		AffCode:                    summary.AffCode,
@@ -640,6 +657,8 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		AffFrozenQuota:             summary.AffFrozenQuota,
 		AffHistoryQuota:            summary.AffHistoryQuota,
 		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
+		RequireInviterRecharged:    requireInviterRecharged,
+		RebateCapByInviterRecharge: rebateCapByInviterRecharge,
 		Invitees:                   invitees,
 	}, nil
 }
@@ -861,6 +880,24 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 		return 0, nil
 	}
 	return rebate, nil
+}
+
+// ClawbackInviteRebateForOrder 在订单退款/冲正成功时按比例扣回该订单产生的充值返利。
+// ratio = 退款金额 / 订单原始金额，调用方保证落在 (0,1]。
+// 这是纠错动作，不受 affiliate_enabled 开关影响：开关只控制新返利，不控制历史返利回收。
+// 扣回失败由调用方记审计日志，不阻断退款主流程。
+func (s *AffiliateService) ClawbackInviteRebateForOrder(ctx context.Context, orderID int64, ratio float64) (float64, error) {
+	if s == nil || s.repo == nil {
+		return 0, nil
+	}
+	if orderID <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio <= 0 || ratio > 1 {
+		return 0, nil
+	}
+	clawed, err := s.repo.ClawbackQuotaByOrder(ctx, orderID, ratio)
+	if err != nil {
+		return 0, err
+	}
+	return clawed, nil
 }
 
 // applyInviterRechargeGate 把「邀请人自己也充值」的两个开关作用到一笔待计提返利上：

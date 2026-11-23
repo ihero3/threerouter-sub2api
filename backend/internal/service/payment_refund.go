@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -528,6 +529,7 @@ func (s *PaymentService) finalizePendingRefundSuccess(ctx context.Context, p *Re
 	if !p.deductionHeld && p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
 		s.invalidateRefundBalanceCache(ctx, p.Order.UserID)
 	}
+	s.clawbackAffiliateRebate(ctx, p)
 	return result, nil
 }
 
@@ -777,7 +779,93 @@ func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*Refu
 		return nil, fmt.Errorf("mark refund: %w", err)
 	}
 	s.writeAuditLog(ctx, p.OrderID, "REFUND_SUCCESS", "admin", map[string]any{"refundAmount": p.RefundAmount, "reason": p.Reason, "balanceDeducted": p.BalanceToDeduct, "force": p.Force})
+	s.clawbackAffiliateRebate(ctx, p)
 	return &RefundResult{Success: true, BalanceDeducted: p.BalanceToDeduct, SubDaysDeducted: p.SubDaysToDeduct}, nil
+}
+
+// clawbackAffiliateRebate 在退款成功后按比例扣回该订单产生的邀请返利。
+//
+// 设计约束：
+//   - 纠错动作，失败只写审计/日志，绝不阻断或回滚已成功的退款；
+//   - 幂等：用 payment_audit_logs(order_id, 'AFFILIATE_REBATE_CLAWBACK') 唯一索引，
+//     同一订单重复退款/重试只扣一次；
+//   - 比例 = 退款金额 / 订单金额，全额退款扣 100%，部分退款按比例；
+//   - 只有余额/订阅订单产生过返利，其它订单类型直接跳过。
+func (s *PaymentService) clawbackAffiliateRebate(ctx context.Context, p *RefundPlan) {
+	if s == nil || s.affiliateService == nil || s.entClient == nil || p == nil || p.Order == nil {
+		return
+	}
+	base := affiliateRebateBaseAmount(p.Order)
+	if base <= 0 || p.RefundAmount <= 0 || p.Order.Amount <= 0 {
+		return
+	}
+	ratio := p.RefundAmount / p.Order.Amount
+	if ratio <= 0 || ratio > 1 {
+		return
+	}
+
+	// 幂等占位：INSERT ... ON CONFLICT DO NOTHING，只有抢到的调用方执行扣回。
+	claimed, err := s.tryClaimClawbackAudit(ctx, p.OrderID, p.RefundAmount, ratio)
+	if err != nil {
+		slog.Warn("affiliate clawback: claim audit failed", "orderID", p.OrderID, "error", err)
+		return
+	}
+	if !claimed {
+		return
+	}
+
+	clawed, err := s.affiliateService.ClawbackInviteRebateForOrder(ctx, p.OrderID, ratio)
+	if err != nil {
+		slog.Warn("affiliate clawback: failed", "orderID", p.OrderID, "error", err)
+		s.writeAuditLog(ctx, p.OrderID, "AFFILIATE_REBATE_CLAWBACK_FAILED", "system", map[string]any{
+			"refundAmount": p.RefundAmount,
+			"ratio":        ratio,
+			"error":        err.Error(),
+		})
+		return
+	}
+	s.writeAuditLog(ctx, p.OrderID, "AFFILIATE_REBATE_CLAWBACK", "system", map[string]any{
+		"refundAmount": p.RefundAmount,
+		"ratio":        ratio,
+		"clawedBack":   clawed,
+	})
+}
+
+// tryClaimClawbackAudit 用唯一索引抢占一次扣回机会，返回是否抢到。
+func (s *PaymentService) tryClaimClawbackAudit(ctx context.Context, orderID int64, refundAmount, ratio float64) (bool, error) {
+	oid := strconv.FormatInt(orderID, 10)
+	detail, _ := json.Marshal(map[string]any{
+		"refundAmount": refundAmount,
+		"ratio":        ratio,
+		"status":       "reserved",
+	})
+	query, args := buildClawbackAuditClaimQuery(s.entClient, oid, string(detail))
+	rows, err := s.entClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return false, rows.Err()
+	}
+	var claimID int64
+	return true, rows.Scan(&claimID)
+}
+
+func buildClawbackAuditClaimQuery(client *dbent.Client, orderID, detail string) (string, []any) {
+	nowExpr := paymentAuditCurrentTimestampExpr(client)
+	if paymentAuditDialect(client) == dialect.Postgres {
+		return fmt.Sprintf(`
+INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+SELECT $1::text, 'AFFILIATE_REBATE_CLAWBACK', $2::text, 'system', %s
+ON CONFLICT (order_id, action) DO NOTHING
+RETURNING id`, nowExpr), []any{orderID, detail}
+	}
+	return fmt.Sprintf(`
+INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+SELECT ?, 'AFFILIATE_REBATE_CLAWBACK', ?, 'system', %s
+ON CONFLICT (order_id, action) DO NOTHING
+RETURNING id`, nowExpr), []any{orderID, detail}
 }
 
 func (s *PaymentService) markRefundOkTx(ctx context.Context, client *dbent.Client, p *RefundPlan) (*RefundResult, error) {

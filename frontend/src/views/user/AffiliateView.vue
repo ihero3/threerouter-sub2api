@@ -75,11 +75,7 @@
           <div class="mt-5 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900/40 dark:bg-primary-900/20">
             <p class="text-sm font-medium text-primary-800 dark:text-primary-200">{{ t('affiliate.tips.title') }}</p>
             <ul class="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
-              <li>1. {{ t('affiliate.tips.line1') }}</li>
-              <li>2. {{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>              
-              <li>3. {{ t('affiliate.tips.registerReward') }}</li>
-              <li>4. {{ t('affiliate.tips.line3') }}</li>
-              <li v-if="detail.aff_frozen_quota > 0">5. {{ t('affiliate.tips.line4') }}</li>
+              <li v-for="(line, idx) in tipLines" :key="idx">{{ idx + 1 }}. {{ line }}</li>
             </ul>
           </div>
         </div>
@@ -186,6 +182,29 @@ const formattedRebateRate = computed(() => {
   const v = detail.value?.effective_rebate_rate_percent ?? 0
   const rounded = Math.round(v * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
+})
+
+// 使用说明按后台开关动态拼装：管理员开启「邀请人需先充值」「返利不超过邀请人
+// 累计充值」时，把对应规则亮在邀请页，让邀请人明明白白；关闭时不显示。
+const tipLines = computed<string[]>(() => {
+  const d = detail.value
+  if (!d) return []
+  const lines = [
+    t('affiliate.tips.line1'),
+    t('affiliate.tips.line2', { rate: `${formattedRebateRate.value}%` }),
+    t('affiliate.tips.registerReward'),
+    t('affiliate.tips.line3'),
+  ]
+  if (d.require_inviter_recharged) {
+    lines.push(t('affiliate.tips.requireInviterRecharged'))
+  }
+  if (d.rebate_cap_by_inviter_recharge) {
+    lines.push(t('affiliate.tips.rebateCapByInviterRecharge'))
+  }
+  if (d.aff_frozen_quota > 0) {
+    lines.push(t('affiliate.tips.line4'))
+  }
+  return lines
 })
 
 function formatCount(value: number): string {

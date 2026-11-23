@@ -162,6 +162,109 @@ VALUES ($1, '`+service.AffiliateLedgerActionAccrue+`', $2, $3, $4, NOW(), NOW())
 	return applied, nil
 }
 
+// ClawbackQuotaByOrder 按充值订单扣回已计提的充值返利（用户退款/冲正场景）。
+//
+// 设计要点：
+//   - 用 source_order_id 精准定位该订单 accrue 出来的账本行，不按「邀请人+被邀请人」全量扣，
+//     避免把其它订单的返利也扣掉；
+//   - 先调用 thawFrozenQuotaTx 把已到期冻结额度解冻，保证扣回优先落在可用额度上；
+//   - 扣回额 = 该订单 accrue 合计 * ratio，再受邀请人当前 aff_quota 上限约束（不扣成负数，
+//     已转出/已消费的部分不再追偿）；
+//   - 写一条 action='clawback' 的账本，amount 记正数，方向由 action 表达。
+//
+// 幂等由调用方的 payment_audit_logs(order_id, action) 唯一索引负责，这里不重复实现。
+func (r *affiliateRepository) ClawbackQuotaByOrder(ctx context.Context, orderID int64, ratio float64) (float64, error) {
+	if orderID <= 0 || ratio <= 0 || ratio > 1 {
+		return 0, nil
+	}
+
+	var clawed float64
+	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		// 聚合该订单 accrue 出来的返利，按邀请人分组（正常只有一个邀请人）。
+		rows, err := txClient.QueryContext(txCtx, `
+SELECT user_id, COALESCE(SUM(amount), 0)::double precision
+FROM user_affiliate_ledger
+WHERE source_order_id = $1 AND action = '`+service.AffiliateLedgerActionAccrue+`'
+GROUP BY user_id`, orderID)
+		if err != nil {
+			return fmt.Errorf("query accrued rebate by order: %w", err)
+		}
+		type accrual struct {
+			inviterID int64
+			amount    float64
+		}
+		var accruals []accrual
+		for rows.Next() {
+			var a accrual
+			if err := rows.Scan(&a.inviterID, &a.amount); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			accruals = append(accruals, a)
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if len(accruals) == 0 {
+			return nil
+		}
+
+		for _, a := range accruals {
+			want := a.amount * ratio
+			if want <= 0 || a.inviterID <= 0 {
+				continue
+			}
+			// 解冻已到期冻结额度，使扣回优先落在可用额度。
+			if _, err := thawFrozenQuotaTx(txCtx, txClient, a.inviterID); err != nil {
+				return fmt.Errorf("thaw before clawback: %w", err)
+			}
+			// 事务内锁行读取当前可用额度，扣回额不超过它（不扣成负数；已转出/已消费部分不追偿）。
+			var available float64
+			quotaRows, err := txClient.QueryContext(txCtx,
+				`SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1 FOR UPDATE`,
+				a.inviterID)
+			if err != nil {
+				return fmt.Errorf("lock inviter quota for clawback: %w", err)
+			}
+			if !quotaRows.Next() {
+				_ = quotaRows.Close()
+				return fmt.Errorf("lock inviter quota for clawback: inviter %d not found", a.inviterID)
+			}
+			if err := quotaRows.Scan(&available); err != nil {
+				_ = quotaRows.Close()
+				return fmt.Errorf("lock inviter quota for clawback: %w", err)
+			}
+			_ = quotaRows.Close()
+			clawedBack := want
+			if clawedBack > available {
+				clawedBack = available
+			}
+			if clawedBack <= 0 {
+				continue
+			}
+			if _, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_quota = aff_quota - $1, updated_at = NOW()
+WHERE user_id = $2`, clawedBack, a.inviterID); err != nil {
+				return fmt.Errorf("claw back quota: %w", err)
+			}
+			if _, err := txClient.ExecContext(txCtx, `
+INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, created_at, updated_at)
+SELECT $1, '`+service.AffiliateLedgerActionClawback+`', $2, NULL, $3, NOW(), NOW()
+WHERE EXISTS (SELECT 1 FROM user_affiliates WHERE user_id = $1)`,
+				a.inviterID, clawedBack, orderID); err != nil {
+				return fmt.Errorf("insert affiliate clawback ledger: %w", err)
+			}
+			clawed += clawedBack
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return clawed, nil
+}
+
 // AccrueRegistrationReward 发放邀请注册奖励：被邀请人成功注册后，立即计入邀请人的
 // 可用 affiliate 配额（aff_quota，冻结 0 小时），并记录一条 action='register_reward' 的账本。
 // amount <= 0 时直接跳过（视为未启用）。该操作在 BindInviterByCode 绑定成功后调用，

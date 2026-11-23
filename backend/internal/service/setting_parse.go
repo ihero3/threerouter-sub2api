@@ -148,6 +148,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateIPGuardMaxAccounts:               strconv.Itoa(AffiliateIPGuardMaxAccountsDefault),
 		SettingKeyAffiliateRequireInviterRecharged:          strconv.FormatBool(AffiliateRequireInviterRechargedDefault),
 		SettingKeyAffiliateRebateCapByInviterRecharge:       strconv.FormatBool(AffiliateRebateCapByInviterRechargeDefault),
+		SettingKeySubscriptionBalanceFallbackEnabled:        strconv.FormatBool(SubscriptionBalanceFallbackEnabledDefault),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -493,6 +494,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AdminRechargeRebateEnabled = settings[SettingKeyAffiliateAdminRechargeEnabled] == "true"
 	result.AffiliateRequireInviterRecharged = settings[SettingKeyAffiliateRequireInviterRecharged] == "true"
 	result.AffiliateRebateCapByInviterRecharge = settings[SettingKeyAffiliateRebateCapByInviterRecharge] == "true"
+	result.SubscriptionBalanceFallbackEnabled = settings[SettingKeySubscriptionBalanceFallbackEnabled] == "true"
 	result.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings[SettingKeyAffiliateIPGuardMode])
 	if maxAccounts, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAffiliateIPGuardMaxAccounts])); err == nil && maxAccounts >= 1 {
 		if maxAccounts > AffiliateIPGuardMaxAccountsMax {

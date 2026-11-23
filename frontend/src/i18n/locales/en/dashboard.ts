@@ -769,7 +769,9 @@ export default {
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.',
-      registerReward: 'You also earn a $6 registration reward for every new user who signs up through your invite link (credited to your rebate quota immediately).'
+      registerReward: 'You also earn a $6 registration reward for every new user who signs up through your invite link (credited to your rebate quota immediately).',
+      requireInviterRecharged: 'You must have completed a recharge of your own before an invitee’s recharge generates any rebate — both sides must have recharged.',
+      rebateCapByInviterRecharge: 'Your lifetime rebate cannot exceed what you have actually paid in yourself; once the allowance is used up, new rebates stop accruing.'
     }
   },
 

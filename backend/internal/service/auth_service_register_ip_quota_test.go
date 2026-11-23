@@ -25,7 +25,7 @@ func TestAuthService_Register_IPQuotaDisabledByDefault(t *testing.T) {
 	require.Zero(t, repo.ipLimitedCreates)
 }
 
-// 达到当日上限时拒绝，返回统一 reason 与“明天再试”的用户可见文案。
+// 达到 6 小时窗口上限时拒绝，返回统一 reason 与纯英文的用户可见文案。
 func TestAuthService_Register_IPQuotaRejectsOverDailyLimit(t *testing.T) {
 	repo := &userRepoStub{ipCounts: map[string]int{"203.0.113.9": 2}}
 	svc := newAuthService(repo, map[string]string{
@@ -38,8 +38,8 @@ func TestAuthService_Register_IPQuotaRejectsOverDailyLimit(t *testing.T) {
 	require.ErrorIs(t, err, ErrRegistrationIPLimit)
 	appErr := infraerrors.FromError(err)
 	require.Equal(t, "REGISTRATION_IP_LIMIT", appErr.Reason)
-	require.Contains(t, appErr.Message, "today")
-	require.Contains(t, appErr.Message, "tomorrow")
+	require.Contains(t, appErr.Message, "recently")
+	require.Contains(t, appErr.Message, "later")
 }
 
 // 未达上限时放行，并确认建号走的是带事务内复查的守卫路径，register_ip 已落库。

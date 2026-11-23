@@ -432,14 +432,14 @@ func TestReserveFixedCharge(t *testing.T) {
 	ctx := context.Background()
 	user := &User{ID: 1}
 	newSvc := func(cache *fixedChargeCacheStub) *BillingCacheService {
-		svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+		svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil, nil)
 		t.Cleanup(svc.Stop)
 		return svc
 	}
 	reservingSvc := func(cache *fixedChargeCacheStub, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository) *BillingCacheService {
 		cfg := &config.Config{}
 		cfg.Billing.InflightReservation.Enabled = true
-		svc := NewBillingCacheService(cache, nil, subRepo, apiKeyRepo, nil, nil, cfg, nil)
+		svc := NewBillingCacheService(cache, nil, subRepo, apiKeyRepo, nil, nil, cfg, nil, nil)
 		t.Cleanup(svc.Stop)
 		return svc
 	}
@@ -522,7 +522,7 @@ func TestReserveFixedCharge(t *testing.T) {
 
 	t.Run("simple mode skips the check", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeSimple}
-		svc := NewBillingCacheService(&fixedChargeCacheStub{}, nil, nil, nil, nil, nil, cfg, nil)
+		svc := NewBillingCacheService(&fixedChargeCacheStub{}, nil, nil, nil, nil, nil, cfg, nil, nil)
 		t.Cleanup(svc.Stop)
 		require.NoError(t, reserve(svc, nil, nil, nil, 1000))
 	})

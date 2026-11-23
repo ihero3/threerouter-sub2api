@@ -142,6 +142,10 @@ func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateFromInvitee(contex
 	return 0, nil
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) ClawbackQuotaByOrder(context.Context, int64, float64) (float64, error) {
+	return 0, nil
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) GetCompletedRechargeTotal(context.Context, int64) (float64, error) {
 	return 0, nil
 }

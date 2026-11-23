@@ -215,14 +215,14 @@ export default {
         emailDomainQuotaLimitSuffix: 'accounts (1–100)',
         emailDomainQuotaWindowTotal: 'Cumulative (never resets)',
         emailDomainQuotaWindowDaily: 'Daily (resets at midnight)',
-        ipQuota: 'Daily Registration Limit per IP',
+        ipQuota: '6-Hour Registration Limit per IP',
         ipQuotaHint:
-          'When enabled, each IP address can register up to the configured number of accounts per day; resets at midnight. Disabled means no limit',
+          'When enabled, each IP address can register up to the configured number of accounts within a rolling 6-hour window. Disabled means no limit',
         ipQuotaLimitPlaceholder: 'Accounts per IP',
-        ipQuotaLimitSuffix: 'accounts/day (1–1000)',
+        ipQuotaLimitSuffix: 'accounts/6h (1–1000)',
         ipHourlyLimit: 'Hourly Registration Limit per IP',
         ipHourlyLimitHint:
-          'Maximum accounts a single IP can register within the last hour (sliding window, always enforced server-side). Defaults to 8; raise it for shared NAT egress such as offices or campus networks',
+          'Maximum accounts a single IP can register within the last hour (sliding window, always enforced server-side). Defaults to 2; raise it for shared NAT egress such as offices or campus networks',
         ipHourlyLimitPlaceholder: 'Accounts per IP',
         ipHourlyLimitSuffix: 'accounts/hour (1–100)',
         deviceFingerprintLimit: 'Registration Limit per Device / 24h',
@@ -1162,6 +1162,12 @@ export default {
         description: 'Control whether users receive subscription expiry reminder emails.',
         enabled: 'Enable Subscription Expiry Reminder',
         enabledHint: 'When enabled, the system sends reminders 7, 3, and 1 day before expiry.'
+      },
+      subscriptionBalanceFallback: {
+        title: 'Fallback to Balance When Subscription Quota Exhausted',
+        description: 'For subscription-group users, when any daily/weekly/monthly tier is exhausted, billing automatically switches to balance (token) mode; subscription priority resumes when the window resets.',
+        enabled: 'Enable Subscription-to-Balance Fallback',
+        enabledHint: 'Off by default: exhausted tiers show a wait-for-reset message. When enabled, requests continue on balance billing after exhaustion; if balance is also insufficient, the user is told to wait for the quota window reset.'
       },
       smtp: {
         title: 'SMTP Settings',

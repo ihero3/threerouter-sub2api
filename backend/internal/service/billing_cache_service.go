@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -37,6 +38,13 @@ var (
 	ErrUserPlatformDailyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
 	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
 	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
+
+	// metadata key：订阅档位错误的窗口重置时间（RFC3339），handler 据此生成
+	// Retry-After 与提示文案；沿用 user × platform quota 的现成模式。
+	metadataKeyWindowResetsAt = "window_resets_at"
+	// metadata key：标记「订阅档位耗尽且余额回退也被拒绝」（双耗尽），handler
+	// 据此把文案升级为「订阅额度与余额均不足，窗口到点自动恢复」。
+	metadataKeyBalanceFallbackRejected = "balance_fallback_rejected"
 )
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
@@ -114,6 +122,8 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// settingService 用于读取订阅余额回退开关；nil（如部分单测路径）按关闭处理。
+	settingService *SettingService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -139,6 +149,7 @@ func NewBillingCacheService(
 	userGroupRateRepo UserGroupRateRepository,
 	cfg *config.Config,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	settingService *SettingService,
 ) *BillingCacheService {
 	svc := &BillingCacheService{
 		cache:                 cache,
@@ -149,6 +160,7 @@ func NewBillingCacheService(
 		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		settingService:        settingService,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
@@ -742,52 +754,148 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	_, err := s.ResolveEffectiveSubscription(ctx, user, apiKey, group, subscription, platform)
+	return err
+}
+
+// ResolveEffectiveSubscription 执行与 CheckBillingEligibility 完全一致的准入检查，
+// 并额外返回本次请求实际用于计费的订阅：
+//   - 订阅分组 + 有效订阅：默认原样返回 subscription（订阅优先，任何请求都不会
+//     在订阅还有额度时扣余额）；
+//   - 开关 subscription_balance_fallback_enabled 开启，且订阅日/周/月任一档额度
+//     用完时：改查余额资格——余额够则返回 nil（本次请求整单按余额/token 计费，
+//     调用方把 nil 传给预估预留与 RecordUsageInput 即自然走余额分支）；
+//     余额也不够则返回带 window_resets_at / balance_fallback_rejected metadata 的
+//     原档位错误，由 handler 映射为 429 + Retry-After + 重置时间提示；
+//   - 非订阅模式（余额 key / 订阅 key 但无有效订阅）：返回 nil。
+//
+// 没有粘性状态：窗口滚动（DoWindowMaintenance）后下一笔请求订阅重新有额度，
+// 自动回到订阅计费、停止扣余额。
+func (s *BillingCacheService) ResolveEffectiveSubscription(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) (*UserSubscription, error) {
 	// 简易模式默认跳过所有计费检查. An explicit key-window opt-in keeps
 	// balance/subscription/platform checks bypassed while enforcing the three
 	// API-key monetary windows from the database source of truth.
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		if s.cfg.SimpleModeKeyRateLimitEnabled {
-			return s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey)
+			return nil, s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey)
 		}
-		return nil
+		return nil, nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
-		return ErrBillingServiceUnavailable
+		return nil, ErrBillingServiceUnavailable
 	}
 
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
+	effectiveSub := subscription
 
 	if isSubscriptionMode {
 		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
-			return err
+			fallbackSub, fallbackErr := s.trySubscriptionBalanceFallback(ctx, user, group, subscription, err)
+			if fallbackErr != nil {
+				return nil, fallbackErr
+			}
+			effectiveSub = fallbackSub
 		}
 	} else {
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	// user × platform quota 仅在 standard（余额）模式生效；订阅模式豁免
-	if !isSubscriptionMode {
+	// user × platform quota 仅在余额计费时生效：订阅模式豁免；
+	// 回退到余额的请求与余额模式一样要计入（与扣费口径一致）。
+	if effectiveSub == nil {
 		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// Check API Key rate limits (applies to both billing modes)
 	if apiKey != nil && apiKey.HasRateLimits() {
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
 	if err := s.checkRPM(ctx, user, group); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return effectiveSub, nil
+}
+
+// IsSubscriptionBalanceFallbackEnabled 暴露回退开关给 handler 层判空使用；
+// settingService 缺失（如部分单测路径）时按关闭处理。
+func (s *BillingCacheService) IsSubscriptionBalanceFallbackEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return SubscriptionBalanceFallbackEnabledDefault
+	}
+	return s.settingService.IsSubscriptionBalanceFallbackEnabled(ctx)
+}
+
+// trySubscriptionBalanceFallback 订阅档位耗尽时的余额回退。
+// 返回 (nil, nil) = 回退成功，本次请求按余额计费；
+// 返回 (nil, err) = 拒绝；非档位错误（订阅失效/过期等）原样透传，不做回退。
+func (s *BillingCacheService) trySubscriptionBalanceFallback(ctx context.Context, user *User, group *Group, subscription *UserSubscription, eligibilityErr error) (*UserSubscription, error) {
+	if !isSubscriptionTierLimitError(eligibilityErr) {
+		return nil, eligibilityErr
+	}
+	if !s.IsSubscriptionBalanceFallbackEnabled(ctx) {
+		return nil, eligibilityErr
+	}
+	if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+		// 双耗尽：档位错误附上重置时间与回退被拒标记，handler 据此生成
+		// 429 + Retry-After + 「到点自动恢复」文案。
+		return nil, s.withSubscriptionTierResetMetadata(subscription, eligibilityErr, true)
+	}
+	return nil, nil
+}
+
+// isSubscriptionTierLimitError 判断是否为订阅日/周/月档位额度耗尽错误。
+func isSubscriptionTierLimitError(err error) bool {
+	return errors.Is(err, ErrDailyLimitExceeded) ||
+		errors.Is(err, ErrWeeklyLimitExceeded) ||
+		errors.Is(err, ErrMonthlyLimitExceeded)
+}
+
+// subscriptionTierResetTime 返回命中档位的下次重置时间。
+// 订阅对象缺窗口锚点时回退到全局时区的自然窗口边界，保证 Retry-After 永有值。
+func subscriptionTierResetTime(subscription *UserSubscription, err error, now time.Time) time.Time {
+	switch {
+	case errors.Is(err, ErrDailyLimitExceeded):
+		if t := subscription.DailyResetTime(); t != nil {
+			return *t
+		}
+		return timezone.StartOfDay(now).AddDate(0, 0, 1)
+	case errors.Is(err, ErrWeeklyLimitExceeded):
+		if t := subscription.WeeklyResetTime(); t != nil {
+			return *t
+		}
+		return timezone.StartOfWeek(now).AddDate(0, 0, 7)
+	default:
+		if t := subscription.MonthlyResetTime(); t != nil {
+			return *t
+		}
+		return now.Add(30 * 24 * time.Hour)
+	}
+}
+
+// withSubscriptionTierResetMetadata 给档位错误附加 window_resets_at metadata；
+// balanceFallbackRejected 为 true 时再附加双耗尽标记。
+func (s *BillingCacheService) withSubscriptionTierResetMetadata(subscription *UserSubscription, tierErr error, balanceFallbackRejected bool) error {
+	appErr, ok := tierErr.(*infraerrors.ApplicationError)
+	if !ok || appErr == nil {
+		return tierErr
+	}
+	md := map[string]string{
+		metadataKeyWindowResetsAt: subscriptionTierResetTime(subscription, tierErr, time.Now()).Format(time.RFC3339),
+	}
+	if balanceFallbackRejected {
+		md[metadataKeyBalanceFallbackRejected] = "true"
+	}
+	return appErr.WithMetadata(md)
 }
 
 // rpmLimitMetadata 给 RPM 超限错误附加限额上下文。

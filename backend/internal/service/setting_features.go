@@ -140,14 +140,14 @@ func (s *SettingService) GetRegistrationEmailSuffixBlacklist(ctx context.Context
 	return ParseRegistrationEmailSuffixBlacklist(value)
 }
 
-// IsRegistrationIPQuotaEnabled 检查是否限制同一 IP 每天的注册账户数。
+// IsRegistrationIPQuotaEnabled 检查是否限制同一 IP 的注册账户数（6 小时档与 3 天档）。
 // 安全默认：设置缺失或查询出错时按关闭处理（不改变历史行为）。
 func (s *SettingService) IsRegistrationIPQuotaEnabled(ctx context.Context) bool {
 	value, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaEnabled)
 	return found && value == "true"
 }
 
-// clampRegistrationIPQuotaLimit 把同一 IP 每日注册配额收敛到 [Min, Max]。
+// clampRegistrationIPQuotaLimit 把同一 IP 在 6 小时窗口内的注册配额收敛到 [Min, Max]。
 func clampRegistrationIPQuotaLimit(limit int) int {
 	if limit < RegistrationIPQuotaLimitMin {
 		return RegistrationIPQuotaLimitMin
@@ -158,7 +158,7 @@ func clampRegistrationIPQuotaLimit(limit int) int {
 	return limit
 }
 
-// GetRegistrationIPQuotaLimit 返回同一 IP 每天允许注册的账户数。
+// GetRegistrationIPQuotaLimit 返回同一 IP 在 6 小时窗口内允许注册的账户数。
 // 缺失或非法值回退默认值。
 func (s *SettingService) GetRegistrationIPQuotaLimit(ctx context.Context) int {
 	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaLimit)
@@ -172,7 +172,7 @@ func (s *SettingService) GetRegistrationIPQuotaLimit(ctx context.Context) int {
 	return clampRegistrationIPQuotaLimit(limit)
 }
 
-// clampRegistrationIPQuotaMonthlyLimit 把同一 IP 30 天滚动窗口注册配额收敛到 [Min, Max]。
+// clampRegistrationIPQuotaMonthlyLimit 把同一 IP 在 3 天滚动窗口内的注册配额收敛到 [Min, Max]。
 func clampRegistrationIPQuotaMonthlyLimit(limit int) int {
 	if limit < RegistrationIPQuotaMonthlyLimitMin {
 		return RegistrationIPQuotaMonthlyLimitMin
@@ -183,7 +183,7 @@ func clampRegistrationIPQuotaMonthlyLimit(limit int) int {
 	return limit
 }
 
-// GetRegistrationIPQuotaMonthlyLimit 返回同一 IP 30 天滚动窗口内允许注册的账户数。
+// GetRegistrationIPQuotaMonthlyLimit 返回同一 IP 在 3 天滚动窗口内允许注册的账户数。
 // 缺失或非法值回退默认值。
 func (s *SettingService) GetRegistrationIPQuotaMonthlyLimit(ctx context.Context) int {
 	raw, found := s.getCachedSettingValue(ctx, SettingKeyRegistrationIPQuotaMonthlyLimit)
@@ -282,6 +282,18 @@ func (s *SettingService) IsAffiliateRebateCapByInviterRecharge(ctx context.Conte
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateCapByInviterRecharge)
 	if err != nil {
 		return AffiliateRebateCapByInviterRechargeDefault
+	}
+	return value == "true"
+}
+
+// IsSubscriptionBalanceFallbackEnabled reports whether a subscription-group
+// request automatically falls back to balance (token) billing when any of the
+// subscription's daily/weekly/monthly tiers is exhausted. Missing/unparsable
+// values fall back to the safe default (off = historical reject behavior).
+func (s *SettingService) IsSubscriptionBalanceFallbackEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionBalanceFallbackEnabled)
+	if err != nil {
+		return SubscriptionBalanceFallbackEnabledDefault
 	}
 	return value == "true"
 }

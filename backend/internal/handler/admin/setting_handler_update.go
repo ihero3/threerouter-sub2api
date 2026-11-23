@@ -195,6 +195,7 @@ type UpdateSettingsRequest struct {
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
 	AffiliateRequireInviterRecharged          *bool                             `json:"affiliate_require_inviter_recharged"`
 	AffiliateRebateCapByInviterRecharge       *bool                             `json:"affiliate_rebate_cap_by_inviter_recharge"`
+	SubscriptionBalanceFallbackEnabled        *bool                             `json:"subscription_balance_fallback_enabled"`
 	AffiliateRegisterReward                   *float64                          `json:"affiliate_register_reward"`
 	AffiliateIPGuardMode                      *string                           `json:"affiliate_ip_guard_mode"`
 	AffiliateIPGuardMaxAccounts               *int                              `json:"affiliate_ip_guard_max_accounts"`
@@ -671,6 +672,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	affiliateRebateCapByInviterRecharge := previousSettings.AffiliateRebateCapByInviterRecharge
 	if req.AffiliateRebateCapByInviterRecharge != nil {
 		affiliateRebateCapByInviterRecharge = *req.AffiliateRebateCapByInviterRecharge
+	}
+	subscriptionBalanceFallbackEnabled := previousSettings.SubscriptionBalanceFallbackEnabled
+	if req.SubscriptionBalanceFallbackEnabled != nil {
+		subscriptionBalanceFallbackEnabled = *req.SubscriptionBalanceFallbackEnabled
 	}
 	affiliateRegisterReward := previousSettings.AffiliateRegisterReward
 	if req.AffiliateRegisterReward != nil {
@@ -1777,6 +1782,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
 		AffiliateRequireInviterRecharged:       affiliateRequireInviterRecharged,
 		AffiliateRebateCapByInviterRecharge:    affiliateRebateCapByInviterRecharge,
+		SubscriptionBalanceFallbackEnabled:     subscriptionBalanceFallbackEnabled,
 		AffiliateRegisterReward:                affiliateRegisterReward,
 		AffiliateIPGuardMode:                   affiliateIPGuardMode,
 		AffiliateIPGuardMaxAccounts:            affiliateIPGuardMaxAccounts,
@@ -2478,6 +2484,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
 		AffiliateRequireInviterRecharged:                       updatedSettings.AffiliateRequireInviterRecharged,
 		AffiliateRebateCapByInviterRecharge:                    updatedSettings.AffiliateRebateCapByInviterRecharge,
+		SubscriptionBalanceFallbackEnabled:                     updatedSettings.SubscriptionBalanceFallbackEnabled,
 		AffiliateRegisterReward:                                updatedSettings.AffiliateRegisterReward,
 		AffiliateIPGuardMode:                                   updatedSettings.AffiliateIPGuardMode,
 		AffiliateIPGuardMaxAccounts:                            updatedSettings.AffiliateIPGuardMaxAccounts,

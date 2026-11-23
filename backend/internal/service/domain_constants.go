@@ -49,6 +49,14 @@ const (
 	SettingKeyAffiliateRebateCapByInviterRecharge = "affiliate_rebate_cap_by_inviter_recharge"
 )
 
+// 订阅余额回退（subscription fallback）设置项。
+const (
+	// 订阅分组任一档（日/周/月）额度用完时，自动切换余额按 token 计费（订阅优先，
+	// 耗尽回退，窗口滚动后自动切回订阅）。默认关闭 = 保持历史行为（直接拒绝）。
+	SettingKeySubscriptionBalanceFallbackEnabled = "subscription_balance_fallback_enabled"
+	SubscriptionBalanceFallbackEnabledDefault    = false
+)
+
 // 注册邮箱域名配额设置
 const (
 	// RegistrationEmailDomainQuotaLimitDefault 是白名单外域名每域可注册账户数的默认值。
@@ -68,28 +76,29 @@ const (
 	RegistrationEmailDomainQuotaWindowDefault = RegistrationEmailDomainQuotaWindowTotal
 )
 
-// 注册 IP 注册数配额设置（每日档按服务器时区自然日统计，次日 0 点自动重置；
-// 30 天档为滚动窗口）。两档共用同一开关。
+// 注册 IP 注册数配额设置（两档均为滚动窗口，共用同一开关）。
+// 设置项 key 沿用历史命名（quota / monthly），仅语义与默认值调整，避免 DB 迁移。
 const (
-	// RegistrationIPQuotaLimitDefault 是同一 IP 每天可注册账户数的默认值。
-	RegistrationIPQuotaLimitDefault = 2
+	// RegistrationIPQuotaLimitDefault 是同一 IP 在 RegistrationIPQuotaWindow 内可注册账户数的默认值。
+	RegistrationIPQuotaLimitDefault = 3
 	RegistrationIPQuotaLimitMin     = 1
 	RegistrationIPQuotaLimitMax     = 1000
-	// RegistrationIPQuotaMonthlyLimitDefault 是同一 IP 30 天滚动窗口内可注册账户数的默认值。
-	// 抓「每天不超日配额、但长期缓慢批量建号」的慢速团伙。
-	RegistrationIPQuotaMonthlyLimitDefault = 3
+	// RegistrationIPQuotaWindow 是中档（quota）的滚动统计窗口：6 小时。
+	RegistrationIPQuotaWindow = 6 * time.Hour
+	// RegistrationIPQuotaMonthlyLimitDefault 是同一 IP 在 RegistrationIPQuotaMonthlyWindow 内可注册账户数的默认值。
+	// 抓「短期不超中档配额、但长期缓慢批量建号」的慢速团伙。
+	RegistrationIPQuotaMonthlyLimitDefault = 6
 	RegistrationIPQuotaMonthlyLimitMin     = 1
 	RegistrationIPQuotaMonthlyLimitMax     = 1000
-	// RegistrationIPQuotaMonthlyWindow 30 天档的滚动统计窗口。
-	RegistrationIPQuotaMonthlyWindow = 30 * 24 * time.Hour
+	// RegistrationIPQuotaMonthlyWindow 是长档（monthly）的滚动统计窗口：3 天。
+	RegistrationIPQuotaMonthlyWindow = 3 * 24 * time.Hour
 )
 
 // 注册 IP 每小时注册数限流设置（固定 1 小时滚动窗口）。
-// 与「每日配额」互补：每日配额防批量养号，小时限流防短时间内集中注册。
+// 与中档配额互补：中档防批量养号，小时限流防短时间内集中注册。
 const (
 	// RegistrationIPHourlyLimitDefault 是同一 IP 每小时可注册账户数的默认值。
-	// 取值兼顾共享出口（公司/校园/CGNAT）下多个真实用户同时注册的场景。
-	RegistrationIPHourlyLimitDefault = 8
+	RegistrationIPHourlyLimitDefault = 2
 	RegistrationIPHourlyLimitMin     = 1
 	RegistrationIPHourlyLimitMax     = 100
 )
@@ -292,11 +301,11 @@ const (
 	SettingKeyRegistrationEmailDomainQuotaLimit = "registration_email_domain_quota_limit"
 	// 上面配额的统计窗口：total（累计，默认）| daily（每天 0 点重置）。
 	SettingKeyRegistrationEmailDomainQuotaWindow = "registration_email_domain_quota_window"
-	// 同一注册 IP 注册数限制开关（默认开启；同时控制每日档与 30 天档）。
+	// 同一注册 IP 注册数限制开关（默认开启；同时控制 6 小时档与 3 天档）。
 	SettingKeyRegistrationIPQuotaEnabled = "registration_ip_quota_enabled"
-	// 同一注册 IP 每天可注册的账户数（仅在上面的开关开启时生效）。
+	// 同一注册 IP 在 6 小时滚动窗口内可注册的账户数（仅在上面的开关开启时生效）。
 	SettingKeyRegistrationIPQuotaLimit = "registration_ip_quota_limit"
-	// 同一注册 IP 30 天滚动窗口内可注册的账户数（与每日档共用开关）。
+	// 同一注册 IP 在 3 天滚动窗口内可注册的账户数（与 6 小时档共用开关）。
 	SettingKeyRegistrationIPQuotaMonthlyLimit = "registration_ip_quota_monthly_limit"
 	// 同一注册 IP 每小时可注册账户数（固定 1 小时滚动窗口，始终生效）。
 	SettingKeyRegistrationIPHourlyLimit = "registration_ip_hourly_limit"
@@ -953,13 +962,14 @@ const (
 	// 规则阈值。
 	// 规则 1：24h 邀请数分层（按账号年龄）。新号与老号同尺度。
 	AffiliateRiskNewAccountDays         = 7  // 账号年龄 ≤ 该天数视为新号。
-	AffiliateRiskInviteBurstNewSuspect  = 10 // 新号：24h 邀请数 > 该值 → 存疑。
-	AffiliateRiskInviteBurstNewAbnormal = 20 // 新号：24h 邀请数 > 该值 → 异常。
-	AffiliateRiskInviteBurstOldSuspect  = 10 // 老号：24h 邀请数 > 该值 → 存疑。
-	AffiliateRiskInviteBurstOldAbnormal = 20 // 老号：24h 邀请数 > 该值 → 异常。
-	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。自然裂变到 4 级很常见，故放宽。
-	AffiliateRiskChainDepthSuspect  = 4
-	AffiliateRiskChainDepthAbnormal = 6
+	AffiliateRiskInviteBurstNewSuspect  = 5 // 新号：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstNewAbnormal = 6 // 新号：24h 邀请数 > 该值 → 异常。
+	AffiliateRiskInviteBurstOldSuspect  = 5 // 老号：24h 邀请数 > 该值 → 存疑。
+	AffiliateRiskInviteBurstOldAbnormal = 6 // 老号：24h 邀请数 > 该值 → 异常。
+	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。按全链路深度判定，不带时间窗。
+	// 2026-11-22 用户拍板收紧：≥3 suspect / ≥4 abnormal。
+	AffiliateRiskChainDepthSuspect  = 3
+	AffiliateRiskChainDepthAbnormal = 4
 	// 规则 2 的递归上限，防止异常数据（环）导致查询失控。
 	AffiliateRiskChainDepthMaxScan = 20
 	// 规则 10：链路传染的扫描半径（向上/向下各几跳）——收窄到 1 跳。

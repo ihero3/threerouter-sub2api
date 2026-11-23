@@ -279,7 +279,9 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
 	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("browser-aff-key")})
-	c.Request = req
+	c.Request = req.WithContext(service.WithSessionBinding(req.Context(), &service.SessionBinding{
+		IP: "203.0.113.10", UserAgent: "oauth-affiliate-test",
+	}))
 
 	handler.completeEmailOAuthRegistration(c, "google")
 
@@ -412,6 +414,10 @@ func (r *oauthEmailAffiliateRepoStub) GetAccruedRebateFromInvitee(context.Contex
 	panic("unexpected GetAccruedRebateFromInvitee call")
 }
 
+func (r *oauthEmailAffiliateRepoStub) ClawbackQuotaByOrder(context.Context, int64, float64) (float64, error) {
+	return 0, nil
+}
+
 func (r *oauthEmailAffiliateRepoStub) GetCompletedRechargeTotal(context.Context, int64) (float64, error) {
 	panic("unexpected GetCompletedRechargeTotal call")
 }
@@ -481,7 +487,8 @@ func (r *oauthEmailAffiliateRepoStub) ListUnsourcedUsers(context.Context, servic
 }
 
 func (r *oauthEmailAffiliateRepoStub) CountInviteesByInviterAndIP(context.Context, int64, string) (int, error) {
-	panic("unexpected CountInviteesByInviterAndIP call")
+	// IP guard 开启时邀请码绑定会查询同 IP 历史邀请人数；stub 默认无历史记录。
+	return 0, nil
 }
 
 func (r *oauthEmailAffiliateRepoStub) CreateAffiliateGuardEvent(context.Context, int64, int64, string, string) (bool, error) {

@@ -772,6 +772,9 @@ export interface SystemSettings {
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
 
+  // 订阅额度耗尽自动回退余额计费
+  subscription_balance_fallback_enabled: boolean;
+
   // Channel Monitor feature switch
   channel_monitor_enabled: boolean;
   channel_monitor_mode?: 'v1' | 'v2';
@@ -1105,6 +1108,9 @@ export interface UpdateSettingsRequest {
   subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
+
+  // 订阅额度耗尽自动回退余额计费
+  subscription_balance_fallback_enabled?: boolean;
 
   // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;

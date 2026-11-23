@@ -102,7 +102,8 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 	if userRelease != nil {
 		defer userRelease()
 	}
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	subscription, err = h.billingCacheService.ResolveEffectiveSubscription(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey))
+	if err != nil {
 		reqLog.Info("systemone.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {

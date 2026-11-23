@@ -53,12 +53,12 @@ var (
 	)
 	ErrRegistrationIPLimit = infraerrors.BadRequest(
 		"REGISTRATION_IP_LIMIT",
-		"too many accounts have been registered from this IP address today; try again tomorrow",
+		"too many accounts have been registered from this IP address recently; try again later",
 	)
-	// ErrRegistrationIPMonthlyLimit 同一 IP 30 天滚动窗口内注册账号数超过上限。
+	// ErrRegistrationIPMonthlyLimit 同一 IP 3 天滚动窗口内注册账号数超过上限。
 	ErrRegistrationIPMonthlyLimit = infraerrors.BadRequest(
 		"REGISTRATION_IP_MONTHLY_LIMIT",
-		"too many accounts have been registered from this IP address in the last 30 days",
+		"too many accounts have been registered from this IP address in the last 3 days",
 	)
 	// ErrRegistrationIPHourlyLimit 同一 IP 1 小时内注册账号数超过上限。
 	ErrRegistrationIPHourlyLimit = infraerrors.TooManyRequests(
@@ -94,20 +94,20 @@ func BuildEmailDomainRegistrationLimitError(limit int, window string) error {
 	return infraerrors.BadRequest("EMAIL_DOMAIN_REGISTRATION_LIMIT", message)
 }
 
-// BuildRegistrationIPLimitError 构造同一 IP 当天注册数超限的客户端错误。
+// BuildRegistrationIPLimitError 构造同一 IP 在 6 小时滚动窗口内注册数超限的客户端错误。
 // reason 恒为 REGISTRATION_IP_LIMIT，与 ErrRegistrationIPLimit 一致，errors.Is 判定不受影响。
-// 文案必须纯英文（客户端可见），并提示次日可再试。
+// 文案必须纯英文（客户端可见）。
 func BuildRegistrationIPLimitError(limit int) error {
 	if limit < RegistrationIPQuotaLimitMin {
 		limit = RegistrationIPQuotaLimitDefault
 	}
 	return infraerrors.BadRequest(
 		"REGISTRATION_IP_LIMIT",
-		fmt.Sprintf("this IP address has reached today's registration limit of %d account(s); try again tomorrow", limit),
+		fmt.Sprintf("this IP address has reached its registration limit of %d account(s) recently; try again later", limit),
 	)
 }
 
-// BuildRegistrationIPMonthlyLimitError 构造同一 IP 30 天滚动窗口注册数超限的客户端错误。
+// BuildRegistrationIPMonthlyLimitError 构造同一 IP 在 3 天滚动窗口内注册数超限的客户端错误。
 // reason 恒为 REGISTRATION_IP_MONTHLY_LIMIT；文案必须纯英文（客户端可见）。
 func BuildRegistrationIPMonthlyLimitError(limit int) error {
 	if limit < RegistrationIPQuotaMonthlyLimitMin {
@@ -115,7 +115,7 @@ func BuildRegistrationIPMonthlyLimitError(limit int) error {
 	}
 	return infraerrors.BadRequest(
 		"REGISTRATION_IP_MONTHLY_LIMIT",
-		fmt.Sprintf("this IP address has reached its registration limit of %d account(s) within the last 30 days", limit),
+		fmt.Sprintf("this IP address has reached its registration limit of %d account(s) within the last 3 days", limit),
 	)
 }
 
@@ -1525,8 +1525,8 @@ func registerIPFromContext(ctx context.Context) string {
 	return ""
 }
 
-// registrationIPQuota 返回当前生效的「同一 IP 每日注册数」配额。
-// limit <= 0 表示未启用；统计窗口固定为服务器时区的自然日（次日 0 点自动重置）。
+// registrationIPQuota 返回当前生效的「同一 IP 6 小时滚动窗口注册数」配额。
+// limit <= 0 表示未启用；统计窗口为 RegistrationIPQuotaWindow（6 小时滚动）。
 func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string) (int, time.Time) {
 	if s == nil || s.settingService == nil || strings.TrimSpace(registerIP) == "" {
 		return 0, time.Time{}
@@ -1534,11 +1534,11 @@ func (s *AuthService) registrationIPQuota(ctx context.Context, registerIP string
 	if !s.settingService.IsRegistrationIPQuotaEnabled(ctx) {
 		return 0, time.Time{}
 	}
-	return s.settingService.GetRegistrationIPQuotaLimit(ctx), timezone.Today()
+	return s.settingService.GetRegistrationIPQuotaLimit(ctx), time.Now().Add(-RegistrationIPQuotaWindow)
 }
 
-// registrationIPMonthlyQuota 返回当前生效的「同一 IP 30 天滚动窗口注册数」配额。
-// 与每日档共用同一开关；limit <= 0 表示未启用。
+// registrationIPMonthlyQuota 返回当前生效的「同一 IP 3 天滚动窗口注册数」配额。
+// 与 6 小时档共用同一开关；limit <= 0 表示未启用。
 func (s *AuthService) registrationIPMonthlyQuota(ctx context.Context, registerIP string) (int, time.Time) {
 	if s == nil || s.settingService == nil || strings.TrimSpace(registerIP) == "" {
 		return 0, time.Time{}
@@ -1576,7 +1576,7 @@ func (s *AuthService) CountRecentRegistrationsByIP(ctx context.Context, register
 	return repo.CountUsersByRegisterIP(ctx, registerIP, time.Now().Add(-time.Hour))
 }
 
-// validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 当天超额与 30 天滚动窗口超额的注册请求。
+// validateRegistrationIPQuota 在注册预检阶段拦截同一 IP 在 6 小时与 3 天滚动窗口内超额的注册请求。
 // 真正的并发兜底由创建用户事务内的复查完成（见 createUserWithRegistrationEmailGuard）。
 func (s *AuthService) validateRegistrationIPQuota(ctx context.Context, registerIP string) error {
 	limit, since := s.registrationIPQuota(ctx, registerIP)
@@ -1655,7 +1655,7 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 	}
 
 	if guard.RegisterIPLimit > 0 || guard.RegisterIPMonthlyLimit > 0 {
-		// IP 配额（每日档 + 30 天档）必须与建号在同一事务内复查：并发注册可能同时通过预检。
+		// IP 配额（6 小时档 + 3 天档）必须与建号在同一事务内复查：并发注册可能同时通过预检。
 		if quotaRepo, ok := s.userRepo.(RegistrationIPQuotaRepository); ok {
 			err := quotaRepo.CreateWithRegistrationGuards(ctx, user, guard)
 			if errors.Is(err, ErrRegistrationIPLimit) {

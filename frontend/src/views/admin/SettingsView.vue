@@ -1547,7 +1547,7 @@
                 />
               </div>
 
-              <!-- IP Daily Registration Quota -->
+              <!-- IP 6-Hour Registration Quota -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
               >
@@ -9949,6 +9949,43 @@
             </div>
           </div>
 
+          <!-- 订阅额度耗尽自动回退余额计费 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.subscriptionBalanceFallback.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{
+                  t("admin.settings.subscriptionBalanceFallback.description")
+                }}
+              </p>
+            </div>
+            <div class="px-6 py-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label
+                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t("admin.settings.subscriptionBalanceFallback.enabled")
+                    }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.subscriptionBalanceFallback.enabledHint"
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.subscription_balance_fallback_enabled" />
+              </div>
+            </div>
+          </div>
+
           <EmailTemplateEditor />
 
           <!-- Balance Low Notification -->
@@ -11042,7 +11079,7 @@ const form = reactive<SettingsForm>({
   registration_email_domain_quota_window: "total",
   registration_ip_quota_enabled: false,
   registration_ip_quota_limit: 3,
-  registration_ip_hourly_limit: 8,
+  registration_ip_hourly_limit: 2,
   registration_device_fingerprint_limit: 3,
   registration_click_captcha_enabled: false,
   registration_captcha_mode: "random",
@@ -11067,7 +11104,9 @@ const form = reactive<SettingsForm>({
   default_balance: 0,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   account_scheduling_thresholds: normalizeAccountSchedulingThresholdsMap(),
-  affiliate_rebate_rate: 20,
+  // 与后端 AffiliateRebateRateDefault（domain_constants.go）保持一致；
+  // 真实配置由 loadSettings() 从后端覆盖，这里仅作首屏兜底，避免新部署首次保存误写 20%。
+  affiliate_rebate_rate: 10,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
@@ -11326,6 +11365,8 @@ const form = reactive<SettingsForm>({
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
+  // 订阅额度耗尽自动回退余额计费（默认关）
+  subscription_balance_fallback_enabled: false,
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_mode: 'v1' as 'v1' | 'v2',
@@ -12936,7 +12977,7 @@ async function saveSettings() {
       ),
       registration_ip_hourly_limit: Math.min(
         100,
-        Math.max(1, Number(form.registration_ip_hourly_limit) || 8),
+        Math.max(1, Number(form.registration_ip_hourly_limit) || 2),
       ),
       registration_device_fingerprint_limit: Math.min(
         50,
@@ -13268,6 +13309,9 @@ async function saveSettings() {
       subscription_expiry_notify_enabled:
         form.subscription_expiry_notify_enabled,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
+      // 订阅额度耗尽自动回退余额计费
+      subscription_balance_fallback_enabled:
+        form.subscription_balance_fallback_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
       ).filter((e) => e.email.trim() !== ""),

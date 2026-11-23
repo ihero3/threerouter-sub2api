@@ -992,7 +992,7 @@ func TestOpsErrorLoggerMiddleware_LocalModelConfigurationFields(t *testing.T) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
 				"type":    "model_not_found",
-				"message": "Model \"gpt-missing\" is not supported by any configured account in this group",
+				"message": "Model \"gpt-missing\" was not found in the model registry",
 			},
 		})
 	})
@@ -1002,7 +1002,7 @@ func TestOpsErrorLoggerMiddleware_LocalModelConfigurationFields(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
-	require.JSONEq(t, `{"error":{"type":"model_not_found","message":"Model \"gpt-missing\" is not supported by any configured account in this group"}}`, w.Body.String())
+	require.JSONEq(t, `{"error":{"type":"model_not_found","message":"Model \"gpt-missing\" was not found in the model registry"}}`, w.Body.String())
 	job := <-opsErrorLogQueue
 	require.Equal(t, http.StatusNotFound, job.entry.StatusCode)
 	require.Equal(t, "routing", job.entry.ErrorPhase)

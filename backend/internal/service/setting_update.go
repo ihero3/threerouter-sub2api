@@ -429,6 +429,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAffiliateAdminRechargeEnabled] = strconv.FormatBool(settings.AdminRechargeRebateEnabled)
 	updates[SettingKeyAffiliateRequireInviterRecharged] = strconv.FormatBool(settings.AffiliateRequireInviterRecharged)
 	updates[SettingKeyAffiliateRebateCapByInviterRecharge] = strconv.FormatBool(settings.AffiliateRebateCapByInviterRecharge)
+	updates[SettingKeySubscriptionBalanceFallbackEnabled] = strconv.FormatBool(settings.SubscriptionBalanceFallbackEnabled)
 	settings.AffiliateIPGuardMode = normalizeAffiliateIPGuardMode(settings.AffiliateIPGuardMode)
 	updates[SettingKeyAffiliateIPGuardMode] = settings.AffiliateIPGuardMode
 	if settings.AffiliateIPGuardMaxAccounts < 1 {

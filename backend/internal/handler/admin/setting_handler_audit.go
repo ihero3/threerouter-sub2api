@@ -394,6 +394,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AffiliateRebateCapByInviterRecharge != after.AffiliateRebateCapByInviterRecharge {
 		changed = append(changed, "affiliate_rebate_cap_by_inviter_recharge")
 	}
+	if before.SubscriptionBalanceFallbackEnabled != after.SubscriptionBalanceFallbackEnabled {
+		changed = append(changed, "subscription_balance_fallback_enabled")
+	}
 	if before.AffiliateIPGuardMode != after.AffiliateIPGuardMode {
 		changed = append(changed, "affiliate_ip_guard_mode")
 	}

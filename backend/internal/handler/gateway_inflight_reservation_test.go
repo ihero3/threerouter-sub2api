@@ -45,7 +45,7 @@ func newInflightTestGinContext() *gin.Context {
 
 func TestReserveInflightBalance_SkipsWhenDisabledOrSubscription(t *testing.T) {
 	cfg := &config.Config{}
-	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(billing.Stop)
 	est := &countingEstimator{cost: 1, priced: true}
 	apiKey := &service.APIKey{User: &service.User{ID: 1}}
@@ -67,7 +67,7 @@ func TestReserveInflightBalance_UnpricedFailOpenByDefaultFailClosedOptIn(t *test
 	cache := newHandlerInflightCache(10)
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
-	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(billing.Stop)
 	apiKey := &service.APIKey{User: &service.User{ID: 1}}
 	est := &countingEstimator{priced: false}
@@ -134,7 +134,7 @@ func TestWrapUsageRecordTaskContext_HandsReservationToBillingTask(t *testing.T) 
 	cache := newHandlerInflightCache(1)
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
-	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(billing.Stop)
 	apiKey := &service.APIKey{User: &service.User{ID: 5}}
 
@@ -168,7 +168,7 @@ func TestWebSearch_RejectsWhenInflightExceedsBalance(t *testing.T) {
 	cache := newHandlerInflightCache(1.5)
 	cfg := &config.Config{}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
-	billingCache := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	billingCache := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(billingCache.Stop)
 	billing := service.NewBillingService(cfg, nil)
 	gw := service.NewGatewayService(

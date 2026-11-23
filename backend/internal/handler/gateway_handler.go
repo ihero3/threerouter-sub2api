@@ -329,7 +329,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	// ResolveEffectiveSubscription：订阅任一档耗尽且开关开启时自动回退余额计费
+	// （返回 nil 订阅），双耗尽时返回带重置时间 metadata 的档位错误。
+	subscription, err = h.billingCacheService.ResolveEffectiveSubscription(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey))
+	if err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -2375,7 +2378,8 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	subscription, err = h.billingCacheService.ResolveEffectiveSubscription(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey))
+	if err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -2627,6 +2631,27 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 	c.JSON(http.StatusOK, response)
 }
 
+// subscriptionTierLimitMessage 构建订阅档位耗尽的用户文案（纯英语，客户端可见）。
+// 双耗尽（余额回退被拒）时明确说明订阅额度与余额均不足、窗口到点自动恢复；
+// 单纯档位耗尽（回退开关关闭）保持原文案。
+func subscriptionTierLimitMessage(err error) string {
+	msg := pkgerrors.Message(err)
+	if msg == "" {
+		msg = "subscription usage limit exceeded"
+	}
+	appErr := pkgerrors.FromError(err)
+	if appErr == nil || appErr.Metadata["balance_fallback_rejected"] != "true" {
+		return msg
+	}
+	const suffix = " Subscription quota and account balance are both insufficient; the quota window resets automatically."
+	if raw, ok := appErr.Metadata["window_resets_at"]; ok && raw != "" {
+		if resetAt, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+			return fmt.Sprintf("%s.%s Reset time: %s.", msg, suffix, resetAt.Format(time.RFC3339))
+		}
+	}
+	return msg + suffix
+}
+
 // extractQuotaResetSeconds 从 quota 错误的 metadata 中提取 window_resets_at 并计算
 // 距重置剩余秒数。fallback 路径必须返回 ≥1 秒，避免客户端立即重试无限循环。
 func extractQuotaResetSeconds(err error) int {
@@ -2722,6 +2747,14 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 		// 与 RPM 超限一致映射 429 + Retry-After，让 SDK 自动退避（而非 403 直接失败）。
 		// 错误码用 rate_limit_exceeded 与 OpenAI 兼容客户端一致；细分类型由 ErrCode + window_resets_at metadata 区分。
 		msg := pkgerrors.Message(err)
+		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
+	}
+	// 订阅日/周/月档位额度耗尽。余额回退被拒（双耗尽）时升级文案与 429 + Retry-After：
+	// 客户端按重置时间退避，到点后订阅额度自动恢复（与 user × platform quota 同一映射模式）。
+	if errors.Is(err, service.ErrDailyLimitExceeded) ||
+		errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+		errors.Is(err, service.ErrMonthlyLimitExceeded) {
+		msg := subscriptionTierLimitMessage(err)
 		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
 	}
 	msg := pkgerrors.Message(err)

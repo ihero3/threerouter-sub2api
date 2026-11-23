@@ -215,14 +215,14 @@ export default {
         emailDomainQuotaLimitSuffix: '个账户（1–100）',
         emailDomainQuotaWindowTotal: '累计上限（不重置）',
         emailDomainQuotaWindowDaily: '每日上限（每天 0 点重置）',
-        ipQuota: '同一 IP 每日注册上限',
+        ipQuota: '同一 IP 6 小时注册上限',
         ipQuotaHint:
-          '开启后，同一 IP 地址每天最多可注册指定数量的账户，次日 0 点自动重置；关闭时不限制',
+          '开启后，同一 IP 地址在最近 6 小时滚动窗口内最多可注册指定数量的账户；关闭时不限制',
         ipQuotaLimitPlaceholder: '每 IP 账户数',
-        ipQuotaLimitSuffix: '个账户/天（1–1000）',
+        ipQuotaLimitSuffix: '个账户/6 小时（1–1000）',
         ipHourlyLimit: '同一 IP 每小时注册上限',
         ipHourlyLimitHint:
-          '同一 IP 地址在最近 1 小时内最多可注册的账户数（滑动窗口，服务端硬性限制）；默认 8，网吧、公司等共用公网出口的场景可适当调高',
+          '同一 IP 地址在最近 1 小时内最多可注册的账户数（滑动窗口，服务端硬性限制）；默认 2，网吧、公司等共用公网出口的场景可适当调高',
         ipHourlyLimitPlaceholder: '每 IP 小时账户数',
         ipHourlyLimitSuffix: '个账户/小时（1–100）',
         deviceFingerprintLimit: '同设备 24 小时注册上限',
@@ -1157,6 +1157,12 @@ export default {
         description: '控制是否向用户发送订阅即将到期的邮件提醒。',
         enabled: '启用订阅到期提醒',
         enabledHint: '开启后，系统会在订阅到期前 7 天、3 天、1 天各发送一次提醒。'
+      },
+      subscriptionBalanceFallback: {
+        title: '订阅额度耗尽自动回退余额',
+        description: '订阅型分组用户的日/周/月任一档额度耗尽时，自动切换为按余额（token）计费；窗口重置后自动切回订阅优先。',
+        enabled: '启用订阅额度回退余额',
+        enabledHint: '默认关闭：额度耗尽直接提示等待重置。开启后额度耗尽继续按余额扣费，余额也不足时提示等待额度窗口重置，保证持续可用。'
       },
       smtp: {
         title: 'SMTP 设置',
