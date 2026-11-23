@@ -52,6 +52,15 @@ func UserIPConsistencyGuard(ipConsistency *service.IPConsistencyService) gin.Han
 	}
 }
 
+// enforceInviterFirstUseRisk 在「被邀请人首次调用 API」时评估其邀请人风险。
+// 非阻断：只触发异步评估与处罚（罚邀请人），被邀请人的请求照常放行。
+func enforceInviterFirstUseRisk(c *gin.Context, ipConsistency *service.IPConsistencyService, userID int64) {
+	if ipConsistency == nil || userID <= 0 {
+		return
+	}
+	ipConsistency.EvaluateInviterRiskOnFirstUse(c.Request.Context(), userID)
+}
+
 // enforceNewUserFirstUseIP 校验新用户注册 IP 严格规则（注册后 3 分钟内任意一次调用）；
 // 返回 false 表示请求已中断。只在 API Key 鉴权链路调用，JWT 控制台链路不参与。
 func enforceNewUserFirstUseIP(
@@ -100,6 +109,8 @@ func NewUserFirstUseIPGuard(ipConsistency *service.IPConsistencyService, googleS
 		if !enforceNewUserFirstUseIP(c, ipConsistency, apiKey.User, googleStyle) {
 			return
 		}
+		// 与主网关同口径：被邀请人首用评估邀请人，非阻断。
+		enforceInviterFirstUseRisk(c, ipConsistency, apiKey.User.ID)
 		c.Next()
 	}
 }

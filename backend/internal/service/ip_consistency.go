@@ -99,6 +99,14 @@ const (
 	// ipConsistencyRegIPCorrelationPenaltyKeyPrefix 注册 IP 关联规则的独立扣减幂等键。
 	// 与新用户规则、3/4 IP 规则分开，避免互相吞掉处罚；24h 冷却保证只扣一次。
 	ipConsistencyRegIPCorrelationPenaltyKeyPrefix = "ipguard:regip-penalty:"
+	// ipInviterFirstUseEvalGatePrefix 被邀请人首用评估的一次性门控键：每个被邀请人
+	// 只评估一次邀请人（注册时不再即时评估，见 2026-11-23 拍板）。TTL 取 30 天，
+	// 足够覆盖「首用」语义；评估/处罚失败不重复触发，fail-open 不阻断请求。
+	ipInviterFirstUseEvalGatePrefix = "ipguard:inviter-firstuse-eval:"
+	inviterFirstUseEvalGateTTL      = 30 * 24 * time.Hour
+	// ipConsistencyInviterFirstUsePenaltyKeyPrefix 首用时邀请人处罚的独立扣减幂等键：
+	// 与被罚邀请人的其它规则隔离，24h 冷却内只扣一次、只发一封邮件。
+	ipConsistencyInviterFirstUsePenaltyKeyPrefix = "ipguard:inviter-firstuse-penalty:"
 	// newUserIPMismatchWindow 新用户注册后 IP 严格校验窗口：注册后 3 分钟内。
 	// 窗口内任意一次 API 调用的客户端 IP 与注册 IP 不一致即禁用 + 扣减 + 邮件；
 	// 超过窗口则回落到 CheckUser 的 3/4 IP 滚动窗口规则。
@@ -320,6 +328,12 @@ type IPConsistencyPenaltyLocker interface {
 	ReleasePenalty(ctx context.Context, key string) error
 }
 
+// InviterFirstUseEvaluator 首用时对邀请人做风险评估的能力（由 *AffiliateService 实现）。
+// 返回待罚的邀请人 ID 与命中原因；(0, nil) 表示无邀请人 / 豁免 / 未命中。
+type InviterFirstUseEvaluator interface {
+	EvaluateInviterFirstUseRisk(ctx context.Context, inviteeID int64) (int64, []string)
+}
+
 // IPConsistencyPenalty 处罚执行器（余额 + 调账流水 + 通知邮件）。
 type IPConsistencyPenalty interface {
 	// ApplyIPBalancePenalty 把余额原子降到 floor、按 notes 写调账流水；
@@ -339,12 +353,13 @@ type IPConsistencyViolation struct {
 
 // IPConsistencyService IP 一致性风控服务。
 type IPConsistencyService struct {
-	cache             IPConsistencyCache
-	settingsProvider  IPConsistencySettingsProvider
-	penalty           IPConsistencyPenalty
-	penaltyLocker     IPConsistencyPenaltyLocker
-	exemptionChecker  RiskExemptionCheck
-	newUserRiskMarker NewUserRiskMarker
+	cache                IPConsistencyCache
+	settingsProvider     IPConsistencySettingsProvider
+	penalty              IPConsistencyPenalty
+	penaltyLocker        IPConsistencyPenaltyLocker
+	exemptionChecker     RiskExemptionCheck
+	newUserRiskMarker    NewUserRiskMarker
+	inviterRiskEvaluator InviterFirstUseEvaluator
 }
 
 // NewIPConsistencyService 创建 IP 一致性风控服务。
@@ -384,6 +399,15 @@ func (s *IPConsistencyService) SetNewUserRiskMarker(marker NewUserRiskMarker) {
 		return
 	}
 	s.newUserRiskMarker = marker
+}
+
+// SetInviterRiskEvaluator 注入首用时邀请人风险评估器（可选依赖，由 *AffiliateService 实现）。
+// 未注入时首用评估静默跳过，绝不阻断鉴权。
+func (s *IPConsistencyService) SetInviterRiskEvaluator(evaluator InviterFirstUseEvaluator) {
+	if s == nil {
+		return
+	}
+	s.inviterRiskEvaluator = evaluator
 }
 
 // CheckNewUserFirstUseIP 新用户注册后 3 分钟内「客户端 IP 与注册 IP 不一致」的严格校验。
@@ -580,6 +604,61 @@ func (s *IPConsistencyService) ScheduleRegistrationIPCorrelationPenalty(ctx cont
 	}
 	s.scheduleBalancePenaltyWithKey(ctx, userID, floor, notify,
 		ipConsistencyRegIPCorrelationPenaltyKeyPrefix+fmt.Sprintf("%d", userID))
+}
+
+// EvaluateInviterRiskOnFirstUse 被邀请人首次调用 API 时的邀请人风险评估（用户拍板 2026-11-23）。
+//
+// 与注册阶段的即时评估不同：注册时不再打标/扣款/邮件，等到被邀请人真正使用服务时
+// 才评估其邀请人，且只罚邀请人——被邀请人很可能是正常用户，绝不因邀请关系受罚。
+//
+// 执行顺序：
+//  1. 一次性门控：每个被邀请人只评估一次（Redis SETNX + 30 天 TTL），避免递归 CTE
+//     查询落在每次 API 调用的热路径上；
+//  2. 邀请人风险判定（委托 AffiliateService：24h>5 / 累计>10 / 链深≥4 / 邮箱>25 / 旧规则）；
+//  3. 全局豁免（工单标记 / 提单 / 复核放行）与充值豁免（评估器内）；
+//  4. 命中则给邀请人打 suspect + 走独立幂等键异步扣到 floor + 邮件。
+//
+// 全程非阻断、fail-open：任何依赖缺失或失败都只影响处罚本身，不影响被邀请人的请求。
+func (s *IPConsistencyService) EvaluateInviterRiskOnFirstUse(ctx context.Context, inviteeID int64) {
+	if s == nil || s.inviterRiskEvaluator == nil || s.penaltyLocker == nil || inviteeID <= 0 {
+		return
+	}
+	gateKey := ipInviterFirstUseEvalGatePrefix + fmt.Sprintf("%d", inviteeID)
+	claimed, err := s.penaltyLocker.TryClaimPenalty(ctx, gateKey, inviterFirstUseEvalGateTTL)
+	if err != nil {
+		slog.Warn("inviter first-use eval gate unavailable", "user_id", inviteeID, "error", err)
+		return
+	}
+	if !claimed {
+		return // 已评估过（或 30 天内评估过），不重复查库
+	}
+
+	// 评估含递归 CTE + 多次查库，与扣款一样异步执行，绝不拖慢鉴权热路径；
+	// 客户端断连不影响评估完成（context.WithoutCancel）。
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		inviterID, reasons := s.inviterRiskEvaluator.EvaluateInviterFirstUseRisk(bgCtx, inviteeID)
+		if inviterID <= 0 || len(reasons) == 0 {
+			return
+		}
+		// 工单 / 复核豁免针对「被处罚的邀请人」；与评估器内的充值豁免互补。
+		if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(bgCtx, inviterID) {
+			return
+		}
+		if s.newUserRiskMarker != nil {
+			s.newUserRiskMarker.MarkUserRisk(bgCtx, inviterID, AffiliateRiskLevelSuspect, reasons)
+		}
+		floor := DefaultIPBalancePenaltyFloor
+		notify := true
+		if s.settingsProvider != nil {
+			settings := s.settingsProvider.GetIPConsistencySettingsCached(bgCtx)
+			floor = settings.BalancePenaltyFloor
+			notify = settings.PenaltyNotifyEmail
+		}
+		s.scheduleBalancePenaltyWithKey(bgCtx, inviterID, floor, notify,
+			ipConsistencyInviterFirstUsePenaltyKeyPrefix+fmt.Sprintf("%d", inviterID))
+	}()
 }
 
 // scheduleBalancePenaltyWithKey 是处罚调度的唯一实现；不同规则通过不同 key 隔离幂等。

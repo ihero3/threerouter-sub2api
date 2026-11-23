@@ -187,6 +187,8 @@ func apiKeyAuthWithSubscription(
 		if !enforceNewUserFirstUseIP(c, ipConsistency, apiKey.User, false) {
 			return
 		}
+		// 被邀请人首用评估：只评估并处罚邀请人，不阻断被邀请人（2026-11-23 拍板）。
+		enforceInviterFirstUseRisk(c, ipConsistency, apiKey.User.ID)
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}

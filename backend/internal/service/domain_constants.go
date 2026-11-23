@@ -961,7 +961,7 @@ const (
 
 	// 规则阈值。
 	// 规则 1：24h 邀请数分层（按账号年龄）。新号与老号同尺度。
-	AffiliateRiskNewAccountDays         = 7  // 账号年龄 ≤ 该天数视为新号。
+	AffiliateRiskNewAccountDays         = 7 // 账号年龄 ≤ 该天数视为新号。
 	AffiliateRiskInviteBurstNewSuspect  = 5 // 新号：24h 邀请数 > 该值 → 存疑。
 	AffiliateRiskInviteBurstNewAbnormal = 6 // 新号：24h 邀请数 > 该值 → 异常。
 	AffiliateRiskInviteBurstOldSuspect  = 5 // 老号：24h 邀请数 > 该值 → 存疑。
@@ -977,6 +977,18 @@ const (
 	// 规则 5：点号别名填充阈值——分隔段数、含 1 字符短段、本地部分最小总长。
 	AffiliateRiskAliasStuffingMinDots   = 3
 	AffiliateRiskAliasStuffingMinLength = 16
+
+	// 首用时邀请人风险规则（用户拍板 2026-11-23）：
+	// 被邀请人注册时不再即时评估，改为首次调用 API 时评估「邀请人」；命中处置统一为
+	// suspect + 异步扣到 floor + 邮件（不自动停用），且不牵连被邀请人。
+	AffiliateRiskReasonInviterTotalInvites = "inviter_total_invites"
+	AffiliateRiskReasonEmailLocalPartLong  = "email_local_part_long"
+	// 邀请人累计邀请数 > 该值即命中（与时间窗无关，取 user_affiliates.aff_count）。
+	AffiliateRiskInviterTotalInvitesSuspect = 10
+	// 邀请人上溯/下溯链深 ≥ 该值即命中。
+	AffiliateRiskInviterFirstUseChainDepth = 4
+	// 邀请人邮箱本地部分（@ 前）长度 > 该值即命中。
+	AffiliateRiskInviterEmailLocalPartMax = 25
 	// 同注册 IP 24 小时关联账号数达到该值 → suspect 打标 + 自动扣费 + 邮件。
 	// 演化：3→4→2→3；2026-11-20 处置从「仅打标」升级为「打标+扣费+邮件」（用户拍板）。
 	AffiliateRiskRegistrationIPCorrelationThreshold = 3

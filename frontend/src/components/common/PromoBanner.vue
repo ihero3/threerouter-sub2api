@@ -1,6 +1,6 @@
 <template>
   <section
-    class="promo-banner group relative cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#0f766e] via-[#0d9488] to-[#14b8a6] p-6 text-white shadow-2xl shadow-[#0d9488]/30 transition-transform duration-200 hover:scale-[1.01] sm:p-8"
+    class="promo-banner group relative cursor-pointer overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-emerald-50/80 to-teal-50 p-6 text-gray-900 shadow-sm transition-transform duration-200 hover:scale-[1.01] sm:p-8"
     role="button"
     tabindex="0"
     @click="goRecharge"
@@ -8,18 +8,18 @@
     @keydown.space.prevent="goRecharge"
   >
     <!-- Decorative glows -->
-    <div class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-[#5eead4]/30 blur-3xl"></div>
-    <div class="pointer-events-none absolute -bottom-24 -left-12 h-56 w-56 rounded-full bg-[#2dd4bf]/25 blur-3xl"></div>
-    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(94,234,212,0.22),transparent_55%)]"></div>
+    <div class="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl"></div>
+    <div class="pointer-events-none absolute -bottom-24 -left-12 h-56 w-56 rounded-full bg-teal-200/30 blur-3xl"></div>
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(110,231,183,0.25),transparent_55%)]"></div>
 
     <div class="relative">
       <div class="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-[#5eead4] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#042f2e]">
-          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#042f2e]"></span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
+          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-white"></span>
           {{ promoBadge }}
         </span>
-        <h2 class="text-xl font-black leading-tight sm:text-2xl">{{ promoTitle }}</h2>
-        <span class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-semibold ring-1 ring-inset ring-white/25 backdrop-blur-sm transition-colors group-hover:bg-white/25">
+        <h2 class="text-xl font-black leading-tight text-gray-900 sm:text-2xl">{{ promoTitle }}</h2>
+        <span class="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-emerald-200 transition-colors group-hover:bg-emerald-600">
           {{ promoCta }}
           <svg class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3" />
@@ -31,10 +31,10 @@
         <div
           v-for="(item, index) in promoItems"
           :key="index"
-          class="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-inset ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/15"
+          class="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 transition-colors hover:border-emerald-200 hover:bg-white"
         >
           <span class="text-2xl leading-none">{{ item.emoji }}</span>
-          <span class="text-sm font-semibold leading-snug sm:text-base">{{ item.text }}</span>
+          <span class="text-sm font-semibold leading-snug text-gray-700 sm:text-base">{{ item.text }}</span>
         </div>
       </div>
     </div>

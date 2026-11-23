@@ -115,3 +115,129 @@ func TestEvaluateAffiliateRisk_ChainDepthTiering(t *testing.T) {
 		})
 	}
 }
+
+func TestEvaluateInviterFirstUseRisk_NewRules(t *testing.T) {
+	cases := []struct {
+		name      string
+		sig       AffiliateRiskSignal
+		total     int
+		wantEmpty bool
+		want      string
+	}{
+		{
+			name:      "clean inviter",
+			sig:       AffiliateRiskSignal{Email: "normal.user@example.com", InvitesIn24h: 3},
+			total:     8,
+			wantEmpty: true,
+		},
+		{
+			name:  "24h invites over 5",
+			sig:   AffiliateRiskSignal{Email: "normal.user@example.com", InvitesIn24h: 6},
+			total: 6,
+			want:  AffiliateRiskReasonInviteBurst24h,
+		},
+		{
+			name:      "24h invites exactly 5 is clean",
+			sig:       AffiliateRiskSignal{Email: "normal.user@example.com", InvitesIn24h: 5},
+			total:     10,
+			wantEmpty: true,
+		},
+		{
+			name:  "total invites over 10 regardless of 24h window",
+			sig:   AffiliateRiskSignal{Email: "normal.user@example.com", InvitesIn24h: 1},
+			total: 11,
+			want:  AffiliateRiskReasonInviteBurst24h,
+		},
+		{
+			name:      "total invites exactly 10 is clean",
+			sig:       AffiliateRiskSignal{Email: "normal.user@example.com", InvitesIn24h: 1},
+			total:     10,
+			wantEmpty: true,
+		},
+		{
+			name:  "ancestor chain depth 4",
+			sig:   AffiliateRiskSignal{Email: "normal.user@example.com", AncestorDepth: 4},
+			total: 0,
+			want:  AffiliateRiskReasonChainDepth,
+		},
+		{
+			name:  "descendant chain depth 4",
+			sig:   AffiliateRiskSignal{Email: "normal.user@example.com", DescendantDepth: 4},
+			total: 0,
+			want:  AffiliateRiskReasonChainDepth,
+		},
+		{
+			name:      "chain depth 3 is clean",
+			sig:       AffiliateRiskSignal{Email: "normal.user@example.com", AncestorDepth: 3},
+			total:     0,
+			wantEmpty: true,
+		},
+		{
+			name:  "email local part over 25",
+			sig:   AffiliateRiskSignal{Email: "averyverylonglocalpartname@example.com"},
+			total: 0,
+			want:  AffiliateRiskReasonEmailLocalPartLong,
+		},
+		{
+			name:      "email local part exactly 25 is clean",
+			sig:       AffiliateRiskSignal{Email: "1234567890123456789012345@example.com"},
+			total:     0,
+			wantEmpty: true,
+		},
+		{
+			name:  "disposable email rule retained",
+			sig:   AffiliateRiskSignal{Email: "user@mailinator.com"},
+			total: 0,
+			want:  AffiliateRiskReasonDisposableEmail,
+		},
+		{
+			name:  "alias stuffing rule retained",
+			sig:   AffiliateRiskSignal{Email: "lanhsuychsieck.i.e.c11.23@gmail.com"},
+			total: 0,
+			want:  AffiliateRiskReasonEmailAliasStuffing,
+		},
+		{
+			name:  "chain contagion rule retained",
+			sig:   AffiliateRiskSignal{Email: "normal.user@example.com", ChainContagion: true},
+			total: 0,
+			want:  AffiliateRiskReasonChainContagion,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evaluateInviterFirstUseRisk(tc.sig, tc.total)
+			if tc.wantEmpty {
+				if len(got) != 0 {
+					t.Fatalf("reasons = %v, want empty", got)
+				}
+				return
+			}
+			found := false
+			for _, r := range got {
+				if r == tc.want {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("reasons = %v, want to contain %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEmailLocalPart(t *testing.T) {
+	cases := []struct {
+		email string
+		want  string
+	}{
+		{"user@example.com", "user"},
+		{"a.b.c@gmail.com", "a.b.c"},
+		{"@example.com", ""},
+		{"no-at-sign", ""},
+	}
+	for _, tc := range cases {
+		if got := emailLocalPart(tc.email); got != tc.want {
+			t.Errorf("emailLocalPart(%q) = %q, want %q", tc.email, got, tc.want)
+		}
+	}
+}

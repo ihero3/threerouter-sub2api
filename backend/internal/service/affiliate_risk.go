@@ -222,6 +222,89 @@ func emailDomain(email string) string {
 	return strings.ToLower(email[at+1:])
 }
 
+// emailLocalPart 提取邮箱本地部分（@ 前，不改写大小写）；无 @ 或 @ 在首位时返回空串。
+func emailLocalPart(email string) string {
+	email = strings.TrimSpace(email)
+	at := strings.LastIndexByte(email, '@')
+	if at <= 0 {
+		return ""
+	}
+	return email[:at]
+}
+
+// evaluateInviterFirstUseRisk 首用时「邀请人」风险判定（用户拍板 2026-11-23）。
+//
+// 与 evaluateAffiliateRisk 的区别：
+//   - 评估对象是邀请人（拉新方），不是被邀请人；被邀请人可能是正常用户，绝不连带处罚；
+//   - 新增两条规则：累计邀请数 >10（AffCount，与 24h 窗口无关）与邮箱本地部分 >25；
+//   - 命中一律 suspect 档（进复核队列 + 异步扣减 + 邮件），不判 abnormal、不自动停用。
+//
+// 规则（OR，任一命中即返回）：
+//  1. 24h 邀请数 >5 或 累计邀请数 >10
+//  2. 上溯/下溯链深 ≥4
+//  3. 邮箱本地部分长度 >25
+//  4. 保留的旧规则：一次性邮箱 / 别名填充 / 链路传染
+func evaluateInviterFirstUseRisk(sig AffiliateRiskSignal, totalInvites int) []string {
+	reasons := make([]string, 0, 6)
+	if sig.InvitesIn24h > AffiliateRiskInviteBurstNewSuspect || totalInvites > AffiliateRiskInviterTotalInvitesSuspect {
+		reasons = append(reasons, AffiliateRiskReasonInviteBurst24h)
+	}
+	maxDepth := sig.AncestorDepth
+	if sig.DescendantDepth > maxDepth {
+		maxDepth = sig.DescendantDepth
+	}
+	if maxDepth >= AffiliateRiskInviterFirstUseChainDepth {
+		reasons = append(reasons, AffiliateRiskReasonChainDepth)
+	}
+	if len(emailLocalPart(sig.Email)) > AffiliateRiskInviterEmailLocalPartMax {
+		reasons = append(reasons, AffiliateRiskReasonEmailLocalPartLong)
+	}
+	if isDisposableEmail(sig.Email) {
+		reasons = append(reasons, AffiliateRiskReasonDisposableEmail)
+	}
+	if isStuffedEmailAlias(sig.Email) {
+		reasons = append(reasons, AffiliateRiskReasonEmailAliasStuffing)
+	}
+	if sig.ChainContagion {
+		reasons = append(reasons, AffiliateRiskReasonChainContagion)
+	}
+	return reasons
+}
+
+// EvaluateInviterFirstUseRisk 被邀请人首用时评估其邀请人的风险。
+// 返回 (inviterID, reasons)：无邀请人 / 充值豁免 / 未命中 / 采集失败时返回 (0, nil)。
+// 全程 fail-open：本函数是鉴权热路径上的旁路评估，任何失败都不影响被邀请人的请求。
+func (s *AffiliateService) EvaluateInviterFirstUseRisk(ctx context.Context, inviteeID int64) (int64, []string) {
+	if s == nil || s.repo == nil || inviteeID <= 0 {
+		return 0, nil
+	}
+	self, err := s.repo.EnsureUserAffiliate(ctx, inviteeID)
+	if err != nil || self == nil || self.InviterID == nil || *self.InviterID <= 0 {
+		return 0, nil
+	}
+	inviterID := *self.InviterID
+
+	// 充值豁免：邀请人有任一成功充值订单即不处罚（用户拍板 2026-11-23）。
+	// 查询失败按「不豁免」继续（与 RiskExemptionChecker 同向的 fail-open）。
+	if total, err := s.repo.GetCompletedRechargeTotal(ctx, inviterID); err == nil && total > 0 {
+		return 0, nil
+	}
+
+	signals, err := s.repo.CollectAffiliateRiskSignals(ctx, []int64{inviterID})
+	if err != nil || len(signals) == 0 {
+		return 0, nil
+	}
+	inviter, err := s.repo.EnsureUserAffiliate(ctx, inviterID)
+	if err != nil || inviter == nil {
+		return 0, nil
+	}
+	reasons := evaluateInviterFirstUseRisk(signals[0], inviter.AffCount)
+	if len(reasons) == 0 {
+		return 0, nil
+	}
+	return inviterID, reasons
+}
+
 // EvaluateInviteRisk 对给定用户批量评估风险并写入标记（只升不降）。
 //
 // 失败只记录日志、不返回错误：风险标记是旁路能力，不能影响注册主流程。

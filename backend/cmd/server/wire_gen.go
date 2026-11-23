@@ -104,6 +104,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	// 新用户首调 IP 不一致需要真实 suspect 标记（进复核队列 + 禁建 Key），
 	// 复用 affiliateService 的只升不降打标与缓存失效能力。
 	ipConsistencyService.SetNewUserRiskMarker(affiliateService)
+	// 被邀请人首用评估邀请人：复用 affiliateService 的邀请信号采集与充值豁免判定。
+	// 评估延后到首用、只罚邀请人（2026-11-23 用户拍板）。
+	ipConsistencyService.SetInviterRiskEvaluator(affiliateService)
 	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, tencentCaptchaService, aliyunCaptchaService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, geoIPService, mcpoAuthService, ipConsistencyService)
 	registrationCaptchaProofCache := repository.NewRegistrationCaptchaProofCache(redisClient)
 	registrationCaptchaProofService := service.NewRegistrationCaptchaProofService(registrationCaptchaProofCache)

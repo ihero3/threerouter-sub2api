@@ -730,10 +730,10 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 		}
 	}
 
-	// 邀请注册风险标记：只写标记、不拦截注册。
-	// 同时评估被邀请人与邀请人，让「短时间拉大量小号」的邀请人当场被标记出来。
-	// 失败只记录日志，不影响注册主流程。
-	s.EvaluateInviteRisk(ctx, userID, inviterSummary.UserID)
+	// 邀请注册风险评估已延后到「被邀请人首次调用 API」时执行（用户拍板 2026-11-23）：
+	// 注册阶段不再即时打标/扣款/发邮件——被邀请人很可能是正常用户，邀请关系成立本身
+	// 不构成处罚依据。首用时由 ipConsistency 钩子调用 EvaluateInviterFirstUseRisk，
+	// 只评估邀请人、不牵连被邀请人（见 middleware/ip_consistency.go）。
 	return nil
 }
 
