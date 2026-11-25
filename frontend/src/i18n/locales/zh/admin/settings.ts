@@ -352,11 +352,11 @@ export default {
       hourlyTokenLimit: {
         title: '每小时 Token 流量控制',
         description: '按用户每小时消耗的原始 token 数（输入+输出+缓存）控制流量，两个开关可独立开启/关闭，保存后立即生效',
-        note: '「已充值」指存在支付成功的余额充值订单（兑换码与订阅订单不算）。时间窗口为自然整点：每小时整点自动清零重新计算，未用完的赠送额度作废、不累积、不补发。',
+        note: '「已付费」指存在支付成功的订单（余额充值或订阅购买均可）；兑换码、管理员调账与邀请返利不算。未付费用户受每小时上限约束，付费用户不受此限并享受每小时赠送。时间窗口为自然整点：每小时整点自动清零重新计算，未用完的赠送额度作废、不累积、不补发。',
         nonRechargedEnabled: '限制未充值用户每小时额度',
         nonRechargedEnabledHint: '开启后，未充值用户每小时累计消耗超过上限将被拒绝（429），下一整点自动恢复；同时会提示其充值可解除限制。',
         nonRechargedLimit: '未充值用户每小时上限',
-        nonRechargedLimitHint: '按用户累计（含订阅用户），单位 token；0 或关闭开关表示不限制。',
+        nonRechargedLimitHint: '按用户累计（含缓存 token），单位 token；仅约束未付费用户，余额充值或订阅购买过的用户不受此限。0 或关闭开关表示不限制。',
         rechargedBonusEnabled: '已充值用户每小时赠送额度',
         rechargedBonusEnabledHint: '开启后，已充值用户每小时先使用赠送额度（不扣余额），用完后正常扣余额且不限量；额度本身不构成消耗上限。',
         rechargedBonus: '每小时赠送额度',

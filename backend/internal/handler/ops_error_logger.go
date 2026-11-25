@@ -55,7 +55,12 @@ const (
 	// opsAPIKeyQuotaExhaustedKeyword 是「API key 额度已用完」的匹配口径。
 	// 这是本地 API key 额度耗尽（API_KEY_QUOTA_EXHAUSTED），属预期业务限制，
 	// 无条件不写入错误日志（不需要后台开关）。
-	opsAPIKeyQuotaExhaustedKeyword = "api key 额度已用完"
+	opsAPIKeyQuotaExhaustedKeyword = "api key quota exhausted"
+
+	// 「未充值账号每小时 token 额度已用完」的匹配口径。
+	// 这是本地网关在 HourlyTokenGate 阶段返回的 429，属预期业务限制（未充值用户超出免费额度），
+	// 无条件不写入管理员错误日志，避免高频刷屏干扰关键告警。
+	opsHourlyTokenLimitKeyword = "hourly token quota exceeded"
 
 	// 两类「预期内、量大的模型相关错误」无条件跳过错误日志的匹配口径。
 	// 都是本地网关生成的英文文案，模型名多变，故只匹配稳定短语、与模型名无关。
@@ -82,6 +87,7 @@ const (
 	opsCodeAPIKeyDisabled        = "API_KEY_DISABLED"
 	opsCodeUserNotFound          = "USER_NOT_FOUND"
 	opsCodeAPIKeyQuotaExhausted  = "API_KEY_QUOTA_EXHAUSTED"
+	opsCodeHourlyTokenLimit      = "HOURLY_TOKEN_LIMIT_EXCEEDED"
 	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
 	opsCodeGroupDeleted          = "GROUP_DELETED"
 	opsCodeGroupDisabled         = "GROUP_DISABLED"
@@ -240,9 +246,10 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 	}
 	// 兜底过滤：2xx 上游恢复行、cyber 专用记录等路径不经过 shouldSkipOpsErrorLog，
 	// 在这里统一收口，保证「凡含 insufficient 的错误都不写入 ops_error_logs」，
-	// 以及「API key 额度已用完」在任何路径下都不落库（无条件）。
+	// 以及「API key 额度已用完」「未充值账号每小时 token 额度已用完」在任何路径下都不落库（无条件）。
 	if shouldSkipEnqueuedInsufficientError(ops.OpsAdvancedSettingsSnapshot(), entry) ||
 		shouldSkipEnqueuedAPIKeyQuotaExhausted(entry) ||
+		shouldSkipEnqueuedHourlyTokenLimit(entry) ||
 		shouldSkipEnqueuedBenignModelError(entry) {
 		return
 	}
@@ -342,6 +349,28 @@ func shouldSkipEnqueuedAPIKeyQuotaExhausted(entry *service.OpsInsertErrorLogInpu
 	}
 	for _, text := range texts {
 		if strings.Contains(strings.ToLower(text), opsAPIKeyQuotaExhaustedKeyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipEnqueuedHourlyTokenLimit 是「未充值账号每小时 token 额度已用完」在落库前的
+// 兜底过滤，与主路径 shouldSkipHourlyTokenLimitExceeded 同一口径。
+// 覆盖 2xx 恢复行、cyber 专用记录等不经 shouldSkipOpsErrorLog 的路径。
+func shouldSkipEnqueuedHourlyTokenLimit(entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	texts := []string{entry.ErrorMessage, entry.ErrorBody}
+	if entry.UpstreamErrorMessage != nil {
+		texts = append(texts, *entry.UpstreamErrorMessage)
+	}
+	if entry.UpstreamErrorDetail != nil {
+		texts = append(texts, *entry.UpstreamErrorDetail)
+	}
+	for _, text := range texts {
+		if strings.Contains(text, opsHourlyTokenLimitKeyword) {
 			return true
 		}
 	}
@@ -2481,8 +2510,8 @@ func isOpsClientAuthError(code string, msg string) bool {
 		strings.Contains(msg, "api key is disabled") ||
 		strings.Contains(msg, "user associated with api key not found") ||
 		strings.Contains(msg, "user account is not active") ||
-		strings.Contains(msg, "api key 所属分组已删除") ||
-		strings.Contains(msg, "api key 所属分组已停用") ||
+		strings.Contains(msg, "api key group has been deleted") ||
+		strings.Contains(msg, "api key group has been disabled") ||
 		strings.Contains(msg, "api key is not assigned to any group")
 }
 
@@ -2503,10 +2532,10 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, opsErrInsufficientBalance) ||
 		strings.Contains(msg, "insufficient account balance") ||
 		strings.Contains(msg, "api key group platform is not gemini") ||
-		strings.Contains(msg, "api key 额度已用完") ||
-		strings.Contains(msg, "api key 5小时限额已用完") ||
-		strings.Contains(msg, "api key 日限额已用完") ||
-		strings.Contains(msg, "api key 7天限额已用完") ||
+		strings.Contains(msg, "api key quota exhausted") ||
+		strings.Contains(msg, "api key 5-hour rate limit exceeded") ||
+		strings.Contains(msg, "api key daily rate limit exceeded") ||
+		strings.Contains(msg, "api key 7-day rate limit exceeded") ||
 		strings.Contains(msg, "daily usage limit exceeded") ||
 		strings.Contains(msg, "weekly usage limit exceeded") ||
 		strings.Contains(msg, "monthly usage limit exceeded") ||
@@ -2654,6 +2683,12 @@ func shouldSkipOpsErrorLog(ops *service.OpsService, message, body, code, request
 		return true
 	}
 
+	// 「未充值账号每小时 token 额度已用完」无条件过滤，与 API key 额度耗尽同级，
+	// 都是本地预期业务限制，不应污染管理员错误日志。
+	if shouldSkipHourlyTokenLimitExceeded(message, body, code) {
+		return true
+	}
+
 	// 两类预期内、量大的模型错误（账号忙/封、模型名乱写）无条件过滤，与后台开关无关。
 	if shouldSkipBenignModelError(message, body, code) {
 		return true
@@ -2719,6 +2754,17 @@ func shouldSkipAPIKeyQuotaExhausted(message, body, code string) bool {
 	}
 	return strings.Contains(strings.ToLower(message), opsAPIKeyQuotaExhaustedKeyword) ||
 		strings.Contains(strings.ToLower(body), opsAPIKeyQuotaExhaustedKeyword)
+}
+
+// shouldSkipHourlyTokenLimitExceeded 判定「Hourly token quota exceeded」——本地网关
+// HourlyTokenGate 返回的 429，属预期业务限制，无条件不写入管理员错误日志。
+// 匹配口径：错误码 HOURLY_TOKEN_LIMIT_EXCEEDED，或消息体/响应体含该英文短语（大小写不敏感）。
+func shouldSkipHourlyTokenLimitExceeded(message, body, code string) bool {
+	if strings.EqualFold(strings.TrimSpace(code), opsCodeHourlyTokenLimit) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(message), opsHourlyTokenLimitKeyword) ||
+		strings.Contains(strings.ToLower(body), opsHourlyTokenLimitKeyword)
 }
 
 // shouldSkipBenignModelError 判定三类「预期内、量大」的模型相关错误，无条件不写入日志：

@@ -27,14 +27,34 @@ func TestHandleOpenAITransientError_BlocksOnlyRequestedModel(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 	}
 
-	firstShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"Upstream request failed","type":"upstream_error"}}`), "gpt-5.5")
-	secondShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"Upstream request failed","type":"upstream_error"}}`), "gpt-5.5")
+	firstShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"temporary upstream failure","type":"upstream_error"}}`), "gpt-5.5")
+	secondShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"temporary upstream failure","type":"upstream_error"}}`), "gpt-5.5")
 
 	require.False(t, firstShouldDisable)
 	require.False(t, secondShouldDisable)
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
 	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.6-terra"))
+}
+
+// TestHandleOpenAITransientError_Unexpected502DoesNotCooldownAccount 锁定运维口径：
+// 「Upstream request failed」这类意外 502 不做任何账号级/模型级冷却，账号保持正常调度。
+func TestHandleOpenAITransientError_Unexpected502DoesNotCooldownAccount(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5106,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+
+	for range 3 {
+		shouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"Upstream request failed","type":"upstream_error"}}`), "gpt-5.5")
+		require.False(t, shouldDisable)
+	}
+
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"), "意外 502 不得冷却模型")
 }
 
 func TestHandleOpenAITransientError_TransientStatusesUseModelScope(t *testing.T) {

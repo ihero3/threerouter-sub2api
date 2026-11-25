@@ -24,15 +24,15 @@ func TestShouldSkipAPIKeyQuotaExhausted(t *testing.T) {
 		code    string
 		want    bool
 	}{
-		{"exact message", "API key 额度已用完", "", "", true},
-		{"lowercase message", "api key 额度已用完", "", "", true},
-		{"message in body", "", `{"error":{"message":"API key 额度已用完"}}`, "", true},
+		{"exact message", "API key quota exhausted", "", "", true},
+		{"lowercase message", "api key quota exhausted", "", "", true},
+		{"message in body", "", `{"error":{"message":"API key quota exhausted"}}`, "", true},
 		{"error code only", "", "", "API_KEY_QUOTA_EXHAUSTED", true},
 		{"lowercase error code", "", "", "api_key_quota_exhausted", true},
 		// 正常错误必须保留，尤其是同为 429 / 业务限制的其他口径
 		{"rate limit", "rate limit exceeded", "", "rate_limit_exceeded", false},
 		{"insufficient balance", "Insufficient balance", "", "INSUFFICIENT_BALANCE", false},
-		{"daily quota wording", "api key 日限额已用完", "", "", false},
+		{"daily quota wording", "api key daily rate limit exceeded", "", "", false},
 		{"empty", "", "", "", false},
 	}
 	for _, tc := range cases {
@@ -59,26 +59,26 @@ func TestShouldSkipAPIKeyQuotaExhaustedIgnoresSettings(t *testing.T) {
 	require.NoError(t, svc.RefreshRuntimeSettings(t.Context()))
 	require.False(t, svc.OpsAdvancedSettingsSnapshot().IgnoreInsufficientBalanceErrors)
 	require.False(t, svc.OpsAdvancedSettingsSnapshot().IgnoreAuthFallbackAdminErrors)
-	require.True(t, shouldSkipOpsErrorLog(svc, "API key 额度已用完", "", "", "/v1/chat/completions"))
+	require.True(t, shouldSkipOpsErrorLog(svc, "API key quota exhausted", "", "", "/v1/chat/completions"))
 }
 
 // TestShouldSkipEnqueuedAPIKeyQuotaExhausted 覆盖 2xx 恢复行等不经
 // shouldSkipOpsErrorLog 的落库路径（与主路径同一口径）。
 func TestShouldSkipEnqueuedAPIKeyQuotaExhausted(t *testing.T) {
-	upstreamMsg := "api key 额度已用完"
-	upstreamDetail := "API key 额度已用完"
+	upstreamMsg := "api key quota exhausted"
+	upstreamDetail := "API key quota exhausted"
 	cases := []struct {
 		name  string
 		entry *service.OpsInsertErrorLogInput
 		want  bool
 	}{
-		{"error message", &service.OpsInsertErrorLogInput{ErrorMessage: "API key 额度已用完"}, true},
-		{"error body", &service.OpsInsertErrorLogInput{ErrorBody: `{"message":"api key 额度已用完"}`}, true},
+		{"error message", &service.OpsInsertErrorLogInput{ErrorMessage: "API key quota exhausted"}, true},
+		{"error body", &service.OpsInsertErrorLogInput{ErrorBody: `{"message":"api key quota exhausted"}`}, true},
 		{"upstream message", &service.OpsInsertErrorLogInput{UpstreamErrorMessage: &upstreamMsg}, true},
 		{"upstream detail", &service.OpsInsertErrorLogInput{UpstreamErrorDetail: &upstreamDetail}, true},
 		{"normal error", &service.OpsInsertErrorLogInput{ErrorMessage: "upstream timeout"}, false},
 		{"request preview must not gate", &service.OpsInsertErrorLogInput{
-			RequestPreview: "api key 额度已用完",
+			RequestPreview: "api key quota exhausted",
 			ErrorMessage:   "upstream timeout",
 		}, false},
 		{"nil entry", nil, false},

@@ -59,15 +59,26 @@ func (s *OpenAIGatewayService) newStreamReadErrorFailoverError(
 	upstreamRequestID string,
 	cause error,
 ) *UpstreamFailoverError {
-	s.penalizeOpenAIStreamTruncation(c, account, upstreamModel)
+	s.penalizeOpenAIStreamTruncation(c, account, upstreamModel, cause)
 	return newOpenAIStreamReadErrorFailoverError(c, account, upstreamRequestID, cause)
+}
+
+// shouldSkipOpenAIStreamInterruptionPenalty 判断本次流失败是否属于「意外」的上游流中断
+// （非干净 EOF 的读取错误）。这类中断对应的 502 目前被视为上游瞬时抖动，不对账号做
+// 截断降权，避免误冷却/停用账号。
+func shouldSkipOpenAIStreamInterruptionPenalty(cause error) bool {
+	return cause != nil && !errors.Is(cause, ErrOpenAIUpstreamStreamTruncated)
 }
 
 // penalizeOpenAIStreamTruncation 递增账号级截断计数；窗口内重复命中时把账号
 // 临时移出调度。已写出部分内容、无法就地换号的截断同样要计数，否则同一坏账号
 // 会在客户端的后续重试里被反复选中。
-func (s *OpenAIGatewayService) penalizeOpenAIStreamTruncation(c *gin.Context, account *Account, upstreamModel string) {
+func (s *OpenAIGatewayService) penalizeOpenAIStreamTruncation(c *gin.Context, account *Account, upstreamModel string, cause error) {
 	if s == nil || s.rateLimitService == nil || c == nil || c.Request == nil {
+		return
+	}
+	// 意外中断不做账号降权（用户要求：这两类 502 不冷却/停用账号）。
+	if shouldSkipOpenAIStreamInterruptionPenalty(cause) {
 		return
 	}
 	// 客户端断开后 c.Request.Context() 也会被取消：降权计数与落库必须用
@@ -81,8 +92,11 @@ func (s *OpenAIGatewayService) penalizeOpenAIStreamTruncation(c *gin.Context, ac
 // 才断流"的形态：用户已经看到被截断的回答，客户端几乎必然立刻重试，而重试请求
 // 通常带着相同的内容指纹、会被粘性会话绑回同一个上游账号。这里在常规的窗口计数
 // 之外立刻做一次进程内冷却，保证紧跟着的重试不会再命中同一个坏源。
-func (s *OpenAIGatewayService) penalizeClientVisibleOpenAIStreamTruncation(c *gin.Context, account *Account, upstreamModel string) {
+func (s *OpenAIGatewayService) penalizeClientVisibleOpenAIStreamTruncation(c *gin.Context, account *Account, upstreamModel string, cause error) {
 	if s == nil || s.rateLimitService == nil || c == nil || c.Request == nil {
+		return
+	}
+	if shouldSkipOpenAIStreamInterruptionPenalty(cause) {
 		return
 	}
 	penaltyCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 3*time.Second)

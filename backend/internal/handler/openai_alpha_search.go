@@ -113,6 +113,17 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("openai_alpha_search.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
+
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
 	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: requestedModel, BodyBytes: len(body), MaxTokens: requestMaxOutputTokens(body), Kind: service.InflightEstimateToken, SearchCalls: 1})
 	if inflightErr != nil {

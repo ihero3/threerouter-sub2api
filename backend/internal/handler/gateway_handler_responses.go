@@ -163,6 +163,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(requestCtx, apiKey.User.ID); err != nil {
+		reqLog.Info("gateway.responses.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.responsesErrorResponse(c, status, code, message)
+		return
+	}
+
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
 	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
 	if err != nil {

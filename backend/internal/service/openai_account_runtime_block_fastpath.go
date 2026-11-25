@@ -96,16 +96,22 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// 两类「意外」502（通用 "Upstream request failed"、上游响应流被中断）目前多为上游
+	// 瞬时抖动，不代表账号本身不可用：跳过永久停用与所有冷却/降权，账号保持正常调度。
+	unexpectedIncident := isUnexpectedOpenAIUpstream502(statusCode, responseBody)
 	// 开启 "Disable Failed Account on Failover" 时，对 failover 名单内错误（含 429/401/403/5xx）的出错账号
 	// 统一在此处永久禁用（status=error）并移出调度池。置于分支逻辑之前，保证所有命中 failover 名单的状态码
 	// 行为一致：不会因下方的错误子类（如 429 图片限流、429 Codex 限流、访问态错误等）早退而漏掉禁用。
-	if s != nil && account != nil {
+	if s != nil && account != nil && !unexpectedIncident {
 		maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, statusCode, headers, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(responseBody), responseBody)
 	}
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
+	}
+	if unexpectedIncident {
+		return false
 	}
 	// Capacity shedding describes this request, not account health. Keep the
 	// account schedulable while the request-local retry budget handles recovery.
@@ -208,6 +214,21 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		}
 	}
 	return shouldDisable
+}
+
+// isUnexpectedOpenAIUpstream502 判定当前被运维视为「意外」的两类 502：
+//  1. 上游返回 502 且响应体为通用 "Upstream request failed"；
+//  2. 上游响应流被中断（客户端文案 "Upstream response stream was interrupted"）。
+//
+// 这两类 502 目前多为上游瞬时抖动，不代表账号本身不可用，因此不对账号做
+// 冷却/停用/降权等健康度处理，只由请求级重试（含续写）消费。
+func isUnexpectedOpenAIUpstream502(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusBadGateway {
+		return false
+	}
+	lower := strings.ToLower(string(responseBody))
+	return strings.Contains(lower, "upstream request failed") ||
+		strings.Contains(lower, "upstream response stream was interrupted")
 }
 
 func shouldCooldownOpenAITransientUpstreamError(statusCode int, responseBody []byte) bool {

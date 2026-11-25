@@ -757,10 +757,11 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
 }
 
-// HasBalanceRecharge 判断用户是否存在支付成功的余额充值订单。
-// 只认 order_type=balance：兑换码、管理员调账与订阅订单都不算「充值」，
-// 与 userRechargedPredicate（订单管理口径）保持同一状态集合。
-func (r *userRepository) HasBalanceRecharge(ctx context.Context, userID int64) (bool, error) {
+// HasPaidRecharge 判断用户是否存在支付成功的订单（余额充值或订阅购买均可）。
+// 只认支付系统的真实付款：兑换码、管理员调账、邀请返利提现都不算「充值」；
+// 订阅用户同样是付费用户，因此 order_type 同时包含 balance 与 subscription，
+// 与 userRechargedPredicate（后台「已充值」筛选口径）保持一致。
+func (r *userRepository) HasPaidRecharge(ctx context.Context, userID int64) (bool, error) {
 	if userID <= 0 {
 		return false, nil
 	}
@@ -770,15 +771,15 @@ func (r *userRepository) HasBalanceRecharge(ctx context.Context, userID int64) (
 	}
 	return client.PaymentOrder.Query().Where(
 		paymentorder.UserIDEQ(userID),
-		paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+		paymentorder.OrderTypeIn(payment.OrderTypeBalance, payment.OrderTypeSubscription),
 		paymentorder.PaidAtNotNil(),
 		paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED"),
 	).Exist(ctx)
 }
 
-// SumBalanceRechargeAmount 返回用户累计成功充值的金额（美元），用于封顶每小时赠送额度。
-// 默认只累加 payment_orders 的实付金额（pay_amount），口径与 HasBalanceRecharge 一致。
-func (r *userRepository) SumBalanceRechargeAmount(ctx context.Context, userID int64) (float64, error) {
+// SumPaidRechargeAmount 返回用户累计成功支付的金额（美元，实付 pay_amount，不含充值赠送），
+// 用于封顶每小时赠送额度。口径与 HasPaidRecharge 一致：余额充值 + 订阅购买。
+func (r *userRepository) SumPaidRechargeAmount(ctx context.Context, userID int64) (float64, error) {
 	if userID <= 0 {
 		return 0, nil
 	}
@@ -788,7 +789,7 @@ func (r *userRepository) SumBalanceRechargeAmount(ctx context.Context, userID in
 	}
 	sum, err := client.PaymentOrder.Query().Where(
 		paymentorder.UserIDEQ(userID),
-		paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+		paymentorder.OrderTypeIn(payment.OrderTypeBalance, payment.OrderTypeSubscription),
 		paymentorder.PaidAtNotNil(),
 		paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED"),
 	).Aggregate(dbent.Sum(paymentorder.FieldPayAmount)).Float64(ctx)

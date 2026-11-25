@@ -1280,3 +1280,113 @@ func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenAIStreamContinuationChatBody(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	continuation, ok, err := openAIStreamContinuationChatBody(body, "前半段回答")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	messages := gjson.GetBytes(continuation, "messages").Array()
+	require.Len(t, messages, 3)
+	require.Equal(t, "assistant", messages[1].Get("role").String())
+	require.Equal(t, "前半段回答", messages[1].Get("content").String())
+	require.Equal(t, "user", messages[2].Get("role").String())
+	require.NotEmpty(t, messages[2].Get("content").String())
+
+	// 前缀为空或请求体不是 messages 结构时不做续写。
+	_, ok, err = openAIStreamContinuationChatBody(body, "   ")
+	require.NoError(t, err)
+	require.False(t, ok)
+	_, ok, err = openAIStreamContinuationChatBody([]byte(`{"input":"hi"}`), "prefix")
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+// TestForwardAsRawChatCompletions_ResumesTruncatedStream 覆盖「已下发部分回答后
+// 上游断流」的自动续写：第二次上游请求应带上已下发内容作为 assistant 前缀，
+// 客户端最终拿到完整回答且不再看到 502。
+func TestForwardAsRawChatCompletions_ResumesTruncatedStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	// 首条流：输出前半段后干净 EOF（无 [DONE]），属于截断。
+	firstBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_resume","created":1700000000,"object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"role":"assistant","content":"前半段"}}]}`,
+		"",
+	}, "\n")
+	// 续写流：只给后半段 + [DONE]，id/created 与首条流不同（应被改回首条流）。
+	secondBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_other","created":1800000000,"object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"role":"assistant"}}]}`,
+		"",
+		`data: {"id":"chatcmpl_other","created":1800000000,"object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"content":"后半段"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(firstBody))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(secondBody))},
+	}}
+
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2, "断流后应自动重发一次续写请求")
+
+	// 续写请求必须带上前半段 assistant 前缀与继续指令。
+	continuationMessages := gjson.GetBytes(upstream.bodies[1], "messages").Array()
+	require.GreaterOrEqual(t, len(continuationMessages), 3)
+	last := continuationMessages[len(continuationMessages)-2]
+	require.Equal(t, "assistant", last.Get("role").String())
+	require.Contains(t, last.Get("content").String(), "前半段")
+
+	out := rec.Body.String()
+	require.Contains(t, out, "前半段")
+	require.Contains(t, out, "后半段")
+	require.Equal(t, 1, strings.Count(out, "[DONE]"))
+	// 续写 chunk 的 id/created 应被改回首条流，客户端不会看到中途换 id。
+	require.NotContains(t, out, "chatcmpl_other")
+	// 两次调用的 usage 都要计费。
+	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+}
+
+// TestForwardAsRawChatCompletions_ContinuationFailureKeepsStreamError 覆盖续写失败：
+// 仍然返回上游流错误，交由 handler 走原有 502 语义。
+func TestForwardAsRawChatCompletions_ContinuationFailureKeepsStreamError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	firstBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_resume","created":1700000000,"object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"content":"半截"}}]}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(firstBody))},
+		{StatusCode: http.StatusBadGateway, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"upstream request failed"}}`))},
+	}}
+
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+
+	require.Error(t, err)
+	var streamErr *openAIUpstreamStreamReadError
+	require.True(t, errors.As(err, &streamErr), "续写失败仍应返回上游流错误")
+	require.Contains(t, rec.Body.String(), "半截")
+}

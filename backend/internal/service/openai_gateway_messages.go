@@ -1306,7 +1306,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if !outputStarted {
 			return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, cause)
 		}
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, cause)
 		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_truncated", upstreamTruncationMessage(cause))
 		return result, newOpenAIUpstreamStreamReadError(cause)
 	}
@@ -1319,12 +1319,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if !semanticOutputStarted() {
 			// 尚未写出语义内容：先给账号记一次截断降权再透明换号，否则客户端重试
 			// 会被再次调度到同一个坏账号（线上事故根因：重试 5 次全部命中同一源）。
-			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel)
+			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel, ErrOpenAIUpstreamStreamTruncated)
 			return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
 		}
 		// 已写出语义内容：用户已经看到半截回答，客户端几乎必然立刻重试，而重试通常
 		// 被粘性会话绑回同一账号——用"客户端已可见"降权（额外进程内冷却）。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, ErrOpenAIUpstreamStreamTruncated)
 		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_missing_terminal", message)
 		return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 	}

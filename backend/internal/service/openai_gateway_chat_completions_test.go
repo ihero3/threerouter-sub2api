@@ -1903,10 +1903,10 @@ func newChatStreamPenaltyService(counter *chatStreamTruncationCounterStub, block
 	return &OpenAIGatewayService{cfg: &config.Config{}, rateLimitService: rl}
 }
 
-// TestHandleChatStreamingResponse_PreOutputTruncationPenalizesWithoutCooldown：
-// 尚未写出语义内容时截断 → 换号错误 + 账号截断计数（窗口降权），但不做立即冷却
-// （本请求还能自愈，不该把账号从本进程摘掉）。
-func TestHandleChatStreamingResponse_PreOutputTruncationPenalizesWithoutCooldown(t *testing.T) {
+// TestHandleChatStreamingResponse_PreOutputReadErrorFailsOverWithoutPenalty：
+// 尚未写出语义内容时上游流中断 → 换号错误；上游流中断属「意外」502，
+// 不对账号做截断降权，也不做立即冷却。
+func TestHandleChatStreamingResponse_PreOutputReadErrorFailsOverWithoutPenalty(t *testing.T) {
 	c, _ := newOpenAIChatStreamFailoverTestContext(t)
 	counter := &chatStreamTruncationCounterStub{}
 	blocker := &chatStreamSchedulingBlockerStub{}
@@ -1929,14 +1929,14 @@ func TestHandleChatStreamingResponse_PreOutputTruncationPenalizesWithoutCooldown
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
-	require.Equal(t, 1, counter.increments, "账号级截断计数必须递增")
+	require.Zero(t, counter.increments, "上游流中断属意外 502：不做账号降权")
 	require.Empty(t, blocker.reasons, "可换号的截断不做立即冷却")
 }
 
-// TestHandleChatStreamingResponse_ClientVisibleTruncationCoolsDownAccount：
-// 语义输出已下发后才断流 → 客户端必然立刻重试，必须立即把账号移出本进程调度，
-// 并同时记窗口降权。这是"用户重试 5 次全部命中同一个坏源"的直接防线。
-func TestHandleChatStreamingResponse_ClientVisibleTruncationCoolsDownAccount(t *testing.T) {
+// TestHandleChatStreamingResponse_ClientVisibleReadErrorDoesNotCoolDownAccount：
+// 语义输出已下发后才上游流中断 → 不能换号，返回带类型的读取错误；
+// 上游流中断属「意外」502，不做降权、不做进程内冷却。
+func TestHandleChatStreamingResponse_ClientVisibleReadErrorDoesNotCoolDownAccount(t *testing.T) {
 	c, _ := newOpenAIChatStreamFailoverTestContext(t)
 	counter := &chatStreamTruncationCounterStub{}
 	blocker := &chatStreamSchedulingBlockerStub{}
@@ -1964,9 +1964,8 @@ func TestHandleChatStreamingResponse_ClientVisibleTruncationCoolsDownAccount(t *
 	code, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
 	require.True(t, ok)
 	require.Equal(t, OpenAIUpstreamStreamReadErrorCode, code)
-	require.Equal(t, 1, counter.increments)
-	require.Equal(t, []string{clientVisibleStreamTruncationReason}, blocker.reasons,
-		"客户端可见截断必须立即把账号移出本进程调度")
+	require.Zero(t, counter.increments, "上游流中断属意外 502：不做账号降权")
+	require.Empty(t, blocker.reasons, "上游流中断属意外 502：不做进程内冷却")
 }
 
 func TestGPT6RawChatRejectsReasoningToolCalls(t *testing.T) {

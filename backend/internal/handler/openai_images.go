@@ -147,6 +147,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("openai.images.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
 	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: routingModel, BodyBytes: len(body), Kind: service.InflightEstimateImage, Units: parsed.N})
 	if inflightErr != nil {

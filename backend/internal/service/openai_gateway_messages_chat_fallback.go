@@ -266,7 +266,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		// 已写出语义内容：换号会把两个上游的回答拼进同一条流，只能返回稳定的截断
 		// 错误码；但必须降权（用户已看到半截回答，客户端几乎必然立刻重试，且重试
 		// 通常被粘性会话绑回同一账号），否则客户端重试会继续被调度到同一个坏账号。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, scan.Err)
 		return result, newOpenAIUpstreamStreamReadError(scan.Err)
 	}
 

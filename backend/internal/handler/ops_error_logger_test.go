@@ -1043,7 +1043,7 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:    "expired local API key",
 			errType: "api_error",
-			message: "API key 已过期",
+			message: "API key expired",
 			code:    "API_KEY_EXPIRED",
 			status:  http.StatusForbidden,
 		},
@@ -1071,21 +1071,21 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:    "deleted local API key group",
 			errType: "api_error",
-			message: "API Key 所属分组已删除",
+			message: "API key group has been deleted",
 			code:    "GROUP_DELETED",
 			status:  http.StatusForbidden,
 		},
 		{
 			name:    "disabled local API key group",
 			errType: "api_error",
-			message: "API Key 所属分组已停用",
+			message: "API key group has been disabled",
 			code:    "GROUP_DISABLED",
 			status:  http.StatusForbidden,
 		},
 		{
 			name:    "google deleted API key group message without semantic code",
 			errType: "api_error",
-			message: "API Key 所属分组已删除",
+			message: "API key group has been deleted",
 			code:    "403",
 			status:  http.StatusForbidden,
 		},
@@ -1168,7 +1168,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:        "standard API key quota exhausted",
 			errType:     "api_error",
-			message:     "API key 额度已用完",
+			message:     "API key quota exhausted",
 			code:        "API_KEY_QUOTA_EXHAUSTED",
 			status:      http.StatusTooManyRequests,
 			wantErrType: "api_error",
@@ -1240,7 +1240,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		{
 			name:        "gateway API key 5h rate limit",
 			errType:     "api_error",
-			message:     "api key 5小时限额已用完",
+			message:     "api key 5-hour rate limit exceeded",
 			code:        "rate_limit_exceeded",
 			status:      http.StatusTooManyRequests,
 			wantErrType: "api_error",
@@ -1542,13 +1542,13 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 		},
 		{
 			name:    "provider quota error",
-			message: "api key 额度已用完",
+			message: "api key quota exhausted",
 			code:    "API_KEY_QUOTA_EXHAUSTED",
 			status:  http.StatusTooManyRequests,
 		},
 		{
 			name:    "provider deleted group shaped error",
-			message: "API Key 所属分组已删除",
+			message: "API key group has been deleted",
 			code:    "GROUP_DELETED",
 			status:  http.StatusForbidden,
 		},
@@ -1664,11 +1664,11 @@ func TestClassifyOpsUpstreamNoAvailableTextStillCountsForSLA(t *testing.T) {
 }
 
 func TestParseOpsErrorResponsePreservesNestedStringCode(t *testing.T) {
-	parsed := parseOpsErrorResponse([]byte(`{"error":{"type":"permission_error","code":"GROUP_DELETED","message":"API Key 所属分组已删除"}}`))
+	parsed := parseOpsErrorResponse([]byte(`{"error":{"type":"permission_error","code":"GROUP_DELETED","message":"API key group has been deleted"}}`))
 
 	require.Equal(t, "permission_error", parsed.ErrorType)
 	require.Equal(t, "GROUP_DELETED", parsed.Code)
-	require.Equal(t, "API Key 所属分组已删除", parsed.Message)
+	require.Equal(t, "API key group has been deleted", parsed.Message)
 }
 
 func TestParseOpsErrorResponsePreservesStructuredTopLevelSemantics(t *testing.T) {

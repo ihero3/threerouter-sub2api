@@ -99,6 +99,17 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 	}
 	subscription = effectiveSub
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("openai.live.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
+
 	userRelease, acquired, err := h.concurrencyHelper.TryAcquireUserSlot(
 		c.Request.Context(),
 		subject.UserID,

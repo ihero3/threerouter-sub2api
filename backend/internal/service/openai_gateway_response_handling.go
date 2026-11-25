@@ -396,7 +396,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			// 账号级截断降权（与 CC 直转 / CC→Responses 桥接路径一致）：即使本次
 			// 请求能透明换号成功，窗口内重复截断的账号也必须被摘出调度池，否则
 			// 客户端的后续重试还会被调度到同一个坏源上。
-			s.penalizeOpenAIStreamTruncation(c, account, mappedModel)
+			s.penalizeOpenAIStreamTruncation(c, account, mappedModel, ErrOpenAIUpstreamStreamTruncated)
 			return resultWithUsage(), s.newOpenAIStreamFailoverError(
 				c,
 				account,
@@ -416,7 +416,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				// 必然立刻重试。此前这条路径只隔离代理（recordOpenAIProxyStreamDisconnect
 				// 仅对托管代理生效），账号本身完全不受影响，直连账号的重试会一直
 				// 命中同一个坏源。这里补上账号级降权。
-				s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel)
+				s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel, ErrOpenAIUpstreamStreamTruncated)
 			}
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
@@ -483,7 +483,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if errText := strings.TrimSpace(scanErr.Error()); errText != "" {
 				msg += ": " + errText
 			}
-			s.penalizeOpenAIStreamTruncation(c, account, mappedModel)
+			s.penalizeOpenAIStreamTruncation(c, account, mappedModel, scanErr)
 			return resultWithUsage(), s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, nil, msg), true
 		}
 		// 客户端已断开时，上游出错仅影响体验，不影响计费；返回已收集 usage
@@ -493,7 +493,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		s.recordOpenAIProxyStreamDisconnect(account, scanErr, upstreamRequestID)
 		// 与上同：客户端已收到语义输出，账号级降权 + 立即冷却，避免重试回落到
 		// 同一个刚刚断流的上游账号。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, mappedModel, scanErr)
 		code, message := classifyOpenAIUpstreamStreamReadError(scanErr)
 		sendErrorEvent(code, message)
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true

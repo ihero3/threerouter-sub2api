@@ -219,7 +219,7 @@ func (s *SettingService) storeHourlyTokenLimitCache(settings HourlyTokenLimitSet
 // ErrHourlyTokenLimitExceeded 未充值用户超出每小时 token 上限（下一整点自动恢复）。
 var ErrHourlyTokenLimitExceeded = infraerrors.TooManyRequests(
 	"HOURLY_TOKEN_LIMIT_EXCEEDED",
-	"未充值账号每小时 token 额度已用完，下一整点自动恢复；充值后可解除该限制并每小时获得额外赠送额度",
+	"Hourly token quota exceeded: free-tier hourly token limit reached. It resets at the start of the next hour; top up your balance to lift this limit and unlock hourly bonus tokens.",
 )
 
 // HourlyTokenUsageCache 提供「用户 + 小时桶」的 token 用量计数（Redis 实现）。
@@ -241,13 +241,15 @@ type HourlyTokenUsageCache interface {
 	IncrUserHourlyBonusUsedTotal(ctx context.Context, userID int64, tokens int64) error
 }
 
-// RechargeStatusProvider 判断用户的余额充值情况。
-// 口径与订单管理的「已充值」一致（paid_at 非空 + PAID/RECHARGING/COMPLETED），
-// 但只认余额充值单，兑换码与订阅订单不算。
+// RechargeStatusProvider 判断用户是否为「付费用户」。
+// 口径与后台订单管理的「已充值」一致（paid_at 非空 + PAID/RECHARGING/COMPLETED），
+// 包含余额充值与订阅购买（订阅用户同样是付费用户，不受未充值小时上限约束）；
+// 兑换码、管理员调账、邀请返利提现都不算。
 type RechargeStatusProvider interface {
-	HasBalanceRecharge(ctx context.Context, userID int64) (bool, error)
-	// SumBalanceRechargeAmount 返回用户累计成功充值的金额（美元），用于封顶每小时赠送额度。
-	SumBalanceRechargeAmount(ctx context.Context, userID int64) (float64, error)
+	HasPaidRecharge(ctx context.Context, userID int64) (bool, error)
+	// SumPaidRechargeAmount 返回用户累计成功支付的金额（美元，实付，不含充值赠送），
+	// 用于封顶赠送额度总量。
+	SumPaidRechargeAmount(ctx context.Context, userID int64) (float64, error)
 }
 
 const (
@@ -350,13 +352,13 @@ func (s *BillingCacheService) rechargeInfoCached(ctx context.Context, userID int
 		}
 		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), hourlyTokenLimitDBTimeout)
 		defer cancel()
-		recharged, err := s.rechargeStatus.HasBalanceRecharge(loadCtx, userID)
+		recharged, err := s.rechargeStatus.HasPaidRecharge(loadCtx, userID)
 		if err != nil {
 			return hourlyTokenRechargeEntry{}, err
 		}
 		entry := hourlyTokenRechargeEntry{recharged: recharged}
 		if recharged {
-			amount, amountErr := s.rechargeStatus.SumBalanceRechargeAmount(loadCtx, userID)
+			amount, amountErr := s.rechargeStatus.SumPaidRechargeAmount(loadCtx, userID)
 			if amountErr != nil {
 				// 金额查询失败按 0 处理：宁可少发赠送，也不放宽风控。
 				logger.LegacyPrintf("service.billing_cache",

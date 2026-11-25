@@ -1217,7 +1217,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		// failed"——后者会让调用方无法区分"上游截断"与"网关自身故障"。
 		// 用户已看到被截断的回答，客户端会立刻重试：用"可见截断"降权，立刻把该账号
 		// 移出本进程调度，避免秒级重试被粘性会话绑回同一个坏源。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, ErrOpenAIUpstreamStreamTruncated)
 		return resultWithUsage(), newOpenAIUpstreamStreamReadError(ErrOpenAIUpstreamStreamTruncated)
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
@@ -1259,7 +1259,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 				return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, err)
 			}
-			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, err)
 			return resultWithUsage(), newOpenAIUpstreamStreamReadError(err)
 		}
 		if frame, ok := parser.Finish(); ok {
@@ -1347,7 +1347,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 					return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID, ev.err)
 				}
-				s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+				s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, ev.err)
 				return resultWithUsage(), newOpenAIUpstreamStreamReadError(ev.err)
 			}
 			lastDataAt = time.Now()
@@ -1383,9 +1383,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return nil, s.newStreamReadErrorFailoverError(c, account, upstreamModel, requestID,
 					fmt.Errorf("upstream stream data interval timeout after %s", streamInterval))
 			}
-			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
-			return resultWithUsage(), newOpenAIUpstreamStreamReadError(
-				fmt.Errorf("upstream stream data interval timeout after %s", streamInterval))
+			timeoutErr := fmt.Errorf("upstream stream data interval timeout after %s", streamInterval)
+			s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, timeoutErr)
+			return resultWithUsage(), newOpenAIUpstreamStreamReadError(timeoutErr)
 
 		case <-keepaliveCh:
 			if clientDisconnected {

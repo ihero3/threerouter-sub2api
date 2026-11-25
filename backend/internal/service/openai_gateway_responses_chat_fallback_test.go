@@ -89,6 +89,64 @@ func TestForwardResponses_ForceChatCompletionsRoutesNonStreamingToChatCompletion
 	require.False(t, result.Stream)
 }
 
+// dataThenErrReader 先返回已缓冲的数据，再把读取错误暴露给调用方，用于模拟
+// "上游已经吐出部分 SSE 帧、随后连接被 reset"的断流形态。
+type dataThenErrReader struct {
+	r   *strings.Reader
+	err error
+}
+
+func (d *dataThenErrReader) Read(p []byte) (int, error) {
+	n, err := d.r.Read(p)
+	if err == io.EOF {
+		return n, d.err
+	}
+	return n, err
+}
+
+func (d *dataThenErrReader) Close() error { return nil }
+
+// TestForwardResponses_ChatFallbackResumesTruncatedStream 覆盖 /v1/responses 走
+// CC 上游时"已下发部分回答后断流"的自动续写。
+func TestForwardResponses_ChatFallbackResumesTruncatedStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","input":"hello","stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	firstBody := "data: {\"id\":\"chatcmpl_c1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"前半段\"}}]}\n\n"
+	secondBody := "data: {\"id\":\"chatcmpl_c2\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"后半段\"},\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":3,\"total_tokens\":7}}\n\ndata: [DONE]\n\n"
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: &dataThenErrReader{r: strings.NewReader(firstBody), err: io.ErrUnexpectedEOF}},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(secondBody))},
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, forceChatResponsesFallbackAccount(), body, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2, "断流后应自动重发一次续写请求")
+
+	continuationMessages := gjson.GetBytes(upstream.bodies[1], "messages").Array()
+	require.GreaterOrEqual(t, len(continuationMessages), 3)
+	prefix := continuationMessages[len(continuationMessages)-2]
+	require.Equal(t, "assistant", prefix.Get("role").String())
+	require.Contains(t, prefix.Get("content").String(), "前半段")
+
+	out := rec.Body.String()
+	require.Contains(t, out, "前半段")
+	require.Contains(t, out, "后半段")
+	require.Equal(t, 1, strings.Count(out, `"type":"response.completed"`), "终止事件只应出现一次")
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+}
+
 // Scenario: 第三方无推理模型不收到兼容档位。
 func TestForwardResponses_ForceChatCompletionsOmitsNoneReasoningEffort(t *testing.T) {
 	gin.SetMode(gin.TestMode)

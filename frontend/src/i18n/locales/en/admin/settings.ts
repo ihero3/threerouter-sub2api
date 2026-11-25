@@ -352,11 +352,11 @@ export default {
       hourlyTokenLimit: {
         title: 'Hourly Token Traffic Control',
         description: 'Limits traffic by the raw tokens each user consumes per clock hour (input + output + cache). The two switches are independent and apply immediately after saving.',
-        note: '"Recharged" means the user has a successfully paid balance recharge order (redeem codes and subscription orders do not count). The window is a natural clock hour: it resets on the hour, and unused bonus tokens expire — they never accumulate and are never re-issued.',
+        note: '"Paid" means the user has any successfully paid order (balance top-up or subscription purchase); redeem codes, admin balance adjustments and referral rebates do not count. Unpaid users are subject to the hourly cap; paid users are exempt and receive the hourly bonus. The window is a natural clock hour: it resets on the hour, and unused bonus tokens expire — they never accumulate and are never re-issued.',
         nonRechargedEnabled: 'Limit non-recharged users per hour',
         nonRechargedEnabledHint: 'When enabled, users without a successful recharge are rejected (429) once they exceed the hourly limit, and recover at the next hour. The error tells them recharging removes the limit.',
         nonRechargedLimit: 'Hourly limit for non-recharged users',
-        nonRechargedLimitHint: 'Counted per user (subscription users included), in tokens. 0 or a disabled switch means unlimited.',
+        nonRechargedLimitHint: 'Counted per user in tokens (cached tokens included). Only applies to users who never paid; balance top-ups and subscription purchases exempt the user. 0 or a disabled switch means unlimited.',
         rechargedBonusEnabled: 'Hourly bonus for recharged users',
         rechargedBonusEnabledHint: 'When enabled, recharged users consume the bonus first (free of charge), then pay normally with no cap. The bonus is a free allowance, not a usage cap.',
         rechargedBonus: 'Hourly bonus tokens',

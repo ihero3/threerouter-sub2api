@@ -270,7 +270,19 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	var result *OpenAIForwardResult
 	var forwardErr error
 	if clientStream {
-		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+		// 已下发部分回答后上游断流时，用已下发内容做 assistant 前缀重发一次续写
+		// 请求，避免把半截回答 + 502 抛给客户端。
+		continuation := func(prefix string) (*http.Response, error) {
+			continuationBody, ok, buildErr := openAIStreamContinuationChatBody(upstreamBody, prefix)
+			if buildErr != nil || !ok {
+				if buildErr != nil {
+					return nil, fmt.Errorf("build stream continuation body: %w", buildErr)
+				}
+				return nil, errors.New("stream continuation not available")
+			}
+			return s.sendCCUpstreamRequest(ctx, c, account, targetURL, continuationBody, true, token, customUA, grokCacheIdentity)
+		}
+		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body), continuation)
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
@@ -310,6 +322,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	serviceTier *string,
 	startTime time.Time,
 	requestBodyLen int,
+	continuation ...func(prefix string) (*http.Response, error),
 ) (*OpenAIForwardResult, error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
@@ -326,6 +339,16 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
+	// 已下发给客户端的 assistant 文本，断流续写时作为前缀回填给上游。
+	var clientOutputText strings.Builder
+	// 首条流的 id/created，用于把续写 chunk 归属到同一个 completion（model 统一
+	// 复用客户端请求名 originalModel，与主循环的改名掩盖保持一致）。
+	var streamID string
+	var streamCreated int64
+	continuationSend := func(prefix string) (*http.Response, error) { return nil, errors.New("stream continuation not configured") }
+	if len(continuation) > 0 && continuation[0] != nil {
+		continuationSend = continuation[0]
+	}
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -370,6 +393,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+				}
+				if streamID == "" {
+					streamID = gjson.Get(trimmedPayload, "id").String()
+				}
+				if streamCreated == 0 {
+					streamCreated = gjson.Get(trimmedPayload, "created").Int()
+				}
+				if content := gjson.Get(trimmedPayload, "choices.0.delta.content"); content.Exists() {
+					clientOutputText.WriteString(content.String())
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
@@ -449,14 +481,23 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			// P0: 账号级截断降权——同一账号 5 分钟内累计 2 次截断 → 降权 2 分钟。
 			// 用 WithoutCancel + 短超时：客户端断开后 c.Request.Context() 也会被取消，
 			// 如果沿用原 context 会把降权写库一并取消，导致降权从未生效。
-			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel)
+			s.penalizeOpenAIStreamTruncation(c, account, upstreamModel, cause)
 			// 响应头尚未提交：可以透明换号重试，客户端不会看到半截流。
 			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, cause)
+		}
+		// 已下发语义内容后断流：先尝试用已下发内容做前缀自动续写一次，客户端可以
+		// 在同一响应里拿到剩余回答，不必看到 502。
+		if clientOutputText.Len() > 0 {
+			if s.resumeRawChatCompletions(c, continuationSend, clientOutputText.String(), streamID, originalModel, streamCreated, &usage) {
+				logOpenAIStreamContinuation("openai chat_completions raw", requestID, account, upstreamModel, true)
+				return resultWithUsage(), nil
+			}
+			logOpenAIStreamContinuation("openai chat_completions raw", requestID, account, upstreamModel, false)
 		}
 		// 已向客户端下发了语义输出才断流：用户看到的是被截断的回答，客户端几乎必然
 		// 立刻用同样的内容重试，粘性会话会把它绑回同一个坏账号。这里用"可见截断"
 		// 降权：立刻做一次进程内冷却 + 常规窗口计数，让紧跟其后的重试换源。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, cause)
 		// 已写出语义字节：无法再 failover，改为带类型的上游错误。handler 会据此
 		// 补发 SSE error 帧并把本次请求计入 SLA 失败。
 		recordOpenAIRawStreamTruncation(c, account, requestID, cause, "http_error")

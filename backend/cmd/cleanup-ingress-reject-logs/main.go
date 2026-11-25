@@ -178,11 +178,11 @@ func historicalIngressRejectReason(item candidate) (string, bool) {
 		return "key_disabled", true
 	case normalized == "User account is not active":
 		return "user_inactive", true
-	case normalized == "API Key 所属分组已删除":
+	case normalized == "API key group has been deleted":
 		return "group_deleted", true
-	case normalized == "API Key 所属分组已停用":
+	case normalized == "API key group has been disabled":
 		return "group_disabled", true
-	case normalized == "API Key 所属专属分组不再允许当前用户使用":
+	case normalized == "API key exclusive group no longer allows this user":
 		return "group_forbidden", true
 	case normalized == "API Key is not assigned to any group and cannot be used. Please contact the administrator to assign it to a group.":
 		return "group_unassigned", true

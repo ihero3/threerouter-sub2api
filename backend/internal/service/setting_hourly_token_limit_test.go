@@ -128,12 +128,12 @@ type rechargeStub struct {
 	calls     int
 }
 
-func (s *rechargeStub) HasBalanceRecharge(_ context.Context, _ int64) (bool, error) {
+func (s *rechargeStub) HasPaidRecharge(_ context.Context, _ int64) (bool, error) {
 	s.calls++
 	return s.recharged, s.err
 }
 
-func (s *rechargeStub) SumBalanceRechargeAmount(_ context.Context, _ int64) (float64, error) {
+func (s *rechargeStub) SumPaidRechargeAmount(_ context.Context, _ int64) (float64, error) {
 	if s.err != nil {
 		return 0, s.err
 	}

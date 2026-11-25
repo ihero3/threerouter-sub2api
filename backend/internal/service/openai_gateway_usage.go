@@ -537,6 +537,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if billingErr != nil {
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		// 计费失败但 token 已实际消耗：仍需计入小时桶（用于未充值用户上限判定），
+		// 传 nil 快照表示本次不参与赠送抵扣、不扣减赠送累计池。
+		if s.billingCacheService != nil && usageLog != nil {
+			s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog), nil)
+		}
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")

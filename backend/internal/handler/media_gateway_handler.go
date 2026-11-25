@@ -90,6 +90,15 @@ func (h *MediaGatewayHandler) AudioSpeech(c *gin.Context) {
 			mediaErrorResponse(c, status, code, message)
 			return
 		}
+		// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+		if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+			status, code, message, retryAfter := billingErrorDetails(err)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			mediaErrorResponse(c, status, code, message)
+			return
+		}
 	}
 
 	bytesOut, urlOut, err := h.mediaTaskService.ResolveAudioSpeechBytes(
@@ -389,6 +398,20 @@ func (h *MediaGatewayHandler) createMediaTask(c *gin.Context) mediaCreateOutcome
 				zap.String("kind", string(kind)),
 			)
 			reqLog.Info("media_gateway.billing_eligibility_check_failed", zap.Error(err))
+			status, code, message, retryAfter := billingErrorDetails(err)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			return fail(status, code, message)
+		}
+		// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+		if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+			h.logger.Info("media_gateway.hourly_token_limit_exceeded",
+				zap.Int64("user_id", subject.UserID),
+				zap.Int64("api_key_id", apiKey.ID),
+				zap.String("model", publicModel),
+				zap.Error(err),
+			)
 			status, code, message, retryAfter := billingErrorDetails(err)
 			if retryAfter > 0 {
 				c.Header("Retry-After", strconv.Itoa(retryAfter))

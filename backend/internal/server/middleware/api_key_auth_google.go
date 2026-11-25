@@ -133,7 +133,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		if !validateAPIKeyGroupAllowed(apiKey) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
 			MarkIngressRejected(c, IngressRejectGroupNotAllowed)
-			abortWithGoogleError(c, 403, "API Key 所属专属分组不再允许当前用户使用")
+			abortWithGoogleError(c, 403, "API key exclusive group no longer allows this user")
 			return
 		}
 
@@ -154,20 +154,20 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		// Key 状态检查（状态字段可能因后台异步刷新而滞后，故显式拦截）。
 		switch apiKey.Status {
 		case service.StatusAPIKeyQuotaExhausted:
-			abortWithGoogleError(c, 429, "API key 额度已用完")
+			abortWithGoogleError(c, 429, "API key quota exhausted")
 			return
 		case service.StatusAPIKeyExpired:
-			abortWithGoogleError(c, 403, "API key 已过期")
+			abortWithGoogleError(c, 403, "API key expired")
 			return
 		}
 
 		// 运行时过期/配额检查（即使状态是 active，也要检查时间和用量，与主中间件一致）。
 		if apiKey.IsExpired() {
-			abortWithGoogleError(c, 403, "API key 已过期")
+			abortWithGoogleError(c, 403, "API key expired")
 			return
 		}
 		if apiKey.IsQuotaExhausted() {
-			abortWithGoogleError(c, 429, "API key 额度已用完")
+			abortWithGoogleError(c, 429, "API key quota exhausted")
 			return
 		}
 

@@ -144,7 +144,18 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, account, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		// 已下发部分回答后上游断流时自动续写一次，避免把半截回答 + 502 抛给客户端。
+		continuation := func(prefix string) (*http.Response, error) {
+			continuationBody, ok, buildErr := openAIStreamContinuationChatBody(chatBody, prefix)
+			if buildErr != nil {
+				return nil, fmt.Errorf("build stream continuation body: %w", buildErr)
+			}
+			if !ok {
+				return nil, errors.New("stream continuation not available")
+			}
+			return s.sendCCUpstreamRequest(ctx, c, account, targetURL, continuationBody, true, apiKey, account.GetOpenAIUserAgent(), "")
+		}
+		return s.streamChatCompletionsAsResponses(c, account, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, continuation)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -205,6 +216,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	continuation ...func(prefix string) (*http.Response, error),
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
@@ -251,6 +263,49 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	})
 
 	if scan.Err != nil {
+		// 已下发语义内容后断流：先用已下发文本做前缀自动续写一次。续写流继续喂给
+		// 同一个 state（created 与 message item 生命周期都已打开），客户端只会看到
+		// 后续文本增量，不会出现第二个 response.created。
+		if !clientDisconnected &&
+			shouldClassifyOpenAIUpstreamStreamReadError(scan.Err, ginRequestContext(c)) &&
+			openAIStreamClientOutputStarted(c, clientOutputStarted) &&
+			state.Text.Len() > 0 && len(continuation) > 0 && continuation[0] != nil {
+			if resumeResp, contErr := continuation[0](state.Text.String()); contErr == nil && resumeResp != nil {
+				if resumeResp.StatusCode < 400 {
+					resumeScan := s.scanCCStream(c, resumeResp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+						// 续写流是新的 completion：清掉 id，避免覆盖已下发的 response.id。
+						chunk.ID = ""
+						events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
+						s.cacheReasoningItemsFromEvents(events)
+						writeEvents(events)
+					})
+					_ = resumeResp.Body.Close()
+					// 两次上游调用的 usage 都要计费：续写不是免费重试。
+					mergedUsage := scan.Usage
+					addOpenAIUsage(&mergedUsage, resumeScan.Usage)
+					if resumeScan.FirstTokenMs == nil {
+						resumeScan.FirstTokenMs = scan.FirstTokenMs
+					}
+					if resumeScan.Err == nil {
+						logOpenAIStreamContinuation("openai responses chat fallback", requestID, account, upstreamModel, true)
+						// 合并后的 usage 同步回 state，保证 response.completed 里的 usage
+						// 覆盖两次上游调用，而不是只剩续写那一段。
+						state.Usage = apicompat.ChatUsageToResponsesUsage(&apicompat.ChatUsage{
+							PromptTokens:     mergedUsage.InputTokens,
+							CompletionTokens: mergedUsage.OutputTokens,
+						})
+						resumeScan.Usage = mergedUsage
+						scan = resumeScan
+					} else {
+						logOpenAIStreamContinuation("openai responses chat fallback", requestID, account, upstreamModel, false)
+						scan.Usage = mergedUsage
+						scan.Err = resumeScan.Err
+					}
+				}
+			}
+		}
+	}
+	if scan.Err != nil {
 		result := &OpenAIForwardResult{
 			RequestID:                   requestID,
 			UpstreamHeaders:             resp.Header,
@@ -280,7 +335,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		// 已写出语义事件：换号会把两个上游的回答拼进同一条流，只能返回稳定的截断
 		// 错误码；但必须降权（用户已看到半截回答，客户端几乎必然立刻重试），否则
 		// 客户端重试会继续被调度到同一个坏账号。
-		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel)
+		s.penalizeClientVisibleOpenAIStreamTruncation(c, account, upstreamModel, scan.Err)
 		return result, newOpenAIUpstreamStreamReadError(scan.Err)
 	}
 	if err := state.ValidateToolCallArguments(); err != nil {

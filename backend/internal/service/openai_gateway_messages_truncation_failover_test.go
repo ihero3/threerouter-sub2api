@@ -153,7 +153,7 @@ func messagesTruncationStreamResponse(requestID string, body io.ReadCloser) *htt
 }
 
 // 上游一个字节都没发就被 reset：必须换号（RetryableOnSameAccount=false 表示不要
-// 在原地重试同一条坏通道），并且换号前给账号记一次降权。
+// 在原地重试同一条坏通道）。上游流中断属「意外」502，不对账号降权。
 func TestHandleAnthropicStreamingResponse_ReadErrorBeforeOutputFailsOver(t *testing.T) {
 	h := newMessagesTruncationTestHarness()
 	c, rec := newMessagesTruncationTestContext(t, "/v1/messages", nil)
@@ -178,7 +178,7 @@ func TestHandleAnthropicStreamingResponse_ReadErrorBeforeOutputFailsOver(t *test
 	_, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
 	require.False(t, ok, "failover 错误不得伪装成客户端侧读取错误")
 	require.Empty(t, rec.Body.String(), "换号前不得向客户端写出任何字节")
-	require.Equal(t, 1, h.counter.increments, "换号前必须同步降权，否则客户端重试会再次命中同一账号")
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：不做账号降权")
 	require.Empty(t, h.blocker.blockedReasons, "尚未写出语义内容的截断走透明换号，无需进程内冷却")
 }
 
@@ -215,13 +215,13 @@ func TestHandleAnthropicStreamingResponse_PingOnlyThenReadErrorFailsOver(t *test
 	require.True(t, failoverErr.SafeToFailoverAfterWrite, "心跳已提交 200，但仍允许在同一客户端流内换号")
 	require.Contains(t, string(failoverErr.ResponseBody), OpenAIUpstreamHTTP2StreamErrorCode)
 	require.Equal(t, pingFrame, rec.Body.String(), "心跳之后换号前不得再写出其他内容")
-	require.Equal(t, 1, h.counter.increments)
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：不做账号降权")
 	require.Empty(t, h.blocker.blockedReasons, "尚未写出语义内容的截断走透明换号，无需进程内冷却")
 }
 
-// 已写出语义内容后上游断流：不能换号（会把两条回答拼进一条流），但必须降权，
-// 并返回带类型的截断错误码（而不是泛化错误）。
-func TestHandleAnthropicStreamingResponse_ReadErrorAfterOutputPenalizesWithoutFailover(t *testing.T) {
+// 已写出语义内容后上游断流：不能换号（会把两条回答拼进一条流），
+// 返回带类型的截断错误码（而不是泛化错误）；上游流中断属意外 502，不降权。
+func TestHandleAnthropicStreamingResponse_ReadErrorAfterOutputDoesNotPenalize(t *testing.T) {
 	h := newMessagesTruncationTestHarness()
 	c, rec := newMessagesTruncationTestContext(t, "/v1/messages", nil)
 
@@ -249,8 +249,8 @@ func TestHandleAnthropicStreamingResponse_ReadErrorAfterOutputPenalizesWithoutFa
 	require.True(t, ok, "必须返回带类型的上游流读取错误")
 	require.Equal(t, OpenAIUpstreamHTTP2StreamErrorCode, code)
 	require.Contains(t, rec.Body.String(), "partial", "断流前已写出的内容必须到达客户端")
-	require.Equal(t, 1, h.counter.increments, "无法换号的截断同样必须降权")
-	require.Len(t, h.blocker.blockedReasons, 1, "客户端已经看到语义输出的截断必须立刻做进程内冷却，避免紧跟的重试命中同一账号")
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：无法换号时也不降权")
+	require.Empty(t, h.blocker.blockedReasons, "上游流中断属意外 502：不做进程内冷却")
 }
 
 // 干净 EOF + 缺终止事件（事故的直接形态）：未写出语义内容时换号，并降权。
@@ -350,11 +350,11 @@ func TestForwardAsAnthropic_ChatFallbackStreamReadErrorBeforeOutputFailsOver(t *
 	require.True(t, failoverErr.ShouldRetryNextAccount())
 	require.False(t, failoverErr.RetryableOnSameAccount)
 	require.Empty(t, rec.Body.String(), "换号前不得向客户端写出任何字节")
-	require.Equal(t, 1, h.counter.increments)
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：不做账号降权")
 	require.Empty(t, h.blocker.blockedReasons, "尚未写出语义内容的截断走透明换号，无需进程内冷却")
 }
 
-func TestForwardAsAnthropic_ChatFallbackStreamReadErrorAfterOutputPenalizesWithoutFailover(t *testing.T) {
+func TestForwardAsAnthropic_ChatFallbackStreamReadErrorAfterOutputDoesNotPenalize(t *testing.T) {
 	h := newMessagesTruncationTestHarness()
 	body := []byte(`{"model":"deepseek-v4-pro","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	c, rec := newMessagesTruncationTestContext(t, "/v1/messages", body)
@@ -379,8 +379,8 @@ func TestForwardAsAnthropic_ChatFallbackStreamReadErrorAfterOutputPenalizesWitho
 	require.Equal(t, OpenAIUpstreamStreamReadErrorCode, code)
 	require.Contains(t, rec.Body.String(), `"text":"he"`)
 	require.NotContains(t, rec.Body.String(), "event: message_stop", "不得凭空补一个完成帧掩盖截断")
-	require.Equal(t, 1, h.counter.increments)
-	require.Len(t, h.blocker.blockedReasons, 1, "客户端已经看到语义输出的截断必须立刻做进程内冷却，避免紧跟的重试命中同一账号")
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：无法换号时也不降权")
+	require.Empty(t, h.blocker.blockedReasons, "上游流中断属意外 502：不做进程内冷却")
 }
 
 // ── /v1/responses 的 CC 回退（streamChatCompletionsAsResponses）──
@@ -403,11 +403,11 @@ func TestForwardResponses_ChatFallbackStreamReadErrorBeforeOutputFailsOver(t *te
 	require.True(t, failoverErr.ShouldRetryNextAccount())
 	require.False(t, failoverErr.RetryableOnSameAccount)
 	require.Empty(t, rec.Body.String())
-	require.Equal(t, 1, h.counter.increments)
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：不做账号降权")
 	require.Empty(t, h.blocker.blockedReasons, "尚未写出语义内容的截断走透明换号，无需进程内冷却")
 }
 
-func TestForwardResponses_ChatFallbackStreamReadErrorAfterOutputPenalizesWithoutFailover(t *testing.T) {
+func TestForwardResponses_ChatFallbackStreamReadErrorAfterOutputDoesNotPenalize(t *testing.T) {
 	h := newMessagesTruncationTestHarness()
 	body := []byte(`{"model":"deepseek-v4-pro","input":"hello","stream":true}`)
 	c, rec := newMessagesTruncationTestContext(t, "/v1/responses", body)
@@ -431,6 +431,6 @@ func TestForwardResponses_ChatFallbackStreamReadErrorAfterOutputPenalizesWithout
 	require.True(t, ok)
 	require.Equal(t, OpenAIUpstreamStreamReadErrorCode, code)
 	require.NotEmpty(t, rec.Body.String())
-	require.Equal(t, 1, h.counter.increments)
-	require.Len(t, h.blocker.blockedReasons, 1, "客户端已经看到语义输出的截断必须立刻做进程内冷却，避免紧跟的重试命中同一账号")
+	require.Zero(t, h.counter.increments, "上游流中断属意外 502：无法换号时也不降权")
+	require.Empty(t, h.blocker.blockedReasons, "上游流中断属意外 502：不做进程内冷却")
 }
