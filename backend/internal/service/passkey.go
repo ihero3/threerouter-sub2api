@@ -306,7 +306,8 @@ func (s *PasskeyService) FinishLogin(
 			return nil, ErrPasskeyVerify
 		}
 		account, lookupErr := s.userRepo.GetByID(ctx, record.UserID)
-		if lookupErr != nil || account == nil || !account.IsActive() {
+		// 禁用账号也允许通过 Passkey 登录控制台（模型 API 由 API Key 鉴权拦截）。
+		if lookupErr != nil || account == nil {
 			return nil, ErrPasskeyVerify
 		}
 		return s.loadWebAuthnUser(ctx, account, record.UserHandle)

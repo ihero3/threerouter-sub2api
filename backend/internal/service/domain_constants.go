@@ -402,6 +402,10 @@ const (
 	// 网关 API 按客户端 IP 限流设置（JSON：GatewayIPRateLimitSettings）
 	SettingKeyGatewayIPRateLimitSettings = "gateway_ip_rate_limit_settings"
 
+	// 每小时 token 流量控制设置（JSON：HourlyTokenLimitSettings）
+	// 未充值用户每小时 token 上限 + 已充值用户每小时赠送 token 额度，两个开关独立。
+	SettingKeyHourlyTokenLimitSettings = "hourly_token_limit_settings"
+
 	// 全站 IP 黑名单设置（JSON：SecurityIPBlacklistSettings）。
 	// 对注册/登录面板与模型网关统一生效，命中即 403；
 	// 管理端 API 与支付 webhook 回调豁免（防止管理员自锁、支付回调被误杀）。
@@ -857,6 +861,10 @@ const (
 	// 账号限额通知
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
+
+	// 上游账号状态变更通知
+	SettingKeyAccountStatusNotifyEnabled = "account_status_notify_enabled" // 全局开关
+	SettingKeyAccountStatusNotifyEmails  = "account_status_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置

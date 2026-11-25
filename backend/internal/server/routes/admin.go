@@ -755,6 +755,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 		// 网关 API 按客户端 IP 限流配置
 		adminSettings.GET("/gateway-ip-rate-limit", h.Admin.Setting.GetGatewayIPRateLimitSettings)
 		adminSettings.PUT("/gateway-ip-rate-limit", h.Admin.Setting.UpdateGatewayIPRateLimitSettings)
+		// 每小时 token 流量控制（未充值上限 / 已充值赠送额度，双开关）
+		adminSettings.GET("/hourly-token-limit", h.Admin.Setting.GetHourlyTokenLimitSettings)
+		adminSettings.PUT("/hourly-token-limit", h.Admin.Setting.UpdateHourlyTokenLimitSettings)
 		// 全站 IP 黑名单配置（注册/登录/网关统一生效）
 		adminSettings.GET("/security-ip-blacklist", h.Admin.Setting.GetSecurityIPBlacklist)
 		adminSettings.PUT("/security-ip-blacklist", h.Admin.Setting.UpdateSecurityIPBlacklist)

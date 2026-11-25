@@ -504,9 +504,7 @@ func (s *AuthService) ValidatePasswordCredentials(ctx context.Context, email, pa
 		}
 		return nil, ErrServiceUnavailable
 	}
-	if !user.IsActive() {
-		return nil, ErrUserNotActive
-	}
+	// 禁用账号也允许校验密码以完成登录流程；模型 API 调用由 API Key 鉴权拦截。
 	if !s.CheckPassword(password, user.PasswordHash) {
 		return nil, ErrInvalidCredentials
 	}

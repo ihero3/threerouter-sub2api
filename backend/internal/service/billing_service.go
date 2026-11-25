@@ -93,6 +93,8 @@ type BillingCache interface {
 	PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]UserPlatformQuotaKey, error)
 	ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []UserPlatformQuotaKey) error
 	BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error)
+
+	HourlyTokenUsageCache
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

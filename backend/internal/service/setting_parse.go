@@ -79,8 +79,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
 		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
 		settingKeyForwardedClientIPModeV2:                   "true",
-		SettingKeySiteName:                                  "Sub2API",
-		SettingKeySiteLogo:                                  "",
+		SettingKeyAccountStatusNotifyEnabled:                "false",
+		SettingKeyAccountStatusNotifyEmails:                 "[]",
+		SettingKeySiteName:                                  "Sub2API",		SettingKeySiteLogo:                                  "",
 		SettingKeyActiveSite:                                "site_a",
 		SettingKeySiteProfiles:                              defaultSiteProfilesJSON,
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
@@ -1057,6 +1058,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if result.AccountQuotaNotifyEmails == nil {
 		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{}
+	}
+
+	// 上游账号状态变更通知
+	result.AccountStatusNotifyEnabled = settings[SettingKeyAccountStatusNotifyEnabled] == "true"
+	if raw := strings.TrimSpace(settings[SettingKeyAccountStatusNotifyEmails]); raw != "" {
+		result.AccountStatusNotifyEmails = ParseNotifyEmails(raw)
+	}
+	if result.AccountStatusNotifyEmails == nil {
+		result.AccountStatusNotifyEmails = []NotifyEmailEntry{}
 	}
 
 	// 系统层默认 platform quota（修复 Bug B：parseSettings 不填充导致回显恒为 nil）

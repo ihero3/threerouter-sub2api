@@ -836,6 +836,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.LoadFactor = input.LoadFactor
 		}
 	}
+	// 先记录变更前状态，供后续状态变更通知使用。
+	previousStatus := account.Status
 	if input.Status != "" {
 		account.Status = input.Status
 	}
@@ -927,6 +929,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	// 状态发生变化时（含 error_message 变化）通知管理员。
+	s.notifyAccountStatusChange(ctx, id, previousStatus, updated.Status, updated.ErrorMessage)
 	return updated, nil
 }
 
@@ -1174,8 +1178,27 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	// Run bulk update for column/jsonb fields first.
+	// 批量变更状态前先记录各账号的原状态，用于逐账号发送状态变更通知。
+	var previousStatuses map[int64]string
+	if input.Status != "" {
+		previousStatuses = make(map[int64]string, len(input.AccountIDs))
+		for _, accountID := range input.AccountIDs {
+			previousStatuses[accountID] = ""
+		}
+		if loaded, loadErr := s.accountRepo.GetByIDs(ctx, input.AccountIDs); loadErr == nil {
+			for _, acc := range loaded {
+				if acc != nil {
+					previousStatuses[acc.ID] = acc.Status
+				}
+			}
+		}
+	}
+
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
 		return nil, err
+	}
+	for accountID, previousStatus := range previousStatuses {
+		s.notifyAccountStatusChange(ctx, accountID, previousStatus, input.Status, "")
 	}
 
 	// 将 proxy 变更传播到每个目标账号的 spark 影子账号
@@ -1316,6 +1339,11 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Account, error) {
+	previous, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	previousStatus := previous.Status
 	if err := s.accountRepo.ClearError(ctx, id); err != nil {
 		return nil, err
 	}
@@ -1340,11 +1368,20 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 			s.runtimeBlocker.ClearAccountSchedulingBlock(id)
 		}
 	})
+	s.notifyAccountStatusChange(ctx, id, previousStatus, account.Status, account.ErrorMessage)
 	return account, nil
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
-	return s.accountRepo.SetError(ctx, id, errorMsg)
+	previousStatus := ""
+	if previous, err := s.accountRepo.GetByID(ctx, id); err == nil {
+		previousStatus = previous.Status
+	}
+	if err := s.accountRepo.SetError(ctx, id, errorMsg); err != nil {
+		return err
+	}
+	s.notifyAccountStatusChange(ctx, id, previousStatus, StatusError, errorMsg)
+	return nil
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {

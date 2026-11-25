@@ -27,6 +27,13 @@ const (
 	rateLimitWindow5h = 5 * time.Hour
 	rateLimitWindow1d = 24 * time.Hour
 	rateLimitWindow7d = 7 * 24 * time.Hour
+
+	// hourlyTokenUsageBucketTTL 小时 token 用量 key 的存活时间：
+	// 一个小时的桶只需要活到本小时结束，留 5 分钟余量吸收请求与 Redis 时钟偏差。
+	hourlyTokenUsageBucketTTL = 65 * time.Minute
+
+	// hourlyBonusSnapshotTTL 赠送额度快照保留 8 天，足够 Usage 页展示最近 24 小时/7 天。
+	hourlyBonusSnapshotTTL = 8 * 24 * time.Hour
 )
 
 // jitteredTTL 返回带随机抖动的 TTL，防止缓存雪崩
@@ -537,6 +544,106 @@ const userPlatformQuotaDirtyTTLSeconds = 86400
 // userPlatformQuotaDirtyMember 构造脏集成员字符串 "userID:platform"。
 func userPlatformQuotaDirtyMember(userID int64, platform string) string {
 	return strconv.FormatInt(userID, 10) + ":" + platform
+}
+
+// hourlyTokenUsageKey 返回用户「当前小时 token 用量」的 Redis key。
+// 用整点时间戳做 key，天然实现「下一小时清零」：新整点自动换 key，无需定时清理。
+func hourlyTokenUsageKey(userID int64, hourBucket int64) string {
+	return fmt.Sprintf("billing:user_hourly_token:%d:%d", userID, hourBucket)
+}
+
+// GetUserHourlyTokenUsage 读取本小时已用 token 数；key 不存在返回 0（半小时后自然过期）。
+func (c *billingCache) GetUserHourlyTokenUsage(ctx context.Context, userID int64, hourBucket int64) (int64, error) {
+	val, err := c.rdb.Get(ctx, hourlyTokenUsageKey(userID, hourBucket)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
+// IncrUserHourlyTokenUsage 原子累加本小时已用 token 数，并把 key 的过期时间续到「本小时结束后 5 分钟」。
+func (c *billingCache) IncrUserHourlyTokenUsage(ctx context.Context, userID int64, hourBucket int64, tokens int64) error {
+	if tokens <= 0 {
+		return nil
+	}
+	key := hourlyTokenUsageKey(userID, hourBucket)
+	pipe := c.rdb.TxPipeline()
+	pipe.IncrBy(ctx, key, tokens)
+	pipe.Expire(ctx, key, hourlyTokenUsageBucketTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ListUserHourlyTokenUsage 批量读取若干小时桶的已用 token（缺失按 0），单次 pipeline 往返。
+func (c *billingCache) ListUserHourlyTokenUsage(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error) {
+	result := make(map[int64]int64, len(hourBuckets))
+	if len(hourBuckets) == 0 {
+		return result, nil
+	}
+	pipe := c.rdb.Pipeline()
+	cmds := make([]*redis.StringCmd, len(hourBuckets))
+	for i, bucket := range hourBuckets {
+		cmds[i] = pipe.Get(ctx, hourlyTokenUsageKey(userID, bucket))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+	for i, bucket := range hourBuckets {
+		val, err := cmds[i].Int64()
+		if errors.Is(err, redis.Nil) {
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		result[bucket] = val
+	}
+	return result, nil
+}
+
+// hourlyBonusSnapshotKey 返回用户赠送额度快照的 Redis key（hash，field = 整点 unix 秒）。
+func hourlyBonusSnapshotKey(userID int64) string {
+	return fmt.Sprintf("billing:user_hourly_bonus:%d", userID)
+}
+
+// RecordUserHourlyBonusSnapshot 记录某小时的赠送额度快照，TTL 覆盖 7 天展示窗口。
+func (c *billingCache) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) error {
+	if bonusTokens <= 0 {
+		return nil
+	}
+	key := hourlyBonusSnapshotKey(userID)
+	pipe := c.rdb.TxPipeline()
+	pipe.HSet(ctx, key, strconv.FormatInt(hourBucket, 10), bonusTokens)
+	pipe.Expire(ctx, key, hourlyBonusSnapshotTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ListUserHourlyBonusSnapshots 读取近若干小时的赠送额度快照（缺失按 0）。
+func (c *billingCache) ListUserHourlyBonusSnapshots(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error) {
+	result := make(map[int64]int64, len(hourBuckets))
+	if len(hourBuckets) == 0 {
+		return result, nil
+	}
+	all, err := c.rdb.HGetAll(ctx, hourlyBonusSnapshotKey(userID)).Result()
+	if err != nil {
+		return nil, err
+	}
+	for _, bucket := range hourBuckets {
+		if raw, ok := all[strconv.FormatInt(bucket, 10)]; ok {
+			if val, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil {
+				result[bucket] = val
+			}
+		}
+	}
+	return result, nil
 }
 
 func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {

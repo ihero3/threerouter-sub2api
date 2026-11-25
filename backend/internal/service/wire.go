@@ -1045,6 +1045,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideAccountStatusNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
@@ -1212,6 +1213,13 @@ func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRep
 // ProvideBalanceNotifyService creates BalanceNotifyService
 func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *BalanceNotifyService {
 	svc := NewBalanceNotifyService(emailService, settingRepo, accountRepo)
+	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
+}
+
+// ProvideAccountStatusNotifyService creates AccountStatusNotifyService.
+func ProvideAccountStatusNotifyService(settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *AccountStatusNotifyService {
+	svc := NewAccountStatusNotifyService(settingRepo, accountRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
 	return svc
 }

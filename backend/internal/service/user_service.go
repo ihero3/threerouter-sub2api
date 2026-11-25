@@ -178,6 +178,10 @@ type UserRepository interface {
 	// SetBalance 原子地把余额置为 value（value 必须 >= 0），返回变更前后的值。
 	SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error)
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
+	// GrantRechargePerkOnce 在「每用户终身一次」语义下发放充值限流额度
+	// （并发数 +concurrencyBonus、rpm_limit +rpmBonus），返回是否本次实际发放。
+	// 用户已有发放记录时返回 (false, nil)。
+	GrantRechargePerkOnce(ctx context.Context, userID, sourceOrderID int64, concurrencyBonus, rpmBonus int) (bool, error)
 	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
 	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)

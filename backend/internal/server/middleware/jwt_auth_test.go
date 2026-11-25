@@ -319,7 +319,8 @@ func TestJWTAuth_UserNotFound(t *testing.T) {
 	require.Equal(t, "USER_NOT_FOUND", body.Code)
 }
 
-func TestJWTAuth_UserInactive(t *testing.T) {
+func TestJWTAuth_UserInactiveCanStillAccessConsole(t *testing.T) {
+	// 禁用账号仍可登录控制台查看页面、提交工单与充值；模型 API 由 API Key 鉴权拦截。
 	user := &service.User{
 		ID:           1,
 		Email:        "disabled@example.com",
@@ -337,10 +338,7 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusUnauthorized, w.Code)
-	var body ErrorResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	require.Equal(t, "USER_INACTIVE", body.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestJWTAuth_TokenVersionMismatch(t *testing.T) {

@@ -96,6 +96,27 @@ func (b *billingCacheWorkerStub) BatchGetUserPlatformQuotaCache(ctx context.Cont
 	return nil, nil
 }
 
+// 每小时 token 用量计数（stub 中无状态，返回 0）。
+func (b *billingCacheWorkerStub) GetUserHourlyTokenUsage(ctx context.Context, userID int64, hourBucket int64) (int64, error) {
+	return 0, nil
+}
+
+func (b *billingCacheWorkerStub) IncrUserHourlyTokenUsage(ctx context.Context, userID int64, hourBucket int64, tokens int64) error {
+	return nil
+}
+
+func (b *billingCacheWorkerStub) ListUserHourlyTokenUsage(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error) {
+	return map[int64]int64{}, nil
+}
+
+func (b *billingCacheWorkerStub) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) error {
+	return nil
+}
+
+func (b *billingCacheWorkerStub) ListUserHourlyBonusSnapshots(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error) {
+	return map[int64]int64{}, nil
+}
+
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 	cache := &billingCacheWorkerStub{}
 	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil, nil)

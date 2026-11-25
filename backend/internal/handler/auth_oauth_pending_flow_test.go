@@ -860,7 +860,7 @@ func TestExchangePendingOAuthCompletionBlocksBackendModeBeforeReturningTokenPayl
 	require.Nil(t, storedSession.ConsumedAt)
 }
 
-func TestExchangePendingOAuthCompletionRejectsDisabledTargetUser(t *testing.T) {
+func TestExchangePendingOAuthCompletionAllowsDisabledTargetUser(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
 
@@ -903,11 +903,10 @@ func TestExchangePendingOAuthCompletionRejectsDisabledTargetUser(t *testing.T) {
 
 	handler.ExchangePendingOAuthCompletion(ginCtx)
 
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-
-	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
-	require.NoError(t, err)
-	require.Nil(t, storedSession.ConsumedAt)
+	// 禁用账号允许登录控制台：不再返回 403 USER_NOT_ACTIVE；正常返回完成响应
+	// （是否继续要求确认上游资料由既有 adoption 流程决定）。
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotContains(t, recorder.Body.String(), "USER_NOT_ACTIVE")
 }
 
 func TestExchangePendingOAuthCompletionChoiceStateDoesNotBindIdentity(t *testing.T) {
@@ -3373,6 +3372,10 @@ func (r *oauthPendingFlowUserRepo) SetBalance(ctx context.Context, id int64, val
 
 func (r *oauthPendingFlowUserRepo) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected UpdateConcurrency call")
+}
+
+func (r *oauthPendingFlowUserRepo) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
 }
 
 func (r *oauthPendingFlowUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) {

@@ -623,6 +623,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("openai.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
 	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
 	if err != nil {
@@ -1319,6 +1330,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("openai_messages.hourly_token_limit_exceeded", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -2786,6 +2808,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
+		return
+	}
+
+	// 每小时 token 流量控制：未充值用户超出每小时上限时拒绝建立会话。
+	if _, err := h.billingCacheService.HourlyTokenGate(ctx, apiKey.User.ID); err != nil {
+		reqLog.Info("openai.websocket_hourly_token_limit_exceeded", zap.Error(err))
+		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "hourly token limit exceeded")
 		return
 	}
 

@@ -349,6 +349,25 @@ export default {
         saved: '网关 IP 限流配置已保存',
         saveFailed: '保存网关 IP 限流配置失败'
       },
+      hourlyTokenLimit: {
+        title: '每小时 Token 流量控制',
+        description: '按用户每小时消耗的原始 token 数（输入+输出+缓存）控制流量，两个开关可独立开启/关闭，保存后立即生效',
+        note: '「已充值」指存在支付成功的余额充值订单（兑换码与订阅订单不算）。时间窗口为自然整点：每小时整点自动清零重新计算，未用完的赠送额度作废、不累积、不补发。',
+        nonRechargedEnabled: '限制未充值用户每小时额度',
+        nonRechargedEnabledHint: '开启后，未充值用户每小时累计消耗超过上限将被拒绝（429），下一整点自动恢复；同时会提示其充值可解除限制。',
+        nonRechargedLimit: '未充值用户每小时上限',
+        nonRechargedLimitHint: '按用户累计（含订阅用户），单位 token；0 或关闭开关表示不限制。',
+        rechargedBonusEnabled: '已充值用户每小时赠送额度',
+        rechargedBonusEnabledHint: '开启后，已充值用户每小时先使用赠送额度（不扣余额），用完后正常扣余额且不限量；额度本身不构成消耗上限。',
+        rechargedBonus: '每小时赠送额度',
+        rechargedBonusHint: '单位 token；赠送部分不计费，超出部分照常从余额或订阅额度扣除，每小时整点未用完即作废。',
+        bonusTokensPerUSD: '赠送额度封顶（赠送不超充值额）',
+        bonusTokensPerUSDHint: '每累计充值 $1 可解锁的每小时赠送 token 数。实际赠送额度 = min(每小时赠送额度, 累计充值金额 × 本值)，避免小额充值刷走大额免费额度。填 0 表示不按充值额封顶。',
+        tokens: 'token',
+        tokensPerHour: 'token/小时',
+        saved: '每小时 Token 流量控制配置已保存',
+        saveFailed: '保存每小时 Token 流量控制配置失败'
+      },
       securityIPBlacklist: {
         title: '全站 IP 黑名单',
         description: '对注册、登录与模型网关统一生效的 IP/CIDR 封禁列表，命中即 403；适合拦截恶意注册和滥用的来源 IP',
@@ -1147,6 +1166,16 @@ export default {
         title: '账号限额通知',
         description: '当账号配额用量达到告警阈值时通知管理员',
         enabled: '启用账号限额通知',
+        emails: '通知邮箱',
+        emailsHint: '留空则不发送通知',
+        addEmail: '添加邮箱',
+        emailPlaceholder: '输入邮箱地址',
+      },
+      accountStatusNotify: {
+        title: '上游账号状态变更通知',
+        description:
+          '上游账号状态发生变化时立即通知管理员，邮件中包含账号标识与变更前后的状态',
+        enabled: '启用状态变更通知',
         emails: '通知邮箱',
         emailsHint: '留空则不发送通知',
         addEmail: '添加邮箱',

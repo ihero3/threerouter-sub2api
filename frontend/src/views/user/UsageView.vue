@@ -4,7 +4,7 @@
       <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
 
       <div class="space-y-4">
-        <div class="card p-4">
+        <div v-if="activeTab !== 'bonus'" class="card p-4">
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
@@ -167,12 +167,15 @@
         </div>
       </div>
 
-      <div v-if="errorViewEnabled" class="flex gap-2 border-b border-gray-200 dark:border-dark-700">
+      <div class="flex gap-2 border-b border-gray-200 dark:border-dark-700">
         <button class="tab" :class="{ 'tab-active': activeTab === 'usage' }" @click="activeTab = 'usage'">
           {{ t('usage.tabs.usage') }}
         </button>
-        <button class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrors">
+        <button v-if="errorViewEnabled" class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrors">
           {{ t('usage.tabs.errors') }}
+        </button>
+        <button class="tab" :class="{ 'tab-active': activeTab === 'bonus' }" @click="switchToBonus">
+          {{ t('usage.tabs.bonus') }}
         </button>
       </div>
 
@@ -201,7 +204,7 @@
       </template>
 
       <UserErrorRequestsTable
-        v-else-if="errorViewEnabled"
+        v-else-if="activeTab === 'errors' && errorViewEnabled"
         :rows="errorRows"
         :total="errorTotal"
         :loading="errorLoading"
@@ -213,6 +216,108 @@
         @update:pageSize="onErrorPageSize"
         @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
+
+      <template v-else-if="activeTab === 'bonus'">
+        <div class="space-y-4">
+          <!-- 本小时赠送额度：进度条 + 剩余额度，直观展示「爽感」 -->
+          <div class="card p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t('usage.hourlyBonus.currentHour') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('usage.hourlyBonus.currentHourHint') }}
+                </p>
+              </div>
+              <span
+                v-if="bonusCurrent"
+                class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              >
+                {{ t('usage.hourlyBonus.remaining', { tokens: formatBonusTokens(bonusCurrent.remaining_tokens) }) }}
+              </span>
+            </div>
+            <div v-if="bonusCurrent" class="mt-4">
+              <div class="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+                <span>
+                  {{ t('usage.hourlyBonus.usedLabel') }}
+                  {{ formatBonusTokens(bonusCurrent.used_tokens) }} /
+                  {{ formatBonusTokens(bonusCurrent.bonus_tokens) }}
+                </span>
+                <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ bonusPercent(bonusCurrent) }}%</span>
+              </div>
+              <div class="mt-2 h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div
+                  class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all"
+                  :style="{ width: `${bonusPercent(bonusCurrent)}%` }"
+                ></div>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('usage.hourlyBonus.resetHint') }}
+              </p>
+            </div>
+            <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('usage.hourlyBonus.noBonus') }}
+            </p>
+          </div>
+
+          <!-- 最近 24 小时记录 -->
+          <div class="card overflow-hidden">
+            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+              <span class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('usage.hourlyBonus.time') }} / {{ t('usage.hourlyBonus.bonus') }}
+              </span>
+              <span v-if="bonusTotalUsed > 0" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('usage.hourlyBonus.totalUsed', { tokens: formatBonusTokens(bonusTotalUsed) }) }}
+              </span>
+            </div>
+            <div v-if="bonusLoading" class="px-4 py-10 text-center text-sm text-gray-500">
+              {{ t('common.loading') }}
+            </div>
+            <div v-else-if="bonusRecords.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">
+              {{ t('usage.hourlyBonus.empty') }}
+            </div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium">{{ t('usage.hourlyBonus.time') }}</th>
+                    <th class="px-4 py-2 text-right font-medium">{{ t('usage.hourlyBonus.bonus') }}</th>
+                    <th class="px-4 py-2 text-right font-medium">{{ t('usage.hourlyBonus.used') }}</th>
+                    <th class="px-4 py-2 text-right font-medium">{{ t('usage.hourlyBonus.remainingCol') }}</th>
+                    <th class="px-4 py-2 text-right font-medium">{{ t('usage.hourlyBonus.status') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                  <tr v-for="record in bonusRecords" :key="record.hour_bucket">
+                    <td class="px-4 py-2 text-gray-700 dark:text-gray-300">
+                      {{ formatBonusHour(record.hour_bucket) }}
+                    </td>
+                    <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">
+                      {{ record.bonus_tokens > 0 ? formatBonusTokens(record.bonus_tokens) : '—' }}
+                    </td>
+                    <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">
+                      {{ formatBonusTokens(record.used_tokens) }}
+                    </td>
+                    <td class="px-4 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                      {{ formatBonusTokens(record.remaining_tokens) }}
+                    </td>
+                    <td class="px-4 py-2 text-right">
+                      <span
+                        v-if="record.is_current"
+                        class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                      >
+                        {{ t('usage.hourlyBonus.statusActive') }}
+                      </span>
+                      <span v-else class="text-xs text-gray-400">{{ t('usage.hourlyBonus.statusExpired') }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   </AppLayout>
 
@@ -236,6 +341,7 @@ import EndpointDistributionChart from '@/components/charts/EndpointDistributionC
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
+import type { HourlyBonusUsageRecord } from '@/types'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode } from '@/utils/billingMode'
@@ -355,7 +461,7 @@ const modelDistributionMetric = ref<DistributionMetric>('tokens')
 const groupDistributionMetric = ref<DistributionMetric>('tokens')
 const endpointDistributionMetric = ref<DistributionMetric>('tokens')
 const endpointDistributionSource = ref<EndpointSource>('inbound')
-const activeTab = ref<'usage' | 'errors'>('usage')
+const activeTab = ref<'usage' | 'errors' | 'bonus'>('usage')
 const errorViewEnabled = computed(() => appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
 
 const filters = ref<UsageQueryParams>({
@@ -916,6 +1022,55 @@ const onErrorPageSize = (pageSize: number) => {
 const switchToErrors = () => {
   activeTab.value = 'errors'
   if (errorRows.value.length === 0) void loadErrors()
+}
+
+// ---- 每小时赠送额度记录（充值用户每小时免费 token 额度） ----
+const bonusRecords = ref<HourlyBonusUsageRecord[]>([])
+const bonusLoading = ref(false)
+const bonusLoaded = ref(false)
+
+const bonusCurrent = computed(() => bonusRecords.value.find(r => r.is_current) ?? null)
+const bonusTotalUsed = computed(() => bonusRecords.value.reduce((sum, r) => sum + r.used_tokens, 0))
+
+// 千分位 + 缩写，让「已用 1.2M / 赠送 3M」一眼可读。
+const formatBonusTokens = (value: number): string => {
+  const n = Number.isFinite(value) ? value : 0
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString()
+}
+
+const formatBonusHour = (bucket: number): string => {
+  const start = new Date(bucket * 1000)
+  const end = new Date((bucket + 3600) * 1000)
+  const fmt = (d: Date) =>
+    `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:00`
+  return `${fmt(start)} - ${fmt(end).slice(-5)}`
+}
+
+const bonusPercent = (record: HourlyBonusUsageRecord): number => {
+  if (!record.bonus_tokens) return 0
+  return Math.min(100, Math.round((record.used_tokens / record.bonus_tokens) * 100))
+}
+
+const loadBonus = async () => {
+  bonusLoading.value = true
+  try {
+    const data = await usageAPI.getHourlyBonusUsage()
+    bonusRecords.value = data.records ?? []
+    bonusLoaded.value = true
+  } catch {
+    appStore.showError(t('usage.hourlyBonus.loadFailed'))
+  } finally {
+    bonusLoading.value = false
+  }
+}
+
+const switchToBonus = () => {
+  activeTab.value = 'bonus'
+  // 每次进入都刷新：当前小时进度需要实时。
+  void loadBonus()
 }
 
 onMounted(() => {

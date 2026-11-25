@@ -843,6 +843,15 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		billingType = BillingTypeSubscription
 	}
 
+	// 每小时 token 流量控制（双开关）：记录本小时用户维度 token 用量，
+	// 已充值用户在赠送额度内的部分免计费（订阅同样抵扣），超出部分照常扣费。
+	// 开关未开启或赠送额度已用完时 settling 为 nil，计费完全保持原样。
+	var hourlySettling *HourlyTokenSettling
+	if s.billingCacheService != nil && user != nil && !simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey) {
+		hourlySettling = s.billingCacheService.BeginHourlyTokenSettling(ctx, user.ID)
+	}
+	cost = applyHourlyTokenBonus(hourlySettling, usageLogTokens(result), cost)
+
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
@@ -872,6 +881,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.settleHourlyTokenUsage(ctx, usageLog)
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 	}
@@ -907,8 +917,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	// 每小时 token 用量结算：写回用户维度的小时桶（未充值用户上限判定与赠送额度消耗共用）。
+	s.settleHourlyTokenUsage(ctx, usageLog)
 
 	return nil
+}
+
+// settleHourlyTokenUsage 把本次请求的原始 token 数累加到用户的小时桶。
+// simple 模式的计费链路也调用它，保证两种运行模式的流量控制口径一致。
+func (s *GatewayService) settleHourlyTokenUsage(ctx context.Context, usageLog *UsageLog) {
+	if s == nil || s.billingCacheService == nil || usageLog == nil {
+		return
+	}
+	tokens := usageLog.InputTokens + usageLog.OutputTokens + usageLog.CacheCreationTokens + usageLog.CacheReadTokens + usageLog.ImageOutputTokens
+	s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, tokens)
 }
 
 // recordUsageMultipliers 返回 token / 图片售价倍率（用户专属 > 分组默认 > 系统默认，token 倍率叠加高峰因子）

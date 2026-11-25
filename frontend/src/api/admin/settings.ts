@@ -771,6 +771,8 @@ export interface SystemSettings {
   subscription_expiry_notify_enabled: boolean;
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
+  account_status_notify_enabled: boolean;
+  account_status_notify_emails: NotifyEmailEntry[];
 
   // 订阅额度耗尽自动回退余额计费
   subscription_balance_fallback_enabled: boolean;
@@ -1108,6 +1110,8 @@ export interface UpdateSettingsRequest {
   subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
+  account_status_notify_enabled?: boolean;
+  account_status_notify_emails?: NotifyEmailEntry[];
 
   // 订阅额度耗尽自动回退余额计费
   subscription_balance_fallback_enabled?: boolean;
@@ -1534,6 +1538,48 @@ export async function updateGatewayIPRateLimitSettings(
   return data;
 }
 
+// ==================== Hourly Token Limit Settings ====================
+
+/**
+ * Hourly token traffic control (two independent switches).
+ *
+ * - non_recharged_*: users without a successful balance recharge order are
+ *   limited to `non_recharged_limit` raw tokens per clock hour; exceeding it
+ *   returns HTTP 429 until the next hour starts.
+ * - recharged_*: users with a successful balance recharge order get
+ *   `recharged_bonus` free tokens per clock hour, consumed before their
+ *   balance. Unused bonus expires at the next hour — it never accumulates.
+ */
+export interface HourlyTokenLimitSettings {
+  non_recharged_enabled: boolean;
+  non_recharged_limit: number;
+  recharged_bonus_enabled: boolean;
+  recharged_bonus: number;
+  /**
+   * Tokens unlocked per 1 USD of accumulated successful top-ups.
+   * The hourly bonus is capped at `total_top_up_usd * bonus_tokens_per_usd`,
+   * so a small top-up cannot unlock a huge free allowance. 0 disables the cap.
+   */
+  bonus_tokens_per_usd: number;
+}
+
+export async function getHourlyTokenLimitSettings(): Promise<HourlyTokenLimitSettings> {
+  const { data } = await apiClient.get<HourlyTokenLimitSettings>(
+    "/admin/settings/hourly-token-limit",
+  );
+  return data;
+}
+
+export async function updateHourlyTokenLimitSettings(
+  settings: HourlyTokenLimitSettings,
+): Promise<HourlyTokenLimitSettings> {
+  const { data } = await apiClient.put<HourlyTokenLimitSettings>(
+    "/admin/settings/hourly-token-limit",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Security IP Blacklist ====================
 
 /**
@@ -1874,6 +1920,8 @@ export const settingsAPI = {
   updatePanelRateLimitSettings,
   getGatewayIPRateLimitSettings,
   updateGatewayIPRateLimitSettings,
+  getHourlyTokenLimitSettings,
+  updateHourlyTokenLimitSettings,
   getSecurityIPBlacklistSettings,
   updateSecurityIPBlacklistSettings,
   getSecurityCountryBlocklistSettings,

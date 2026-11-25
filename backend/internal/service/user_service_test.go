@@ -44,6 +44,7 @@ type mockUserRepo struct {
 	deleteAvatarIDs          []int64
 	getAvatarFn              func(ctx context.Context, userID int64) (*UserAvatar, error)
 	txCalls                  int
+	grantRechargePerkFn      func(ctx context.Context, userID, sourceOrderID int64, concurrencyBonus, rpmBonus int) (bool, error)
 }
 
 type mockUserRepoTxKey struct{}
@@ -220,6 +221,13 @@ func (m *mockUserRepo) SetBalance(ctx context.Context, id int64, value float64) 
 	panic("unexpected SetBalance call")
 }
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
+
+func (m *mockUserRepo) GrantRechargePerkOnce(ctx context.Context, userID, sourceOrderID int64, concurrencyBonus, rpmBonus int) (bool, error) {
+	if m.grantRechargePerkFn != nil {
+		return m.grantRechargePerkFn(ctx, userID, sourceOrderID, concurrencyBonus, rpmBonus)
+	}
+	return false, nil
+}
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
 func (m *mockUserRepo) ExistsByEmailAlias(context.Context, string) (bool, error) {
 	return false, nil
@@ -309,6 +317,7 @@ func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ context.Context
 // --- mock: BillingCache ---
 
 type mockBillingCache struct {
+	BillingCache
 	invalidateErr       error
 	invalidateCallCount atomic.Int64
 	invalidatedUserIDs  []int64

@@ -15,6 +15,7 @@ import (
 )
 
 type billingCacheMissStub struct {
+	BillingCache
 	setBalanceCalls atomic.Int64
 }
 

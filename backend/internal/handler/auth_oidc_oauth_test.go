@@ -341,7 +341,7 @@ func TestOIDCOAuthCallbackCreatesLoginPendingSessionForExistingIdentityUser(t *t
 	require.Nil(t, completion["error"])
 }
 
-func TestOIDCOAuthCallbackRejectsDisabledExistingIdentityUser(t *testing.T) {
+func TestOIDCOAuthCallbackAllowsDisabledExistingIdentityUser(t *testing.T) {
 	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
 		Subject:           "oidc-disabled-subject",
 		PreferredUsername: "oidc_disabled",
@@ -383,12 +383,12 @@ func TestOIDCOAuthCallbackRejectsDisabledExistingIdentityUser(t *testing.T) {
 	handler.OIDCOAuthCallback(c)
 
 	require.Equal(t, http.StatusFound, recorder.Code)
-	require.Nil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
-	assertOAuthRedirectError(t, recorder.Header().Get("Location"), "session_error", "USER_NOT_ACTIVE")
+	// 禁用账号允许登录控制台：应创建 pending session 继续完成登录，而不是返回 USER_NOT_ACTIVE。
+	require.NotNil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
 
 	count, err := client.PendingAuthSession.Query().Count(ctx)
 	require.NoError(t, err)
-	require.Zero(t, count)
+	require.EqualValues(t, 1, count)
 }
 
 func TestOIDCOAuthCallbackCreatesBindPendingSessionForCompatEmailUser(t *testing.T) {

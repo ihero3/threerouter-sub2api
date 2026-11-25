@@ -90,11 +90,8 @@ func jwtAuth(
 			return
 		}
 
-		// 检查用户状态
-		if !user.IsActive() {
-			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
-			return
-		}
+		// 禁用账号允许登录并访问控制台：可查看页面、提交工单与充值；
+		// 模型 API 调用由 API Key 鉴权链路统一拦截（见 api_key_auth）。
 
 		// Security: Validate TokenVersion to ensure token hasn't been invalidated
 		// This check ensures tokens issued before a password change are rejected
@@ -108,8 +105,9 @@ func jwtAuth(
 			return
 		}
 
-		// IP 一致性风控：滚动窗口内出现多个客户端 IP → 自动禁用并拒绝。
-		if !enforceUserIPConsistency(c, guard, user.ID, user.Role) {
+		// IP 一致性风控只作用于正常账号；禁用账号已无法调用模型 API，
+		// 仍需允许其登录控制台充值、提工单，否则用户无法自助解封。
+		if user.IsActive() && !enforceUserIPConsistency(c, guard, user.ID, user.Role) {
 			return
 		}
 

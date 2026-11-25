@@ -78,6 +78,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userPlatformQuotaRepository := repository.NewUserPlatformQuotaRepository(client)
 	serviceUserPlatformQuotaRepository := repository.NewUserPlatformQuotaServiceAdapter(userPlatformQuotaRepository)
 	billingCacheService := service.ProvideBillingCacheService(billingCache, userRepository, userSubscriptionRepository, apiKeyRepository, userRPMCache, userGroupRateRepository, configConfig, serviceUserPlatformQuotaRepository, settingService)
+	// 每小时 token 赠送额度需要判断「用户是否已充值」，复用 userRepository 的余额充值单查询。
+	// 用类型断言注入：UserRepository 接口本身不包含该方法，避免影响其它实现与单测替身。
+	if rechargeProvider, ok := userRepository.(service.RechargeStatusProvider); ok {
+		billingCacheService.SetRechargeStatusProvider(rechargeProvider)
+	}
 	apiKeyCache := repository.NewAPIKeyCache(redisClient)
 	consumerRepository := repository.ProvideConsumerRepository(client, db)
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)
@@ -113,6 +118,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	authService.SetRegistrationCaptchaProofService(registrationCaptchaProofService)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
+	// 在线支付充值自动解封：清空风险标记并写扫描豁免后，立即失效豁免缓存。
+	redeemService.SetRiskExemptionInvalidator(riskExemptionChecker)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)
 	if err != nil {
 		return nil, err
@@ -179,6 +186,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	compositeRouteResolver := service.NewCompositeRouteResolver(compositeModelRouteRepository)
 	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
 	balanceNotifyService := service.ProvideBalanceNotifyService(emailService, settingRepository, accountRepository, notificationEmailService)
+	accountStatusNotifyService := service.ProvideAccountStatusNotifyService(settingRepository, accountRepository, notificationEmailService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, compositeRouteResolver, balanceNotifyService, serviceUserPlatformQuotaRepository)
 	openAIOAuthClient := repository.NewOpenAIOAuthClient()
 	privacyClientFactory := providePrivacyClientFactory()
@@ -206,6 +214,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	//（含账号被自动停用 / relay 中转站账号临时冷却）时能把错误写入后台「错误日志」。
 	gatewayService.SetOpsErrorRecorder(opsService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, opsService, settingService)
+	// Usage 页「赠送额度」tab：读取每小时赠送额度与用量记录。
+	usageHandler.SetBillingCacheService(billingCacheService)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	announcementRepository := repository.NewAnnouncementRepository(client)
@@ -245,6 +255,18 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		SetRiskExemptionInvalidator(service.RiskExemptionInvalidator)
 	}); ok {
 		adminWithExemption.SetRiskExemptionInvalidator(riskExemptionChecker)
+	}
+	// 上游账号状态变更通知：adminService 与 accountRepository 各注入一次（同一个服务实例）。
+	// 用 setter 后注入，不往 AdminService 大接口加方法（否则所有测试桩都要实现）。
+	if adminWithStatusNotify, ok := adminService.(interface {
+		SetAccountStatusNotifier(service.AccountStatusChangeNotifier)
+	}); ok {
+		adminWithStatusNotify.SetAccountStatusNotifier(accountStatusNotifyService)
+	}
+	if repoWithStatusNotify, ok := accountRepository.(interface {
+		SetAccountStatusNotifier(service.AccountStatusChangeNotifier)
+	}); ok {
+		repoWithStatusNotify.SetAccountStatusNotifier(accountStatusNotifyService)
 	}
 	// 共享 IP 风险周期扫描：单 IP 关联 ≥5 用户 → 批量打 suspect + 扣减。
 	// lister 从 *usageLogRepository 断言取得，markWriter 用 affiliateService，penalty 复用 IP 处罚执行器。

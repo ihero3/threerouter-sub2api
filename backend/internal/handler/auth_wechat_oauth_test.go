@@ -293,7 +293,7 @@ func TestWeChatOAuthCallbackCreatesLoginPendingSessionForExistingIdentityUserWit
 	require.False(t, hasRefreshToken)
 }
 
-func TestWeChatOAuthCallbackRejectsDisabledExistingIdentityUser(t *testing.T) {
+func TestWeChatOAuthCallbackAllowsDisabledExistingIdentityUser(t *testing.T) {
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -350,12 +350,12 @@ func TestWeChatOAuthCallbackRejectsDisabledExistingIdentityUser(t *testing.T) {
 	handler.WeChatOAuthCallback(c)
 
 	require.Equal(t, http.StatusFound, recorder.Code)
-	require.Nil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
-	assertOAuthRedirectError(t, recorder.Header().Get("Location"), "session_error", "USER_NOT_ACTIVE")
+	// 禁用账号允许登录控制台：应创建 pending session 继续完成登录，而不是返回 USER_NOT_ACTIVE。
+	require.NotNil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
 
 	count, err := client.PendingAuthSession.Query().Count(ctx)
 	require.NoError(t, err)
-	require.Zero(t, count)
+	require.EqualValues(t, 1, count)
 }
 
 func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) {

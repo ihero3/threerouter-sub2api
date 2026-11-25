@@ -111,6 +111,10 @@ func (s *emailSyncRepoStub) DeductBalance(context.Context, int64, float64) error
 
 func (s *emailSyncRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil }
 
+func (s *emailSyncRepoStub) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
+}
+
 func (s *emailSyncRepoStub) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
 
 func (s *emailSyncRepoStub) ExistsByEmailAlias(context.Context, string) (bool, error) {

@@ -50,6 +50,9 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+	// accountStatusNotifier 用于在批量状态变更（如调度器自动恢复）后发送状态变更通知；
+	// 可为 nil（未装配时静默跳过）。
+	accountStatusNotifier service.AccountStatusChangeNotifier
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -123,6 +126,11 @@ func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCac
 // 这种设计便于单元测试时注入 mock 对象。
 func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
 	return &accountRepository{client: client, sql: sqlq, schedulerCache: schedulerCache}
+}
+
+// SetAccountStatusNotifier 注入账号状态变更通知能力（可选，装配期调用一次）。
+func (r *accountRepository) SetAccountStatusNotifier(notifier service.AccountStatusChangeNotifier) {
+	r.accountStatusNotifier = notifier
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
@@ -2459,6 +2467,10 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 //   - error_message 带自动恢复标记 failoverAutoRecoverTagPrefix；
 //   - rate_limit_reset_at 已到期（该字段在自动禁用时写入恢复时间）。
 func (r *accountRepository) AutoRecoverFailoverDisabledAccounts(ctx context.Context, now time.Time) (int64, error) {
+	pendingIDs, pendingErr := r.listFailoverAutoRecoverPendingIDs(ctx, now)
+	if pendingErr != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] list failover auto recover candidates failed: err=%v", pendingErr)
+	}
 	rows, err := r.sql.QueryContext(ctx, `
 		UPDATE accounts
 		SET status = 'active',
@@ -2498,8 +2510,41 @@ func (r *accountRepository) AutoRecoverFailoverDisabledAccounts(ctx context.Cont
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto recover account changes failed: err=%v", err)
 		}
-	}
+		for _, accountID := range accountIDs {
+			if _, wasPending := pendingIDs[accountID]; !wasPending {
+				continue
+			}
+			service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, accountID, service.StatusError, service.StatusActive, "")
+		}	}
 	return int64(len(accountIDs)), nil
+}
+
+// listFailoverAutoRecoverPendingIDs 列出当前处于「failover 自动禁用且已到恢复时间」的账号，
+// 供状态变更通知比对恢复前后的差异。
+func (r *accountRepository) listFailoverAutoRecoverPendingIDs(ctx context.Context, now time.Time) (map[int64]struct{}, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id FROM accounts
+		WHERE deleted_at IS NULL
+			AND status = $1
+			AND rate_limit_reset_at IS NOT NULL
+			AND rate_limit_reset_at <= $2
+			AND error_message LIKE $3
+	`, service.StatusError, now, "%"+service.FailoverAutoRecoverMessageTag+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	ids := make(map[int64]struct{})
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+		}
+		ids[accountID] = struct{}{}
+	}
+	return ids, rows.Err()
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {

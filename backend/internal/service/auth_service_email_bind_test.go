@@ -1106,6 +1106,10 @@ func (s *emailBindUserRepoStub) UpdateBalance(context.Context, int64, float64) e
 func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error { return nil }
 func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil }
 
+func (s *emailBindUserRepoStub) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
+}
+
 func (s *emailBindUserRepoStub) ExistsByEmail(_ context.Context, email string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1200,6 +1204,4 @@ func (s *emailBindUserRepoStub) GetLatestUsedIPByUserIDs(_ context.Context, _ []
 
 func (s *emailBindUserRepoStub) GetSharedUsageIPs(_ context.Context) (map[string]bool, error) {
 	return nil, nil
-}
-	return false, nil
 }

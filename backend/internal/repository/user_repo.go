@@ -16,11 +16,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -755,6 +757,47 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
 }
 
+// HasBalanceRecharge 判断用户是否存在支付成功的余额充值订单。
+// 只认 order_type=balance：兑换码、管理员调账与订阅订单都不算「充值」，
+// 与 userRechargedPredicate（订单管理口径）保持同一状态集合。
+func (r *userRepository) HasBalanceRecharge(ctx context.Context, userID int64) (bool, error) {
+	if userID <= 0 {
+		return false, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	if client == nil {
+		return false, nil
+	}
+	return client.PaymentOrder.Query().Where(
+		paymentorder.UserIDEQ(userID),
+		paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+		paymentorder.PaidAtNotNil(),
+		paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED"),
+	).Exist(ctx)
+}
+
+// SumBalanceRechargeAmount 返回用户累计成功充值的金额（美元），用于封顶每小时赠送额度。
+// 默认只累加 payment_orders 的实付金额（pay_amount），口径与 HasBalanceRecharge 一致。
+func (r *userRepository) SumBalanceRechargeAmount(ctx context.Context, userID int64) (float64, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	if client == nil {
+		return 0, nil
+	}
+	sum, err := client.PaymentOrder.Query().Where(
+		paymentorder.UserIDEQ(userID),
+		paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+		paymentorder.PaidAtNotNil(),
+		paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED"),
+	).Aggregate(dbent.Sum(paymentorder.FieldPayAmount)).Float64(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return sum, nil
+}
+
 // loadRechargedUserIDs 返回给定用户中「有支付成功的支付订单」的集合。
 // 口径只看订单管理（payment_orders），不再把兑换码、管理员调账或邀请返利提现算作充值。
 func (r *userRepository) loadRechargedUserIDs(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
@@ -1345,6 +1388,66 @@ func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, i
 	return nil
 }
 
+// GrantRechargePerkOnce 在「每用户终身一次」的语义下，为该用户发放充值限流额度：
+// 并发数 +concurrencyBonus、rpm_limit +rpmBonus。
+//
+// 幂等：先向 user_recharge_perks 以 user_id 主键 INSERT ... ON CONFLICT DO NOTHING 占位，
+// 占位成功才在同一事务内执行加量，重复回调/并发履约不会重复叠加。
+// 返回 granted=false 表示该用户此前已发放过。
+func (r *userRepository) GrantRechargePerkOnce(ctx context.Context, userID, sourceOrderID int64, concurrencyBonus, rpmBonus int) (bool, error) {
+	client := clientFromContext(ctx, r.client)
+
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		INSERT INTO user_recharge_perks (user_id, source_order_id, concurrency_bonus, rpm_bonus, created_at)
+		VALUES ($1, $2, $3, $4, NOW())
+		ON CONFLICT (user_id) DO NOTHING
+		RETURNING user_id
+	`, userID, sourceOrderID, concurrencyBonus, rpmBonus)
+	if err != nil {
+		return false, err
+	}
+	claimed := false
+	if rows.Next() {
+		claimed = true
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		_ = rows.Close()
+		return false, rowsErr
+	}
+	_ = rows.Close()
+	if !claimed {
+		return false, tx.Commit()
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE users
+		SET concurrency = GREATEST(concurrency + $1, 0),
+			rpm_limit = GREATEST(rpm_limit + $2, 0),
+			updated_at = NOW()
+		WHERE id = $3 AND deleted_at IS NULL
+	`, concurrencyBonus, rpmBonus, userID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, service.ErrUserNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // isRiskExemptByIDSQL 判断用户是否命中自动风控豁免。
 // 命中任一即豁免：
 //   - users.ticket_flag（迁移 246，管理员工单跟进时置位）
@@ -1471,9 +1574,11 @@ ON CONFLICT (user_id) DO UPDATE SET reviewed_at = NOW()
 
 // ClearUserRiskReview 清空用户的邀请注册风险标记、把 status 恢复 active，
 // 并登记全量扫描豁免（迁移 253）。
-// 这是「风险标记只升不降」的唯一显式例外，仅由管理员人工复核放行调用
-// （adminServiceImpl.AdminReviewUserRisk），任何自动打标/扫描/解封链路都不得调用。
-// 豁免只作用于全量扫描：实时邀请绑定仍按新证据重新评估。
+// 这是「风险标记只升不降」的显式例外，仅允许两条用户主动的放行链路调用：
+//  1. 管理员人工复核放行（adminServiceImpl.AdminReviewUserRisk）；
+//  2. 在线支付充值成功后的自动解封（RedeemService.reactivateUserAfterRecharge）。
+//
+// 自动打标/扫描链路不得调用。豁免只作用于全量扫描：实时邀请绑定仍按新证据重新评估。
 func (r *userRepository) ClearUserRiskReview(ctx context.Context, userID int64) error {
 	result, err := clientFromContext(ctx, r.client).ExecContext(ctx, clearUserRiskReviewSQL, userID)
 	if err != nil {

@@ -133,12 +133,12 @@ type AuthResponse struct {
 	User         *dto.User `json:"user"`
 }
 
-func ensureLoginUserActive(user *service.User) error {
+// ensureLoginUserExists 校验登录目标用户存在。
+// 禁用账号也允许登录：登录后只能访问控制台、提交工单与充值，
+// 模型 API 调用由 API Key 鉴权链路拦截，不再在登录阶段拒绝。
+func ensureLoginUserExists(user *service.User) error {
 	if user == nil {
 		return infraerrors.Unauthorized("INVALID_USER", "user not found")
-	}
-	if !user.IsActive() {
-		return service.ErrUserNotActive
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 }
 
 func respondWithTokenPair(c *gin.Context, authService *service.AuthService, user *service.User) {
-	if err := ensureLoginUserActive(user); err != nil {
+	if err := ensureLoginUserExists(user); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -613,7 +613,7 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if err := ensureLoginUserActive(user); err != nil {
+	if err := ensureLoginUserExists(user); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

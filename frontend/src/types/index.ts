@@ -2444,6 +2444,25 @@ export interface UserErrorRequestDetail extends UserErrorRequest {
   upstream_status_code?: number
 }
 
+// 每小时赠送额度使用记录（充值用户每小时免费 token 额度）
+export interface HourlyBonusUsageRecord {
+  /** 整点 unix 秒，前端按本地时区渲染 */
+  hour_bucket: number
+  /** 该小时发放的赠送额度，未充值/开关关闭为 0 */
+  bonus_tokens: number
+  /** 该小时累计消耗的原始 token 数 */
+  used_tokens: number
+  /** 该小时剩余未用的赠送额度（整点作废后归零） */
+  remaining_tokens: number
+  /** 是否为当前正在进行的小时 */
+  is_current: boolean
+}
+
+export interface HourlyBonusUsageResponse {
+  hours: number
+  records: HourlyBonusUsageRecord[]
+}
+
 export interface UserErrorListParams {
   page?: number
   page_size?: number

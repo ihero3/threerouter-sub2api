@@ -15,7 +15,8 @@ import type {
   UsageRequestType,
   UserErrorRequest,
   UserErrorRequestDetail,
-  UserErrorListParams
+  UserErrorListParams,
+  HourlyBonusUsageResponse
 } from '@/types'
 
 // ==================== Dashboard Types ====================
@@ -182,6 +183,15 @@ export async function getStats(
   const { data } = await apiClient.get<UsageStatsResponse>('/usage/stats', {
     params
   })
+  return data
+}
+
+/**
+ * Get the hourly bonus (free token allowance) usage records for the current user.
+ * Records cover the last 24 clock hours, newest first.
+ */
+export async function getHourlyBonusUsage(): Promise<HourlyBonusUsageResponse> {
+  const { data } = await apiClient.get<HourlyBonusUsageResponse>('/usage/hourly-bonus')
   return data
 }
 
@@ -386,7 +396,9 @@ export const usageAPI = {
   getDashboardApiKeysUsage,
   // Error requests
   listMyErrorRequests,
-  getMyErrorDetail
+  getMyErrorDetail,
+  // Hourly bonus (free token allowance for funded users)
+  getHourlyBonusUsage
 }
 
 export default usageAPI

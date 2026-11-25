@@ -323,6 +323,8 @@ type UpdateSettingsRequest struct {
 	SubscriptionExpiryNotifyEnabled *bool                   `json:"subscription_expiry_notify_enabled"`
 	AccountQuotaNotifyEnabled       *bool                   `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
+	AccountStatusNotifyEnabled      *bool                   `json:"account_status_notify_enabled"`
+	AccountStatusNotifyEmails       *[]dto.NotifyEmailEntry `json:"account_status_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
@@ -2054,6 +2056,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AccountQuotaNotifyEmails
 		}(),
+		AccountStatusNotifyEnabled: func() bool {
+			if req.AccountStatusNotifyEnabled != nil {
+				return *req.AccountStatusNotifyEnabled
+			}
+			return previousSettings.AccountStatusNotifyEnabled
+		}(),
+		AccountStatusNotifyEmails: func() []service.NotifyEmailEntry {
+			if req.AccountStatusNotifyEmails != nil {
+				return dto.NotifyEmailEntriesToService(*req.AccountStatusNotifyEmails)
+			}
+			return previousSettings.AccountStatusNotifyEmails
+		}(),
 		ChannelMonitorEnabled: func() bool {
 			if req.ChannelMonitorEnabled != nil {
 				return *req.ChannelMonitorEnabled
@@ -2567,6 +2581,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SubscriptionExpiryNotifyEnabled:                        updatedSettings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:                              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
+		AccountStatusNotifyEnabled:                             updatedSettings.AccountStatusNotifyEnabled,
+		AccountStatusNotifyEmails:                              dto.NotifyEmailEntriesFromService(updatedSettings.AccountStatusNotifyEmails),
 		PaymentEnabled:                                         updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                                       updatedPaymentCfg.MinAmount,
 		PaymentMaxAmount:                                       updatedPaymentCfg.MaxAmount,

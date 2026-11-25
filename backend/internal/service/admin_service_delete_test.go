@@ -234,6 +234,9 @@ func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount i
 	panic("unexpected UpdateConcurrency call")
 }
 
+func (s *userRepoStub) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
+}
 func (s *userRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (s *userRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (s *userRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
@@ -541,6 +544,7 @@ type subscriptionInvalidateCall struct {
 }
 
 type billingCacheStub struct {
+	BillingCache
 	invalidations chan subscriptionInvalidateCall
 }
 

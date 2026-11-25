@@ -148,6 +148,8 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	// riskExemptionInvalidator 支付充值自动解封后失效风控豁免缓存（可选依赖）。
+	riskExemptionInvalidator RiskExemptionInvalidator
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -173,6 +175,15 @@ func NewRedeemService(
 		authCacheInvalidator: authCacheInvalidator,
 		affiliateService:     affiliateService,
 	}
+}
+
+// SetRiskExemptionInvalidator 注入风控豁免缓存失效器（可选依赖）。
+// 必须传入与 IPConsistencyService / 自动风控扫描共用的同一个 *RiskExemptionChecker 实例。
+func (s *RedeemService) SetRiskExemptionInvalidator(invalidator RiskExemptionInvalidator) {
+	if s == nil {
+		return
+	}
+	s.riskExemptionInvalidator = invalidator
 }
 
 // GenerateRandomCode 生成随机兑换码
@@ -400,7 +411,57 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 // redeem failure counter. All code validation and transactional updates remain
 // identical to the public redemption path.
 func (s *RedeemService) redeemForPaymentFulfillment(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
-	return s.redeem(ContextSkipRedeemAffiliate(ctx), userID, code, bypassRedeemRateLimit)
+	redeemCode, err := s.redeem(ContextSkipRedeemAffiliate(ctx), userID, code, bypassRedeemRateLimit)
+	if err != nil {
+		return nil, err
+	}
+	// 在线支付充值到账后自动解封：按「复核放行」口径清空风险标记、恢复 active
+	// 并登记全量扫描豁免，确保用户充值后真正恢复模型 API 调用能力。
+	s.reactivateUserAfterRecharge(ctx, userID)
+	return redeemCode, nil
+}
+
+// reactivateUserAfterRecharge 支付充值成功后的自动解封（用户明确要求）。
+// 只处理 status=disabled 的账号；恢复方式与管理员复核放行保持一致：
+// 清空 risk_level/risk_reasons + status=active + 写入 user_risk_review_exemptions，
+// 避免同一批静态风控证据在下一轮扫描中把账号再次封禁。
+// 解封失败只记日志，不影响已经到账的充值结果。
+func (s *RedeemService) reactivateUserAfterRecharge(ctx context.Context, userID int64) {
+	if s == nil || s.userRepo == nil || userID <= 0 {
+		return
+	}
+	// 刚充值成功：立即失效「已充值」标记，用户下一次请求就能拿到每小时赠送额度。
+	if s.billingCacheService != nil {
+		s.billingCacheService.InvalidateHourlyTokenLimitUser(userID)
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] auto unban skipped: get user %d failed: %v", userID, err)
+		return
+	}
+	if user == nil || user.Status != StatusDisabled {
+		return
+	}
+	if reviewRepo, ok := s.userRepo.(UserRiskReviewRepository); ok {
+		if err := reviewRepo.ClearUserRiskReview(ctx, userID); err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] auto unban failed for user %d: %v", userID, err)
+			return
+		}
+	} else {
+		user.Status = StatusActive
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] auto unban status update failed for user %d: %v", userID, err)
+			return
+		}
+	}
+	// 立即失效豁免缓存与认证缓存：下一次请求即可放行，不用等待 TTL。
+	if s.riskExemptionInvalidator != nil {
+		s.riskExemptionInvalidator.Invalidate(userID)
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	logger.LegacyPrintf("service.redeem", "[Redeem] user %d reactivated after payment recharge", userID)
 }
 
 // RedeemForAdminFulfillment is restricted to trusted admin fulfillment.

@@ -389,6 +389,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SubscriptionExpiryNotifyEnabled:                        settings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:                              settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
+		AccountStatusNotifyEnabled:                             settings.AccountStatusNotifyEnabled,
+		AccountStatusNotifyEmails:                              dto.NotifyEmailEntriesFromService(settings.AccountStatusNotifyEmails),
 		PaymentEnabled:                                         paymentCfg.Enabled,
 		PaymentMinAmount:                                       paymentCfg.MinAmount,
 		PaymentMaxAmount:                                       paymentCfg.MaxAmount,

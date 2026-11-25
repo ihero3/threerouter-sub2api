@@ -2424,6 +2424,200 @@
             </div>
           </div>
 
+          <!-- 每小时 token 流量控制（双开关） Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-center gap-2">
+                <Icon
+                  name="clock"
+                  size="md"
+                  class="text-primary-500"
+                />
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.hourlyTokenLimit.title") }}
+                </h2>
+              </div>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.hourlyTokenLimit.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="hourlyTokenLimitLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div
+                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-900/20"
+                >
+                  <div class="flex items-start">
+                    <Icon
+                      name="infoCircle"
+                      size="md"
+                      class="mt-0.5 flex-shrink-0 text-sky-500"
+                    />
+                    <p class="ml-3 text-sm text-sky-700 dark:text-sky-300">
+                      {{ t("admin.settings.hourlyTokenLimit.note") }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 开关一：未充值用户每小时上限 -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.hourlyTokenLimit.nonRechargedEnabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.hourlyTokenLimit.nonRechargedEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="hourlyTokenLimitForm.non_recharged_enabled" />
+                </div>
+
+                <div
+                  v-if="hourlyTokenLimitForm.non_recharged_enabled"
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.hourlyTokenLimit.nonRechargedLimit") }}
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model.number="hourlyTokenLimitForm.non_recharged_limit"
+                      data-testid="hourly-token-limit-non-recharged"
+                      type="number"
+                      min="0"
+                      max="1000000000"
+                      class="input w-40"
+                    />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.hourlyTokenLimit.tokensPerHour") }}
+                    </span>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.hourlyTokenLimit.nonRechargedLimitHint") }}
+                  </p>
+                </div>
+
+                <!-- 开关二：已充值用户每小时赠送额度 -->
+                <div
+                  class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.hourlyTokenLimit.rechargedBonusEnabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.hourlyTokenLimit.rechargedBonusEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="hourlyTokenLimitForm.recharged_bonus_enabled" />
+                </div>
+
+                <div
+                  v-if="hourlyTokenLimitForm.recharged_bonus_enabled"
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.hourlyTokenLimit.rechargedBonus") }}
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model.number="hourlyTokenLimitForm.recharged_bonus"
+                      data-testid="hourly-token-limit-recharged-bonus"
+                      type="number"
+                      min="0"
+                      max="1000000000"
+                      class="input w-40"
+                    />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.hourlyTokenLimit.tokensPerHour") }}
+                    </span>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.hourlyTokenLimit.rechargedBonusHint") }}
+                  </p>
+
+                  <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.hourlyTokenLimit.bonusTokensPerUSD") }}
+                    </label>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">$1 →</span>
+                      <input
+                        v-model.number="hourlyTokenLimitForm.bonus_tokens_per_usd"
+                        data-testid="hourly-token-limit-bonus-per-usd"
+                        type="number"
+                        min="0"
+                        max="1000000000"
+                        class="input w-40"
+                      />
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.hourlyTokenLimit.tokens") }}
+                      </span>
+                    </div>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.hourlyTokenLimit.bonusTokensPerUSDHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    data-testid="hourly-token-limit-save"
+                    @click="saveHourlyTokenLimitSettings"
+                    :disabled="hourlyTokenLimitSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="hourlyTokenLimitSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      hourlyTokenLimitSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- 全站 IP 黑名单 Settings -->
           <div class="card">
             <div
@@ -10123,6 +10317,82 @@
               </div>
             </div>
           </div>
+
+          <!-- Upstream Account Status Change Notification -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.accountStatusNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.accountStatusNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <label
+                  class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >{{ t("admin.settings.accountStatusNotify.enabled") }}</label
+                >
+                <Toggle v-model="form.account_status_notify_enabled" />
+              </div>
+              <div v-if="form.account_status_notify_enabled">
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >{{ t("admin.settings.accountStatusNotify.emails") }}</label
+                >
+                <div class="space-y-2">
+                  <div
+                    v-for="(entry, index) in form.account_status_notify_emails ||
+                    []"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <label
+                      class="relative inline-flex items-center cursor-pointer shrink-0"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="!entry.disabled"
+                        @change="entry.disabled = !entry.disabled"
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                      ></div>
+                    </label>
+                    <input
+                      v-model="entry.email"
+                      type="email"
+                      class="input flex-1"
+                      :placeholder="
+                        t('admin.settings.accountStatusNotify.emailPlaceholder')
+                      "
+                    />
+                    <button
+                      @click="form.account_status_notify_emails.splice(index, 1)"
+                      class="btn btn-secondary px-2"
+                      type="button"
+                    >
+                      <Icon name="x" size="xs" class="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    @click="addAccountStatusNotifyEmail"
+                    class="btn btn-secondary btn-sm"
+                    type="button"
+                  >
+                    + {{ t("admin.settings.accountStatusNotify.addEmail") }}
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.accountStatusNotify.emailsHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -10496,6 +10766,17 @@ const gatewayIpRateLimitForm = reactive({
 // 黑名单用文本域编辑（每行一个 IP 或 CIDR），保存时拆分为数组。
 // 命中黑名单的 IP 直接 403，不在黑名单的所有 IP 一视同仁参与限流。
 const gatewayIpRateLimitBlacklistText = ref("");
+
+// 每小时 token 流量控制（双开关）：未充值上限 / 已充值每小时赠送额度
+const hourlyTokenLimitLoading = ref(true);
+const hourlyTokenLimitSaving = ref(false);
+const hourlyTokenLimitForm = reactive({
+  non_recharged_enabled: false,
+  non_recharged_limit: 1000000,
+  recharged_bonus_enabled: false,
+  recharged_bonus: 3000000,
+  bonus_tokens_per_usd: 3000000,
+});
 
 // 全站 IP 黑名单状态
 const securityIPBlacklistLoading = ref(true);
@@ -11365,6 +11646,8 @@ const form = reactive<SettingsForm>({
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
+  account_status_notify_enabled: false,
+  account_status_notify_emails: [] as NotifyEmailEntry[],
   // 订阅额度耗尽自动回退余额计费（默认关）
   subscription_balance_fallback_enabled: false,
   // Channel Monitor feature switch
@@ -12122,6 +12405,18 @@ const addQuotaNotifyEmail = () => {
     form.account_quota_notify_emails = [];
   }
   form.account_quota_notify_emails.push({
+    email: "",
+    disabled: false,
+    verified: true,
+  });
+};
+
+// Account status change notify email helpers
+const addAccountStatusNotifyEmail = () => {
+  if (!form.account_status_notify_emails) {
+    form.account_status_notify_emails = [];
+  }
+  form.account_status_notify_emails.push({
     email: "",
     disabled: false,
     verified: true,
@@ -13315,6 +13610,10 @@ async function saveSettings() {
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
       ).filter((e) => e.email.trim() !== ""),
+      account_status_notify_enabled: form.account_status_notify_enabled,
+      account_status_notify_emails: (
+        form.account_status_notify_emails || []
+      ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_mode: form.channel_monitor_mode === 'v1' ? 'v1' : 'v2',
@@ -13833,6 +14132,51 @@ async function saveGatewayIpRateLimitSettings() {
     );
   } finally {
     gatewayIpRateLimitSaving.value = false;
+  }
+}
+
+// 每小时 token 流量控制方法
+async function loadHourlyTokenLimitSettings() {
+  hourlyTokenLimitLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getHourlyTokenLimitSettings();
+    hourlyTokenLimitForm.non_recharged_enabled = settings.non_recharged_enabled;
+    hourlyTokenLimitForm.non_recharged_limit = settings.non_recharged_limit;
+    hourlyTokenLimitForm.recharged_bonus_enabled = settings.recharged_bonus_enabled;
+    hourlyTokenLimitForm.recharged_bonus = settings.recharged_bonus;
+    hourlyTokenLimitForm.bonus_tokens_per_usd = settings.bonus_tokens_per_usd;
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    hourlyTokenLimitLoading.value = false;
+  }
+}
+
+async function saveHourlyTokenLimitSettings() {
+  hourlyTokenLimitSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateHourlyTokenLimitSettings({
+      non_recharged_enabled: hourlyTokenLimitForm.non_recharged_enabled,
+      non_recharged_limit: hourlyTokenLimitForm.non_recharged_limit,
+      recharged_bonus_enabled: hourlyTokenLimitForm.recharged_bonus_enabled,
+      recharged_bonus: hourlyTokenLimitForm.recharged_bonus,
+      bonus_tokens_per_usd: hourlyTokenLimitForm.bonus_tokens_per_usd,
+    });
+    hourlyTokenLimitForm.non_recharged_enabled = updated.non_recharged_enabled;
+    hourlyTokenLimitForm.non_recharged_limit = updated.non_recharged_limit;
+    hourlyTokenLimitForm.recharged_bonus_enabled = updated.recharged_bonus_enabled;
+    hourlyTokenLimitForm.recharged_bonus = updated.recharged_bonus;
+    hourlyTokenLimitForm.bonus_tokens_per_usd = updated.bonus_tokens_per_usd;
+    appStore.showSuccess(t("admin.settings.hourlyTokenLimit.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.hourlyTokenLimit.saveFailed"),
+      ),
+    );
+  } finally {
+    hourlyTokenLimitSaving.value = false;
   }
 }
 
@@ -14681,6 +15025,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();
   loadGatewayIpRateLimitSettings();
+  loadHourlyTokenLimitSettings();
   loadSecurityIPBlacklistSettings();
   loadSecurityCountryBlocklistSettings();
   loadIPConsistencySettings();

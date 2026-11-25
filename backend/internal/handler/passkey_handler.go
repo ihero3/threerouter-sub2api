@@ -229,7 +229,7 @@ func (h *PasskeyHandler) requirePasskeysEnabled(c *gin.Context) bool {
 }
 
 func (h *PasskeyHandler) ensureBackendModeAllowsUser(ctx context.Context, user *service.User) error {
-	if err := ensureLoginUserActive(user); err != nil {
+	if err := ensureLoginUserExists(user); err != nil {
 		return err
 	}
 	if h.settingSvc == nil || !h.settingSvc.IsBackendModeEnabled(ctx) || user.IsAdmin() {

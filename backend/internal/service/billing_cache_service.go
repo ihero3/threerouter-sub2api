@@ -125,6 +125,12 @@ type BillingCacheService struct {
 	// settingService 用于读取订阅余额回退开关；nil（如部分单测路径）按关闭处理。
 	settingService *SettingService
 
+	// rechargeStatus 查询用户是否已充值（每小时 token 赠送额度判定）；
+	// rechargeCache 是「已充值」结论的进程内 TTL 缓存。两者均为 nil 时按未充值处理。
+	rechargeStatus RechargeStatusProvider
+	rechargeCache  rechargeStatusCache
+	rechargeSF     singleflight.Group
+
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
 	cacheWriteStopOnce sync.Once
@@ -314,6 +320,15 @@ func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason stri
 		task.userID,
 		task.groupID,
 	)
+}
+
+// SetRechargeStatusProvider 注入「是否已充值」查询能力（每小时 token 赠送额度判定用）。
+// 可选依赖：未注入时所有用户都按未充值处理。
+func (s *BillingCacheService) SetRechargeStatusProvider(provider RechargeStatusProvider) {
+	if s == nil {
+		return
+	}
+	s.rechargeStatus = provider
 }
 
 // ============================================

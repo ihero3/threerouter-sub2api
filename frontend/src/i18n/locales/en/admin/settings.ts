@@ -349,6 +349,25 @@ export default {
         saved: 'Gateway IP rate limit settings saved',
         saveFailed: 'Failed to save gateway IP rate limit settings'
       },
+      hourlyTokenLimit: {
+        title: 'Hourly Token Traffic Control',
+        description: 'Limits traffic by the raw tokens each user consumes per clock hour (input + output + cache). The two switches are independent and apply immediately after saving.',
+        note: '"Recharged" means the user has a successfully paid balance recharge order (redeem codes and subscription orders do not count). The window is a natural clock hour: it resets on the hour, and unused bonus tokens expire — they never accumulate and are never re-issued.',
+        nonRechargedEnabled: 'Limit non-recharged users per hour',
+        nonRechargedEnabledHint: 'When enabled, users without a successful recharge are rejected (429) once they exceed the hourly limit, and recover at the next hour. The error tells them recharging removes the limit.',
+        nonRechargedLimit: 'Hourly limit for non-recharged users',
+        nonRechargedLimitHint: 'Counted per user (subscription users included), in tokens. 0 or a disabled switch means unlimited.',
+        rechargedBonusEnabled: 'Hourly bonus for recharged users',
+        rechargedBonusEnabledHint: 'When enabled, recharged users consume the bonus first (free of charge), then pay normally with no cap. The bonus is a free allowance, not a usage cap.',
+        rechargedBonus: 'Hourly bonus tokens',
+        rechargedBonusHint: 'In tokens. Bonus-covered usage is not billed; anything beyond it is charged to the balance or subscription quota as usual. Unused bonus expires on the hour.',
+        bonusTokensPerUSD: 'Bonus cap (bonus ≤ total top-up)',
+        bonusTokensPerUSDHint: 'Tokens unlocked per $1 of accumulated successful top-ups. Effective bonus = min(hourly bonus, total top-up USD × this value), so a small top-up cannot unlock a huge free allowance. Set 0 to disable the cap.',
+        tokens: 'tokens',
+        tokensPerHour: 'tokens/hour',
+        saved: 'Hourly token traffic control settings saved',
+        saveFailed: 'Failed to save hourly token traffic control settings'
+      },
       securityIPBlacklist: {
         title: 'Site-wide IP Blacklist',
         description: 'An IP/CIDR ban list enforced on registration, login and the model gateway alike — matches get 403 on every entry point. Built for stopping abusive registrations and misuse from known source IPs.',
@@ -1152,6 +1171,16 @@ export default {
         title: 'Account Quota Notification',
         description: 'Notify admins when account quota usage reaches alert threshold',
         enabled: 'Enable Account Quota Notification',
+        emails: 'Notification Emails',
+        emailsHint: 'Leave empty to disable notifications',
+        addEmail: 'Add Email',
+        emailPlaceholder: 'Enter email address',
+      },
+      accountStatusNotify: {
+        title: 'Upstream Account Status Notification',
+        description:
+          'Notify admins immediately when an upstream account status changes, including the account identifier and the status before and after the change',
+        enabled: 'Enable status change notification',
         emails: 'Notification Emails',
         emailsHint: 'Leave empty to disable notifications',
         addEmail: 'Add Email',

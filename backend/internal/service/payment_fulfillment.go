@@ -31,6 +31,40 @@ var ErrOrderNotFound = errors.New("payment order not found")
 
 const paymentFulfillmentLeaseDuration = 5 * time.Minute
 
+// 充值成功后自动赠送的限流额度：并发数 +3、每分钟请求数 +30（每用户终身仅一次）。
+const (
+	rechargePerkConcurrencyBonus = 3
+	rechargePerkRPMBonus         = 30
+)
+
+// grantRechargePerkOnFulfillment 在支付订单履约时发放充值额度赠送。
+// 以 user_id 唯一记录保证每个用户终身只加一次；任何失败仅记录审计与日志，
+// 不影响充值/订阅履约主流程。
+func (s *PaymentService) grantRechargePerkOnFulfillment(ctx context.Context, o *dbent.PaymentOrder) {
+	if s == nil || s.userRepo == nil || o == nil || o.UserID <= 0 {
+		return
+	}
+	granted, err := s.userRepo.GrantRechargePerkOnce(ctx, o.UserID, o.ID, rechargePerkConcurrencyBonus, rechargePerkRPMBonus)
+	if err != nil {
+		slog.Warn("grant recharge perk failed", "userID", o.UserID, "orderID", o.ID, "err", err)
+		s.writeAuditLog(ctx, o.ID, "RECHARGE_PERK_FAILED", "system", map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+	if !granted {
+		return
+	}
+	if s.redeemService != nil && s.redeemService.authCacheInvalidator != nil {
+		s.redeemService.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, o.UserID)
+	}
+	s.writeAuditLog(ctx, o.ID, "RECHARGE_PERK_GRANTED", "system", map[string]any{
+		"concurrencyBonus": rechargePerkConcurrencyBonus,
+		"rpmBonus":         rechargePerkRPMBonus,
+	})
+	slog.Info("recharge perk granted", "userID", o.UserID, "orderID", o.ID)
+}
+
 type paymentFulfillmentLease struct {
 	version time.Time
 }
@@ -421,6 +455,8 @@ func validatePaymentRedeemCode(o *dbent.PaymentOrder, code *RedeemCode) error {
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease) error {
+	// 充值成功赠送额度：每用户终身只发放一次，失败不影响履约主流程。
+	s.grantRechargePerkOnFulfillment(ctx, o)
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
 	action, err := resolveRedeemAction(existing, lookupErr)
@@ -602,6 +638,8 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 }
 
 func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease) error {
+	// 订阅单支付成功同样赠送一次充值额度（每用户终身一次）。
+	s.grantRechargePerkOnFulfillment(ctx, o)
 	gid := *o.SubscriptionGroupID
 	days := *o.SubscriptionDays
 	g, err := s.groupRepo.GetByID(ctx, gid)

@@ -21,7 +21,8 @@ import (
 // API 请求。前三项用 OR 合并为一次 DB 往返（isRiskExemptByIDSQL）。
 //
 // 失效语义：
-//   - 管理端 SetUserTicketFlag / AdminReviewUserRisk 成功后主动 Invalidate，立即生效；
+//   - 管理端 SetUserTicketFlag / AdminReviewUserRisk、支付充值自动解封成功后主动
+//     Invalidate，立即生效；
 //   - 缓存过期（TTL）自然淘汰；
 //   - DB / 缓存异常一律 fail-open 视作「不豁免」——风控判定链路不能反过来把
 //     扣减/禁用判断整条短路掉；豁免是「额外放行」，缺数据时回到原有处罚逻辑更安全。

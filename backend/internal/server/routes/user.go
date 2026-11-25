@@ -122,6 +122,8 @@ func RegisterUserRoutes(
 		{
 			usage.GET("", h.Usage.List)
 			usage.GET("/errors", h.Usage.ListErrors)
+			// 每小时赠送额度使用记录（Usage 页「赠送额度」tab）
+			usage.GET("/hourly-bonus", h.Usage.GetMyHourlyTokenUsage)
 			usage.GET("/errors/:id", h.Usage.GetErrorDetail)
 			usage.GET("/:id", h.Usage.GetByID)
 			usage.GET("/stats", h.Usage.Stats)

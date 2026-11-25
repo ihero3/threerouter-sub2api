@@ -82,6 +82,10 @@ func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, i
 	panic("unexpected")
 }
 
+func (s *userRepoStubForGroupUpdate) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
+}
+
 func (s *userRepoStubForGroupUpdate) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
 	return 0, nil
 }

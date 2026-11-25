@@ -420,6 +420,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 		usageLog.VideoDurationSeconds = &videoDurationSeconds
 	}
+	// 每小时 token 流量控制（双开关）：已充值用户在赠送额度内的部分免计费，
+	// 超出部分照常扣费。开关未开启或赠送额度已用完时 settling 为 nil，计费完全保持原样。
+	if s.billingCacheService != nil && !simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey) {
+		cost = applyHourlyTokenBonus(s.billingCacheService.BeginHourlyTokenSettling(ctx, user.ID), usageLogTokenCount(usageLog), cost)
+	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
 		usageLog.ImageInputCost = cost.ImageInputCost
@@ -498,6 +503,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		if s.billingCacheService != nil {
+			s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog))
+		}
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 	}
@@ -529,8 +537,21 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	// 每小时 token 用量结算：写回用户维度的小时桶（未充值用户上限判定与赠送额度消耗共用）。
+	if s.billingCacheService != nil && usageLog != nil {
+		s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog))
+	}
 
 	return nil
+}
+
+// usageLogTokenCount 返回 usage_log 记录的原始 token 总数（输入 + 输出 + 缓存读写 + 图片输出），
+// 与 GatewayService.settleHourlyTokenUsage 的口径保持一致。
+func usageLogTokenCount(usageLog *UsageLog) int {
+	if usageLog == nil {
+		return 0
+	}
+	return usageLog.InputTokens + usageLog.OutputTokens + usageLog.CacheCreationTokens + usageLog.CacheReadTokens + usageLog.ImageOutputTokens
 }
 
 // hasIdentifiedOpenAIResponsePricing 判断上游自报的响应模型是否可以作为计费基准，

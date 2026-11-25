@@ -836,13 +836,10 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", nil, ErrInvalidCredentials
 	}
 
-	// 检查用户状态
-	if !user.IsActive() {
-		return "", nil, ErrUserNotActive
-	}
-
-	// IP 一致性风控：与滚动窗口内的已知 IP 不一致 → 自动禁用并拒绝本次登录。
-	if s.ipConsistency != nil {
+	// 禁用账号仍允许登录：登录后只能查看控制台、提交工单与充值，
+	// 模型 API 调用由 API Key 鉴权链路统一拦截（见 api_key_auth）。
+	// 仅正常账号参与 IP 一致性风控，避免禁用用户登录时被再次拦截。
+	if s.ipConsistency != nil && user.IsActive() {
 		if violation := s.ipConsistency.CheckUser(ctx, user.ID, user.Role, clientIPFromContext(ctx)); violation != nil {
 			return "", nil, ErrIPConsistencyBlocked
 		}
@@ -1003,9 +1000,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 		}
 	}
 
-	if !user.IsActive() {
-		return nil, nil, ErrUserNotActive
-	}
+	// 禁用账号仍允许通过第三方登录进入控制台；模型 API 调用由 API Key 鉴权拦截。
 
 	if user.Username == "" && username != "" {
 		user.Username = username
@@ -1916,10 +1911,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 		return "", ErrServiceUnavailable
 	}
 
-	// 检查用户状态
-	if !user.IsActive() {
-		return "", ErrUserNotActive
-	}
+	// 禁用账号允许刷新令牌，否则登录后 60 秒刷新就会把用户踢出控制台。
 
 	// Security: Check TokenVersion to prevent refreshing revoked tokens
 	// This ensures tokens issued before a password change cannot be refreshed
@@ -1957,8 +1949,7 @@ func (s *AuthService) IsPasswordResetEnabled(ctx context.Context) bool {
 // shouldProceed is false when we should silently return success (to prevent enumeration)
 func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendBaseURL string) (string, string, bool) {
 	// Check if user exists (but don't reveal this to the caller)
-	user, err := s.userRepo.GetByEmail(ctx, email)
-	if err != nil {
+	if _, err := s.userRepo.GetByEmail(ctx, email); err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// Security: Log but don't reveal that user doesn't exist
 			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for non-existent email: %s", email)
@@ -1968,11 +1959,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 		return "", "", false
 	}
 
-	// Check if user is active
-	if !user.IsActive() {
-		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
-		return "", "", false
-	}
+	// 禁用账号也允许重置密码：用户可以登录控制台但不能调用模型 API，忘记密码时仍需自助恢复。
 
 	// Get site name
 	siteName := "Sub2API"
@@ -2063,10 +2050,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return ErrServiceUnavailable
 	}
 
-	// Check if user is active
-	if !user.IsActive() {
-		return ErrUserNotActive
-	}
+	// 禁用账号也允许完成密码重置（仅限制模型 API 调用，不影响控制台登录）。
 
 	// Hash new password
 	hashedPassword, err := s.HashPassword(newPassword)
@@ -2252,12 +2236,8 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 		return nil, ErrServiceUnavailable
 	}
 
-	// 检查用户状态
-	if !user.IsActive() {
-		// 用户被禁用，撤销整个Token家族
-		_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
-		return nil, ErrUserNotActive
-	}
+	// 禁用账号不再撤销会话：用户仍可登录控制台查看页面、提工单与充值，
+	// 模型 API 调用由 API Key 鉴权链路拦截。
 
 	// 检查TokenVersion（密码更改后所有Token失效）
 	if data.TokenVersion != resolvedTokenVersion(user) {

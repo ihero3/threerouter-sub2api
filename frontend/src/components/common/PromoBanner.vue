@@ -61,6 +61,7 @@ const defaultItems = [
   { key: 'refer', emoji: '👥' },
   { key: 'topUp10', emoji: '💸' },
   { key: 'deepseek', emoji: '⚡' },
+  { key: 'flowControl', emoji: '🚀' },
 ] as const
 
 // B 站可在后台配置自己的推广文案；A 站未配置时回落到 i18n。

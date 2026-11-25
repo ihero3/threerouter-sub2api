@@ -50,6 +50,30 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
+	// billingCacheService 提供每小时赠送额度的使用记录；未注入时该 tab 返回空列表。
+	billingCacheService *service.BillingCacheService
+}
+
+// SetBillingCacheService 注入计费缓存服务（用于每小时赠送额度记录）。
+// 采用 setter 而非构造函数参数，避免波及既有构造函数调用点。
+func (h *UsageHandler) SetBillingCacheService(billingCacheService *service.BillingCacheService) {
+	h.billingCacheService = billingCacheService
+}
+
+// GetMyHourlyTokenUsage 返回当前用户最近 24 小时的每小时赠送额度使用记录。
+// GET /api/v1/usage/hourly-bonus
+func (h *UsageHandler) GetMyHourlyTokenUsage(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.billingCacheService == nil {
+		response.Success(c, gin.H{"hours": 24, "records": []service.HourlyTokenUsageRecord{}})
+		return
+	}
+	records := h.billingCacheService.GetHourlyTokenUsageHistory(c.Request.Context(), subject.UserID, 24)
+	response.Success(c, gin.H{"hours": 24, "records": records})
 }
 
 // NewUsageHandler creates a new UsageHandler

@@ -116,9 +116,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		}
 	}
 
-	if !user.IsActive() {
-		return nil, nil, ErrUserNotActive
-	}
+	// 禁用账号也允许通过邮箱 OAuth 登录控制台；模型 API 调用由 API Key 鉴权拦截。
 	if err := s.ensureEmailOAuthIdentity(ctx, user.ID, EmailOAuthIdentityInput{
 		ProviderType:     providerType,
 		ProviderKey:      providerKey,

@@ -150,6 +150,11 @@ type SettingService struct {
 	gatewayIPRateLimitCache atomic.Value
 	gatewayIPRateLimitSF    singleflight.Group
 
+	// hourlyTokenLimitCache 每小时 token 流量控制配置进程内缓存
+	// （*cachedHourlyTokenLimitSettings）。网关每个请求都会读取，禁止热路径直查 DB。
+	hourlyTokenLimitCache atomic.Value
+	hourlyTokenLimitSF    singleflight.Group
+
 	// securityIPBlacklistCache 全站 IP 黑名单配置进程内缓存
 	// （*cachedSecurityIPBlacklistSettings）。全局中间件每个请求都会读取，禁止热路径直查 DB。
 	securityIPBlacklistCache atomic.Value

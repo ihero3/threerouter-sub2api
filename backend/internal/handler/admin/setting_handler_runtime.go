@@ -319,6 +319,55 @@ func (h *SettingHandler) UpdateGatewayIPRateLimitSettings(c *gin.Context) {
 	})
 }
 
+// GetHourlyTokenLimitSettings 获取每小时 token 流量控制配置（双开关）
+// GET /api/v1/admin/settings/hourly-token-limit
+func (h *SettingHandler) GetHourlyTokenLimitSettings(c *gin.Context) {
+	settings, err := h.settingService.GetHourlyTokenLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+// UpdateHourlyTokenLimitSettingsRequest 更新每小时 token 流量控制配置请求
+type UpdateHourlyTokenLimitSettingsRequest struct {
+	NonRechargedEnabled   bool  `json:"non_recharged_enabled"`
+	NonRechargedLimit     int64 `json:"non_recharged_limit"`
+	RechargedBonusEnabled bool  `json:"recharged_bonus_enabled"`
+	RechargedBonus        int64 `json:"recharged_bonus"`
+	BonusTokensPerUSD     int64 `json:"bonus_tokens_per_usd"`
+}
+
+// UpdateHourlyTokenLimitSettings 更新每小时 token 流量控制配置（保存后立即刷新缓存生效）
+// PUT /api/v1/admin/settings/hourly-token-limit
+func (h *SettingHandler) UpdateHourlyTokenLimitSettings(c *gin.Context) {
+	var req UpdateHourlyTokenLimitSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.HourlyTokenLimitSettings{
+		NonRechargedEnabled:   req.NonRechargedEnabled,
+		NonRechargedLimit:     req.NonRechargedLimit,
+		RechargedBonusEnabled: req.RechargedBonusEnabled,
+		RechargedBonus:        req.RechargedBonus,
+		BonusTokensPerUSD:     req.BonusTokensPerUSD,
+	}
+	if err := h.settingService.SetHourlyTokenLimitSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updated, err := h.settingService.GetHourlyTokenLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, updated)
+}
+
 // GetSecurityIPBlacklist 获取全站 IP 黑名单配置
 // GET /api/v1/admin/settings/security-ip-blacklist
 func (h *SettingHandler) GetSecurityIPBlacklist(c *gin.Context) {

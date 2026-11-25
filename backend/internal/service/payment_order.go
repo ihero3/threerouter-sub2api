@@ -47,9 +47,8 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
-	if user.Status != payment.EntityStatusActive {
-		return nil, infraerrors.Forbidden("USER_INACTIVE", "user account is disabled")
-	}
+	// 禁用账号仍允许下单充值：充值成功后会按「复核放行」逻辑自动解封，
+	// 这是用户自助恢复模型 API 权限的主要入口。
 	if s.notificationEmailService != nil {
 		s.notificationEmailService.RememberRecipientLocale(ctx, req.UserID, user.Email, req.Locale)
 	}

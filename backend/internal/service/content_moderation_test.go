@@ -254,6 +254,10 @@ func (r *contentModerationTestUserRepo) UpdateConcurrency(ctx context.Context, i
 	panic("unexpected UpdateConcurrency call")
 }
 
+func (r *contentModerationTestUserRepo) GrantRechargePerkOnce(context.Context, int64, int64, int, int) (bool, error) {
+	return false, nil
+}
+
 func (r *contentModerationTestUserRepo) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
 	panic("unexpected BatchSetConcurrency call")
 }

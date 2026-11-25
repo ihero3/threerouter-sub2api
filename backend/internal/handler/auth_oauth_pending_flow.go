@@ -1113,9 +1113,8 @@ func findActiveUserByID(ctx context.Context, client *dbent.Client, userID int64)
 		}
 		return nil, infraerrors.InternalServer("AUTH_IDENTITY_USER_LOOKUP_FAILED", "failed to load auth identity user").WithCause(err)
 	}
-	if !strings.EqualFold(strings.TrimSpace(userEntity.Status), service.StatusActive) {
-		return nil, service.ErrUserNotActive
-	}
+	// 禁用账号仍视为身份归属者与可登录用户：允许其通过第三方登录进入控制台，
+	// 同时避免其已绑定的第三方身份被其他账号抢占。
 	return userEntity, nil
 }
 
@@ -1991,7 +1990,7 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
-		if err := ensureLoginUserActive(loginUser); err != nil {
+		if err := ensureLoginUserExists(loginUser); err != nil {
 			clearCookies()
 			response.ErrorFrom(c, err)
 			return

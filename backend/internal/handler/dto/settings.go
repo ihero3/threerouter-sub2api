@@ -336,6 +336,8 @@ type SystemSettings struct {
 	SubscriptionExpiryNotifyEnabled bool               `json:"subscription_expiry_notify_enabled"`
 	AccountQuotaNotifyEnabled       bool               `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	AccountStatusNotifyEnabled      bool               `json:"account_status_notify_enabled"`
+	AccountStatusNotifyEmails       []NotifyEmailEntry `json:"account_status_notify_emails"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`

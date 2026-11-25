@@ -42,6 +42,10 @@ type SystemSettings struct {
 	LoginAgreementUpdatedAt             string
 	LoginAgreementDocuments             []LoginAgreementDocument
 
+	// 上游账号状态变更通知：状态发生变化瞬间向配置的邮箱发送通知。
+	AccountStatusNotifyEnabled bool
+	AccountStatusNotifyEmails  []NotifyEmailEntry
+
 	SMTPHost               string
 	SMTPPort               int
 	SMTPUsername           string

@@ -342,6 +342,18 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429；
+	// 已充值用户的赠送额度抵扣在后扣阶段结算。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		reqLog.Info("gateway.hourly_token_limit_exceeded", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
 	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
 	if err != nil {
@@ -2388,6 +2400,16 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
+	// 每小时 token 流量控制：未充值用户超出每小时上限直接 429。
+	if _, err := h.billingCacheService.HourlyTokenGate(c.Request.Context(), apiKey.User.ID); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.errorResponse(c, status, code, message)
+		return
+	}
+
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
@@ -2751,6 +2773,11 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 	}
 	// 订阅日/周/月档位额度耗尽。余额回退被拒（双耗尽）时升级文案与 429 + Retry-After：
 	// 客户端按重置时间退避，到点后订阅额度自动恢复（与 user × platform quota 同一映射模式）。
+	// 未充值用户每小时 token 上限：429 + 下一整点剩余秒数，客户端可按 Retry-After 退避。
+	if errors.Is(err, service.ErrHourlyTokenLimitExceeded) {
+		retrySeconds := service.HourlyTokenBucketRemainSeconds(time.Now())
+		return http.StatusTooManyRequests, "hourly_token_limit_exceeded", pkgerrors.Message(err), retrySeconds
+	}
 	if errors.Is(err, service.ErrDailyLimitExceeded) ||
 		errors.Is(err, service.ErrWeeklyLimitExceeded) ||
 		errors.Is(err, service.ErrMonthlyLimitExceeded) {

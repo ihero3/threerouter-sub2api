@@ -727,6 +727,21 @@ type adminServiceImpl struct {
 	channelCacheInvalidator ChannelCacheInvalidator
 	// 管理端改工单标记 / 复核放行后主动失效豁免缓存，让豁免立即生效（可选依赖）
 	riskExemptionInvalidator RiskExemptionInvalidator
+	// 上游账号状态变更通知（可选依赖，未装配时不发送）
+	accountStatusNotifier AccountStatusChangeNotifier
+}
+
+// SetAccountStatusNotifier 以窄接口形式注入通知能力（可选依赖，装配期调用一次）。
+func (s *adminServiceImpl) SetAccountStatusNotifier(svc AccountStatusChangeNotifier) {
+	s.accountStatusNotifier = svc
+}
+
+// notifyAccountStatusChange 在账号状态发生变化后发送通知；前后状态一致时不发送。
+func (s *adminServiceImpl) notifyAccountStatusChange(ctx context.Context, accountID int64, fromStatus, toStatus, errorMessage string) {
+	if s.accountStatusNotifier == nil {
+		return
+	}
+	s.accountStatusNotifier.NotifyStatusChange(ctx, accountID, fromStatus, toStatus, errorMessage)
 }
 
 // RiskExemptionInvalidator 失效某用户的全局风控豁免缓存。
