@@ -422,9 +422,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	// 每小时 token 流量控制（双开关）：已充值用户在赠送额度内的部分免计费，
 	// 超出部分照常扣费。开关未开启或赠送额度已用完时 settling 为 nil，计费完全保持原样。
+	// 同一份快照会传入结算，保证「累计赠送量」只统计真正抵扣的 token。
+	var hourlySettling *HourlyTokenSettling
 	if s.billingCacheService != nil && !simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey) {
-		cost = applyHourlyTokenBonus(s.billingCacheService.BeginHourlyTokenSettling(ctx, user.ID), usageLogTokenCount(usageLog), cost)
+		hourlySettling = s.billingCacheService.BeginHourlyTokenSettling(ctx, user.ID)
 	}
+	cost = applyHourlyTokenBonus(hourlySettling, usageLogTokenCount(usageLog), cost)
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
 		usageLog.ImageInputCost = cost.ImageInputCost
@@ -504,7 +507,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		if s.billingCacheService != nil {
-			s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog))
+			s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog), hourlySettling)
 		}
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
@@ -539,7 +542,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 	// 每小时 token 用量结算：写回用户维度的小时桶（未充值用户上限判定与赠送额度消耗共用）。
 	if s.billingCacheService != nil && usageLog != nil {
-		s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog))
+		s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, usageLogTokenCount(usageLog), hourlySettling)
 	}
 
 	return nil

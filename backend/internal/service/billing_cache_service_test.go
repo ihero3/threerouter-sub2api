@@ -109,12 +109,24 @@ func (b *billingCacheWorkerStub) ListUserHourlyTokenUsage(ctx context.Context, u
 	return map[int64]int64{}, nil
 }
 
-func (b *billingCacheWorkerStub) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) error {
-	return nil
+func (b *billingCacheWorkerStub) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) (bool, error) {
+	return true, nil
 }
 
 func (b *billingCacheWorkerStub) ListUserHourlyBonusSnapshots(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error) {
 	return map[int64]int64{}, nil
+}
+
+func (b *billingCacheWorkerStub) GetUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64) (int64, error) {
+	return 0, nil
+}
+
+func (b *billingCacheWorkerStub) GetUserHourlyBonusUsedTotal(ctx context.Context, userID int64) (int64, error) {
+	return 0, nil
+}
+
+func (b *billingCacheWorkerStub) IncrUserHourlyBonusUsedTotal(ctx context.Context, userID int64, tokens int64) error {
+	return nil
 }
 
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {

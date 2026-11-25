@@ -1502,6 +1502,10 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 }
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
+	previousState := ""
+	if previous, getErr := r.client.Account.Get(ctx, id); getErr == nil && previous != nil {
+		previousState = service.AccountAvailabilityState(accountEntityToService(previous))
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusError).
@@ -1511,6 +1515,8 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 	if err != nil {
 		return err
 	}
+	// 上游故障导致的自动禁用/转发失败同样需要发送状态变更通知。
+	service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, id, previousState, service.StatusError, errorMsg)
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
 	}
@@ -1600,6 +1606,10 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.ClearError(ctx, id)
 	}
+	previousState := ""
+	if previous, getErr := r.client.Account.Get(ctx, id); getErr == nil && previous != nil {
+		previousState = service.AccountAvailabilityState(accountEntityToService(previous))
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
@@ -1607,6 +1617,11 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 		Save(ctx)
 	if err != nil {
 		return err
+	}
+	// 账号从异常恢复正常（限流恢复、Token 刷新成功、手动清除错误等）同样需要通知。
+	if updated, getErr := r.client.Account.Get(ctx, id); getErr == nil && updated != nil {
+		service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, id, previousState,
+			service.AccountAvailabilityState(accountEntityToService(updated)), "")
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear error failed: account=%d err=%v", id, err)

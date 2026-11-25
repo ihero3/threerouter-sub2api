@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -38,11 +39,18 @@ func newAccountStatusNotifyTestService(t *testing.T) (*AccountStatusNotifyServic
 	return svc, settingRepo, smtpServer
 }
 
+// assertNeverSends 因为通知改为异步投递，用一段短暂等待确认始终未发送。
+func assertNeverSends(t *testing.T, smtpServer *notificationEmailTestSMTPServer) {
+	t.Helper()
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, int64(0), smtpServer.messageCount())
+}
+
 func TestAccountStatusNotifySkipsWhenStatusUnchanged(t *testing.T) {
 	svc, _, smtpServer := newAccountStatusNotifyTestService(t)
 
 	svc.NotifyStatusChange(context.Background(), 7, StatusActive, StatusActive, "")
-	require.Equal(t, int64(0), smtpServer.messageCount(), "status unchanged should not send")
+	assertNeverSends(t, smtpServer)
 }
 
 func TestAccountStatusNotifySkipsUnknownPreviousStatus(t *testing.T) {
@@ -50,7 +58,7 @@ func TestAccountStatusNotifySkipsUnknownPreviousStatus(t *testing.T) {
 
 	// 未捕获变更前状态时无法证明状态变化，不应发送。
 	svc.NotifyStatusChange(context.Background(), 7, "", StatusError, "boom")
-	require.Equal(t, int64(0), smtpServer.messageCount())
+	assertNeverSends(t, smtpServer)
 }
 
 func TestAccountStatusNotifySkipsWhenDisabled(t *testing.T) {
@@ -58,7 +66,7 @@ func TestAccountStatusNotifySkipsWhenDisabled(t *testing.T) {
 	require.NoError(t, settingRepo.Set(context.Background(), SettingKeyAccountStatusNotifyEnabled, "false"))
 
 	svc.NotifyStatusChange(context.Background(), 7, StatusActive, StatusError, "boom")
-	require.Equal(t, int64(0), smtpServer.messageCount())
+	assertNeverSends(t, smtpServer)
 }
 
 func TestAccountStatusNotifySkipsWhenNoRecipients(t *testing.T) {
@@ -66,18 +74,33 @@ func TestAccountStatusNotifySkipsWhenNoRecipients(t *testing.T) {
 	require.NoError(t, settingRepo.Set(context.Background(), SettingKeyAccountStatusNotifyEmails, "[]"))
 
 	svc.NotifyStatusChange(context.Background(), 7, StatusActive, StatusError, "boom")
-	require.Equal(t, int64(0), smtpServer.messageCount())
+	assertNeverSends(t, smtpServer)
 }
 
 func TestAccountStatusNotifySendsOnStatusChange(t *testing.T) {
 	svc, _, smtpServer := newAccountStatusNotifyTestService(t)
 
 	svc.NotifyStatusChange(context.Background(), 7, StatusActive, StatusError, "upstream 401")
-	require.Equal(t, int64(1), smtpServer.messageCount())
+	require.Eventually(t, func() bool {
+		return smtpServer.messageCount() == 1
+	}, 5*time.Second, 20*time.Millisecond)
 
 	body := smtpServer.lastMessageBody(t)
 	require.Contains(t, body, "upstream-main")
 	require.Contains(t, body, "active")
 	require.Contains(t, body, "error")
 	require.Contains(t, body, "upstream 401")
+}
+
+func TestAccountStatusNotifySendsEveryTimeStatusChanges(t *testing.T) {
+	svc, _, smtpServer := newAccountStatusNotifyTestService(t)
+
+	// 同一账号连续多次状态变更，每次都必须是独立投递，不能被投递去重吞掉。
+	svc.NotifyStatusChange(context.Background(), 7, StatusActive, StatusError, "upstream 401")
+	svc.NotifyStatusChange(context.Background(), 7, StatusError, StatusActive, "")
+	svc.NotifyStatusChange(context.Background(), 7, StatusActive, "paused", "")
+
+	require.Eventually(t, func() bool {
+		return smtpServer.messageCount() == 3
+	}, 5*time.Second, 20*time.Millisecond)
 }

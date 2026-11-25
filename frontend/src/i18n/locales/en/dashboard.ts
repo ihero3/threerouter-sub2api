@@ -499,7 +499,15 @@ export default {
       statusExpired: 'Expired',
       empty: 'No bonus records in the last 24 hours',
       loadFailed: 'Failed to load bonus records',
-      totalUsed: '{tokens} tokens consumed in the last 24 hours'
+      totalUsed: '{tokens} tokens consumed in the last 24 hours',
+      cumulativeTitle: 'Cumulative Bonus',
+      cumulativeHint: 'Total bonus never exceeds your cumulative top-up conversion. Any hour that uses the bonus counts its full hourly grant; unused tokens expire at the hour. Top up again to unlock more',
+      cumulativeUsedLabel: 'Bonus granted',
+      cumulativeCapLabel: 'Cap',
+      cumulativeRemaining: '{tokens} remaining',
+      cumulativeExhausted: 'Bonus cap reached — top up to unlock more',
+      cumulativeUncapped: 'No cumulative cap; limited only by the hourly allowance',
+      rechargedAmount: '${amount} topped up'
     },
     errors: {
       time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',

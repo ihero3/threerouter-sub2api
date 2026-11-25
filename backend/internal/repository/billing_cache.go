@@ -611,19 +611,33 @@ func hourlyBonusSnapshotKey(userID int64) string {
 	return fmt.Sprintf("billing:user_hourly_bonus:%d", userID)
 }
 
+// GetUserHourlyBonusSnapshot 读取某小时已发放的赠送额度；未发放返回 0。
+func (c *billingCache) GetUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64) (int64, error) {
+	val, err := c.rdb.HGet(ctx, hourlyBonusSnapshotKey(userID), strconv.FormatInt(hourBucket, 10)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
 // RecordUserHourlyBonusSnapshot 记录某小时的赠送额度快照，TTL 覆盖 7 天展示窗口。
-func (c *billingCache) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) error {
+// 使用 HSetNX：同一小时内只写第一次，返回 created=true 表示本次是首次发放。
+// 调用方据此保证「每小时赠送额度只从累计池扣一次」。
+func (c *billingCache) RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) (bool, error) {
 	if bonusTokens <= 0 {
-		return nil
+		return false, nil
 	}
 	key := hourlyBonusSnapshotKey(userID)
 	pipe := c.rdb.TxPipeline()
-	pipe.HSet(ctx, key, strconv.FormatInt(hourBucket, 10), bonusTokens)
+	setCmd := pipe.HSetNX(ctx, key, strconv.FormatInt(hourBucket, 10), bonusTokens)
 	pipe.Expire(ctx, key, hourlyBonusSnapshotTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return setCmd.Val(), nil
 }
 
 // ListUserHourlyBonusSnapshots 读取近若干小时的赠送额度快照（缺失按 0）。
@@ -644,6 +658,32 @@ func (c *billingCache) ListUserHourlyBonusSnapshots(ctx context.Context, userID 
 		}
 	}
 	return result, nil
+}
+
+// hourlyBonusUsedTotalKey 返回用户「历史累计已赠送 token 数」的 Redis key。
+// 该计数需要长期保留（累计充值额也是累计口径），不回填过期。
+func hourlyBonusUsedTotalKey(userID int64) string {
+	return fmt.Sprintf("billing:user_hourly_bonus_used:%d", userID)
+}
+
+// GetUserHourlyBonusUsedTotal 读取历史累计已赠送 token 数；key 不存在返回 0。
+func (c *billingCache) GetUserHourlyBonusUsedTotal(ctx context.Context, userID int64) (int64, error) {
+	val, err := c.rdb.Get(ctx, hourlyBonusUsedTotalKey(userID)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
+// IncrUserHourlyBonusUsedTotal 原子累加历史累计已赠送 token 数。
+func (c *billingCache) IncrUserHourlyBonusUsedTotal(ctx context.Context, userID int64, tokens int64) error {
+	if tokens <= 0 {
+		return nil
+	}
+	return c.rdb.IncrBy(ctx, hourlyBonusUsedTotalKey(userID), tokens).Err()
 }
 
 func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {

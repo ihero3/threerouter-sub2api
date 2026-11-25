@@ -881,7 +881,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.settleHourlyTokenUsage(ctx, usageLog)
+		s.settleHourlyTokenUsage(ctx, usageLog, hourlySettling)
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 	}
@@ -918,19 +918,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 	// 每小时 token 用量结算：写回用户维度的小时桶（未充值用户上限判定与赠送额度消耗共用）。
-	s.settleHourlyTokenUsage(ctx, usageLog)
+	s.settleHourlyTokenUsage(ctx, usageLog, hourlySettling)
 
 	return nil
 }
 
-// settleHourlyTokenUsage 把本次请求的原始 token 数累加到用户的小时桶。
+// settleHourlyTokenUsage 把本次请求的原始 token 数（含缓存读写/创建）累加到用户的小时桶。
+// settling 为计费时使用的赠送抵扣快照，累计赠送量只计真正抵扣的部分；
 // simple 模式的计费链路也调用它，保证两种运行模式的流量控制口径一致。
-func (s *GatewayService) settleHourlyTokenUsage(ctx context.Context, usageLog *UsageLog) {
+func (s *GatewayService) settleHourlyTokenUsage(ctx context.Context, usageLog *UsageLog, settling *HourlyTokenSettling) {
 	if s == nil || s.billingCacheService == nil || usageLog == nil {
 		return
 	}
 	tokens := usageLog.InputTokens + usageLog.OutputTokens + usageLog.CacheCreationTokens + usageLog.CacheReadTokens + usageLog.ImageOutputTokens
-	s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, tokens)
+	s.billingCacheService.SettleHourlyTokenUsage(ctx, usageLog.UserID, tokens, settling)
 }
 
 // recordUsageMultipliers 返回 token / 图片售价倍率（用户专属 > 分组默认 > 系统默认，token 倍率叠加高峰因子）

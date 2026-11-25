@@ -26,14 +26,16 @@ import (
 // 已充值用户每小时获得一份赠送额度，先用赠送额度抵扣，用完后再正常扣余额，
 // 未用完的部分随整点作废，不累积、不补发。
 //
-// 「赠送不超充值额」：每小时赠送额度同时受「累计充值金额 × BonusTokensPerUSD」封顶，
-// 即充 $1 最多解锁 BonusTokensPerUSD 个赠送 token，避免小额充值刷走大额免费额度。
+// 「赠送累计不超充值额」：用户历史上获得的赠送 token 总量（按实际抵扣量累计）
+// 不超过「累计充值金额 × BonusTokensPerUSD」。即充 $1 最多累计白送 BonusTokensPerUSD 个 token，
+// 送满后不再赠送（直到再次充值抬高上限），避免小额充值长期刷走大额免费额度。
 type HourlyTokenLimitSettings struct {
 	NonRechargedEnabled   bool  `json:"non_recharged_enabled"`
 	NonRechargedLimit     int64 `json:"non_recharged_limit"`
 	RechargedBonusEnabled bool  `json:"recharged_bonus_enabled"`
 	RechargedBonus        int64 `json:"recharged_bonus"`
-	// BonusTokensPerUSD 每 1 美元累计充值可解锁的每小时赠送 token 数（0 = 不按充值额封顶）。
+	// BonusTokensPerUSD 每 1 美元累计充值可解锁的赠送 token 总数（0 = 不按充值额封顶）。
+	// 该值限制的是「累计赠送量」，不是单小时额度。
 	BonusTokensPerUSD int64 `json:"bonus_tokens_per_usd"`
 }
 
@@ -226,10 +228,17 @@ type HourlyTokenUsageCache interface {
 	IncrUserHourlyTokenUsage(ctx context.Context, userID int64, hourBucket int64, tokens int64) error
 	// ListUserHourlyTokenUsage 批量读取若干小时桶的已用 token（缺失按 0）。
 	ListUserHourlyTokenUsage(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error)
+	// GetUserHourlyBonusSnapshot 读取某小时已发放的赠送额度（0 = 本小时尚未发放）。
+	GetUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64) (int64, error)
 	// RecordUserHourlyBonusSnapshot 记录某小时的赠送额度快照（Usage 页展示用）。
-	RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) error
+	// 仅首次写入生效，created=true 表示本小时首次发放，调用方据此扣减累计池。
+	RecordUserHourlyBonusSnapshot(ctx context.Context, userID int64, hourBucket int64, bonusTokens int64) (created bool, err error)
 	// ListUserHourlyBonusSnapshots 读取近若干小时的赠送额度快照（缺失按 0）。
 	ListUserHourlyBonusSnapshots(ctx context.Context, userID int64, hourBuckets []int64) (map[int64]int64, error)
+	// GetUserHourlyBonusUsedTotal 读取用户历史累计已被赠送额度抵扣的 token 总数（跨小时累计）。
+	GetUserHourlyBonusUsedTotal(ctx context.Context, userID int64) (int64, error)
+	// IncrUserHourlyBonusUsedTotal 原子累加历史累计已赠送 token 数（用于按累计充值额封顶）。
+	IncrUserHourlyBonusUsedTotal(ctx context.Context, userID int64, tokens int64) error
 }
 
 // RechargeStatusProvider 判断用户的余额充值情况。
@@ -376,29 +385,92 @@ func (s *BillingCacheService) isUserRechargedCached(ctx context.Context, userID 
 	return s.rechargeInfoCached(ctx, userID).recharged
 }
 
-// effectiveHourlyBonus 返回已充值用户本小时的赠送额度（受累计充值金额封顶）。
-// ok=false 表示该用户当前不享受赠送额度（未充值 / 开关关闭 / 封顶后为 0）。
-func (s *BillingCacheService) effectiveHourlyBonus(ctx context.Context, userID int64) (int64, bool) {
+// hourlyBonusCapTokens 返回用户的累计赠送额度上限（token）。
+// 0 表示不按充值额封顶（BonusTokensPerUSD <= 0）。
+func hourlyBonusCapTokens(settings HourlyTokenLimitSettings, amountUSD float64) int64 {
+	if settings.BonusTokensPerUSD <= 0 || amountUSD <= 0 {
+		return 0
+	}
+	return int64(amountUSD * float64(settings.BonusTokensPerUSD))
+}
+
+// hourlyBonusGrant 计算本小时赠送额度状态。
+//
+// 返回：
+//   - allowance：本次请求仍可抵扣的赠送 token 数（0 = 无赠送额度）；
+//   - hourBonus：本小时新发放的赠送额度（仅本小时首次发放时 >0，用于扣减累计池）。
+//
+// 发放规则（重要）：只要某小时使用了赠送额度，就把「本小时发放额度」整份从累计池扣掉，
+// 不管实际用掉多少——没用完的部分整点作废，但同样计入累计赠送量。
+// 因此累计池扣减发生在「发放」而不是「按实际抵扣量」，每小时最多扣一次。
+func (s *BillingCacheService) hourlyBonusGrant(ctx context.Context, userID int64, used int64) (allowance int64, hourBonus int64) {
+	if s == nil || s.cache == nil || userID <= 0 {
+		return 0, 0
+	}
 	settings := s.hourlyTokenLimitSettings(ctx)
 	if !settings.RechargedBonusEnabled {
-		return 0, false
+		return 0, 0
 	}
 	info := s.rechargeInfoCached(ctx, userID)
 	if !info.recharged {
-		return 0, false
+		return 0, 0
 	}
-	bonus := settings.RechargedBonus
-	// 赠送不超充值额：充 $1 最多解锁 BonusTokensPerUSD 个赠送 token。
+	granted, err := s.cache.GetUserHourlyBonusSnapshot(ctx, userID, hourlyTokenBucket(hourlyTokenNow()))
+	if err != nil {
+		// 快照读取失败：无法判断本小时是否已扣池，宁可暂不赠送，避免重复扣池或超发。
+		logger.LegacyPrintf("service.billing_cache",
+			"Warning: hourly bonus snapshot read failed for user %d: %v", userID, err)
+		return 0, 0
+	}
+	if granted > 0 {
+		// 本小时已发放：额度固定（发放时已整份扣池），只按本小时已用量递减。
+		allowance = granted - used
+		if allowance < 0 {
+			allowance = 0
+		}
+		return allowance, 0
+	}
+
+	// 本小时尚未发放：可发放额度 = min(每小时赠送额度, 累计池剩余)。
+	grant := settings.RechargedBonus
 	if settings.BonusTokensPerUSD > 0 {
-		capped := int64(info.amountUSD * float64(settings.BonusTokensPerUSD))
-		if capped < bonus {
-			bonus = capped
+		capTokens := hourlyBonusCapTokens(settings, info.amountUSD)
+		if capTokens <= 0 {
+			// 已充值但金额未知（查询失败或异常数据）：保守不发赠送。
+			return 0, 0
+		}
+		usedTotal, err := s.cache.GetUserHourlyBonusUsedTotal(ctx, userID)
+		if err != nil {
+			logger.LegacyPrintf("service.billing_cache",
+				"Warning: hourly bonus used total read failed for user %d: %v", userID, err)
+			return 0, 0
+		}
+		remaining := capTokens - usedTotal
+		if remaining <= 0 {
+			return 0, 0
+		}
+		if remaining < grant {
+			grant = remaining
 		}
 	}
-	if bonus <= 0 {
+	if grant <= 0 {
+		return 0, 0
+	}
+	allowance = grant - used
+	if allowance <= 0 {
+		return 0, 0
+	}
+	return allowance, grant
+}
+
+// effectiveHourlyBonus 返回已充值用户本小时可获得的赠送额度（供展示/测试使用）。
+// ok=false 表示该用户当前不享受赠送额度（未充值 / 开关关闭 / 累计封顶用尽）。
+func (s *BillingCacheService) effectiveHourlyBonus(ctx context.Context, userID int64) (int64, bool) {
+	allowance, _ := s.hourlyBonusGrant(ctx, userID, 0)
+	if allowance <= 0 {
 		return 0, false
 	}
-	return bonus, true
+	return allowance, true
 }
 
 // InvalidateHourlyTokenLimitUser 充值成功后调用：立即失效「已充值」标记，
@@ -436,18 +508,14 @@ func (s *BillingCacheService) HourlyTokenGate(ctx context.Context, userID int64)
 	}
 
 	// 已充值用户走赠送额度逻辑，永远不受「未充值上限」约束：
-	// 即使赠送额度（可能被充值额封顶）为 0 或用完，也只是恢复正常扣费。
+	// 即使赠送额度（可能被累计充值额封顶）为 0 或用完，也只是恢复正常扣费。
 	if settings.RechargedBonusEnabled && s.isUserRechargedCached(ctx, userID) {
-		bonus, ok := s.effectiveHourlyBonus(ctx, userID)
-		if !ok {
-			return nil, nil
-		}
-		remaining := bonus - used
-		if remaining <= 0 {
+		allowance, _ := s.hourlyBonusGrant(ctx, userID, used)
+		if allowance <= 0 {
 			// 赠送额度已用完：后续请求正常扣余额，不做任何限制。
 			return nil, nil
 		}
-		return &HourlyTokenGateResult{BonusRemaining: remaining}, nil
+		return &HourlyTokenGateResult{BonusRemaining: allowance}, nil
 	}
 
 	if !settings.NonRechargedEnabled {
@@ -460,8 +528,13 @@ func (s *BillingCacheService) HourlyTokenGate(ctx context.Context, userID int64)
 }
 
 // SettleHourlyTokenUsage 后扣阶段记录本次实际 token 用量（用户维度累计，含订阅用户）。
-// 累计值既支撑未充值用户的上限判定，也决定已充值用户本小时还剩多少赠送额度。
-func (s *BillingCacheService) SettleHourlyTokenUsage(ctx context.Context, userID int64, actualTokens int) {
+// actualTokens 为原始 token 总数（输入 + 输出 + 缓存读写/创建 + 图片输出）。
+//
+// settling 必须就是计费时用于抵扣的那份快照：
+//   - 本小时首次使用赠送额度时，把「本小时发放额度」整份计入累计赠送量（不管实际用掉多少），
+//     同小时后续请求 hourBonus=0，不会重复扣池；
+//   - 传 nil 表示本次请求未参与赠送抵扣，仅累计用量，不扣累计池。
+func (s *BillingCacheService) SettleHourlyTokenUsage(ctx context.Context, userID int64, actualTokens int, settling *HourlyTokenSettling) {
 	if s == nil || s.cache == nil || userID <= 0 || actualTokens <= 0 {
 		return
 	}
@@ -470,31 +543,37 @@ func (s *BillingCacheService) SettleHourlyTokenUsage(ctx context.Context, userID
 		return
 	}
 	bucket := hourlyTokenBucket(hourlyTokenNow())
-	// 记录本小时的赠送额度快照，供 Usage 页展示「赠送了多少 / 用了多少 / 剩多少」。
-	bonus := int64(0)
-	if b, ok := s.effectiveHourlyBonus(ctx, userID); ok {
-		bonus = b
+
+	if settling != nil && settling.hourBonus > 0 {
+		// 快照 HSetNX 保证每小时只发放一次：只有首次写入成功才扣减累计池。
+		if created, err := s.cache.RecordUserHourlyBonusSnapshot(ctx, userID, bucket, settling.hourBonus); err != nil {
+			logger.LegacyPrintf("service.billing_cache",
+				"Warning: hourly bonus snapshot write failed for user %d: %v", userID, err)
+		} else if created {
+			if err := s.cache.IncrUserHourlyBonusUsedTotal(ctx, userID, settling.hourBonus); err != nil {
+				logger.LegacyPrintf("service.billing_cache",
+					"Warning: hourly bonus used total incr failed for user %d: %v", userID, err)
+			}
+		}
 	}
 	if err := s.cache.IncrUserHourlyTokenUsage(ctx, userID, bucket, int64(actualTokens)); err != nil {
 		logger.LegacyPrintf("service.billing_cache",
 			"Warning: hourly token usage incr failed for user %d: %v", userID, err)
 	}
-	if bonus > 0 {
-		s.recordHourlyBonusSnapshot(ctx, userID, bucket, bonus)
-	}
 }
 
 // HourlyTokenSettling 已充值用户本次请求的赠送额度抵扣快照（后扣开始时取一次）。
+// 同一份快照同时用于「扣费抵扣」与「累计赠送量结算」，保证两者口径完全一致。
 type HourlyTokenSettling struct {
-	// used 本次请求开始前本小时已用 token 数。
-	used int64
-	// bonus 每小时赠送额度。
-	bonus int64
+	// remaining 本次请求开始前仍可使用的赠送额度 token 数。
+	remaining int64
+	// hourBonus 本小时新发放的赠送额度；仅本小时首次发放时 >0。
+	// 结算时把它整份计入累计赠送量（不管实际用掉多少）。
+	hourBonus int64
 }
 
-// BeginHourlyTokenSettling 读取用户本小时已用 token 与赠送额度，供后扣计算抵扣比例。
-// 返回 nil 表示无需抵扣：开关关闭、用户未充值、赠送额度（含充值额封顶后）为 0、
-// 已用完或读取失败。
+// BeginHourlyTokenSettling 读取用户本小时已用 token，求本次请求可用的赠送额度。
+// 返回 nil 表示无需抵扣：开关关闭、用户未充值、赠送额度为 0（含累计封顶用尽）或读取失败。
 func (s *BillingCacheService) BeginHourlyTokenSettling(ctx context.Context, userID int64) *HourlyTokenSettling {
 	if s == nil || s.cache == nil || userID <= 0 {
 		return nil
@@ -506,28 +585,28 @@ func (s *BillingCacheService) BeginHourlyTokenSettling(ctx context.Context, user
 	if !s.isUserRechargedCached(ctx, userID) {
 		return nil
 	}
-	bonus, ok := s.effectiveHourlyBonus(ctx, userID)
-	if !ok {
-		return nil
-	}
 	used, err := s.cache.GetUserHourlyTokenUsage(ctx, userID, hourlyTokenBucket(hourlyTokenNow()))
 	if err != nil {
 		logger.LegacyPrintf("service.billing_cache",
 			"Warning: hourly token usage read failed for user %d: %v", userID, err)
 		return nil
 	}
-	if used >= bonus {
+	allowance, hourBonus := s.hourlyBonusGrant(ctx, userID, used)
+	if allowance <= 0 {
 		return nil
 	}
-	return &HourlyTokenSettling{used: used, bonus: bonus}
+	return &HourlyTokenSettling{remaining: allowance, hourBonus: hourBonus}
 }
 
 // CoveredTokens 返回本次实际 token 中可由赠送额度覆盖的数量（按剩余额度封顶）。
 func (h *HourlyTokenSettling) CoveredTokens(actualTokens int) int {
-	if h == nil || actualTokens <= 0 {
+	if h == nil || actualTokens <= 0 || h.remaining <= 0 {
 		return 0
 	}
-	return HourlyBonusCoveredTokens(h.used, h.bonus, actualTokens)
+	if int64(actualTokens) > h.remaining {
+		return int(h.remaining)
+	}
+	return actualTokens
 }
 
 // applyHourlyTokenBonus 按赠送额度覆盖比例扣减本次请求费用。
@@ -598,7 +677,7 @@ func (s *BillingCacheService) recordHourlyBonusSnapshot(ctx context.Context, use
 	if s == nil || s.cache == nil || bonusTokens <= 0 {
 		return
 	}
-	if err := s.cache.RecordUserHourlyBonusSnapshot(ctx, userID, bucket, bonusTokens); err != nil {
+	if _, err := s.cache.RecordUserHourlyBonusSnapshot(ctx, userID, bucket, bonusTokens); err != nil {
 		logger.LegacyPrintf("service.billing_cache",
 			"Warning: hourly bonus snapshot write failed for user %d: %v", userID, err)
 	}
@@ -653,4 +732,63 @@ func (s *BillingCacheService) GetHourlyTokenUsageHistory(ctx context.Context, us
 		})
 	}
 	return records
+}
+
+// HourlyBonusUsageSummary Usage 页「赠送额度」tab 的完整数据：
+// 最近 hours 小时的明细 + 累计赠送额度（封顶）概览。
+type HourlyBonusUsageSummary struct {
+	Hours   int                      `json:"hours"`
+	Records []HourlyTokenUsageRecord `json:"records"`
+	// Enabled 赠送额度功能是否开启。
+	Enabled bool `json:"enabled"`
+	// HourlyBonusTokens 配置的每小时赠送额度。
+	HourlyBonusTokens int64 `json:"hourly_bonus_tokens"`
+	// Capped 是否按「累计充值额」封顶赠送总量。
+	Capped bool `json:"capped"`
+	// BonusCapTokens 累计赠送总额上限（仅 Capped 时有意义）。
+	BonusCapTokens int64 `json:"bonus_cap_tokens"`
+	// BonusUsedTokens 历史累计已被赠送额度抵扣的 token 数。
+	BonusUsedTokens int64 `json:"bonus_used_tokens"`
+	// BonusRemainingTokens 累计还可赠送的 token 数（仅 Capped 时有意义）。
+	BonusRemainingTokens int64 `json:"bonus_remaining_tokens"`
+	// RechargedAmountUSD 用户累计成功充值金额（美元）。
+	RechargedAmountUSD float64 `json:"recharged_amount_usd"`
+}
+
+// GetHourlyBonusUsageSummary 返回用户的赠送额度明细与累计封顶概览。
+func (s *BillingCacheService) GetHourlyBonusUsageSummary(ctx context.Context, userID int64, hours int) HourlyBonusUsageSummary {
+	summary := HourlyBonusUsageSummary{Records: []HourlyTokenUsageRecord{}}
+	if s == nil || s.cache == nil || userID <= 0 {
+		return summary
+	}
+	if hours <= 0 || hours > 168 {
+		hours = 24
+	}
+	summary.Hours = hours
+	summary.Records = s.GetHourlyTokenUsageHistory(ctx, userID, hours)
+
+	settings := HourlyTokenLimitSettings{}
+	if s.settingService != nil {
+		settings = s.settingService.GetHourlyTokenLimitSettingsCached(ctx)
+		settings.Normalize()
+	}
+	summary.Enabled = settings.RechargedBonusEnabled
+	summary.HourlyBonusTokens = settings.RechargedBonus
+	summary.Capped = settings.BonusTokensPerUSD > 0
+
+	if usedTotal, err := s.cache.GetUserHourlyBonusUsedTotal(ctx, userID); err == nil {
+		summary.BonusUsedTokens = usedTotal
+	} else {
+		logger.LegacyPrintf("service.billing_cache",
+			"Warning: hourly bonus used total read failed for user %d: %v", userID, err)
+	}
+	if summary.Capped && s.rechargeStatus != nil {
+		info := s.rechargeInfoCached(ctx, userID)
+		summary.RechargedAmountUSD = info.amountUSD
+		summary.BonusCapTokens = hourlyBonusCapTokens(settings, info.amountUSD)
+		if summary.BonusCapTokens > summary.BonusUsedTokens {
+			summary.BonusRemainingTokens = summary.BonusCapTokens - summary.BonusUsedTokens
+		}
+	}
+	return summary
 }

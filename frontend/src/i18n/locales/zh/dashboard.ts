@@ -504,7 +504,15 @@ export default {
       statusExpired: '已作废',
       empty: '最近 24 小时暂无赠送额度记录',
       loadFailed: '加载赠送额度记录失败',
-      totalUsed: '最近 24 小时共消耗 {tokens} token'
+      totalUsed: '最近 24 小时共消耗 {tokens} token',
+      cumulativeTitle: '累计赠送额度',
+      cumulativeHint: '赠送累计不超过「累计充值额换算额度」。每小时只要用了赠送，即按整小时赠送额度计入累计，未用完部分整点作废；送满后再次充值即可继续赠送',
+      cumulativeUsedLabel: '累计已赠送',
+      cumulativeCapLabel: '累计上限',
+      cumulativeRemaining: '还可赠送 {tokens}',
+      cumulativeExhausted: '赠送额度已达上限，充值后可继续赠送',
+      cumulativeUncapped: '未按充值额封顶，每小时额度内不限总量',
+      rechargedAmount: '累计充值 ${amount}'
     },
     errors: {
       time: '时间', model: '模型', endpoint: '端点', status: '状态码',

@@ -11,7 +11,7 @@ export default {
       topUp1: 'Top up $1 → get $5 free ($6 total)',
       topUp10: 'Top up $10 → get $50 free ($60 total)',
       deepseek: 'DeepSeek open model: $1 ≈ 30M tokens',
-      flowControl: 'Free users: 1M tokens/h cap · Funded: no cap + 3M tokens/h bonus (bonus ≤ total top-up)',
+      flowControl: 'Funded: no cap + 3000000 tokens/h bonus (total bonus ≤ total top-up)',
       freedom: '~$3/month = token freedom'
     }
   },

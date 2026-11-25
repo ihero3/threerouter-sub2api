@@ -60,7 +60,7 @@ func (h *UsageHandler) SetBillingCacheService(billingCacheService *service.Billi
 	h.billingCacheService = billingCacheService
 }
 
-// GetMyHourlyTokenUsage 返回当前用户最近 24 小时的每小时赠送额度使用记录。
+// GetMyHourlyTokenUsage 返回当前用户最近 24 小时的赠送额度使用记录与累计封顶概览。
 // GET /api/v1/usage/hourly-bonus
 func (h *UsageHandler) GetMyHourlyTokenUsage(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
@@ -69,11 +69,14 @@ func (h *UsageHandler) GetMyHourlyTokenUsage(c *gin.Context) {
 		return
 	}
 	if h.billingCacheService == nil {
-		response.Success(c, gin.H{"hours": 24, "records": []service.HourlyTokenUsageRecord{}})
+		response.Success(c, service.HourlyBonusUsageSummary{
+			Hours:   24,
+			Records: []service.HourlyTokenUsageRecord{},
+		})
 		return
 	}
-	records := h.billingCacheService.GetHourlyTokenUsageHistory(c.Request.Context(), subject.UserID, 24)
-	response.Success(c, gin.H{"hours": 24, "records": records})
+	summary := h.billingCacheService.GetHourlyBonusUsageSummary(c.Request.Context(), subject.UserID, 24)
+	response.Success(c, summary)
 }
 
 // NewUsageHandler creates a new UsageHandler

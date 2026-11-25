@@ -2461,6 +2461,20 @@ export interface HourlyBonusUsageRecord {
 export interface HourlyBonusUsageResponse {
   hours: number
   records: HourlyBonusUsageRecord[]
+  /** 赠送额度功能是否开启 */
+  enabled: boolean
+  /** 配置的每小时赠送额度 */
+  hourly_bonus_tokens: number
+  /** 是否按「累计充值额」封顶赠送总量 */
+  capped: boolean
+  /** 累计赠送总额上限（仅 capped 时有意义） */
+  bonus_cap_tokens: number
+  /** 历史累计已被赠送额度抵扣的 token 数 */
+  bonus_used_tokens: number
+  /** 累计还可赠送的 token 数（仅 capped 时有意义） */
+  bonus_remaining_tokens: number
+  /** 累计成功充值金额（美元） */
+  recharged_amount_usd: number
 }
 
 export interface UserErrorListParams {

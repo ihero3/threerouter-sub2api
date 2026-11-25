@@ -261,6 +261,50 @@
             </p>
           </div>
 
+          <!-- 累计赠送额度：赠送总量不超过「累计充值额换算额度」 -->
+          <div v-if="bonusSummary && bonusSummary.enabled && bonusCapped" class="card p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t('usage.hourlyBonus.cumulativeTitle') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('usage.hourlyBonus.cumulativeHint') }}
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-1 text-right">
+                <span
+                  v-if="bonusSummary.bonus_remaining_tokens > 0"
+                  class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                >
+                  {{ t('usage.hourlyBonus.cumulativeRemaining', { tokens: formatBonusTokens(bonusSummary.bonus_remaining_tokens) }) }}
+                </span>
+                <span v-else class="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  {{ t('usage.hourlyBonus.cumulativeExhausted') }}
+                </span>
+                <span class="text-xs text-gray-400">
+                  {{ t('usage.hourlyBonus.rechargedAmount', { amount: bonusSummary.recharged_amount_usd.toFixed(2) }) }}
+                </span>
+              </div>
+            </div>
+            <div class="mt-4">
+              <div class="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+                <span>
+                  {{ t('usage.hourlyBonus.cumulativeUsedLabel') }}
+                  {{ formatBonusTokens(bonusSummary.bonus_used_tokens) }} /
+                  {{ formatBonusTokens(bonusSummary.bonus_cap_tokens) }}
+                </span>
+                <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ bonusCapPercent }}%</span>
+              </div>
+              <div class="mt-2 h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div
+                  class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all"
+                  :style="{ width: `${bonusCapPercent}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+
           <!-- 最近 24 小时记录 -->
           <div class="card overflow-hidden">
             <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-700">
@@ -341,7 +385,7 @@ import EndpointDistributionChart from '@/components/charts/EndpointDistributionC
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
-import type { HourlyBonusUsageRecord } from '@/types'
+import type { HourlyBonusUsageRecord, HourlyBonusUsageResponse } from '@/types'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode } from '@/utils/billingMode'
@@ -1028,9 +1072,17 @@ const switchToErrors = () => {
 const bonusRecords = ref<HourlyBonusUsageRecord[]>([])
 const bonusLoading = ref(false)
 const bonusLoaded = ref(false)
+const bonusSummary = ref<HourlyBonusUsageResponse | null>(null)
 
 const bonusCurrent = computed(() => bonusRecords.value.find(r => r.is_current) ?? null)
 const bonusTotalUsed = computed(() => bonusRecords.value.reduce((sum, r) => sum + r.used_tokens, 0))
+// 累计封顶概览：仅当运营开启了「赠送累计不超充值额」时展示。
+const bonusCapped = computed(() => bonusSummary.value?.capped === true)
+const bonusCapPercent = computed(() => {
+  const s = bonusSummary.value
+  if (!s || !s.bonus_cap_tokens) return 0
+  return Math.min(100, Math.round((s.bonus_used_tokens / s.bonus_cap_tokens) * 100))
+})
 
 // 千分位 + 缩写，让「已用 1.2M / 赠送 3M」一眼可读。
 const formatBonusTokens = (value: number): string => {
@@ -1059,6 +1111,7 @@ const loadBonus = async () => {
   try {
     const data = await usageAPI.getHourlyBonusUsage()
     bonusRecords.value = data.records ?? []
+    bonusSummary.value = data
     bonusLoaded.value = true
   } catch {
     appStore.showError(t('usage.hourlyBonus.loadFailed'))

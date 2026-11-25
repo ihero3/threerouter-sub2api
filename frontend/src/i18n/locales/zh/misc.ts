@@ -11,7 +11,7 @@ export default {
       topUp1: '充值 $1 → 送 $5（共 $6）',
       topUp10: '充值 $10 → 送 $50（共 $60）',
       deepseek: 'DeepSeek 开源模型：$1 ≈ 3000 万 tokens',
-      flowControl: '未充值用户 1M Token/小时限额；充值后无上限，每小时赠 3M Token（赠送不超累计充值额）',
+      flowControl: '充值后使用不限制，且每小时赠还赠 3000000 Token（赠送不超累计充值额）',
       freedom: '每月约 $3 = 实现 Token 自由'
     }
   },

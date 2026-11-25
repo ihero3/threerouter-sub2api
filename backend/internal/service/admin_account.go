@@ -836,8 +836,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.LoadFactor = input.LoadFactor
 		}
 	}
-	// 先记录变更前状态，供后续状态变更通知使用。
-	previousStatus := account.Status
+	// 先记录变更前「可调度状态」，供后续状态变更通知使用（含调度开关口径）。
+	previousStatus := AccountAvailabilityState(account)
 	if input.Status != "" {
 		account.Status = input.Status
 	}
@@ -930,7 +930,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		return nil, err
 	}
 	// 状态发生变化时（含 error_message 变化）通知管理员。
-	s.notifyAccountStatusChange(ctx, id, previousStatus, updated.Status, updated.ErrorMessage)
+	s.notifyAccountStatusChange(ctx, id, previousStatus, AccountAvailabilityState(updated), updated.ErrorMessage)
 	return updated, nil
 }
 
@@ -1178,17 +1178,21 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	// Run bulk update for column/jsonb fields first.
-	// 批量变更状态前先记录各账号的原状态，用于逐账号发送状态变更通知。
-	var previousStatuses map[int64]string
-	if input.Status != "" {
-		previousStatuses = make(map[int64]string, len(input.AccountIDs))
+	// 批量变更状态/调度前先记录各账号的原「可调度状态」，用于逐账号发送状态变更通知。
+	type accountStateSnapshot struct {
+		status      string
+		schedulable bool
+	}
+	var previousStates map[int64]accountStateSnapshot
+	if input.Status != "" || input.Schedulable != nil {
+		previousStates = make(map[int64]accountStateSnapshot, len(input.AccountIDs))
 		for _, accountID := range input.AccountIDs {
-			previousStatuses[accountID] = ""
+			previousStates[accountID] = accountStateSnapshot{}
 		}
 		if loaded, loadErr := s.accountRepo.GetByIDs(ctx, input.AccountIDs); loadErr == nil {
 			for _, acc := range loaded {
 				if acc != nil {
-					previousStatuses[acc.ID] = acc.Status
+					previousStates[acc.ID] = accountStateSnapshot{status: acc.Status, schedulable: acc.Schedulable}
 				}
 			}
 		}
@@ -1197,8 +1201,22 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
 		return nil, err
 	}
-	for accountID, previousStatus := range previousStatuses {
-		s.notifyAccountStatusChange(ctx, accountID, previousStatus, input.Status, "")
+	for accountID, previous := range previousStates {
+		afterStatus := previous.status
+		if input.Status != "" {
+			afterStatus = input.Status
+		}
+		afterSchedulable := previous.schedulable
+		if input.Schedulable != nil {
+			afterSchedulable = *input.Schedulable
+		}
+		s.notifyAccountStatusChange(
+			ctx,
+			accountID,
+			accountAvailabilityStateOf(previous.status, previous.schedulable),
+			accountAvailabilityStateOf(afterStatus, afterSchedulable),
+			"",
+		)
 	}
 
 	// 将 proxy 变更传播到每个目标账号的 spark 影子账号
@@ -1339,11 +1357,6 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Account, error) {
-	previous, err := s.accountRepo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	previousStatus := previous.Status
 	if err := s.accountRepo.ClearError(ctx, id); err != nil {
 		return nil, err
 	}
@@ -1368,23 +1381,21 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 			s.runtimeBlocker.ClearAccountSchedulingBlock(id)
 		}
 	})
-	s.notifyAccountStatusChange(ctx, id, previousStatus, account.Status, account.ErrorMessage)
 	return account, nil
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
-	previousStatus := ""
-	if previous, err := s.accountRepo.GetByID(ctx, id); err == nil {
-		previousStatus = previous.Status
-	}
-	if err := s.accountRepo.SetError(ctx, id, errorMsg); err != nil {
-		return err
-	}
-	s.notifyAccountStatusChange(ctx, id, previousStatus, StatusError, errorMsg)
-	return nil
+	// 状态变更通知由仓储层 SetError 统一触发（上游自动禁用与管理端手动置错共用同一入口），
+	// 此处不再重复发送，避免同一变更收到两封邮件。
+	return s.accountRepo.SetError(ctx, id, errorMsg)
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
+	before, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	previousState := AccountAvailabilityState(before)
 	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
 		return nil, err
 	}
@@ -1392,6 +1403,8 @@ func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, 
 	if err != nil {
 		return nil, err
 	}
+	// 关闭/开启调度开关会改变列表展示状态（正常 ↔ 暂停），同样需要通知。
+	s.notifyAccountStatusChange(ctx, id, previousState, AccountAvailabilityState(updated), updated.ErrorMessage)
 	return updated, nil
 }
 
