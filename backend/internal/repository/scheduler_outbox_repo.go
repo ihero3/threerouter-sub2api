@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -81,7 +82,13 @@ func (r *schedulerOutboxRepository) ListAfterAndReleaseDedup(ctx context.Context
 		if len(payloadRaw) > 0 {
 			var payload map[string]any
 			if err := json.Unmarshal(payloadRaw, &payload); err != nil {
-				return nil, err
+				// A single malformed payload must not fail the whole batch: doing so
+				// keeps the watermark pinned and starves every later event (poison
+				// message). Keep the event with a nil payload — handlers that only
+				// need account_id/group_id still do useful work, and the service
+				// layer's poison isolation decides whether to advance past it.
+				logger.LegacyPrintf("repository.scheduler_outbox", "[SchedulerOutbox] malformed payload treated as empty: id=%d type=%s err=%v", event.ID, event.EventType, err)
+				payload = nil
 			}
 			event.Payload = payload
 		}

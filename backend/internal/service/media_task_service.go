@@ -355,22 +355,20 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			if kind == MediaKindVideo {
 				// 创建时上游真实时长未知（0），用用户请求时长预估。
 				if cost, costErr := estimateVideoTaskCost(persistCtx, s.billingDeps(), apiKeyID, publicModel, req.Resolution, 0, req.DurationSec); costErr == nil && cost > 0 {
-			record.ReservedCost = &cost
-			if s.apiKeyService != nil {
-				if qErr := s.apiKeyService.UpdateQuotaUsed(persistCtx, apiKeyID, cost); qErr != nil {
-					s.logger.Warn("media_task_service: reserve quota used failed",
-						zap.Int64("api_key_id", apiKeyID), zap.Float64("cost", cost), zap.Error(qErr))
-				}
-			}
-				}
-			} else if cost, costErr := s.calculateMediaCost(persistCtx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
-				record.ReservedCost = &cost
-				if s.apiKeyService != nil {
-					if qErr := s.apiKeyService.UpdateQuotaUsed(persistCtx, apiKeyID, cost); qErr != nil {
+					reserved, qErr := reserveAndTrackQuota(s.apiKeyService, persistCtx, apiKeyID, cost)
+					if qErr != nil {
 						s.logger.Warn("media_task_service: reserve quota used failed",
 							zap.Int64("api_key_id", apiKeyID), zap.Float64("cost", cost), zap.Error(qErr))
 					}
+					record.ReservedCost = reserved
 				}
+			} else if cost, costErr := s.calculateMediaCost(persistCtx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
+				reserved, qErr := reserveAndTrackQuota(s.apiKeyService, persistCtx, apiKeyID, cost)
+				if qErr != nil {
+					s.logger.Warn("media_task_service: reserve quota used failed",
+						zap.Int64("api_key_id", apiKeyID), zap.Float64("cost", cost), zap.Error(qErr))
+				}
+				record.ReservedCost = reserved
 			}
 		}
 

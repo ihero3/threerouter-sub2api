@@ -268,7 +268,12 @@ func settleVideoTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps, in 
 			zap.Int64("api_key_id", in.APIKeyID),
 			zap.Error(keyErr),
 		)
-		releaseMediaReservedQuota(deps.apiKeyService, ctx, in.APIKeyID, reservedCostOf(in.ReservedCost))
+		// keyErr (and the other missing-context conditions) frequently stem from
+		// ctx being cancelled/timed out. Refunding on that same ctx would fail and
+		// strand the reservation, so detach and use a bounded fresh context.
+		refundCtx, cancelRefund := context.WithTimeout(context.WithoutCancel(ctx), mediaPersistTimeout)
+		releaseMediaReservedQuota(deps.apiKeyService, refundCtx, in.APIKeyID, reservedCostOf(in.ReservedCost))
+		cancelRefund()
 		writeVideoTaskZeroCostUsageLog(ctx, deps, in, nil, now)
 		return 0
 	}

@@ -32,6 +32,11 @@ const (
 	outboxRebuildRetryBaseDelay           = 5 * time.Second
 	outboxRebuildRetryMaxDelay            = 5 * time.Minute
 	outboxMaxIDErrorLogSampleInterval     = time.Minute
+	// outboxPoisonFailureThreshold is the number of consecutive failures for the
+	// same event before it is treated as a poison message and allowed to fall
+	// below the watermark. Lower values recover faster from a stuck queue but
+	// risk skipping an event during a transient dependency outage.
+	outboxPoisonFailureThreshold = 3
 )
 
 // batchSeenKey tracks completed per-platform rebuilds and group lifecycle work
@@ -149,6 +154,13 @@ type SchedulerSnapshotService struct {
 	outboxRebuildRetryReason     string
 	outboxLagWarningActive       bool
 	outboxMaxIDErrorLastLoggedAt time.Time
+
+	// outboxEventFailures tracks consecutive handle failures per event ID so a
+	// single poison event can be isolated once it exceeds the threshold. Only
+	// touched by the single outbox worker goroutine (and tests calling
+	// pollOutbox synchronously), but guarded for safety.
+	outboxFailuresMu sync.Mutex
+	outboxEventFails map[int64]int
 
 	fullRebuildRunMu     sync.Mutex
 	fullRebuildStateMu   sync.Mutex
@@ -456,17 +468,42 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	}
 
 	seen := make(map[batchSeenKey]struct{})
+	// Process every event in the batch even when one fails. Returning early on the
+	// first failure let a single poison event pin the watermark and starve every
+	// later event; instead we isolate failures below.
+	skippedIDs := make(map[int64]struct{})
 	for _, event := range events {
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
 		err := s.handleOutboxEvent(eventCtx, event, seen)
 		cancel()
-		if err != nil {
-			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
-			return
+		if err == nil {
+			s.clearOutboxEventFailure(event.ID)
+			continue
+		}
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, err)
+		failures := s.recordOutboxEventFailure(event.ID)
+		if failures >= outboxPoisonFailureThreshold {
+			// Isolated poison event: allow the watermark to pass it so the rest of
+			// the queue is no longer blocked. The event is deleted by the normal
+			// consumed-row cleanup once the watermark moves past it.
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox poison event isolated: id=%d type=%s failures=%d", event.ID, event.EventType, failures)
+			skippedIDs[event.ID] = struct{}{}
 		}
 	}
 
-	lastID := events[len(events)-1].ID
+	// The watermark may only advance through a contiguous prefix of successfully
+	// handled (or isolated) events. Stop at the first unresolved failure so its
+	// event is retried on the next poll instead of being silently dropped.
+	lastID := watermark
+	for _, event := range events {
+		if _, skipped := skippedIDs[event.ID]; !skipped && s.outboxEventFailureCount(event.ID) > 0 {
+			break
+		}
+		lastID = event.ID
+	}
+	if lastID <= watermark {
+		return
+	}
 	var wmErr error
 	for i := range 3 {
 		wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -490,6 +527,28 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	lagCtx, lagCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	s.checkOutboxLag(lagCtx, lastID)
 	lagCancel()
+}
+
+func (s *SchedulerSnapshotService) recordOutboxEventFailure(eventID int64) int {
+	s.outboxFailuresMu.Lock()
+	defer s.outboxFailuresMu.Unlock()
+	if s.outboxEventFails == nil {
+		s.outboxEventFails = make(map[int64]int)
+	}
+	s.outboxEventFails[eventID]++
+	return s.outboxEventFails[eventID]
+}
+
+func (s *SchedulerSnapshotService) clearOutboxEventFailure(eventID int64) {
+	s.outboxFailuresMu.Lock()
+	defer s.outboxFailuresMu.Unlock()
+	delete(s.outboxEventFails, eventID)
+}
+
+func (s *SchedulerSnapshotService) outboxEventFailureCount(eventID int64) int {
+	s.outboxFailuresMu.Lock()
+	defer s.outboxFailuresMu.Unlock()
+	return s.outboxEventFails[eventID]
 }
 
 func (s *SchedulerSnapshotService) cleanupConsumedOutbox(watermark int64) {

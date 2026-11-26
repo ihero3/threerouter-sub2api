@@ -15,6 +15,8 @@ type outboxCleanupCache struct {
 	watermark       int64
 	setWatermarks   []int64
 	updateErr       error
+	updateErrForIDs map[int64]error
+	lastUsedCalls   []map[int64]time.Time
 	listBucketErr   error
 	listBuckets     []SchedulerBucket
 	listBucketCalls int
@@ -61,6 +63,18 @@ func (c *outboxCleanupCache) DeleteAccount(ctx context.Context, accountID int64)
 }
 
 func (c *outboxCleanupCache) UpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
+	cp := make(map[int64]time.Time, len(updates))
+	for id, ts := range updates {
+		cp[id] = ts
+	}
+	c.lastUsedCalls = append(c.lastUsedCalls, cp)
+	if len(c.updateErrForIDs) > 0 {
+		for id := range updates {
+			if err, ok := c.updateErrForIDs[id]; ok {
+				return err
+			}
+		}
+	}
 	return c.updateErr
 }
 
@@ -891,4 +905,55 @@ func int64Range(start, end int64) []int64 {
 		values = append(values, id)
 	}
 	return values
+}
+
+// TestSchedulerSnapshotPollOutboxPoisonIsolation verifies that a failing head
+// event no longer starves the rest of the batch, and that an event which keeps
+// failing across polls is eventually isolated so the watermark can advance.
+func TestSchedulerSnapshotPollOutboxPoisonIsolation(t *testing.T) {
+	boom := errors.New("poison event failed")
+	cache := &outboxCleanupCache{
+		updateErrForIDs: map[int64]error{101: boom},
+	}
+	repo := &outboxCleanupRepo{
+		events: []SchedulerOutboxEvent{
+			{
+				ID:        1,
+				EventType: SchedulerOutboxEventAccountLastUsed,
+				Payload:   map[string]any{"last_used": map[string]any{"101": float64(100)}},
+			},
+			{
+				ID:        2,
+				EventType: SchedulerOutboxEventAccountLastUsed,
+				Payload:   map[string]any{"last_used": map[string]any{"202": float64(200)}},
+			},
+		},
+		rows:         []int64{1, 2},
+		lockAcquired: true,
+	}
+	svc := NewSchedulerSnapshotService(cache, repo, nil, nil, nil)
+
+	// First poll: event 1 fails (< threshold), but event 2 must still be handled.
+	svc.pollOutbox()
+	if len(cache.lastUsedCalls) != 2 {
+		t.Fatalf("expected both events handled despite head failure, got %d calls", len(cache.lastUsedCalls))
+	}
+	if _, ok := cache.lastUsedCalls[1][202]; !ok {
+		t.Fatalf("expected later event 202 to be handled, got %#v", cache.lastUsedCalls[1])
+	}
+	// Watermark must not advance while the failure is below threshold.
+	if cache.watermark != 0 {
+		t.Fatalf("expected watermark to stay at 0 before isolation, got %d", cache.watermark)
+	}
+
+	// Reach the isolation threshold on event 1.
+	for i := 1; i < outboxPoisonFailureThreshold; i++ {
+		svc.pollOutbox()
+	}
+	if cache.watermark != 2 {
+		t.Fatalf("expected watermark to advance past isolated poison event, got %d", cache.watermark)
+	}
+	if len(repo.deleteCalls) == 0 {
+		t.Fatal("expected consumed-row cleanup after watermark advanced")
+	}
 }

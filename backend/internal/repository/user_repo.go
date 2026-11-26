@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -33,6 +34,13 @@ import (
 type userRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+
+	// sharedIPsCache 缓存近 10 天共享 IP 聚合结果（管理端用户列表每次都会查）。
+	// 该聚合跨全表 usage_logs，短 TTL 足以吸收列表翻页/刷新的重复查询，同时
+	// 保证风控打标在数十秒内跟上新数据。
+	sharedIPsMu       sync.Mutex
+	sharedIPsCache    map[string]bool
+	sharedIPsCachedAt time.Time
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
@@ -1060,6 +1068,21 @@ const sharedUsageIPsSQL = `
 // 注：usage_logs.ip_address 未建索引，海量数据下该全表聚合可能偏慢；如有性能压力，
 // 可对 ip_address（非空）建部分索引，或缩短时间窗口。
 func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool, error) {
+	// Short-TTL cache: this aggregation scans all usage_logs in the 10-day window
+	// and is triggered on every admin user list page. Serve repeated reads from
+	// memory; return a copy so callers cannot mutate the cached set.
+	const sharedIPsTTL = 30 * time.Second
+	r.sharedIPsMu.Lock()
+	if r.sharedIPsCache != nil && time.Since(r.sharedIPsCachedAt) < sharedIPsTTL {
+		cached := make(map[string]bool, len(r.sharedIPsCache))
+		for ip := range r.sharedIPsCache {
+			cached[ip] = true
+		}
+		r.sharedIPsMu.Unlock()
+		return cached, nil
+	}
+	r.sharedIPsMu.Unlock()
+
 	result := make(map[string]bool)
 	if r.sql == nil {
 		return nil, fmt.Errorf("sql executor is not configured")
@@ -1081,7 +1104,17 @@ func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return result, nil
+
+	r.sharedIPsMu.Lock()
+	r.sharedIPsCache = result
+	r.sharedIPsCachedAt = time.Now()
+	r.sharedIPsMu.Unlock()
+	// Return a copy so later callers cannot corrupt the cached set.
+	cached := make(map[string]bool, len(result))
+	for ip := range result {
+		cached[ip] = true
+	}
+	return cached, nil
 }
 
 func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
