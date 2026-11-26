@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -2201,6 +2202,32 @@ func (r *accountRepository) SetRateLimitedIfUnchanged(
 	return true, nil
 }
 
+// notifyAvailabilityLimited 在账号可用性发生变化（进入临时冷却/模型级冷却）时
+// 发送通知。复用账号状态变更通知通道：from_status 为账号当前对外状态，
+// to_status 用冷却类型标记，error_message 携带详情（模型/原因/到期时间）。
+// notifier 未装配或读账号失败时静默跳过（通知失败不影响限流写入）。
+func (r *accountRepository) notifyAvailabilityLimited(ctx context.Context, id int64, kind, detail string) {
+	if r.accountStatusNotifier == nil {
+		return
+	}
+	previous, err := r.client.Account.Get(ctx, id)
+	if err != nil || previous == nil {
+		return
+	}
+	from := service.AccountAvailabilityState(accountEntityToService(previous))
+	if from == "" {
+		return
+	}
+	service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, id, from, kind, detail)
+}
+
+// modelLimitNotificationNeeded 判断一次模型级冷却是否属于「新进入冷却」：
+// 库中无记录或记录已过期 → 新冷却，需要通知；仍在冷却期内 → 只是刷新，
+// 不重复通知（否则一个高频失败模型每 30 分钟窗口内会刷屏）。
+func modelLimitNotificationNeeded(prevResetAt, now time.Time) bool {
+	return prevResetAt.IsZero() || !prevResetAt.After(now)
+}
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil
@@ -2221,6 +2248,26 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	}
 
 	client := clientFromContext(ctx, r.client)
+
+	// 读取该模型此前的冷却到期时间，用于判断是否「新进入冷却」（决定是否通知）。
+	var prevResetRaw *string
+	var prevResetAt time.Time
+	rows, err := client.QueryContext(ctx,
+		`SELECT extra->'model_rate_limits'->>$1 FROM accounts WHERE id = $2 AND deleted_at IS NULL`,
+		scope, id)
+	if err == nil {
+		for rows.Next() {
+			if scanErr := rows.Scan(&prevResetRaw); scanErr == nil && prevResetRaw != nil && *prevResetRaw != "" {
+				if parsed, parseErr := time.Parse(time.RFC3339, *prevResetRaw); parseErr == nil {
+					prevResetAt = parsed
+				}
+			}
+		}
+		_ = rows.Close()
+	} else {
+		_ = rows.Close()
+	}
+
 	result, err := client.ExecContext(
 		ctx,
 		`UPDATE accounts SET 
@@ -2246,6 +2293,14 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	}
 	if affected == 0 {
 		return service.ErrAccountNotFound
+	}
+	// 新进入冷却（此前无记录或已过期）才通知，冷却期内重复刷新不刷屏。
+	if modelLimitNotificationNeeded(prevResetAt, now) {
+		detail := fmt.Sprintf("model %s limited until %s", scope, resetAt.UTC().Format(time.RFC3339))
+		if len(reason) > 0 && strings.TrimSpace(reason[0]) != "" {
+			detail += fmt.Sprintf(" (reason: %s)", strings.TrimSpace(reason[0]))
+		}
+		r.notifyAvailabilityLimited(ctx, id, "model-limited", detail)
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue model rate limit failed: account=%d err=%v", id, err)
@@ -2289,6 +2344,9 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	if affected <= 0 {
 		return nil
 	}
+	// SQL 的 WHERE 已保证仅「新进入冷却」才会 affected>0，冷却期内重复设置
+	// 不会走到这里，因此通知天然去重。
+	r.notifyAvailabilityLimited(ctx, id, "temp-cooled", fmt.Sprintf("temporarily unschedulable until %s (%s)", until.UTC().Format(time.RFC3339), reason))
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
 	}
