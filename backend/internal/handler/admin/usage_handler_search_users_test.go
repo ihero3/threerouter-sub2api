@@ -28,6 +28,57 @@ func (s *searchUsersAdminStub) ListUsers(ctx context.Context, page, pageSize int
 	}, 2, nil
 }
 
+// 实现轻量接口的 stub：若 handler 走轻量路径，则 ListUsers 不应被调用。
+type searchUsersBriefAdminStub struct {
+	service.AdminService
+	briefCalled bool
+	listCalled  bool
+	gotLimit    int
+}
+
+func (s *searchUsersBriefAdminStub) SearchUsersBrief(ctx context.Context, keyword string, limit int) ([]service.BriefUser, error) {
+	s.briefCalled = true
+	s.gotLimit = limit
+	return []service.BriefUser{
+		{ID: 1, Email: "active@test.com"},
+		{ID: 2, Email: "deleted@test.com", Deleted: true},
+	}, nil
+}
+
+func (s *searchUsersBriefAdminStub) ListUsers(ctx context.Context, page, pageSize int, filters service.UserListFilters, sortBy, sortOrder string) ([]service.User, int64, error) {
+	s.listCalled = true
+	return nil, 0, nil
+}
+
+func TestAdminUsageSearchUsers_PrefersBriefSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &searchUsersBriefAdminStub{}
+	handler := NewUsageHandler(nil, nil, stub, nil)
+	router := gin.New()
+	router.GET("/admin/usage/search-users", handler.SearchUsers)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/search-users?q=test", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, stub.briefCalled, "必须走轻量搜索接口")
+	require.False(t, stub.listCalled, "轻量路径不应触发 ListUsers 重富化")
+	require.Equal(t, 30, stub.gotLimit)
+
+	var resp struct {
+		Data []struct {
+			ID      int64  `json:"id"`
+			Email   string `json:"email"`
+			Deleted bool   `json:"deleted"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 2)
+	require.False(t, resp.Data[0].Deleted)
+	require.True(t, resp.Data[1].Deleted)
+}
+
 func TestAdminUsageSearchUsers_IncludesDeletedAndFlags(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &searchUsersAdminStub{}

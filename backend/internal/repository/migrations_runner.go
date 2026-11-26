@@ -66,6 +66,8 @@ const usageLogsUpstreamRequestIDIndexMigration = "233_add_usage_log_upstream_req
 const usageLogsUpstreamRequestIDIndex = "idx_usage_logs_upstream_request_id"
 const usersRegisterIPIndexMigration = "251_add_users_register_ip_index_notx.sql"
 const usersRegisterIPIndex = "idx_users_register_ip_created_at"
+const usageLogsCreatedIPUserIndexMigration = "255_add_usage_logs_created_ip_user_index_notx.sql"
+const usageLogsCreatedIPUserIndex = "idx_usage_logs_created_ip_user"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -315,6 +317,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		// CONCURRENTLY 建索引失败会留下 INVALID 索引，IF NOT EXISTS 之后会跳过它，
 		// 索引永久不可用；重试前先清掉无效索引。
 		return dropInvalidIndexIfPresent(ctx, db, usersRegisterIPIndex)
+	case usageLogsCreatedIPUserIndexMigration:
+		return dropInvalidIndexIfPresent(ctx, db, usageLogsCreatedIPUserIndex)
 	default:
 		return nil
 	}

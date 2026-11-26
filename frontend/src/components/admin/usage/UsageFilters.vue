@@ -250,6 +250,7 @@ const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 let userSearchSequence = 0
+let userSearchController: AbortController | null = null
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -336,6 +337,11 @@ const clearPendingUserSearch = () => {
     clearTimeout(userSearchTimeout)
     userSearchTimeout = null
   }
+  // 取消仍在飞行中的请求，避免连续输入时多个重查询在服务端叠加。
+  if (userSearchController) {
+    userSearchController.abort()
+    userSearchController = null
+  }
   userSearchSequence += 1
 }
 
@@ -348,16 +354,23 @@ const debounceUserSearch = () => {
   }
 
   const sequence = userSearchSequence
+  const controller = new AbortController()
+  userSearchController = controller
   userSearchTimeout = setTimeout(async () => {
     userSearchTimeout = null
     try {
-      const results = await adminAPI.usage.searchUsers(query)
+      const results = await adminAPI.usage.searchUsers(query, controller.signal)
       if (sequence === userSearchSequence) {
         userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
       }
     } catch {
-      if (sequence === userSearchSequence) {
+      // 被主动取消的请求不应清空当前下拉，也不应污染结果。
+      if (sequence === userSearchSequence && !controller.signal.aborted) {
         userResults.value = []
+      }
+    } finally {
+      if (userSearchController === controller) {
+        userSearchController = null
       }
     }
   }, 300)

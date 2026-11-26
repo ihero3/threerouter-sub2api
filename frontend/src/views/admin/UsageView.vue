@@ -552,7 +552,9 @@ const applyFilters = () => {
 const refreshData = () => {
   invalidateModelStatsCache()
   loadLogs()
-  loadStats(true)
+  // stats 走 30s 服务端缓存而非每次 nocache 回源：列表本身实时查库，
+  // 聚合卡片允许 TTL 内复用，避免一次刷新叠加一条最重的 GROUPING SETS 聚合。
+  loadStats()
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()

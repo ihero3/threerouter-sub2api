@@ -25,6 +25,28 @@ const (
 	riskReviewRequiredMessage = "This account requires a risk review before it can be reactivated"
 )
 
+// SearchUsersBrief 供管理端 Usage 页 User 自动补全使用：只返回最小投影，
+// 优先走仓储的轻量查询（单条 SELECT，无 count/无 usage_logs 富化），
+// 避免每次按键触发 GetSharedUsageIPs 的近 10 天全表聚合。
+func (s *adminServiceImpl) SearchUsersBrief(ctx context.Context, keyword string, limit int) ([]BriefUser, error) {
+	if s == nil || s.userRepo == nil {
+		return []BriefUser{}, nil
+	}
+	if searcher, ok := s.userRepo.(UserBriefSearcher); ok {
+		return searcher.SearchUsersBrief(ctx, keyword, limit)
+	}
+	// 回退：仓储未实现轻量接口时退化为 ListUsers 投影，保证行为兼容。
+	users, _, err := s.ListUsers(ctx, 1, limit, UserListFilters{Search: keyword, IncludeDeleted: true}, "email", "asc")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BriefUser, 0, len(users))
+	for _, u := range users {
+		out = append(out, BriefUser{ID: u.ID, Email: u.Email, Deleted: u.DeletedAt != nil})
+	}
+	return out, nil
+}
+
 // User management implementations
 func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}

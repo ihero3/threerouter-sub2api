@@ -209,9 +209,10 @@ export async function listIPAccountRanking(
  * @param keyword - Email keyword to search
  * @returns List of matching users (max 30)
  */
-export async function searchUsers(keyword: string): Promise<SimpleUser[]> {
+export async function searchUsers(keyword: string, signal?: AbortSignal): Promise<SimpleUser[]> {
   const { data } = await apiClient.get<SimpleUser[]>('/admin/usage/search-users', {
-    params: { q: keyword }
+    params: { q: keyword },
+    signal
   })
   return data
 }

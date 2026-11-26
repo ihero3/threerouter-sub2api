@@ -138,6 +138,19 @@ func (f UserUpdateFields) IsEmpty() bool {
 	return f == UserUpdateFields{}
 }
 
+// BriefUser 是用户自动补全场景的最小投影，仅含下拉展示所需字段。
+type BriefUser struct {
+	ID      int64  `json:"id"`
+	Email   string `json:"email"`
+	Deleted bool   `json:"deleted"`
+}
+
+// UserBriefSearcher 由 userRepository 实现，供管理端 Usage 页自动补全走轻量查询。
+// 独立成小接口，避免给 UserRepository 大接口增加方法、波及无关测试桩。
+type UserBriefSearcher interface {
+	SearchUsersBrief(ctx context.Context, keyword string, limit int) ([]BriefUser, error)
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	// CreateWithEmailAliasGuard 创建用户，并在邮箱唯一性锁内复查"收件箱身份"是否已被占用

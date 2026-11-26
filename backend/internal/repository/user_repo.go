@@ -605,6 +605,50 @@ func (r *userRepository) List(ctx context.Context, params pagination.PaginationP
 	return r.ListWithFilters(ctx, params, service.UserListFilters{})
 }
 
+// SearchUsersBrief 是管理端 Usage 页 User 自动补全专用的轻量搜索。
+// 与 ListUsers 不同，它只做一次 SELECT（id/email/deleted_at），不统计总数、
+// 不做任何 usage_logs / 订阅 / 分组倍率 / 充值富化，避免每次按键都触发
+// GetSharedUsageIPs 的近 10 天全表聚合。包含已软删除用户（与旧行为一致，
+// 前端会把 deleted 排到末尾）。
+func (r *userRepository) SearchUsersBrief(ctx context.Context, keyword string, limit int) ([]service.BriefUser, error) {
+	search := strings.TrimSpace(keyword)
+	if search == "" || limit <= 0 {
+		return []service.BriefUser{}, nil
+	}
+
+	userCtx := mixins.SkipSoftDelete(ctx)
+	q := r.client.User.Query()
+
+	or := []predicate.User{
+		dbuser.EmailContainsFold(search),
+		dbuser.UsernameContainsFold(search),
+		dbuser.HasAPIKeysWith(apikey.KeyContainsFold(search)),
+	}
+	if id, err := strconv.ParseInt(search, 10, 64); err == nil && id > 0 {
+		or = append(or, dbuser.IDEQ(id))
+	}
+	q = q.Where(dbuser.Or(or...))
+
+	rows, err := q.
+		Select(dbuser.FieldID, dbuser.FieldEmail, dbuser.FieldDeletedAt).
+		Order(dbent.Asc(dbuser.FieldEmail), dbent.Asc(dbuser.FieldID)).
+		Limit(limit).
+		All(userCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]service.BriefUser, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, service.BriefUser{
+			ID:      row.ID,
+			Email:   row.Email,
+			Deleted: row.DeletedAt != nil,
+		})
+	}
+	return out, nil
+}
+
 func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
 	// SkipSoftDelete 仅作用于 User 身份解析（下方 Count/All）；订阅、分组等关联实体沿用原始 ctx，避免穿透到这些同样带软删除的实体而带出已删除行。
 	userCtx := ctx

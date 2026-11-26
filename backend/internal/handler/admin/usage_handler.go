@@ -469,6 +469,12 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
+// usageUserBriefSearcher 由 adminServiceImpl 实现。Usage 页自动补全只需
+// id/email/deleted 的最小投影，走轻量查询以避免 ListUsers 的重富化开销。
+type usageUserBriefSearcher interface {
+	SearchUsersBrief(ctx context.Context, keyword string, limit int) ([]service.BriefUser, error)
+}
+
 // SearchUsers handles searching users by email keyword
 // GET /api/v1/admin/usage/search-users
 func (h *UsageHandler) SearchUsers(c *gin.Context) {
@@ -478,29 +484,32 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 		return
 	}
 
-	// Limit to 30 results
-	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keyword, IncludeDeleted: true}, "email", "asc")
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
+	const limit = 30
+	var result []service.BriefUser
 
-	// Return simplified user list (only id, email and deleted flag)
-	type SimpleUser struct {
-		ID      int64  `json:"id"`
-		Email   string `json:"email"`
-		Deleted bool   `json:"deleted"`
-	}
-
-	result := make([]SimpleUser, len(users))
-	for i, u := range users {
-		result[i] = SimpleUser{
-			ID:      u.ID,
-			Email:   u.Email,
-			Deleted: u.DeletedAt != nil,
+	if searcher, ok := h.adminService.(usageUserBriefSearcher); ok {
+		users, err := searcher.SearchUsersBrief(c.Request.Context(), keyword, limit)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		result = users
+	} else {
+		// 回退：adminService 未实现轻量接口时走原 ListUsers 投影。
+		users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, limit, service.UserListFilters{Search: keyword, IncludeDeleted: true}, "email", "asc")
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		result = make([]service.BriefUser, len(users))
+		for i, u := range users {
+			result[i] = service.BriefUser{ID: u.ID, Email: u.Email, Deleted: u.DeletedAt != nil}
 		}
 	}
 
+	if result == nil {
+		result = []service.BriefUser{}
+	}
 	response.Success(c, result)
 }
 

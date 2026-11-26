@@ -207,5 +207,9 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("api_key_id", "created_at"),
 		// 分组维度时间范围查询（线上由 SQL 迁移创建 group_id IS NOT NULL 的部分索引）
 		index.Fields("group_id", "created_at"),
+		// 共享 IP 聚合（GetSharedUsageIPs）：按时间窗过滤后按 ip 分组、对 user_id 去重。
+		// 线上由 migration 255 以 CONCURRENTLY 建同名索引，StorageKey 保持一致避免重复。
+		index.Fields("created_at", "ip_address", "user_id").
+			StorageKey("idx_usage_logs_created_ip_user"),
 	}
 }
