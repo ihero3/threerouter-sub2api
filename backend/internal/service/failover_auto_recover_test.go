@@ -291,6 +291,40 @@ func TestMaybeDisableAccountOnFailover_404ModelNotSupportedByAnyAccount_NoDisabl
 	}
 }
 
+// 2026-11-26 事故回归：端点级 404（"Invalid URL (POST /v1/chat/completions/v1/embeddings)"、
+// "Not Found (request id: ...)"）不含 model 文案，此前一次命中即永久禁用，
+// 一个 embeddings 请求经 failover 把同组健康账号逐个扫禁停服。现在必须降级为临时冷却。
+func TestMaybeDisableAccountOnFailover_404EndpointNotFound_TempCooldown(t *testing.T) {
+	bodies := [][]byte{
+		[]byte(`{"error":{"code":"invalid_request_error","message":"Invalid URL (POST /v1/chat/completions/v1/embeddings)"}}`),
+		[]byte(`{"error":{"message":"Not Found (request id: 3ce408cd-1921-4ac7-92a1-b183440f1fca)"}}`),
+		[]byte(`404 page not found`),
+	}
+	for i, body := range bodies {
+		repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
+		before := time.Now()
+
+		maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+			repo.acct, http.StatusNotFound, nil, alwaysFailover, "Invalid URL (POST /v1/chat/completions/v1/embeddings)", body)
+
+		if repo.updated != nil {
+			t.Fatalf("case %d: endpoint-level 404 must not permanently disable account, got status %s", i, repo.updated.Status)
+		}
+		if !repo.tempCalled {
+			t.Fatalf("case %d: endpoint-level 404 must temp-cooldown the account", i)
+		}
+		if repo.tempID != 1 {
+			t.Fatalf("case %d: cooldown applied to wrong account %d", i, repo.tempID)
+		}
+		if repo.tempUntil.Before(before.Add(failoverEndpointNotFoundCooldown - time.Second)) {
+			t.Fatalf("case %d: cooldown window too short: %s", i, repo.tempUntil)
+		}
+		if !strings.HasPrefix(repo.tempReason, "Temp-cooled on upstream failover: HTTP 404") {
+			t.Fatalf("case %d: unexpected reason %q", i, repo.tempReason)
+		}
+	}
+}
+
 func newRelayAccount(id int64) *Account {
 	return &Account{
 		ID:          id,

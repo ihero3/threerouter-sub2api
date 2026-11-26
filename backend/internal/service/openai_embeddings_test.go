@@ -27,6 +27,12 @@ func TestBuildOpenAIEmbeddingsURL(t *testing.T) {
 		{"bare /v1", "https://api.openai.com/v1", "https://api.openai.com/v1/embeddings"},
 		{"already embeddings", "https://api.openai.com/v1/embeddings", "https://api.openai.com/v1/embeddings"},
 		{"third-party versioned path", "https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/paas/v4/embeddings"},
+		// 2026-11-26 事故回归：base_url 配成完整 chat 端点（chat 请求可用的写法）时，
+		// embeddings 不得拼出 /v1/chat/completions/v1/embeddings（曾致同组账号被 404 扫禁）。
+		{"base is chat completions endpoint", "https://neutoken.ai/v1/chat/completions", "https://neutoken.ai/v1/embeddings"},
+		{"base is completions endpoint", "https://host.example/v1/completions", "https://host.example/v1/embeddings"},
+		{"base is responses endpoint", "https://host.example/v1/responses", "https://host.example/v1/embeddings"},
+		{"base is responses input_tokens endpoint", "https://host.example/v1/responses/input_tokens", "https://host.example/v1/embeddings"},
 	}
 
 	for _, tt := range tests {

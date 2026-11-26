@@ -644,6 +644,10 @@ func recordFailoverOpsError(account *Account, statusCode int, upstreamMsg string
 	rec.EnqueueError(entry)
 }
 
+// failoverEndpointNotFoundCooldown 是 failover 收到上游 404 时账号临时冷却的时长。
+// 404 不再永久禁用（见 maybeDisableAccountOnFailover 内注释），到期自动恢复调度。
+const failoverEndpointNotFoundCooldown = 30 * time.Minute
+
 func maybeDisableAccountOnFailover(
 	ctx context.Context,
 	settingService *SettingService,
@@ -686,6 +690,26 @@ func maybeDisableAccountOnFailover(
 		return
 	}
 	if !settingService.IsDisableFailedAccountOnFailoverEnabled(ctx) {
+		return
+	}
+
+	// 404 一律降级为临时冷却而非永久禁用（2026-11-26 事故修复）：
+	// 端点级/URL 级 404（"Invalid URL"、"Not Found" 等不含 model 文案）多源于网关侧
+	// URL 构造缺陷或上游路由配置，不代表账号 Key 失效；此前一次命中即永久
+	// status=error 且无阈值，一个 embeddings 请求经 failover 就能把同组健康账号
+	// 逐个扫禁停服。模型级 404 已在上方 isUpstreamModelNotFoundError 放行，
+	// 不会进入此分支。临时冷却到期后由自动恢复任务放回调度池。
+	if statusCode == http.StatusNotFound {
+		until := time.Now().Add(failoverEndpointNotFoundCooldown)
+		reason := fmt.Sprintf("Temp-cooled on upstream failover: HTTP 404")
+		if trimmed := strings.TrimSpace(upstreamMsg); trimmed != "" {
+			reason = fmt.Sprintf("%s (%s)", reason, truncateString(trimmed, 200))
+		}
+		if err := accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+			logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d 404 temp cooldown failed: %v", account.ID, err)
+			return
+		}
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d temp cooldown until %s after upstream HTTP 404", account.ID, until.Format(time.RFC3339))
 		return
 	}
 

@@ -5,6 +5,33 @@ import (
 	"strings"
 )
 
+// openAIKnownEndpointSuffixes 是 base_url 里可能被配置成完整端点路径的已知后缀，
+// 按长度降序排列（长端点优先剥离，避免 /responses 被 /responses/input_tokens 前缀截胡）。
+// chat/completions 配置在 chat 请求上因「后缀完全相等」侥幸可用，但 embeddings/responses/models
+// 等其它端点会拼出 /v1/chat/completions/v1/embeddings 这类双路径 URL（2026-11-26 事故根因）。
+var openAIKnownEndpointSuffixes = []string{
+	"/responses/input_tokens",
+	"/chat/completions",
+	"/completions",
+	"/embeddings",
+	"/responses",
+	"/messages",
+	"/models",
+	"/images/generations",
+	"/images/edits",
+}
+
+// stripOpenAIKnownEndpointSuffix 剥掉 path 尾部的已知端点段，返回剥离后的路径；
+// 未命中时原样返回。仅用于 buildOpenAIEndpointURL 拼接前的归一化。
+func stripOpenAIKnownEndpointSuffix(path string) string {
+	for _, suffix := range openAIKnownEndpointSuffixes {
+		if strings.HasSuffix(path, suffix) {
+			return strings.TrimSuffix(path, suffix)
+		}
+	}
+	return path
+}
+
 func buildOpenAIEndpointURL(base string, endpoint string) string {
 	normalized := strings.TrimSpace(base)
 	endpoint = "/" + strings.TrimLeft(strings.TrimSpace(endpoint), "/")
@@ -14,12 +41,21 @@ func buildOpenAIEndpointURL(base string, endpoint string) string {
 		return strings.TrimRight(normalized, "/") + endpoint
 	}
 	path := strings.TrimRight(parsed.Path, "/")
-	if !strings.HasSuffix(path, endpoint) && !strings.HasSuffix(path, relative) {
-		if openAIBaseURLHasVersionSuffix(path) {
-			path += relative
-		} else {
-			path += endpoint
-		}
+	if strings.HasSuffix(path, endpoint) || strings.HasSuffix(path, relative) {
+		// base 已是目标端点本身：原样返回，不做剥离。
+		parsed.Path = path
+		parsed.RawPath = ""
+		parsed.Fragment = ""
+		return parsed.String()
+	}
+	// base 是别的端点路径（如 /v1/chat/completions）：先剥掉端点段再拼接。
+	if stripped := stripOpenAIKnownEndpointSuffix(path); stripped != path {
+		path = stripped
+	}
+	if !openAIBaseURLHasVersionSuffix(path) {
+		path += endpoint
+	} else {
+		path += relative
 	}
 	parsed.Path = path
 	parsed.RawPath = ""

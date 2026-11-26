@@ -503,6 +503,14 @@ func (r *accountRepository) updateAccount(
 		}
 	}
 
+	// 捕获变更前的对外可调度状态（active/error/paused），用于提交后发送状态变更通知。
+	// failover 自动禁用（maybeDisableAccountOnFailover）走的正是这条 Update 链——
+	// 此前通知只挂在 SetError/ClearError 上，导致 2026-11-26 事故中账号被自动禁用却无邮件。
+	var previousState string
+	if previous, prevErr := client.Account.Get(ctx, account.ID); prevErr == nil && previous != nil {
+		previousState = service.AccountAvailabilityState(accountEntityToService(previous))
+	}
+
 	updated, err := r.updateLockedAccount(
 		ctx,
 		client,
@@ -524,6 +532,14 @@ func (r *accountRepository) updateAccount(
 	}
 
 	account.UpdatedAt = updated.UpdatedAt
+	// 状态确实发生变化时通知管理员（异步、不阻塞）。必须在 commit 之后调用：
+	// 通知 goroutine 用独立连接回读账号，提前触发会读到未提交的旧状态。
+	if previousState != "" {
+		afterState := service.AccountAvailabilityState(accountEntityToService(updated))
+		if afterState != "" && previousState != afterState {
+			service.NotifyAccountStatusChanged(baseCtx, r.accountStatusNotifier, account.ID, previousState, afterState, account.ErrorMessage)
+		}
+	}
 	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
 	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
 	if contextTx == nil {
