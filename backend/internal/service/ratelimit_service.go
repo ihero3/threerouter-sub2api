@@ -28,9 +28,12 @@ type RateLimitService struct {
 	openAIAPIKeyHealth    OpenAIAPIKeyHealthCache
 	timeoutCounterCache   TimeoutCounterCache
 	openAI403CounterCache OpenAI403CounterCache
-	settingService        *SettingService
-	tokenCacheInvalidator TokenCacheInvalidator
-	runtimeBlocker        AccountRuntimeBlocker
+	// authErrorEscalationCache 是 401/403「冷却+计数升级」的可选计数器，
+	// 见 auth_error_escalation.go；未注入时退化为固定基础冷却。
+	authErrorEscalationCache AuthErrorEscalationCache
+	settingService           *SettingService
+	tokenCacheInvalidator    TokenCacheInvalidator
+	runtimeBlocker           AccountRuntimeBlocker
 	// ollamaCloudUsageProbe is the optional Ollama Cloud usage probe scheduler
 	// injected via SetOllamaCloudUsageProbeScheduler. See
 	// ratelimit_service_ollama_429.go for how real-Ollama 429s schedule an async
@@ -98,6 +101,10 @@ const (
 	openAI403CooldownMinutesDefault = 10
 	openAI403DisableThreshold       = 3
 	openAI403CounterWindowMinutes   = 180
+	// openAI403StrikeCooldown 是 OpenAI 403 第 3 击（计数打满）时的长冷却时长。
+	// 不再永久禁用：真被封的账号冷却结束后会再次 403 并继续累计，
+	// 误判的账号 24h 后自动恢复调度，正常请求成功会清零计数。
+	openAI403StrikeCooldown = 24 * time.Hour
 )
 
 // relayUpstreamCooldown 中转站账号遇到账号级错误时的临时冷却时长。
@@ -445,9 +452,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
 		} else if account.Platform == PlatformAnthropic && strings.Contains(strings.ToLower(upstreamMsg), "credit balance") {
-			// Anthropic API key 余额不足（语义等同 402），停止调度
+			// Anthropic API key 余额不足（语义等同 402）：永久禁用但带 24h 自动复活
+			// 探测，充值后无需人工恢复。
 			msg := "Credit balance exhausted (400): " + upstreamMsg
-			s.handleAuthError(ctx, account, msg)
+			s.handlePaymentRequiredError(ctx, account, msg)
 			shouldDisable = true
 		} else if strings.Contains(strings.ToLower(upstreamMsg), "identity verification is required") {
 			// KYC 身份验证要求 → 永久禁用，账号需完成身份验证后才能恢复
@@ -477,13 +485,15 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 			break
 		}
-		// OpenAI: {"detail":"Unauthorized"} 表示 token 完全无效（非标准 OpenAI 错误格式），直接标记 error
+		// OpenAI: {"detail":"Unauthorized"} 表示 token 完全无效（非标准 OpenAI 错误格式）。
+		// 不再永久禁用：降级为「临时冷却 + 计数升级」（见 auth_error_escalation.go），
+		// 反复命中才逐级加长冷却，避免上游瞬时抽风把健康 Key 永久踢出调度池。
 		if authAccount.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail").String() == "Unauthorized" {
 			msg := "Unauthorized (401): account authentication failed permanently"
 			if upstreamMsg != "" {
 				msg = "Unauthorized (401): " + upstreamMsg
 			}
-			s.handleAuthError(ctx, authAccount, msg)
+			s.handleAuthErrorEscalating(ctx, authAccount, http.StatusUnauthorized, msg)
 			shouldDisable = true
 			break
 		}
@@ -495,14 +505,16 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", authAccount.ID, "error", err)
 				}
 			}
-			// 缺少 refresh_token 的 OAuth 账号无法在冷却期内自愈（后台刷新服务也会跳过），
-			// 直接走 SetError 永久禁用，避免冷却结束后再被选中产生一发无意义的 502。
+			// 缺少 refresh_token 的 OAuth 账号无法在冷却期内自愈（后台刷新服务也会跳过）。
+			// 仍不直接 SetError：改为「冷却 + 计数升级」，避免一次误报把账号永久打死；
+			// 反复命中会升级到 6h/24h 冷却，兜底「冷却结束后再被选中产生一发无意义 502」
+			// 的顾虑（计数打满后账号长期退出调度池）。
 			if strings.TrimSpace(authAccount.GetCredential("refresh_token")) == "" {
 				msg := "Authentication failed (401): refresh_token missing, cannot recover"
 				if upstreamMsg != "" {
 					msg = "OAuth 401 (no refresh_token): " + upstreamMsg
 				}
-				s.handleAuthError(ctx, authAccount, msg)
+				s.handleAuthErrorEscalating(ctx, authAccount, http.StatusUnauthorized, msg)
 				shouldDisable = true
 				break
 			}
@@ -544,12 +556,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			}
 			shouldDisable = true
 		} else {
-			// 非 OAuth：保持 SetError 行为
+			// 非 OAuth（API Key）：401 不再永久禁用，降级为「临时冷却 + 计数升级」，
+			// 首次 30min，24h 内反复命中升级 6h/24h，到期自动恢复调度。
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "Authentication failed (401): " + upstreamMsg
 			}
-			s.handleAuthError(ctx, authAccount, msg)
+			s.handleAuthErrorEscalating(ctx, authAccount, http.StatusUnauthorized, msg)
 			shouldDisable = true
 		}
 	case 402:
@@ -568,12 +581,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 			break
 		}
-		// 支付要求：余额不足或计费问题，停止调度
+		// 支付要求：余额不足或计费问题——唯一允许永久禁用的账号级错误，
+		// 但带 24h 自动复活探测（见 handlePaymentRequiredError）。
 		msg := "Payment required (402): insufficient balance or billing issue"
 		if upstreamMsg != "" {
 			msg = "Payment required (402): " + upstreamMsg
 		}
-		s.handleAuthError(ctx, account, msg)
+		s.handlePaymentRequiredError(ctx, account, msg)
 		shouldDisable = true
 	case 403:
 		logger.LegacyPrintf(
@@ -1097,14 +1111,16 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformOpenAI || account.IsMultiProtocolAPIKey() {
 		return s.handleOpenAI403(ctx, account, upstreamMsg, responseBody)
 	}
-	// 非 Antigravity 平台：保持原有行为
+	// 非 Antigravity、非 OpenAI/MultiProtocol 平台的通用 403：不再永久禁用，
+	// 降级为「临时冷却 + 计数升级」（首次 30min，反复命中升级 6h/24h），
+	// 与 OpenAI 平台 403 的处置口径对齐。
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
 		responseBody,
 		"account may be suspended or lack permissions",
 	)
-	s.handleAuthError(ctx, account, msg)
+	s.handleAuthErrorEscalating(ctx, account, http.StatusForbidden, msg)
 	return true
 }
 
@@ -1164,7 +1180,17 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 
 	if count >= openAI403DisableThreshold {
 		msg = fmt.Sprintf("%s | consecutive_403=%d/%d", msg, count, openAI403DisableThreshold)
-		s.handleAuthError(ctx, account, msg)
+		// 第 3 击不再永久禁用（方案 A 收敛）：升级为 24h 长冷却，到期自动恢复调度。
+		// 真被封的账号冷却结束后会再次 403 并继续累计；误判的账号 24h 后自动回归，
+		// 且正常请求成功会清零计数（openai_gateway_usage.go 成功路径）。
+		until := time.Now().Add(openAI403StrikeCooldown)
+		s.notifyAccountSchedulingBlocked(account, until, "openai_403_strike")
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+			slog.Warn("openai_403_strike_temp_failed", "account_id", account.ID, "error", err)
+			s.handleAuthError(ctx, account, msg)
+			return true
+		}
+		slog.Warn("openai_403_strike_long_cooldown", "account_id", account.ID, "until", until, "count", count)
 		return true
 	}
 
@@ -2275,11 +2301,19 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 }
 
 func (s *RateLimitService) ResetOpenAI403Counter(ctx context.Context, accountID int64) {
-	if s == nil || s.openAI403CounterCache == nil || accountID <= 0 {
+	if s == nil || accountID <= 0 {
 		return
 	}
-	if err := s.openAI403CounterCache.ResetOpenAI403Count(ctx, accountID); err != nil {
-		slog.Warn("openai_403_reset_failed", "account_id", accountID, "error", err)
+	if s.openAI403CounterCache != nil {
+		if err := s.openAI403CounterCache.ResetOpenAI403Count(ctx, accountID); err != nil {
+			slog.Warn("openai_403_reset_failed", "account_id", accountID, "error", err)
+		}
+	}
+	// 一并清空 401/403「冷却+计数升级」计数：成功请求/人工恢复都应让升级梯度归零。
+	if s.authErrorEscalationCache != nil {
+		if err := s.authErrorEscalationCache.ResetAuthErrorCounters(ctx, accountID); err != nil {
+			slog.Warn("auth_error_escalation_reset_failed", "account_id", accountID, "error", err)
+		}
 	}
 }
 

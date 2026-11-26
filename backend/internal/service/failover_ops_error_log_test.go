@@ -74,9 +74,12 @@ func TestMaybeDisableAccountOnFailover_Upstream503_RecordsOpsErrorLog(t *testing
 	if entry.UpstreamErrorMessage == nil || *entry.UpstreamErrorMessage == "" {
 		t.Errorf("expected non-empty UpstreamErrorMessage, got %v", entry.UpstreamErrorMessage)
 	}
-	// 同时确认账号被自动停用（原有副作用未受影响）。
-	if repo.updated == nil || repo.updated.Status != StatusError {
-		t.Errorf("expected account to be auto-disabled on 503, got updated=%v", repo.updated)
+	// 503 不再永久禁用（方案 A 收敛），但必须临时冷却退出调度池。
+	if repo.updated != nil {
+		t.Errorf("503 must not permanently disable the account, got updated=%v", repo.updated)
+	}
+	if !repo.tempCalled {
+		t.Error("expected account to be temp-cooled on 503")
 	}
 }
 

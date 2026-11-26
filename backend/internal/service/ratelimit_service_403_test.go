@@ -61,7 +61,7 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403FirstHitTempUnschedulable
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
-func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *testing.T) {
+func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdLongCooldown(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	counter := &openAI403CounterCacheStub{counts: []int64{3}}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -81,10 +81,11 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *test
 	)
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls)
-	require.Equal(t, 0, repo.tempCalls)
-	require.Contains(t, repo.lastErrorMsg, "workspace forbidden by policy")
-	require.Contains(t, repo.lastErrorMsg, "consecutive_403=3/3")
+	// 第 3 击不再永久禁用（方案 A）：升级为 24h 长冷却，到期自动恢复调度。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
+	require.Contains(t, repo.lastTempReason, "workspace forbidden by policy")
+	require.Contains(t, repo.lastTempReason, "consecutive_403=3/3")
 }
 
 // 中转站账号的 403 只走固定短冷却：不进入 403 累计计数器（否则累计打满会永久禁用），

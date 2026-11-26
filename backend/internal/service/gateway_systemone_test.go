@@ -27,6 +27,9 @@ type systemOnePolicyAccountRepo struct {
 	rateLimitedCalls int
 	overloadedCalls  int
 	errorCalls       int
+	tempCalls        int
+	lastTempReason   string
+	lastTempUntil    time.Time
 }
 
 func (r *systemOnePolicyAccountRepo) GetByID(context.Context, int64) (*Account, error) {
@@ -45,6 +48,13 @@ func (r *systemOnePolicyAccountRepo) SetOverloaded(context.Context, int64, time.
 
 func (r *systemOnePolicyAccountRepo) SetError(context.Context, int64, string) error {
 	r.errorCalls++
+	return nil
+}
+
+func (r *systemOnePolicyAccountRepo) SetTempUnschedulable(_ context.Context, _ int64, until time.Time, reason string) error {
+	r.tempCalls++
+	r.lastTempReason = reason
+	r.lastTempUntil = until
 	return nil
 }
 
@@ -198,8 +208,10 @@ func TestForwardSystemOneAppliesExistingAccountStatePolicy(t *testing.T) {
 		wantRateLimited int
 		wantOverloaded  int
 		wantError       int
+		wantTemp        int
 	}{
-		{name: "unauthorized", status: http.StatusUnauthorized, wantError: 1},
+		// 401 不再永久 SetError（方案 A）：降级为「冷却 + 计数升级」临时不可调度。
+		{name: "unauthorized", status: http.StatusUnauthorized, wantTemp: 1},
 		{name: "rate limited", status: http.StatusTooManyRequests, wantRateLimited: 1},
 		{name: "overloaded", status: 529, wantOverloaded: 1},
 	} {
@@ -217,6 +229,7 @@ func TestForwardSystemOneAppliesExistingAccountStatePolicy(t *testing.T) {
 			require.Equal(t, tc.wantRateLimited, repo.rateLimitedCalls)
 			require.Equal(t, tc.wantOverloaded, repo.overloadedCalls)
 			require.Equal(t, tc.wantError, repo.errorCalls)
+			require.Equal(t, tc.wantTemp, repo.tempCalls)
 		})
 	}
 }
@@ -279,9 +292,11 @@ func TestForwardSystemOneAccountLevelFailuresFailOver(t *testing.T) {
 		name      string
 		status    int
 		wantError int
+		wantTemp  int
 	}{
+		// 402 仍永久禁用（唯一保留的永久路径）；403 降级为临时冷却（方案 A）。
 		{name: "payment required", status: http.StatusPaymentRequired, wantError: 1},
-		{name: "forbidden", status: http.StatusForbidden, wantError: 1},
+		{name: "forbidden", status: http.StatusForbidden, wantTemp: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			account := &Account{ID: 22, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "http://typesafe.test", "api_key": "ts-secret"}}
@@ -296,6 +311,7 @@ func TestForwardSystemOneAccountLevelFailuresFailOver(t *testing.T) {
 			require.True(t, failoverErr.ShouldRetryNextAccount())
 			require.Equal(t, tc.status, failoverErr.StatusCode)
 			require.Equal(t, tc.wantError, repo.errorCalls)
+			require.Equal(t, tc.wantTemp, repo.tempCalls)
 			require.Equal(t, "failover", systemOneOpsEvents(t, c)[0].Kind)
 		})
 	}

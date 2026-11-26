@@ -187,8 +187,10 @@ func TestHandleUpstreamError_AnthropicGenuine403StillPenalizes(t *testing.T) {
 		context.Background(), account, http.StatusForbidden, http.Header{},
 		[]byte(`{"error":{"type":"permission_error","message":"invalid API key"}}`),
 	))
-	require.Equal(t, 1, repo.setErrorCalls)
-	require.Contains(t, repo.lastErrorMsg, "invalid API key")
+	// 仍会处罚（临时冷却退出调度池），但不再永久 SetError（方案 A）。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
+	require.Contains(t, repo.lastTempReason, "invalid API key")
 }
 
 // 对照不变式：真正的结构化 JSON 403 是账号级证据，处罚链路必须原样保留。
@@ -205,12 +207,14 @@ func TestHandleUpstreamError_OpenAIStructured403StillPenalizes(t *testing.T) {
 		require.Len(t, h.blocker.accounts, 1)
 	})
 
-	t.Run("threshold_disables", func(t *testing.T) {
+	t.Run("threshold_long_cooldown", func(t *testing.T) {
 		h := newOpenAI403TestHarness(t, 504, int64(openAI403DisableThreshold))
 
 		require.True(t, h.handle(`{"error":{"message":"workspace forbidden by policy"}}`))
-		require.Equal(t, 1, h.repo.setErrorCalls)
-		require.Contains(t, h.repo.lastErrorMsg, "workspace forbidden by policy")
+		// 第 3 击升级为 24h 长冷却而非永久禁用（方案 A）。
+		require.Equal(t, 1, h.repo.tempCalls)
+		require.Equal(t, 0, h.repo.setErrorCalls)
+		require.Contains(t, h.repo.lastTempReason, "workspace forbidden by policy")
 	})
 
 	// 非 HTML 的非结构化响应（纯文本网关错误）不在本次放行范围内，维持原有处罚。
@@ -235,7 +239,9 @@ func TestHandleUpstreamError_HTML403OnOtherPlatformsUnchanged(t *testing.T) {
 			)
 
 			require.True(t, shouldDisable)
-			require.Equal(t, 1, repo.setErrorCalls, "其他平台保持原有 SetError 行为")
+			// 其他平台同样降级为临时冷却（方案 A），只是仍会处罚、不永久禁用。
+			require.Equal(t, 0, repo.setErrorCalls)
+			require.Equal(t, 1, repo.tempCalls)
 		})
 	}
 }

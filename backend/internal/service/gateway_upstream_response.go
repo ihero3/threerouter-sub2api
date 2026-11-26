@@ -542,9 +542,12 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 // For HTTP 429 with a parseable upstream quota reset time ("It will reset at
 // ..." or Retry-After), the account is marked with rate_limit_reset_at and an
 // auto-recover tag in error_message; AccountAutoRecoveryService flips it back
-// to active once the reset time arrives. Other statuses, and 429s without a
-// trustworthy reset time, remain permanently disabled until an admin
-// test-recovers the account.
+// to active once the reset time arrives.
+//
+// 方案 A 收敛（2026-11-26）：仅 402（余额/计费不足）保留永久禁用，且带 24h 自动
+// 复活探测；其余状态码（401/403/405、无可信 reset 的 429、5xx）一律降级为临时
+// 冷却（5xx 10min、其余 30min），到期自动恢复调度，不再产生需要人工恢复的
+// status=error。池模式账号完全跳过账号级惩罚。
 
 // isUpstreamCapabilityDenied 判断上游错误是否属于「账号/分组功能能力限制」类 403。
 // 这类错误的语义是"这个账号/分组没开通 X 功能"（如图像生成、某些高级 API），
@@ -670,6 +673,14 @@ func maybeDisableAccountOnFailover(
 	// 或账号只是被临时冷却（relay 分支），这里都落一条，保证后台「错误日志」能看到
 	// 账号被上游错误影响的情况（需求 A：连每次上游错误都记）。单次上游错误只落一条。
 	recordFailoverOpsError(account, statusCode, upstreamMsg, upstreamBody)
+	// 池模式账号：账号本身是聚合池（内部凭据轮换），账号级状态与真实凭据状态脱钩。
+	// 与 HandleUpstreamError / handleGeminiUpstreamError 的池模式豁免口径一致——
+	// 完全跳过账号级惩罚，只靠 failover 换号。此前开关开启时这里仍会永久禁用
+	// 池模式账号，是一个一致性缺口（方案 A 修复）。
+	if account.IsPoolMode() {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: skip pool-mode account %d (HTTP %d)", account.ID, statusCode)
+		return
+	}
 	// 上游返回 403 但错误表明「账号/分组没开通该功能」——这是能力限制，
 	// 不是账号被封或 Key 吊销。正确行为是 failover 换账号（其他能力正常的账号），
 	// 不禁用当前账号（它的文本生成等能力可能仍可用）。
@@ -744,22 +755,66 @@ func maybeDisableAccountOnFailover(
 		return
 	}
 	now := time.Now()
-	acct.Status = StatusError
-	if recoverAt != nil {
-		msg = ensureFailoverAutoRecoverTag(msg, *recoverAt)
+
+	// 402（余额/计费不足）是唯一允许永久禁用的状态码（用户哲学：只有没费用才关号），
+	// 但必须带自动复活探测：error_message 写 [auto-recover at ...] 标记 +
+	// rate_limit_reset_at = now + 24h，AccountAutoRecoveryService 每 24h 把账号
+	// 放回调度池试一次，充值后无需人工恢复。
+	if statusCode == http.StatusPaymentRequired {
+		probeAt := now.Add(failover402RecoverProbeInterval)
+		msg = ensureFailoverAutoRecoverTag(msg, probeAt)
+		acct.Status = StatusError
 		acct.RateLimitedAt = &now
-		acct.RateLimitResetAt = recoverAt
-	}
-	acct.ErrorMessage = msg
-	if err := accountRepo.Update(ctx, acct); err != nil {
-		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to disable account %d: %v", account.ID, err)
+		acct.RateLimitResetAt = &probeAt
+		acct.ErrorMessage = msg
+		if err := accountRepo.Update(ctx, acct); err != nil {
+			logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to disable account %d: %v", account.ID, err)
+			return
+		}
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d disabled after upstream HTTP 402, auto-recover probe at %s", account.ID, probeAt.Format(time.RFC3339))
 		return
 	}
+
+	// 429 带可信 reset：保持原有「禁用 + 到期自动恢复」逻辑（恢复时间来自上游）。
 	if recoverAt != nil {
+		msg = ensureFailoverAutoRecoverTag(msg, *recoverAt)
+		acct.Status = StatusError
+		acct.RateLimitedAt = &now
+		acct.RateLimitResetAt = recoverAt
+		acct.ErrorMessage = msg
+		if err := accountRepo.Update(ctx, acct); err != nil {
+			logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to disable account %d: %v", account.ID, err)
+			return
+		}
 		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d disabled after upstream HTTP %d, auto-recover at %s", account.ID, statusCode, recoverAt.Format(time.RFC3339))
-	} else {
-		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d disabled after upstream HTTP %d", account.ID, statusCode)
+		return
 	}
+
+	// 其余状态码（401/403/405、无可信 reset 的 429、5xx）一律临时冷却而非永久禁用
+	// （方案 A 收敛：只有没费用才关号）：5xx 属瞬时故障冷却 10min，其余 30min，
+	// 到期自动恢复调度，不再产生需要人工恢复的 status=error。
+	until := time.Now().Add(failoverTempCooldownForStatus(statusCode))
+	if err := accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d temp cooldown failed: %v", account.ID, err)
+		return
+	}
+	logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d temp cooldown until %s after upstream HTTP %d", account.ID, until.Format(time.RFC3339), statusCode)
+}
+
+// failoverServerErrorTempCooldown / failoverClientErrorTempCooldown 是 failover
+// 收敛后非 402 状态码的临时冷却时长：5xx 瞬时故障短冷却，4xx 凭据/权限类稍长。
+const (
+	failoverServerErrorTempCooldown = 10 * time.Minute
+	failoverClientErrorTempCooldown = 30 * time.Minute
+)
+
+// failoverTempCooldownForStatus 返回 failover 收敛后（402 之外的永久禁用候选）
+// 状态码的临时冷却时长。
+func failoverTempCooldownForStatus(statusCode int) time.Duration {
+	if statusCode >= 500 {
+		return failoverServerErrorTempCooldown
+	}
+	return failoverClientErrorTempCooldown
 }
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
@@ -769,9 +824,9 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	} else {
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	}
-	// 当开启 "Disable Failed Account on Failover" 且上游返回 failover 名单内错误（含 429）时，
-	// 将出错账号永久禁用（status=error），避免其他用户重复命中同一故障账号；同一请求内的
-	// 透明换号仍由 failover 机制保障，用户无感。
+	// 当开启 "Disable Failed Account on Failover" 且上游返回 failover 名单内错误时，
+	// 对出错账号做出处罚：仅 402 永久禁用（带 24h 自动复活探测），其余状态码临时
+	// 冷却到期自动恢复；同一请求内的透明换号仍由 failover 机制保障，用户无感。
 	maybeDisableAccountOnFailover(ctx, s.settingService, s.accountRepo, account, resp.StatusCode, resp.Header, s.shouldFailoverUpstreamError, extractUpstreamErrorMessage(body), body)
 }
 

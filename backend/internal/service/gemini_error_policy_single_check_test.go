@@ -156,7 +156,7 @@ func TestGeminiForward_First401RuleHitOnlyTempUnschedules(t *testing.T) {
 	}
 }
 
-func TestGeminiForward_Repeated401RuleHitEscalatesToError(t *testing.T) {
+func TestGeminiForward_Repeated401RuleHitEscalatesToCooldown(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, fw := range geminiSingleCheckForwarders {
 		t.Run(fw.name, func(t *testing.T) {
@@ -165,9 +165,11 @@ func TestGeminiForward_Repeated401RuleHitEscalatesToError(t *testing.T) {
 
 			_, _ = fw.forward(t, svc, geminiAPIKeyAccountWithTempRule(geminiAccountScoped401Rule()))
 
-			require.Zero(t, repo.tempCalls, "已有 401 暂停记录时直接升级，不临时不可调度")
-			require.Equal(t, 1, repo.setErrCalls, "已有 401 暂停记录时应升级为 error")
-			require.Contains(t, repo.lastErrorMsg, "Authentication failed (401)")
+			// 已有 401 暂停记录时不再走规则临时冷却，直接落凭据级处置；
+			// 方案 A 后凭据级 401 不再 SetError，而是「冷却 + 计数升级」。
+			require.Equal(t, 1, repo.tempCalls, "已有 401 暂停记录时应凭据级临时冷却")
+			require.Zero(t, repo.setErrCalls, "凭据级 401 不应再永久 SetError")
+			require.Contains(t, repo.tempReason, "Authentication failed (401)")
 		})
 	}
 }

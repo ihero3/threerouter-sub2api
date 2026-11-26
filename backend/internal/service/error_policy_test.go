@@ -358,8 +358,9 @@ func TestHandleUpstreamError_PoolModePolicies(t *testing.T) {
 		shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 		require.True(t, shouldDisable)
-		require.Equal(t, 1, repo.setErrCalls)
-		require.Equal(t, 0, repo.tempCalls)
+		// 401 命中本地错误策略后仍停止调度，但降级为临时冷却（方案 A），不再 SetError。
+		require.Equal(t, 0, repo.setErrCalls)
+		require.Equal(t, 1, repo.tempCalls)
 	})
 
 	t.Run("pool_mode_explicit_temp_rule_stops_scheduling", func(t *testing.T) {

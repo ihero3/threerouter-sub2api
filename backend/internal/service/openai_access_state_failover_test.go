@@ -17,10 +17,16 @@ import (
 type openAIStream403AccountRepo struct {
 	AccountRepository
 	setErrorCalls int
+	tempCalls     int
 }
 
 func (r *openAIStream403AccountRepo) SetError(context.Context, int64, string) error {
 	r.setErrorCalls++
+	return nil
+}
+
+func (r *openAIStream403AccountRepo) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	r.tempCalls++
 	return nil
 }
 

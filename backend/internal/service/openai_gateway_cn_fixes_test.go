@@ -267,11 +267,13 @@ func TestHandle403_OtherCNProviderWithKimiConcurrencyMessageUsesNormalPolicy(t *
 	)
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls, "non-Kimi CN provider must retain the normal permanent-error policy")
-	require.Equal(t, 0, repo.tempCalls)
+	// 非 Kimi CN 供应商的 403 仍会处罚，但第 3 击不再永久 SetError（方案 A），
+	// 升级为 24h 长冷却（openai_403_strike），到期自动恢复调度。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
 	require.Zero(t, repo.rateLimitedCalls)
-	require.Empty(t, counter.counts, "normal CN 403 policy must consume the counter result")
-	require.Equal(t, []string{"auth_error"}, blocker.reasons, "the Kimi-specific runtime block must not apply")
+	require.Empty(t, counter.counts, "strike path must consume the counter result")
+	require.Equal(t, []string{"openai_403_strike"}, blocker.reasons)
 }
 
 func TestHandle403_CNProviderConcurrencyLimitAlwaysUsesTemporaryCooldown(t *testing.T) {
@@ -323,7 +325,7 @@ func TestHandle403_KimiConcurrencyLimitRepositoryFailureKeepsRuntimeBlock(t *tes
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
-func TestHandle403_CNProviderNearMatchRetainsNormalPermanentErrorPolicy(t *testing.T) {
+func TestHandle403_CNProviderNearMatchRetainsNormalCooldownPolicy(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	counter := &openAI403CounterCacheStub{counts: []int64{openAI403DisableThreshold}}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -336,7 +338,8 @@ func TestHandle403_CNProviderNearMatchRetainsNormalPermanentErrorPolicy(t *testi
 	)
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls, "non-exact 403 must retain existing permission/auth protection")
-	require.Equal(t, 0, repo.tempCalls)
+	// 非 OpenAI 平台的通用 403 仍会处罚（临时冷却），但不再永久 SetError（方案 A）。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
 	require.Zero(t, repo.rateLimitedCalls)
 }

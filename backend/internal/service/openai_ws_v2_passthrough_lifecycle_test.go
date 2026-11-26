@@ -395,7 +395,9 @@ func TestPassthroughLifecycle_NonCyberFailureKeepsAccountSideEffects(t *testing.
 	case <-time.After(3 * time.Second):
 		t.Fatal("non-cyber terminal event did not complete its turn")
 	}
-	require.Equal(t, 1, repo.setErrorCalls, "non-cyber credential failure must retain account failure side effects")
+	// 401 凭据失败仍保留账号级副作用（临时冷却 + 运行时熔断），但不再永久 SetError（方案 A）。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
 	select {

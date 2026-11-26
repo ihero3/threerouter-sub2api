@@ -117,7 +117,9 @@ func TestGeminiForwardNative_OtherForbiddenStillPenalizesAccount(t *testing.T) {
 
 	var failoverErr *UpstreamFailoverError
 	require.True(t, errors.As(err, &failoverErr), "其他 403 仍按账号问题换号")
-	require.Equal(t, 1, repo.setErrCalls, "其他 403 仍标记账号错误")
+	// 403 仍会处罚账号（临时冷却退出调度池），但不再永久 SetError（方案 A）。
+	require.Equal(t, 0, repo.setErrCalls, "其他 403 不再永久标记账号错误")
+	require.Equal(t, 1, repo.tempCalls, "其他 403 降级为临时冷却")
 }
 
 // Vertex 对已删除 / 已过期缓存的响应（2026-10 实测）：生成请求 400，缓存资源接口 404，文案含上游缓存数字 ID。

@@ -242,11 +242,13 @@ func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls)
+	// 401 API Key 不再永久禁用：降级为「临时冷却 + 计数升级」（方案 A）。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
 	require.Empty(t, invalidator.accounts)
 }
 
-func TestRateLimitService_HandleUpstreamError_NonOAuthModel401StillDisablesCredentials(t *testing.T) {
+func TestRateLimitService_HandleUpstreamError_NonOAuthModel401StillUnschedulesCredentials(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 	account := &Account{
@@ -265,8 +267,9 @@ func TestRateLimitService_HandleUpstreamError_NonOAuthModel401StillDisablesCrede
 	)
 
 	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls)
-	require.Equal(t, 0, repo.tempCalls)
+	// 模型级 401 不命中模型冷却时，仍按凭据级处置——但只是临时冷却，不再 SetError。
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.tempCalls)
 }
 
 // TestRateLimitService_HandleUpstreamError_OAuth401DoesNotOverwriteCredentials
@@ -318,9 +321,10 @@ func TestRateLimitService_HandleUpstreamError_RelayUpstream401TempCooldown(t *te
 	require.Contains(t, repo.lastTempReason, "upstream key invalid")
 }
 
-// 缺少 refresh_token 的 OAuth 账号 401 应直接 SetError 永久禁用，
-// 不再走 10 分钟冷却（冷却期内无人能刷新它，结束后还会被选中再 502 一次）。
-func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t *testing.T) {
+// 缺少 refresh_token 的 OAuth 账号 401：不再永久 SetError，改为「冷却 + 计数升级」，
+// 首次 30min，反复命中升级 6h/24h——冷却结束后仍无法自愈会被再次冷却，
+// 账号长期退出调度池但保留自动恢复的可能（方案 A）。
+func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenTempCooldowns(t *testing.T) {
 	t.Run("openai_no_refresh_token", func(t *testing.T) {
 		repo := &rateLimitAccountRepoStub{}
 		invalidator := &tokenCacheInvalidatorRecorder{}
@@ -339,10 +343,10 @@ func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t 
 		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 		require.True(t, shouldDisable)
-		require.Equal(t, 1, repo.setErrorCalls, "AT-only OAuth 401 must SetError")
-		require.Equal(t, 0, repo.tempCalls, "AT-only OAuth 401 must NOT temp-unschedule")
+		require.Equal(t, 0, repo.setErrorCalls, "AT-only OAuth 401 must not permanently disable")
+		require.Equal(t, 1, repo.tempCalls, "AT-only OAuth 401 must temp-unschedule")
 		require.Equal(t, 0, repo.updateCredentialsCalls, "no point forcing expires_at when refresh is impossible")
-		require.Contains(t, repo.lastErrorMsg, "refresh_token missing")
+		require.Contains(t, repo.lastTempReason, "refresh_token missing")
 		require.Len(t, invalidator.accounts, 1, "cache should still be invalidated")
 	})
 
@@ -362,11 +366,11 @@ func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t 
 		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 		require.True(t, shouldDisable)
-		require.Equal(t, 1, repo.setErrorCalls)
-		require.Equal(t, 0, repo.tempCalls)
+		require.Equal(t, 0, repo.setErrorCalls)
+		require.Equal(t, 1, repo.tempCalls)
 	})
 
-	t.Run("antigravity_no_refresh_token_sets_error", func(t *testing.T) {
+	t.Run("antigravity_no_refresh_token_temp_cooldown", func(t *testing.T) {
 		repo := &rateLimitAccountRepoStub{}
 		invalidator := &tokenCacheInvalidatorRecorder{}
 		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -383,9 +387,9 @@ func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t 
 		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
 
 		require.True(t, shouldDisable)
-		require.Equal(t, 1, repo.setErrorCalls, "Antigravity OAuth without refresh_token cannot self-recover")
-		require.Equal(t, 0, repo.tempCalls)
-		require.Contains(t, repo.lastErrorMsg, "refresh_token missing")
+		require.Equal(t, 0, repo.setErrorCalls, "Antigravity OAuth without refresh_token must not permanently disable")
+		require.Equal(t, 1, repo.tempCalls)
+		require.Contains(t, repo.lastTempReason, "refresh_token missing")
 		require.Len(t, invalidator.accounts, 1)
 	})
 }

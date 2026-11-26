@@ -232,37 +232,111 @@ func TestMaybeDisableAccountOnFailover_429WithResetTime_AutoRecoverable(t *testi
 	}
 }
 
-func TestMaybeDisableAccountOnFailover_429WithoutResetTime_Permanent(t *testing.T) {
+// 429 无可信 reset：不再永久禁用（方案 A 收敛），降级为 30min 临时冷却。
+func TestMaybeDisableAccountOnFailover_429WithoutResetTime_TempCooldown(t *testing.T) {
 	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
 		repo.acct, http.StatusTooManyRequests, nil, alwaysFailover, "rate limit exceeded", nil)
 
-	if repo.updated == nil {
-		t.Fatal("expected account to be updated")
+	if repo.updated != nil {
+		t.Fatalf("429 without reset must not permanently disable, got status %s", repo.updated.Status)
 	}
-	if repo.updated.Status != StatusError {
-		t.Fatalf("expected status error, got %s", repo.updated.Status)
+	if !repo.tempCalled {
+		t.Fatal("429 without reset must temp-cooldown the account")
 	}
-	if repo.updated.RateLimitResetAt != nil {
-		t.Fatalf("expected no reset time, got %s", repo.updated.RateLimitResetAt.Format(time.RFC3339))
+	if repo.tempUntil.Before(time.Now().Add(failoverClientErrorTempCooldown - time.Second)) {
+		t.Fatalf("cooldown window too short: %s", repo.tempUntil)
 	}
-	if strings.Contains(repo.updated.ErrorMessage, FailoverAutoRecoverMessageTag) {
-		t.Fatalf("permanent disable must not carry auto-recover tag, got %q", repo.updated.ErrorMessage)
+	if strings.Contains(repo.tempReason, FailoverAutoRecoverMessageTag) {
+		t.Fatalf("temp cooldown must not carry auto-recover tag, got %q", repo.tempReason)
 	}
 }
 
-func TestMaybeDisableAccountOnFailover_401_Permanent(t *testing.T) {
+// 401：不再永久禁用（方案 A 收敛），降级为 30min 临时冷却，到期自动恢复调度。
+func TestMaybeDisableAccountOnFailover_401_TempCooldown(t *testing.T) {
 	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
 
 	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
 		repo.acct, http.StatusUnauthorized, nil, alwaysFailover, "unauthorized", nil)
 
-	if repo.updated == nil || repo.updated.Status != StatusError {
-		t.Fatal("expected account to be permanently disabled")
+	if repo.updated != nil {
+		t.Fatalf("401 must not permanently disable, got status %s", repo.updated.Status)
 	}
-	if repo.updated.RateLimitResetAt != nil {
-		t.Fatal("401 must never schedule auto recovery")
+	if !repo.tempCalled {
+		t.Fatal("401 must temp-cooldown the account")
+	}
+}
+
+// 5xx：不再永久禁用（方案 A 收敛），降级为 10min 短冷却（瞬时故障）。
+func TestMaybeDisableAccountOnFailover_5xx_TempCooldown(t *testing.T) {
+	for _, statusCode := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable} {
+		repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
+
+		maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+			repo.acct, statusCode, nil, alwaysFailover, "upstream error", nil)
+
+		if repo.updated != nil {
+			t.Fatalf("HTTP %d must not permanently disable, got status %s", statusCode, repo.updated.Status)
+		}
+		if !repo.tempCalled {
+			t.Fatalf("HTTP %d must temp-cooldown the account", statusCode)
+		}
+		if repo.tempUntil.Before(time.Now().Add(failoverServerErrorTempCooldown-time.Second)) ||
+			repo.tempUntil.After(time.Now().Add(failoverServerErrorTempCooldown+time.Minute)) {
+			t.Fatalf("HTTP %d: unexpected cooldown until %s", statusCode, repo.tempUntil.Format(time.RFC3339))
+		}
+	}
+}
+
+// 402（余额/计费不足）是唯一保留永久禁用的状态码，但必须带自动复活探测：
+// error_message 写 [auto-recover at ...] 标记 + rate_limit_reset_at = now + 24h，
+// AccountAutoRecoveryService 每 24h 放回调度池试一次，充值后无需人工恢复。
+func TestMaybeDisableAccountOnFailover_402_PermanentWithRecoverProbe(t *testing.T) {
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Status: StatusActive, Schedulable: true}}
+	before := time.Now()
+
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+		repo.acct, http.StatusPaymentRequired, nil, alwaysFailover, "insufficient balance", nil)
+
+	if repo.updated == nil || repo.updated.Status != StatusError {
+		t.Fatal("402 must permanently disable the account")
+	}
+	if repo.updated.RateLimitResetAt == nil {
+		t.Fatal("402 must schedule the 24h auto-recover probe")
+	}
+	if repo.updated.RateLimitResetAt.Before(before.Add(failover402RecoverProbeInterval - time.Minute)) {
+		t.Fatalf("probe interval too short: %s", repo.updated.RateLimitResetAt.Format(time.RFC3339))
+	}
+	if !strings.Contains(repo.updated.ErrorMessage, FailoverAutoRecoverMessageTag) {
+		t.Fatalf("402 error message must carry auto-recover tag, got %q", repo.updated.ErrorMessage)
+	}
+	if strings.Contains(repo.updated.ErrorMessage, "insufficient balance") == false {
+		t.Fatalf("402 error message must keep upstream detail, got %q", repo.updated.ErrorMessage)
+	}
+}
+
+// 池模式账号完全跳过账号级惩罚：与 HandleUpstreamError 的池模式豁免口径一致，
+// 修复此前开关开启时池模式账号仍会被永久禁用的一致性缺口。
+func TestMaybeDisableAccountOnFailover_PoolMode_NoOp(t *testing.T) {
+	acct := &Account{
+		ID:          1,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"pool_mode": true},
+	}
+	repo := &failoverDisableRepoStub{acct: acct}
+
+	for _, statusCode := range []int{http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusInternalServerError} {
+		repo.getCalled, repo.updated, repo.tempCalled = false, nil, false
+		maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+			repo.acct, statusCode, nil, alwaysFailover, "upstream error", nil)
+
+		if repo.updated != nil || repo.tempCalled {
+			t.Fatalf("HTTP %d: pool-mode account must be untouched by failover disable", statusCode)
+		}
 	}
 }
 

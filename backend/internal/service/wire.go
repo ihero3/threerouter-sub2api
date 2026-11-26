@@ -558,6 +558,12 @@ func ProvideRateLimitService(
 		svc.SetStreamTruncationCounterCache(truncationCache)
 	}
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
+	// 同一个 openAI403CounterCache 实例同时实现 AuthErrorEscalationCache（独立
+	// key 前缀），类型断言复用，避免 ProvideRateLimitService 签名变动牵连
+	// wire_gen.go。未注入时 401/403 退化为固定基础冷却，不影响可用性。
+	if escalationCache, ok := openAI403CounterCache.(AuthErrorEscalationCache); ok {
+		svc.SetAuthErrorEscalationCache(escalationCache)
+	}
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
 	svc.SetOllamaCloudUsageProbeScheduler(ollamaCloudUsage)
