@@ -78,6 +78,11 @@
             <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800/50">
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ t("admin.settings.sites.promo") }}</p>
               <div class="space-y-3">
+                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input v-model="profiles[site].promo.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <span>{{ t("admin.settings.sites.promoEnabled") }}</span>
+                </label>
+                <p class="-mt-2 text-xs text-gray-400">{{ t("admin.settings.sites.promoEnabledHint") }}</p>
                 <div>
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.sites.promoBadge") }}</label>
                   <input v-model="profiles[site].promo.badge" type="text" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-600 dark:bg-dark-800 dark:text-white" />
@@ -142,7 +147,14 @@ const saved = ref(false);
 const saveError = ref("");
 
 function emptyProfile(): SiteProfile {
-  return { name: "", logo: "", subtitle: "", footer_html: "", promo: { badge: "", title: "", cta: "", items: [] } };
+  return { name: "", logo: "", subtitle: "", footer_html: "", promo: { badge: "", title: "", cta: "", items: [], enabled: true } };
+}
+
+// 老配置的 promo 没有 enabled 字段；显式回填 true 保证默认展示。
+function normalizeProfile(raw?: Partial<SiteProfile>): SiteProfile {
+  const base = emptyProfile();
+  if (!raw) return base;
+  return { ...base, ...raw, promo: { ...base.promo, ...(raw.promo || {}) } };
 }
 
 function siteLabel(site: string): string {
@@ -161,8 +173,8 @@ async function load() {
     const data = await getSiteSettings();
     activeSite.value = data.active_site || "site_a";
     profiles.value = {
-      site_a: { ...emptyProfile(), ...(data.site_profiles?.site_a || {}) },
-      site_b: { ...emptyProfile(), ...(data.site_profiles?.site_b || {}) },
+      site_a: normalizeProfile(data.site_profiles?.site_a),
+      site_b: normalizeProfile(data.site_profiles?.site_b),
     };
   } catch {
     profiles.value = { site_a: emptyProfile(), site_b: emptyProfile() };

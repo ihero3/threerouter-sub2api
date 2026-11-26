@@ -299,6 +299,8 @@ export interface SitePromoConfig {
   title: string
   cta: string
   items: string[]
+  /** 宣传块开关；缺失时视为 true（默认展示），显式 false 时全站隐藏 */
+  enabled?: boolean
 }
 
 export interface SiteProfile {

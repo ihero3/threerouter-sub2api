@@ -28,6 +28,8 @@ export default {
         footerHtml: 'Custom footer HTML',
         footerHtmlHint: 'Leave blank to use the default footer. Admin-only; do not paste untrusted scripts.',
         promo: 'Promo banner',
+        promoEnabled: 'Show promo banner',
+        promoEnabledHint: 'When off, the promo banner is hidden on every page (home, login, blog, model plaza, etc.); the configured text is kept.',
         promoBadge: 'Badge',
         promoTitle: 'Title',
         promoCta: 'Button text',

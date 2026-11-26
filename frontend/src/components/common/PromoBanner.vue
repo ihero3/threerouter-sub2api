@@ -1,5 +1,6 @@
 <template>
   <section
+    v-if="promoVisible"
     class="promo-banner group relative cursor-pointer overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-emerald-50/80 to-teal-50 p-6 text-gray-900 shadow-sm transition-transform duration-200 hover:scale-[1.01] sm:p-8"
     role="button"
     tabindex="0"
@@ -66,6 +67,9 @@ const defaultItems = [
 
 // B 站可在后台配置自己的推广文案；A 站未配置时回落到 i18n。
 const sitePromo = computed(() => appStore.activeSiteProfile?.promo)
+// 后台「系统设置 → 站点配置 → 推广横幅」开关。缺失（老配置）视为 true，
+// 只有显式 false 才隐藏，保证线上现有部署不受影响。
+const promoVisible = computed(() => sitePromo.value?.enabled !== false)
 const promoBadge = computed(() => sitePromo.value?.badge?.trim() || t('promo.badge'))
 const promoTitle = computed(() => sitePromo.value?.title?.trim() || t('promo.title'))
 const promoCta = computed(() => sitePromo.value?.cta?.trim() || t('promo.cta'))

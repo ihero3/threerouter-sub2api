@@ -9,6 +9,17 @@ type SitePromoConfig struct {
 	Title string   `json:"title"`
 	CTA   string   `json:"cta"`
 	Items []string `json:"items"`
+	// Enabled controls whether the promo/campaign banner is rendered site-wide.
+	// Pointer so a missing key in legacy config means "show" (default true),
+	// while an explicit false hides the banner everywhere.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// PromoEnabled reports whether the promo banner should be rendered. Absent
+// config (nil) defaults to true so existing deployments keep the banner until
+// an admin explicitly turns it off.
+func (c SitePromoConfig) PromoEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 // SiteProfile groups the backend-configurable branding content of one frontend
@@ -34,7 +45,8 @@ const defaultSiteProfilesJSON = `{
       "badge": "",
       "title": "",
       "cta": "",
-      "items": []
+      "items": [],
+      "enabled": true
     }
   },
   "site_b": {
@@ -46,7 +58,8 @@ const defaultSiteProfilesJSON = `{
       "badge": "限时特惠",
       "title": "注册即送免费额度",
       "cta": "立即开始",
-      "items": ["无隐藏费用", "即时开通 API", "7×24 小时支持"]
+      "items": ["无隐藏费用", "即时开通 API", "7×24 小时支持"],
+      "enabled": true
     }
   }
 }`

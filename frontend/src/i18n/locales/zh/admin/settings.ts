@@ -28,6 +28,8 @@ export default {
         footerHtml: '自定义页脚 HTML',
         footerHtmlHint: '留空则使用默认页脚。仅管理员可编辑，请勿粘贴不可信脚本。',
         promo: '推广横幅',
+        promoEnabled: '显示推广横幅',
+        promoEnabledHint: '关闭后，全站所有页面（首页、登录页、博客、模型广场等）的推广横幅都不再展示；文案配置仍保留。',
         promoBadge: '角标',
         promoTitle: '标题',
         promoCta: '按钮文案',
