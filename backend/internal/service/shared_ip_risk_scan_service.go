@@ -25,8 +25,8 @@ import (
 // 阈值与豁免：
 //   - 快速档 sharedIPRiskShortMinUsers = 3 / 1 天；长期档 sharedIPRiskMinUsers = 5 / 10 天。
 //     演化：单一档 5→3（2026-11-20 上午）→ 拆双档：3 归 1 天快速档，10 天档回到 5 并升级为禁用。
-//   - 命中 ticket_flag / 复核豁免表 / IP 白名单的用户跳过（前两者由 BumpUserRiskMarksSQL
-//     的豁免守卫 + 本服务的 IsExempt 双重拦截，白名单由设置缓存判断）。
+//   - 命中 ticket_flag / 复核豁免表 / 充值付费用户 / IP 白名单的用户跳过（前三者由
+//     BumpUserRiskMarksSQL 的豁免守卫 + 本服务的 IsExempt 双重拦截，白名单由设置缓存判断）。
 //   - 打标走「只升不降」（2026-11-21 起两档均打 suspect，不再写 abnormal 自动禁用）。
 //
 // 幂等与安全：

@@ -34,8 +34,9 @@ import (
 //   - 标记只升不降：扫描不会把已标记的用户改回正常，避免证据被后续扫描抹掉。
 //   - 所有规则共享同一份「原始信号 + 判定函数」，实时路径与存量扫描走完全相同的代码，
 //     不存在两套判定逻辑。
-//   - 全量扫描跳过已人工复核放行的账号（user_risk_review_exemptions，见迁移 253
-//     与 ListUserIDsForRiskScan），避免管理员的复核结论被同一批静态证据反复推翻；
+//   - 全量扫描跳过已人工复核放行的账号（user_risk_review_exemptions，见迁移 253）
+//     与已付费用户（payment_orders 真实支付成功，见 ListUserIDsForRiskScan），
+//     避免管理员的复核结论被同一批静态证据反复推翻；
 //     实时邀请绑定不受此豁免影响，新证据仍会重新打标。
 
 // AffiliateRiskSignal 单个用户的邀请注册风险原始信号，由仓储层一次 SQL 聚合得到。
@@ -360,8 +361,8 @@ func buildRiskMarks(signals []AffiliateRiskSignal) []UserRiskMark {
 //
 // 分批按 ID 游标推进，每批一次聚合查询 + 一次批量写入，避免单个超大事务。
 // 只升不降：不会清除任何已有标记。
-// 已人工复核放行的账号在取 ID 阶段就被排除（迁移 253），不会被标回待复核；
-// 实时邀请绑定仍会独立评估这些账号，属于新增证据的兜底。
+// 已人工复核放行 / 已付费的账号在取 ID 阶段就被排除（迁移 253 + payment_orders），
+// 不会被标回待复核；实时邀请绑定仍会独立评估这些账号，属于新增证据的兜底。
 func (s *AffiliateService) AdminScanAffiliateRisk(ctx context.Context) (*AffiliateRiskScanResult, error) {
 	if s == nil || s.repo == nil {
 		return nil, ErrAffiliateProfileNotFound

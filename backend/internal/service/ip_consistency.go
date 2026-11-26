@@ -23,7 +23,7 @@ import (
 // 同时被待复核冻结闸门拦截网关调用与建 Key）+ 把余额降到只剩 $0.03 + 写调账备注 +
 // 给用户发一封通知邮件，并中断本次请求。账号状态不再自动置为 disabled。
 //
-// 命中工单标记 / 人工复核豁免 / IP 白名单的用户整体跳过本风控（见 CheckUser）。
+// 命中工单标记 / 充值付费 / 人工复核豁免 / IP 白名单的用户整体跳过本风控（见 CheckUser）。
 //
 // 两个功能各有独立开关，默认都开启；存量 v1 配置在读取时一次性迁移到 v2，
 // 保证升级后线上立即生效（管理员之后再进后台关闭才会写回 v2 配置）。
@@ -511,8 +511,8 @@ func (s *IPConsistencyService) CheckUser(ctx context.Context, userID int64, role
 	if clientIP == "" || ipWhitelisted(clientIP, settings.WhitelistIPs) {
 		return nil
 	}
-	// 全局豁免：提过工单 / 人工复核放行 / IP 白名单命中者，跳过一切自动处罚
-	// （suspect 标记 + 扣减）。白名单已在上面判断；这里查工单标记与复核豁免。
+	// 全局豁免：提过工单 / 充过值支付过 / 人工复核放行 / IP 白名单命中者，跳过一切自动处罚
+	// （suspect 标记 + 扣减）。白名单已在上面判断；这里查工单标记、付费与复核豁免。
 	if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, userID) {
 		return nil
 	}

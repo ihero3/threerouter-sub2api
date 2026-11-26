@@ -1498,9 +1498,12 @@ func (r *userRepository) GrantRechargePerkOnce(ctx context.Context, userID, sour
 //   - users.ticket_flag（迁移 246，管理员工单跟进时置位）
 //   - user_risk_review_exemptions（迁移 253，人工复核放行时写入）
 //   - tickets（迁移 154，用户真实提交过工单；user_id 有 idx_tickets_user_id 索引）
+//   - payment_orders（充过值/支付过 = 真实付费支持者；口径与 HasPaidRecharge 一致：
+//     paid_at 非空 + PAID/RECHARGING/COMPLETED + 余额充值/订阅购买，
+//     兑换码、管理员调账、邀请返利提现不算；user_id 有 idx_payment_orders_user_id 索引）
 //
-// 三条 EXISTS 用 OR 合并，一次往返；抽成常量便于在无真库的单测里断言 SQL 契约。
-// tickets 放在最后，前两条命中即短路，绝大多数用户不会走这条索引查找。
+// 四条 EXISTS 用 OR 合并，一次往返；抽成常量便于在无真库的单测里断言 SQL 契约。
+// tickets / payment_orders 放在后面，前两条命中即短路，绝大多数用户不会走这两条索引查找。
 const isRiskExemptByIDSQL = `
 SELECT EXISTS (
     SELECT 1 FROM users
@@ -1509,10 +1512,15 @@ SELECT EXISTS (
     SELECT 1 FROM user_risk_review_exemptions WHERE user_id = $1
 ) OR EXISTS (
     SELECT 1 FROM tickets WHERE user_id = $1
+) OR EXISTS (
+    SELECT 1 FROM payment_orders
+    WHERE user_id = $1 AND paid_at IS NOT NULL
+      AND status IN ('PAID', 'RECHARGING', 'COMPLETED')
+      AND order_type IN ('balance', 'subscription')
 )
 `
 
-// IsRiskExemptByID 查询用户是否命中自动风控豁免（工单标记 / 复核放行）。
+// IsRiskExemptByID 查询用户是否命中自动风控豁免（工单标记 / 复核放行 / 充值付费）。
 // 由 service 层的 RiskExemptionChecker 调用并缓存，避免鉴权热路径每次查库。
 func (r *userRepository) IsRiskExemptByID(ctx context.Context, id int64) (bool, error) {
 	if r.sql == nil {

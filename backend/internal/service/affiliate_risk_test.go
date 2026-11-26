@@ -98,10 +98,12 @@ func TestEvaluateAffiliateRisk_ChainDepthTiering(t *testing.T) {
 		wantLevel  string
 	}{
 		{"depth 2 is clean", 2, 0, AffiliateRiskLevelNone},
-		{"ancestor depth 3 is suspect", 3, 0, AffiliateRiskLevelSuspect},
-		{"descendant depth 3 is suspect", 0, 3, AffiliateRiskLevelSuspect},
-		{"depth 4 is abnormal", 0, 4, AffiliateRiskLevelAbnormal},
-		{"deepest direction wins", 2, 4, AffiliateRiskLevelAbnormal},
+		{"depth 3 is clean", 3, 0, AffiliateRiskLevelNone},
+		{"descendant depth 3 is clean", 0, 3, AffiliateRiskLevelNone},
+		{"ancestor depth 4 is suspect", 4, 0, AffiliateRiskLevelSuspect},
+		{"descendant depth 4 is suspect", 0, 4, AffiliateRiskLevelSuspect},
+		{"depth 5 is abnormal", 0, 5, AffiliateRiskLevelAbnormal},
+		{"deepest direction wins", 2, 5, AffiliateRiskLevelAbnormal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

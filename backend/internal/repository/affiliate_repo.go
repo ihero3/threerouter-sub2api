@@ -2259,9 +2259,11 @@ WHERE u.id = ANY($1)`,
 // 打上 abnormal 标记，避免其 status 被「禁止复活」保护长期锁死。
 //
 // 全局豁免：提过工单（管理员标记 ticket_flag 或用户真实提交过 tickets）、
-// 已人工复核放行（user_risk_review_exemptions）的用户不再接受任何自动打标——
-// 这是运营尺度拍板结果，覆盖实时邀请绑定、注册 IP 关联、全量扫描等所有走本
-// SQL 的自动链路。注意这里只挡「写标记」，不撤销历史标记。
+// 充过值支付过（payment_orders 真实支付成功，口径与 HasPaidRecharge 一致，
+// 兑换码/管理员调账/提现不算）、已人工复核放行（user_risk_review_exemptions）
+// 的用户不再接受任何自动打标——这是运营尺度拍板结果，覆盖实时邀请绑定、
+// 注册 IP 关联、全量扫描等所有走本 SQL 的自动链路。注意这里只挡「写标记」，
+// 不撤销历史标记。
 //
 // 抽成包级常量便于在不依赖真库的情况下对 SQL 安全契约做单元测试。
 const bumpUserRiskMarksSQL = `
@@ -2280,6 +2282,10 @@ WHERE u.id = v.id
   AND COALESCE(u.ticket_flag, FALSE) = FALSE
   AND NOT EXISTS (SELECT 1 FROM user_risk_review_exemptions e WHERE e.user_id = u.id)
   AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.user_id = u.id)
+  AND NOT EXISTS (SELECT 1 FROM payment_orders p
+                  WHERE p.user_id = u.id AND p.paid_at IS NOT NULL
+                    AND p.status IN ('PAID', 'RECHARGING', 'COMPLETED')
+                    AND p.order_type IN ('balance', 'subscription'))
   AND CASE v.level WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END
       >= CASE COALESCE(u.risk_level, '') WHEN 'abnormal' THEN 2 WHEN 'suspect' THEN 1 ELSE 0 END`
 
@@ -2316,9 +2322,10 @@ func (r *affiliateRepository) BumpUserRiskMarks(ctx context.Context, marks []ser
 
 // listUserIDsForRiskScanSQL 全量风险扫描按 ID 游标分批取用户。
 //
-// 已人工复核放行的账号（迁移 253 的 user_risk_review_exemptions）直接跳过：
-// 管理员已经看过同一批静态证据并放行，扫描不该把它标回 suspect/abnormal，
-// 让「复核通过」按钮反复出现。
+// 已人工复核放行的账号（迁移 253 的 user_risk_review_exemptions）与
+// 充过值/支付过的付费用户（payment_orders 真实支付成功，口径与 HasPaidRecharge 一致）
+// 直接跳过：前者管理员已经看过同一批静态证据并放行，扫描不该把它标回 suspect/abnormal，
+// 让「复核通过」按钮反复出现；后者是真实付费支持者，同样不该被全量扫描与处罚命中。
 //
 // 豁免只作用于全量扫描，不覆盖实时邀请绑定（EvaluateInviteRisk）：新的邀请
 // 关系属于新增证据，实时路径仍可重新打标，账号回到待复核后由管理员再次复核。
@@ -2329,10 +2336,16 @@ WHERE u.deleted_at IS NULL AND u.id > $1
   AND NOT EXISTS (
       SELECT 1 FROM user_risk_review_exemptions e WHERE e.user_id = u.id
   )
+  AND NOT EXISTS (
+      SELECT 1 FROM payment_orders p
+      WHERE p.user_id = u.id AND p.paid_at IS NOT NULL
+        AND p.status IN ('PAID', 'RECHARGING', 'COMPLETED')
+        AND p.order_type IN ('balance', 'subscription')
+  )
 ORDER BY u.id
 LIMIT $2`
 
-// ListUserIDsForRiskScan 按 ID 游标分批取待扫描的用户 ID（仅未软删除、未被人工放行豁免）。
+// ListUserIDsForRiskScan 按 ID 游标分批取待扫描的用户 ID（跳过软删除、人工放行与付费用户）。
 func (r *affiliateRepository) ListUserIDsForRiskScan(ctx context.Context, afterID int64, limit int) ([]int64, error) {
 	if limit <= 0 {
 		return nil, nil

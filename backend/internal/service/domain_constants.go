@@ -975,9 +975,10 @@ const (
 	AffiliateRiskInviteBurstOldSuspect  = 5 // 老号：24h 邀请数 > 该值 → 存疑。
 	AffiliateRiskInviteBurstOldAbnormal = 6 // 老号：24h 邀请数 > 该值 → 异常。
 	// 规则 2：链深阈值（1 = 直接邀请人/直接下级）。按全链路深度判定，不带时间窗。
-	// 2026-11-22 用户拍板收紧：≥3 suspect / ≥4 abnormal。
-	AffiliateRiskChainDepthSuspect  = 3
-	AffiliateRiskChainDepthAbnormal = 4
+	// 2026-11-22 收紧：≥3 suspect / ≥4 abnormal；2026-11-26 用户拍板放宽为
+	// 「链深大于 3 才打标」：depth=3 不再命中，≥4 suspect / ≥5 abnormal。
+	AffiliateRiskChainDepthSuspect  = 4
+	AffiliateRiskChainDepthAbnormal = 5
 	// 规则 2 的递归上限，防止异常数据（环）导致查询失控。
 	AffiliateRiskChainDepthMaxScan = 20
 	// 规则 10：链路传染的扫描半径（向上/向下各几跳）——收窄到 1 跳。

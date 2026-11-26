@@ -2215,7 +2215,7 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 			// TODO: Disable the triggering API key instead when API key mutation is available here.
 			return false
 		}
-		// 全局自动风控豁免：提过工单 / 人工复核放行的用户免于自动封号，
+		// 全局自动风控豁免：提过工单 / 充过值支付过 / 人工复核放行的用户免于自动封号，
 		// 与 IP 一致性、邀请风险等其它自动处罚口径一致。检查器未注入或查询
 		// 异常时 fail-open 为「不豁免」，处罚照常。
 		if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, *log.UserID) {
