@@ -159,6 +159,14 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				// 少了它，DB 回源时 User.RiskLevel 恒为空，认证快照会写入空值，
 				// 导致缓存未命中/重建的请求绕过冻结。
 				user.FieldRiskLevel,
+				// 新用户注册 IP 严格规则（CheckNewUserFirstUseIP）直接读这两个字段：
+				// 少了 register_ip 会拿到空串并静默放行，少了 created_at 会拿到零值时间
+				// 同样静默放行 —— 整条规则从未生效且不报错。2026-11-26 线上实锤：
+				// 用户 6687 注册后 142s 换 IP 调用成功，就是这两个字段漏投影所致。
+				// 快照层 api_key_auth_cache_impl 会原样拷贝零值，补投影后仍需等快照 TTL
+				// 过期才逐步恢复，故由 api_key_repo_auth_projection_guard_test.go 锁死。
+				user.FieldRegisterIP,
+				user.FieldCreatedAt,
 				user.FieldBalance,
 				user.FieldConcurrency,
 				user.FieldBalanceNotifyEnabled,

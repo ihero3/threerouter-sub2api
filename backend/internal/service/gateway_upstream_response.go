@@ -465,6 +465,16 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
 	}
 
+	// 模型级「不支持/不存在」不是平台故障：目标池里没有能服务该模型的账号，
+	// 报 502「上游错误」会让用户以为是平台挂了，还会诱发重试风暴。
+	// 直接按上游语义回 404 model_not_found，让客户端立刻知道该换模型而不是重试。
+	// 判定沿用 isUpstreamModelNotFoundError（含 403/404 + model 门控），与
+	// failover / HandleUpstreamModelNotFound 的口径完全一致，不会把账号级错误当成模型错误。
+	if isUpstreamModelNotFoundError(resp.StatusCode, body) {
+		c.JSON(http.StatusNotFound, ModelUnavailableBody())
+		return nil, fmt.Errorf("upstream error: %d (model unavailable)", resp.StatusCode)
+	}
+
 	// 根据状态码返回平台统一错误响应（不透传上游详细信息）
 	statusCode, errType, errMsg := MapUpstreamErrorToClient(resp.StatusCode)
 
@@ -910,6 +920,13 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		return nil, fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched)", resp.StatusCode)
 	}
 
+	// 模型级不可用：换号也救不回来（目标池根本没这个模型），按上游语义回 404
+	// model_not_found，而不是 502。与上面的通用入口保持同一口径。
+	if isUpstreamModelNotFoundError(resp.StatusCode, respBody) {
+		c.JSON(http.StatusNotFound, ModelUnavailableBody())
+		return nil, fmt.Errorf("upstream error: %d (retries exhausted, model unavailable)", resp.StatusCode)
+	}
+
 	// 返回统一的重试耗尽错误响应
 	c.JSON(http.StatusBadGateway, gin.H{
 		"type": "error",
@@ -923,6 +940,17 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
 	}
 	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
+}
+
+// ModelUnavailableBody 是「模型在当前平台不可用」的统一客户端错误体。
+// 状态码 404 + type=model_not_found 是各家 SDK 都认的语义，客户端据此换模型而不是重试。
+func ModelUnavailableBody() map[string]any {
+	return map[string]any{
+		"error": map[string]any{
+			"type":    "model_not_found",
+			"message": "The requested model is not available on this platform",
+		},
+	}
 }
 
 // streamingResult 流式响应结果

@@ -115,6 +115,26 @@ const (
 	// newUserIPMismatchReason 真实 suspect 标记的原因码（进人工复核队列）。
 	// 保留旧值 new_user_first_use_ip_mismatch 以兼容历史数据，语义已扩展为窗口内任意一次。
 	newUserIPMismatchReason = "new_user_first_use_ip_mismatch"
+	// ipConsistencySkipNoPenaltyDeps 新用户严格规则的放行原因：处罚依赖未注入。
+	ipConsistencySkipNoPenaltyDeps = "penalty_dependencies_not_wired"
+	// ipConsistencySkipInvalidUserID 放行原因：user_id 非法。
+	ipConsistencySkipInvalidUserID = "invalid_user_id"
+	// ipConsistencySkipAdmin 放行原因：管理员账号。
+	ipConsistencySkipAdmin = "admin_exempt"
+	// ipConsistencySkipMissingCreatedAt 放行原因：账号创建时间为零值。
+	ipConsistencySkipMissingCreatedAt = "missing_account_created_at"
+	// ipConsistencySkipOutsideWindow 新用户严格规则的放行原因：注册时间超出窗口。
+	ipConsistencySkipOutsideWindow = "outside_new_user_window"
+	// ipConsistencySkipMissingFields 放行原因：客户端 IP 或注册 IP 缺失。
+	ipConsistencySkipMissingFields = "missing_client_or_register_ip"
+	// ipConsistencySkipFeatureOff 放行原因：两个功能都关闭。
+	ipConsistencySkipFeatureOff = "feature_disabled"
+	// ipConsistencySkipWhitelist 放行原因：用户或 IP 命中白名单。
+	ipConsistencySkipWhitelist = "whitelisted"
+	// ipConsistencySkipExemption 放行原因：命中工单/付费/复核豁免。
+	ipConsistencySkipExemption = "risk_exemption"
+	// ipConsistencySkipIPMatched 放行原因：客户端 IP 与注册 IP 一致。
+	ipConsistencySkipIPMatched = "client_ip_matches_register_ip"
 )
 
 // ErrIPConsistencyBlocked IP 一致性校验未通过（注册/登录返回 403）。
@@ -424,23 +444,70 @@ func (s *IPConsistencyService) SetInviterRiskEvaluator(evaluator InviterFirstUse
 // IP 一致的调用直接放行，不占用该键，保证窗口内后续一旦换 IP 仍能被抓到。
 //
 // Redis 不可用、字段缺失、超过窗口、管理员、白名单与工单/复核豁免均 fail-open。
+//
+// 可观测性（2026-11-26 加）：每条放行路径都留下一条 debug 日志并带 skip_reason，
+// 便于排查「新号注册后立刻换 IP 却没被拦」这类工单——判定与处罚行为完全不变。
 func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 	ctx context.Context,
 	userID int64,
 	role, clientIP, registerIP string,
 	createdAt time.Time,
 ) *IPConsistencyViolation {
-	if s == nil || s.penaltyLocker == nil || userID <= 0 || role == RoleAdmin || createdAt.IsZero() {
+	// 日志只带判定所需的输入，字段名与命中路径保持一致，便于按 user_id 串联。
+	//
+	// 级别分流（默认 log.level=info，debug 在生产不可见）：
+	//   - 「本该拦却没拦得成」的原因用 Info：处罚依赖缺失、注册 IP 缺失、豁免命中、
+	//     白名单、功能关闭。这些是新号换 IP 逃过严格规则的唯一可能路径，必须在生产可见；
+	//   - 「规则正常放行」的原因用 Debug：IP 一致、超出窗口、管理员。这三个是预期行为，
+	//     放进 info 会按请求量刷屏。
+	logSkip := func(reason string, age time.Duration, anomalous bool) {
+		level := slog.LevelDebug
+		if anomalous {
+			level = slog.LevelInfo
+		}
+		slog.Log(ctx, level, "new-user ip rule skipped",
+			"audit", true,
+			"user_id", userID,
+			"skip_reason", reason,
+			"current_ip", normalizeClientIP(clientIP),
+			"register_ip", normalizeClientIP(registerIP),
+			"account_age", age,
+			"window", newUserIPMismatchWindow,
+		)
+	}
+	// nil 接收者下无法调用 logSkip（闭包捕获了 s 之外的字段），直接返回。
+	if s == nil {
+		return nil
+	}
+	// 处罚依赖缺失时只记依赖状态，不记录该用户的 IP（避免把与判定无关的隐私字段刷进日志）。
+	if s.penaltyLocker == nil {
+		slog.Log(ctx, slog.LevelInfo, "new-user ip rule skipped: penalty dependencies not wired",
+			"audit", true, "user_id", userID, "skip_reason", ipConsistencySkipNoPenaltyDeps)
+		return nil
+	}
+	// 各条 fail-open 分支分别标注原因，避免排查时只看到「没命中」却不知道卡在哪一步。
+	if userID <= 0 {
+		logSkip(ipConsistencySkipInvalidUserID, 0, false)
+		return nil
+	}
+	if role == RoleAdmin {
+		logSkip(ipConsistencySkipAdmin, 0, false)
+		return nil
+	}
+	if createdAt.IsZero() {
+		logSkip(ipConsistencySkipMissingCreatedAt, 0, true)
 		return nil
 	}
 	age := time.Since(createdAt)
 	if age < 0 || age >= newUserIPMismatchWindow {
+		logSkip(ipConsistencySkipOutsideWindow, age, false)
 		return nil
 	}
 
 	clientIP = normalizeClientIP(clientIP)
 	registerIP = normalizeClientIP(registerIP)
 	if clientIP == "" || registerIP == "" {
+		logSkip(ipConsistencySkipMissingFields, age, true)
 		return nil
 	}
 
@@ -450,17 +517,21 @@ func (s *IPConsistencyService) CheckNewUserFirstUseIP(
 	}
 	// 与主 IP 规则同口径：两个功能都关时整条规则不生效；白名单、工单与复核豁免照旧。
 	if !settings.Enabled && !settings.BalancePenaltyEnabled {
+		logSkip(ipConsistencySkipFeatureOff, age, true)
 		return nil
 	}
 	if containsInt64(settings.WhitelistUserIDs, userID) || ipWhitelisted(clientIP, settings.WhitelistIPs) {
+		logSkip(ipConsistencySkipWhitelist, age, true)
 		return nil
 	}
 	if s.exemptionChecker != nil && s.exemptionChecker.IsExempt(ctx, userID) {
+		logSkip(ipConsistencySkipExemption, age, true)
 		return nil
 	}
 
 	// 窗口内 IP 一致：直接放行，绝不消费扣减幂等键——否则后续换 IP 就罚不到了。
 	if clientIP == registerIP {
+		logSkip(ipConsistencySkipIPMatched, age, false)
 		return nil
 	}
 

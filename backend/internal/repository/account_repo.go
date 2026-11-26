@@ -54,6 +54,10 @@ type accountRepository struct {
 	// accountStatusNotifier 用于在批量状态变更（如调度器自动恢复）后发送状态变更通知；
 	// 可为 nil（未装配时静默跳过）。
 	accountStatusNotifier service.AccountStatusChangeNotifier
+	// accountTransitionNotifier 用于冷却层 / 调度层 / 结构性变化的变更通知：
+	// 写前记下对外状态，写后由通知服务复查并邮件告知（2026-11-26 起覆盖
+	// 429/529/模型冷却/临时停调/分组/优先级等所有账号动作）。可为 nil。
+	accountTransitionNotifier service.AccountTransitionNotifier
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -132,6 +136,52 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 // SetAccountStatusNotifier 注入账号状态变更通知能力（可选，装配期调用一次）。
 func (r *accountRepository) SetAccountStatusNotifier(notifier service.AccountStatusChangeNotifier) {
 	r.accountStatusNotifier = notifier
+}
+
+// SetAccountTransitionNotifier 注入「冷却/调度/结构性变化」通知能力（可选，装配期调用一次）。
+// 与 SetAccountStatusNotifier 注入同一个服务实例：前者用于状态位变化，后者用于
+// 状态位不变但可调度性变化的场景（限流、冷却、阈值暂停、分组与优先级调整）。
+func (r *accountRepository) SetAccountTransitionNotifier(notifier service.AccountTransitionNotifier) {
+	r.accountTransitionNotifier = notifier
+}
+
+// availabilityBefore 读取账号当前对外状态，用于写操作后判定是否发生了变化。
+// 读失败返回空串，调用方按「未知前态」处理（通知服务会退化为写后复查）。
+func (r *accountRepository) availabilityBefore(ctx context.Context, id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	account, err := r.client.Account.Get(ctx, id)
+	if err != nil || account == nil {
+		return ""
+	}
+	return service.AccountAvailabilityState(accountEntityToService(account))
+}
+
+// notifyTransition 登记一次可能改变对外状态的写操作，由通知服务在写后复查并投递邮件。
+// before 由调用方在写库前用 availabilityBefore 捕获；取舍口径：宁可多一次写后复查，
+// 也不要漏报账号的每一次动作变化。
+func (r *accountRepository) notifyTransition(ctx context.Context, id int64, before string, tr service.AccountNotifyTransition) {
+	if r.accountTransitionNotifier == nil || id <= 0 {
+		return
+	}
+	tr.Before = before
+	service.NotifyAccountTransition(ctx, r.accountTransitionNotifier, id, tr)
+}
+
+// notifyActionChangeOnly 登记「状态位没变、但账号确实有动作」的变化（分组绑定、调度优先级）。
+// 这类变化不体现在 AccountAvailabilityState 上，写后复查永远看不到差异，因此必须显式给 After；
+// 这里把 Before 置空并直接进入「按 After 延迟投递」路径。
+// 同一次变化的重复登记由通知服务按 from->to 折叠。
+func (r *accountRepository) notifyActionChangeOnly(ctx context.Context, id int64, after, detail, sourceType string) {
+	if r.accountTransitionNotifier == nil || id <= 0 || after == "" {
+		return
+	}
+	service.NotifyAccountTransition(ctx, r.accountTransitionNotifier, id, service.AccountNotifyTransition{
+		After:      after,
+		Detail:     detail,
+		SourceType: sourceType,
+	})
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
@@ -504,12 +554,15 @@ func (r *accountRepository) updateAccount(
 		}
 	}
 
-	// 捕获变更前的对外可调度状态（active/error/paused），用于提交后发送状态变更通知。
+	// 捕获变更前的对外可调度状态（active/error/paused/冷却事件）与优先级，
+	// 用于提交后发送状态变更通知。
 	// failover 自动禁用（maybeDisableAccountOnFailover）走的正是这条 Update 链——
 	// 此前通知只挂在 SetError/ClearError 上，导致 2026-11-26 事故中账号被自动禁用却无邮件。
 	var previousState string
+	previousPriority, hasPreviousPriority := 0, false
 	if previous, prevErr := client.Account.Get(ctx, account.ID); prevErr == nil && previous != nil {
 		previousState = service.AccountAvailabilityState(accountEntityToService(previous))
+		previousPriority, hasPreviousPriority = previous.Priority, true
 	}
 
 	updated, err := r.updateLockedAccount(
@@ -533,13 +586,20 @@ func (r *accountRepository) updateAccount(
 	}
 
 	account.UpdatedAt = updated.UpdatedAt
-	// 状态确实发生变化时通知管理员（异步、不阻塞）。必须在 commit 之后调用：
-	// 通知 goroutine 用独立连接回读账号，提前触发会读到未提交的旧状态。
+	// 状态位/冷却态/调度开关的变化统一由通知服务在写后复查中判定并投递：
+	// 必须在 commit 之后登记，否则复查回读会读到未提交的旧状态。
+	// 这样同一次编辑里「状态 + 开关 + 冷却」的多维变化只产生一封邮件，
+	// 也避免管理端回读后再报一次造成重复。失败不放开错误路径，通知本身是尽力而为。
 	if previousState != "" {
-		afterState := service.AccountAvailabilityState(accountEntityToService(updated))
-		if afterState != "" && previousState != afterState {
-			service.NotifyAccountStatusChanged(baseCtx, r.accountStatusNotifier, account.ID, previousState, afterState, account.ErrorMessage)
-		}
+		r.notifyTransition(baseCtx, account.ID, previousState, service.AccountNotifyTransition{
+			SourceType: "account_status",
+		})
+	}
+	// 优先级变化不改变可用性状态，但会改变调度顺序——按「账号有动作变化就发邮件」
+	// 的口径同样要通知（管理端调整 priority 走的就是这条链）。
+	if hasPreviousPriority && previousPriority != account.Priority {
+		r.notifyActionChangeOnly(baseCtx, account.ID, service.AccountEventPriorityChanged,
+			fmt.Sprintf("priority %d -> %d", previousPriority, account.Priority), "account_scheduling")
 	}
 	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
 	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
@@ -1677,6 +1737,8 @@ func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID i
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue add to group failed: account=%d group=%d err=%v", accountID, groupID, err)
 	}
+	// 分组绑定变化 = 调度面变化（账号从哪些分组可被调度到），需要通知管理员。
+	r.notifyActionChangeOnly(ctx, accountID, service.AccountEventGroupsChanged, fmt.Sprintf("group %d added", groupID), "account_groups")
 	return nil
 }
 
@@ -1694,6 +1756,7 @@ func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, grou
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue remove from group failed: account=%d group=%d err=%v", accountID, groupID, err)
 	}
+	r.notifyActionChangeOnly(ctx, accountID, service.AccountEventGroupsChanged, fmt.Sprintf("group %d removed", groupID), "account_groups")
 	return nil
 }
 
@@ -1776,6 +1839,7 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bind groups failed: account=%d err=%v", accountID, err)
 	}
+	r.notifyActionChangeOnly(ctx, accountID, service.AccountEventGroupsChanged, fmt.Sprintf("bound groups set to %v", groupIDs), "account_groups")
 	return nil
 }
 
@@ -2070,6 +2134,7 @@ func (r *accountRepository) ListModelAvailabilityCandidates(
 }
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	before := r.availabilityBefore(ctx, id)
 	now := time.Now()
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
@@ -2079,6 +2144,11 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	if err != nil {
 		return err
 	}
+	// 账号级限流同样是一次「账号动作变化」：用户要求限流也要发邮件。
+	r.notifyTransition(ctx, id, before, service.AccountNotifyTransition{
+		Detail:     fmt.Sprintf("rate limit resets at %s", resetAt.UTC().Format(time.RFC3339)),
+		SourceType: "account_status",
+	})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
 	}
@@ -2090,6 +2160,7 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 // requests may finish concurrently, so an older response must not overwrite a
 // later reset boundary observed by another request or instance.
 func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	before := r.availabilityBefore(ctx, id)
 	now := time.Now()
 	updated, err := r.client.Account.Update().
 		Where(
@@ -2111,6 +2182,10 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 		r.syncSchedulerAccountSnapshot(ctx, id)
 		return nil
 	}
+	r.notifyTransition(ctx, id, before, service.AccountNotifyTransition{
+		Detail:     fmt.Sprintf("rate limit extended; resets at %s", resetAt.UTC().Format(time.RFC3339)),
+		SourceType: "account_status",
+	})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extended rate limit failed: account=%d err=%v", id, err)
 	}
@@ -2195,6 +2270,12 @@ func (r *accountRepository) SetRateLimitedIfUnchanged(
 		r.syncSchedulerAccountSnapshot(ctx, id)
 		return false, nil
 	}
+	// 进入账号级限流属于账号动作变化，需要通知管理员。CAS 路径不便再读一次
+	// 写前状态，交给通知服务写后复查判定（before 传空）。
+	r.notifyTransition(ctx, id, "", service.AccountNotifyTransition{
+		Detail:     fmt.Sprintf("rate limit resets at %s", newResetAt.UTC().Format(time.RFC3339)),
+		SourceType: "account_status",
+	})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
 	}
@@ -2300,7 +2381,7 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 		if len(reason) > 0 && strings.TrimSpace(reason[0]) != "" {
 			detail += fmt.Sprintf(" (reason: %s)", strings.TrimSpace(reason[0]))
 		}
-		r.notifyAvailabilityLimited(ctx, id, "model-limited", detail)
+		r.notifyAvailabilityLimited(ctx, id, service.AccountEventModelLimited, detail)
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue model rate limit failed: account=%d err=%v", id, err)
@@ -2310,6 +2391,7 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 }
 
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
+	before := r.availabilityBefore(ctx, id)
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetOverloadUntil(until).
@@ -2317,6 +2399,10 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 	if err != nil {
 		return err
 	}
+	r.notifyTransition(ctx, id, before, service.AccountNotifyTransition{
+		Detail:     fmt.Sprintf("overload cooldown until %s", until.UTC().Format(time.RFC3339)),
+		SourceType: "account_status",
+	})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue overload failed: account=%d err=%v", id, err)
 	}
@@ -2346,7 +2432,10 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	}
 	// SQL 的 WHERE 已保证仅「新进入冷却」才会 affected>0，冷却期内重复设置
 	// 不会走到这里，因此通知天然去重。
-	r.notifyAvailabilityLimited(ctx, id, "temp-cooled", fmt.Sprintf("temporarily unschedulable until %s (%s)", until.UTC().Format(time.RFC3339), reason))
+	// 走状态变更通道而不是 transition 通道：before 是写前真实状态，to 是冷却事件，
+	// 一次写就发一封，语义更准。
+	r.notifyAvailabilityLimited(ctx, id, service.AccountEventTempCooled,
+		fmt.Sprintf("temporarily unschedulable until %s (%s)", until.UTC().Format(time.RFC3339), reason))
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
 	}
@@ -2492,6 +2581,7 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.SetSchedulable(ctx, id, schedulable)
 	}
+	before := r.availabilityBefore(ctx, id)
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetSchedulable(schedulable).
@@ -2499,6 +2589,13 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 	if err != nil {
 		return err
 	}
+	// 调度开关本身就是调度层变化（active ⇄ paused），此前这条路径不发通知，
+	// 是「账号有动作变化就发邮件」的一个缺口。
+	r.notifyTransition(ctx, id, before, service.AccountNotifyTransition{
+		After:      pausedOrActiveState(schedulable),
+		Detail:     fmt.Sprintf("schedulable set to %t", schedulable),
+		SourceType: "account_status",
+	})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
 	}
@@ -2506,6 +2603,16 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
 	return nil
+}
+
+// pausedOrActiveState 把调度开关值映射成对外状态名，供 SetSchedulable 通知使用。
+// 注意这里只表达「开关」这一维：真实状态非 active 时账号本来就是 error/disabled，
+// 通知服务在投递前会以写后复查结果为准，不会误报成 active。
+func pausedOrActiveState(schedulable bool) string {
+	if schedulable {
+		return service.StatusActive
+	}
+	return "paused"
 }
 
 func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
@@ -2544,6 +2651,12 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 		payload := map[string]any{"account_ids": accountIDs}
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto pause account changes failed: err=%v", err)
+		}
+		// 到期自动暂停同样是调度层变化，逐号通知（管理端一次操作经常只影响一两个账号）。
+		for _, accountID := range accountIDs {
+			service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, accountID,
+				service.StatusActive, service.AccountEventExpiredPaused,
+				fmt.Sprintf("auto-paused on expiry at %s", now.UTC().Format(time.RFC3339)))
 		}
 	}
 	return int64(len(accountIDs)), nil
@@ -2604,7 +2717,8 @@ func (r *accountRepository) AutoRecoverFailoverDisabledAccounts(ctx context.Cont
 				continue
 			}
 			service.NotifyAccountStatusChanged(ctx, r.accountStatusNotifier, accountID, service.StatusError, service.StatusActive, "")
-		}	}
+		}
+	}
 	return int64(len(accountIDs)), nil
 }
 
@@ -3164,6 +3278,27 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, err
+	}
+	// 批量改优先级 / 开关同样是调度面变化，写完逐号通知（ids 通常是个位数到几十条）。
+	if rows > 0 && (updates.Priority != nil || updates.Schedulable != nil) {
+		detail := ""
+		after := ""
+		sourceType := "account_scheduling"
+		if updates.Priority != nil {
+			detail = fmt.Sprintf("priority set to %d", *updates.Priority)
+			after = service.AccountEventPriorityChanged
+		}
+		if updates.Schedulable != nil {
+			if detail != "" {
+				detail += "; "
+			}
+			detail += fmt.Sprintf("schedulable set to %t", *updates.Schedulable)
+			after = pausedOrActiveState(*updates.Schedulable)
+			sourceType = "account_status"
+		}
+		for _, id := range ids {
+			r.notifyActionChangeOnly(ctx, id, after, detail, sourceType)
+		}
 	}
 	if updates.ProbeEnabled != nil {
 		expectedRows := int64(0)

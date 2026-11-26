@@ -268,6 +268,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	}); ok {
 		repoWithStatusNotify.SetAccountStatusNotifier(accountStatusNotifyService)
 	}
+	// 冷却/调度/结构性变化通知：与上面同一个服务实例，覆盖 429 限流、529 过载、
+	// 模型/参考图冷却、临时停调、阈值暂停、到期暂停、分组与优先级变化。
+	if repoWithTransitionNotify, ok := accountRepository.(interface {
+		SetAccountTransitionNotifier(service.AccountTransitionNotifier)
+	}); ok {
+		repoWithTransitionNotify.SetAccountTransitionNotifier(accountStatusNotifyService)
+	}
 	// 共享 IP 风险周期扫描：单 IP 关联 ≥5 用户 → 批量打 suspect + 扣减。
 	// lister 从 *usageLogRepository 断言取得，markWriter 用 affiliateService，penalty 复用 IP 处罚执行器。
 	sharedIPUserLister, _ := usageLogRepository.(service.SharedIPUserLister)
