@@ -44,7 +44,8 @@ func NewMediaGatewayHandler(mediaTaskService *service.MediaTaskService, billingC
 }
 
 // AudioSpeech POST /v1/audio/speech
-// OpenAI 兼容同步端点。返回原始音频字节（audio/mpeg），或 302 到上游音频 URL。
+// OpenAI 兼容同步端点。返回原始音频字节（Content-Type 由 adapter 声明实际格式，
+// 未声明时为 audio/mpeg），或 302 到上游音频 URL。
 func (h *MediaGatewayHandler) AudioSpeech(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -101,7 +102,7 @@ func (h *MediaGatewayHandler) AudioSpeech(c *gin.Context) {
 		}
 	}
 
-	bytesOut, urlOut, err := h.mediaTaskService.ResolveAudioSpeechBytes(
+	speech, err := h.mediaTaskService.ResolveAudioSpeechBytes(
 		c, c.Request.Context(), apiKey.GroupID, apiKey.UserID, apiKey.ID, publicModel, body,
 	)
 	if err != nil {
@@ -110,15 +111,22 @@ func (h *MediaGatewayHandler) AudioSpeech(c *gin.Context) {
 			zap.String("model", publicModel),
 			zap.Error(err),
 		)
+		// MiniMax 网关音色 ID 无效/过期属于客户端参数问题，不能笼统回 502。
+		if errors.Is(err, service.ErrMiniMaxBadRequest) || errors.Is(err, service.ErrMiniMaxInvalidToken) {
+			mediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid or expired voice id")
+			return
+		}
 		mediaErrorResponse(c, http.StatusBadGateway, "api_error", "Audio speech request failed")
 		return
 	}
-	if len(bytesOut) > 0 {
-		c.Data(http.StatusOK, "audio/mpeg", bytesOut)
+	if speech != nil && len(speech.Bytes) > 0 {
+		// Content-Type 由 adapter 按真实格式声明（DeepSeek 只有 wav/pcm、
+		// 千问默认 wav），未声明时沿用历史 audio/mpeg，避免客户端把 wav 按 mp3 存。
+		c.Data(http.StatusOK, speech.ContentType, speech.Bytes)
 		return
 	}
-	if urlOut != "" {
-		c.Redirect(http.StatusFound, urlOut)
+	if speech != nil && speech.URL != "" {
+		c.Redirect(http.StatusFound, speech.URL)
 		return
 	}
 	// 既无字节也无 URL（异步任务），回退到统一任务流程
@@ -489,6 +497,13 @@ func mediaCreateErrorDetail(err error, publicModel string) (status int, errType,
 	var invalidReq *service.MediaInvalidRequestError
 	if errors.As(err, &invalidReq) {
 		return http.StatusBadRequest, "invalid_request_error", invalidReq.Reason, 0
+	}
+	// MiniMax 网关音色 ID 无效/过期 / 归属映射不存在：改参数才能成功，不是上游故障。
+	if errors.Is(err, service.ErrMiniMaxBadRequest) || errors.Is(err, service.ErrMiniMaxInvalidToken) {
+		return http.StatusBadRequest, "invalid_request_error", "Invalid or expired voice id", 0
+	}
+	if errors.Is(err, service.ErrMiniMaxStoreUnavailable) {
+		return http.StatusServiceUnavailable, "api_error", "MiniMax gateway storage is temporarily unavailable", 0
 	}
 	// errors.Is 判定哨兵错误；文案兜底保留，兼容旧版 service 返回的裸字符串错误。
 	if errors.Is(err, service.ErrNoAvailableMediaAccount) || strings.Contains(err.Error(), "no available account") {

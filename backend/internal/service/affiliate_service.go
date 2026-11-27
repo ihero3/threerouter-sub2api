@@ -152,9 +152,12 @@ type AffiliateDetail struct {
 	// RequireInviterRecharged / RebateCapByInviterRecharge 是面向邀请人展示的
 	// 全局规则开关：前端据此在邀请页提示「双方都充值才返」「返利不超过邀请人
 	// 自己累计实充」，让规则透明。关闭时前端不显示对应条目。
-	RequireInviterRecharged    bool               `json:"require_inviter_recharged"`
-	RebateCapByInviterRecharge bool               `json:"rebate_cap_by_inviter_recharge"`
-	Invitees                   []AffiliateInvitee `json:"invitees"`
+	RequireInviterRecharged    bool `json:"require_inviter_recharged"`
+	RebateCapByInviterRecharge bool `json:"rebate_cap_by_inviter_recharge"`
+	// RegisterReward 是当前生效的邀请注册奖励金额（美元），与后台
+	// affiliate_register_reward 设置同源，供邀请页文案展示；0 表示不发放。
+	RegisterReward float64            `json:"register_reward"`
+	Invitees       []AffiliateInvitee `json:"invitees"`
 }
 
 type AffiliateRepository interface {
@@ -644,9 +647,12 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	}
 	// 面向邀请人的规则开关展示值；settingService 缺失时按关闭处理。
 	var requireInviterRecharged, rebateCapByInviterRecharge bool
+	// 注册奖励金额同样取自后台设置，避免邀请页文案与实际发放金额不一致。
+	var registerReward float64
 	if s.settingService != nil {
 		requireInviterRecharged = s.settingService.IsAffiliateRequireInviterRecharged(ctx)
 		rebateCapByInviterRecharge = s.settingService.IsAffiliateRebateCapByInviterRecharge(ctx)
+		registerReward = s.settingService.GetAffiliateRegisterReward(ctx)
 	}
 	return &AffiliateDetail{
 		UserID:                     summary.UserID,
@@ -659,6 +665,7 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
 		RequireInviterRecharged:    requireInviterRecharged,
 		RebateCapByInviterRecharge: rebateCapByInviterRecharge,
+		RegisterReward:             registerReward,
 		Invitees:                   invitees,
 	}, nil
 }

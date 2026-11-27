@@ -107,15 +107,16 @@
 
         <!-- Nav Actions -->
         <div class="flex flex-wrap items-center gap-3">
-          <!-- Limited Time Banner -->
+          <!-- Limited Time Banner：金额来自后台新用户赠送额度，未配置则不展示 -->
           <router-link
+            v-if="newUserCredits > 0"
             to="/purchase"
             class="hidden cursor-pointer items-center gap-2 rounded-full bg-orange-100 px-4 py-2 transition-colors hover:bg-orange-200 sm:flex"
           >
             <svg class="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span class="text-sm font-medium text-orange-700">🎁LIMITED TIME: $6 Free Credits (≈ 180M DeepSeek Tokens)</span>
+            <span class="text-sm font-medium text-orange-700">🎁LIMITED TIME: {{ newUserAmount }} Free Credits (≈ {{ newUserTokens }} DeepSeek Tokens)</span>
           </router-link>
 
           <!-- Nav Links -->
@@ -167,17 +168,21 @@
                 </svg>
                 {{ t('home.hero.tags.deployment') }}
               </span>
-              <span class="inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-2 text-base font-medium text-green-700">
+              <!-- 免费额度标签：金额来自后台设置，未配置则不展示 -->
+              <span
+                v-if="newUserCredits > 0"
+                class="inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-2 text-base font-medium text-green-700"
+              >
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                {{ t('home.hero.tags.freeTokens') }}
+                {{ t('home.hero.tags.freeTokens', { amount: newUserAmount, tokens: newUserTokens }) }}
               </span>
             </div>
 
             <!-- CTA Button -->
             <button @click="router.push('/login')" class="inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-[#0757b8] to-[#20f5b4] px-10 py-4 text-lg font-semibold text-white shadow-xl shadow-[#0757b8]/20 transition-all hover:scale-105 hover:shadow-2xl cursor-pointer">
-              {{ t('home.hero.cta') }}
+              {{ newUserCredits > 0 ? t('home.hero.cta', { amount: newUserAmount, tokens: newUserTokens }) : t('home.ctaGeneric') }}
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
               </svg>
@@ -685,6 +690,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import PromoBanner from '@/components/common/PromoBanner.vue'
 import LogoSvg from '@/assets/icons/logo.webp'
 import { useSEO } from '@/composables/useSEO'
+import { usePromoAmounts } from '@/composables/usePromoAmounts'
 import { sanitizeUrl } from '@/utils/url'
 import { resolveContactHref } from '@/utils/contactLink'
 
@@ -694,6 +700,10 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const { localeSwitcherVisible: showLanguageSwitcher } = useLocaleAccess()
+
+// 免费额度/邀请奖励的金额一律来自后台设置（public settings），
+// 首页文案只做排版，后台一改金额文案就跟着变，不会再出现「后台改 $1、页面仍写 $6」。
+const { newUserCredits, newUserAmount, newUserTokens } = usePromoAmounts()
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => authStore.isAuthenticated ? (authStore.isAdmin ? '/admin' : '/dashboard') : '/login')
@@ -732,12 +742,18 @@ const homeJsonLd = computed(() => [
     'operatingSystem': 'Cloud',
     'description': 'Unified AI API management platform, OpenAI-compatible, with access to DeepSeek, Claude, GPT and more.',
     'url': 'https://www.threerouter.com',
-    'offers': {
-      '@type': 'Offer',
-      'price': '0',
-      'priceCurrency': 'USD',
-      'description': 'New users get $6 in free credits'
-    }
+    // 免费额度结构化数据同样取自后台设置；未配置赠送额度时不输出这条 Offer，
+    // 免得搜索引擎里长期收录一个不存在的「送 $X」。
+    ...(newUserCredits.value > 0
+      ? {
+          'offers': {
+            '@type': 'Offer',
+            'price': '0',
+            'priceCurrency': 'USD',
+            'description': `New users get ${newUserAmount.value} in free credits`
+          }
+        }
+      : {})
   }
 ].filter(Boolean))
 

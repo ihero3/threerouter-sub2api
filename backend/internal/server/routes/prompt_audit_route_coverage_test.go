@@ -64,6 +64,10 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/media/generations":         "media generation alias; classified at the media handler boundary",
 		"/video-tasks":               "video task control endpoint; no user prompt",
 		"/custom-voices":             "voice profile management has no model prompt",
+		"/files/upload":              "file management endpoint; no model prompt",
+		"/voice_clone":               "voice profile cloning; preview TTS text is not a text-generation prompt",
+		"/get_voice":                 "voice profile query; no model prompt",
+		"/t2a_async_v2":              "text-to-speech task creation; no text-generation prompt",
 	}
 
 	unclassified := make([]string, 0)

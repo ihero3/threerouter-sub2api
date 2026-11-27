@@ -430,6 +430,15 @@ func RegisterGatewayRoutes(
 		gateway.POST("/audio/transcriptions", h.MediaGateway.AudioTranscription)
 		gateway.POST("/audio/translations", h.MediaGateway.AudioTranslation)
 
+		// MiniMax 原生音频能力（音色复刻 / 音色查询 / 异步长文本 TTS）。
+		// 路径、请求体与 MiniMax 官方文档一致，客户端只需把 base_url 换成网关。
+		gateway.POST("/files/upload", h.MediaGateway.UploadFile)
+		gateway.POST("/voice_clone", h.MediaGateway.VoiceClone)
+		gateway.POST("/get_voice", h.MediaGateway.GetVoices)
+		gateway.POST("/t2a_async_v2", h.MediaGateway.CreateAsyncTTS)
+		gateway.GET("/query/t2a_async_query_v2", h.MediaGateway.QueryAsyncTTS)
+		gateway.GET("/files/retrieve_content", h.MediaGateway.DownloadFile)
+
 		// xAI Voice APIs (Grok platform only): HTTP TTS/STT + Realtime WS.
 		// Not part of the creation-center product surface — gateway relay only.
 		voiceHandler := func(endpoint string) gin.HandlerFunc {

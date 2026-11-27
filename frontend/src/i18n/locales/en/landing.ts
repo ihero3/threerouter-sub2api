@@ -13,6 +13,8 @@ export default {
     dashboard: 'Dashboard',
     login: 'Login',
     getStarted: 'Get Started',
+    // CTA without an amount, used when no new-user credits are configured
+    ctaGeneric: 'Get Started',
     goToDashboard: 'Go to Dashboard',
     models: 'Models',
     // User-focused value proposition

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -243,6 +244,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
 		SettingKeyAffiliateEnabled,
+		// 营销文案金额：新用户注册赠送额度与邀请注册奖励。前端首页/推广横幅
+		// 直接用这两个值渲染「送 $X」「邀请好友送 $Y」，避免文案与配置脱钩。
+		SettingKeyDefaultBalance,
+		SettingKeyAffiliateRegisterReward,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
 	}
@@ -302,6 +307,25 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	var balanceLowNotifyThreshold float64
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
+	}
+
+	// 新用户注册赠送额度（default_balance）：首页/推广横幅「新用户送 $X」用。
+	// 未配置或非法值一律按 0 处理，前端据此隐藏免费额度类文案，避免展示假优惠。
+	var newUserCredits float64
+	if v, err := strconv.ParseFloat(strings.TrimSpace(settings[SettingKeyDefaultBalance]), 64); err == nil &&
+		v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) {
+		newUserCredits = v
+	}
+
+	// 邀请注册奖励（affiliate_register_reward）：与真正发奖金额同源，
+	// 0 表示不发放，前端据此隐藏「邀请好友送 $X」文案。
+	var inviteRegisterReward float64
+	if v, err := strconv.ParseFloat(strings.TrimSpace(settings[SettingKeyAffiliateRegisterReward]), 64); err == nil &&
+		v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) {
+		if v > AffiliateRegisterRewardMax {
+			v = AffiliateRegisterRewardMax
+		}
+		inviteRegisterReward = v
 	}
 
 	return &PublicSettings{
@@ -383,6 +407,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
+
+		NewUserCredits:       newUserCredits,
+		InviteRegisterReward: inviteRegisterReward,
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
@@ -569,7 +596,7 @@ func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
 type PublicSettingsInjectionPayload struct {
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
-	RegistrationClickCaptchaEnabled    bool                     `json:"registration_click_captcha_enabled"`
+	RegistrationClickCaptchaEnabled     bool                     `json:"registration_click_captcha_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
 	RegistrationEmailDomainQuotaWindow  string                   `json:"registration_email_domain_quota_window"`
@@ -653,8 +680,12 @@ type PublicSettingsInjectionPayload struct {
 	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
 	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
 	AffiliateEnabled              bool `json:"affiliate_enabled"`
-	RiskControlEnabled            bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	// 营销文案金额：注入首屏 __APP_CONFIG__ 时也要带上，否则首屏渲染前
+	// 「送 $X」类文案会先缺失再出现（闪烁），也便于离线缓存直接读出金额。
+	NewUserCredits             float64 `json:"new_user_credits"`
+	InviteRegisterReward       float64 `json:"invite_register_reward"`
+	RiskControlEnabled         bool    `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests bool    `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -742,6 +773,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
+		NewUserCredits:                       settings.NewUserCredits,
+		InviteRegisterReward:                 settings.InviteRegisterReward,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
 	}, nil

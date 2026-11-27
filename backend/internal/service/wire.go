@@ -1122,6 +1122,9 @@ func ProvideMediaAdapter() *MediaAdapterRegistry {
 		NewQwenAudioTTSAdapter(),
 		NewVolcanoTTSAdapter(),
 		NewAliyunTTSAdapter(),
+		// DeepSeek 官方 TTS（/v1/tools/tts）必须排在通用兜底之前：
+		// 兜底 adapter 会打 /v1/audio/speech 并下发 model/input，对 DeepSeek 必然失败。
+		NewDeepSeekTTSAdapter(),
 		NewAudioMediaAdapter(),
 	)
 }

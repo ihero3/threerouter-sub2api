@@ -248,6 +248,8 @@ export interface UserAffiliateDetail {
   require_inviter_recharged?: boolean
   /** 全局开关：邀请人累计返利不超过其本人累计实充金额。 */
   rebate_cap_by_inviter_recharge?: boolean
+  /** 当前生效的邀请注册奖励金额（美元），与后台设置同源；0 表示不发放。 */
+  register_reward?: number
   invitees: AffiliateInvitee[]
 }
 
@@ -400,6 +402,10 @@ export interface PublicSettings {
   plugin_management_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
+  /** 新用户注册赠送额度（美元，对应后台 default_balance）；0/缺失表示不发放，前端据此隐藏免费额度文案。 */
+  new_user_credits?: number
+  /** 邀请注册奖励（美元，对应后台 affiliate_register_reward）；0/缺失表示不发放。 */
+  invite_register_reward?: number
   allow_user_view_error_requests?: boolean
   /** True when the deployment configures MCP_PUBLIC_URL; MCP is disabled otherwise. */
   mcp_enabled?: boolean

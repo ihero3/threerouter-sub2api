@@ -42,6 +42,9 @@ type mediaAudioBillingInput struct {
 	// RequestedDurationSec 用户在创建请求里指定的时长。上游不回传真实时长时用它兜底。
 	RequestedDurationSec int
 	ReservedCost         *float64
+	// BilledChars 按字符计费的音频（DeepSeek TTS）的计费字符数。
+	// >0 时改用「每百万字符」价，忽略时长；0 表示沿用按秒/按分钟口径。
+	BilledChars int
 	// Meta 创建阶段采集的明细元数据，语义同 mediaImageBillingInput.Meta。
 	Meta *mediaUsageMeta
 }
@@ -60,6 +63,7 @@ func MediaAudioBillingRequestID(localID string) string {
 
 // calculateAudioTaskCostBreakdown 计算音频任务费用明细。
 // 价格来源与 MediaTaskService.calculateMediaCost 的音频分支完全一致：
+// 按字符计费的厂商（DeepSeek TTS）→ 每百万字符（tts）；
 // 配了每秒价 → 按秒（media_audio）；否则按分钟（realtime）。
 // 两处共用同一实现，避免预扣与实际口径漂移。
 func calculateAudioTaskCostBreakdown(
@@ -67,7 +71,8 @@ func calculateAudioTaskCostBreakdown(
 	billingService *BillingService,
 	gw *OpenAIGatewayService,
 	apiKey *APIKey,
-	actualSec, requestedSec int,
+	model string,
+	actualSec, requestedSec, billedChars int,
 ) (*CostBreakdown, float64) {
 	if billingService == nil || apiKey == nil {
 		return nil, 0
@@ -77,21 +82,29 @@ func calculateAudioTaskCostBreakdown(
 		baseMultiplier = gw.ResolveUserGroupRateMultiplier(ctx, apiKey.UserID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 	audioCfg := groupAudioPriceConfigFromAPIKey(apiKey)
-	// 音频同样优先用上游回传真实时长，缺失时回退用户请求时长。
-	audioSecs := NormalizeVideoBillingDurationSeconds(actualSec, requestedSec)
 	var cost *CostBreakdown
-	if audioCfg != nil && audioCfg.PerSec != nil {
-		secs := audioSecs
-		if secs <= 0 {
-			secs = 1
-		}
-		cost = billingService.CalculateAudioCost("media_audio", float64(secs), audioCfg, baseMultiplier)
+	if billedChars > 0 {
+		// 按字符计费（DeepSeek 官方 10,000 字符一档）：单价配在分组的
+		// audio_tts_price_per_million_chars，时长不参与——按时长折算会把它
+		// 算成逐秒价，与厂商计价单位对不上（同一段文本动辄差几十倍）。
+		audioCfg = audioPriceConfigWithVendorTTSDefault(audioCfg, model)
+		cost = billingService.CalculateAudioCost("tts", float64(billedChars)/1_000_000.0, audioCfg, baseMultiplier)
 	} else {
-		mins := float64(audioSecs) / 60.0
-		if mins <= 0 {
-			mins = 1.0 / 60.0
+		// 音频同样优先用上游回传真实时长，缺失时回退用户请求时长。
+		audioSecs := NormalizeVideoBillingDurationSeconds(actualSec, requestedSec)
+		if audioCfg != nil && audioCfg.PerSec != nil {
+			secs := audioSecs
+			if secs <= 0 {
+				secs = 1
+			}
+			cost = billingService.CalculateAudioCost("media_audio", float64(secs), audioCfg, baseMultiplier)
+		} else {
+			mins := float64(audioSecs) / 60.0
+			if mins <= 0 {
+				mins = 1.0 / 60.0
+			}
+			cost = billingService.CalculateAudioCost("realtime", mins, audioCfg, baseMultiplier)
 		}
-		cost = billingService.CalculateAudioCost("realtime", mins, audioCfg, baseMultiplier)
 	}
 	if cost == nil {
 		return nil, baseMultiplier
@@ -133,7 +146,7 @@ func settleMediaAudioTaskSuccess(ctx context.Context, deps *videoTaskBillingDeps
 		return 0
 	}
 
-	cost, multiplier := calculateAudioTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.DurationSec, in.RequestedDurationSec)
+	cost, multiplier := calculateAudioTaskCostBreakdown(ctx, deps.billingService, gw, apiKey, in.Model, in.DurationSec, in.RequestedDurationSec, in.BilledChars)
 	if cost == nil {
 		// 同图片链路：算不出费用也必须留下可见的 0 费用行，
 		// 不能让一次成功的音频合成在用量记录里无痕消失。
@@ -275,5 +288,43 @@ func mediaAudioBillingInputFromRecord(record *MediaTaskRecord) *mediaAudioBillin
 		DurationSec:          record.DurationSec,
 		RequestedDurationSec: record.DurationSec,
 		ReservedCost:         record.ReservedCost,
+		// 按字符计费的厂商（DeepSeek TTS）在异步/回查路径没有 createResult 可读，
+		// 从落库的请求体重新统计，保证两条路径的计费口径一致。
+		BilledChars: mediaAudioBilledCharsFromRecord(record),
 	}
+}
+
+// mediaAudioBilledCharsFromRecord 从任务请求体恢复「按字符计费」的字符数。
+// 只对按字符计费的模型生效（其余返回 0，沿用按秒/按分钟口径）。
+func mediaAudioBilledCharsFromRecord(record *MediaTaskRecord) int {
+	if record == nil || !isDeepSeekTTSModel(record.PublicModel) {
+		return 0
+	}
+	text := firstMediaStringValue(record.RequestBody, "prompt", "input", "text")
+	if text == "" {
+		return 0
+	}
+	return DeepSeekTTSBilledChars(text)
+}
+
+// audioPriceConfigWithVendorTTSDefault 在分组未配置「TTS 每百万字符价格」时，
+// 按厂商官方目录价兜底。
+//
+// 通用默认 15 USD/百万字符是为 Grok 语音设的；DeepSeek 官方 10,000 字符 $0.45
+// 折合 45，静默沿用通用默认等于系统性少收三分之二。显式配 0 仍表示免费
+// （CalculateAudioCost 对 0 返回 0 费用），只有「未配置（nil）」才兜底。
+func audioPriceConfigWithVendorTTSDefault(cfg *audioPriceConfig, model string) *audioPriceConfig {
+	if !isDeepSeekTTSModel(model) {
+		return cfg
+	}
+	if cfg != nil && cfg.TTSPerMChars != nil {
+		return cfg
+	}
+	price := deepSeekTTSOfficialPricePerMillionChars
+	if cfg == nil {
+		return &audioPriceConfig{TTSPerMChars: &price}
+	}
+	patched := *cfg
+	patched.TTSPerMChars = &price
+	return &patched
 }

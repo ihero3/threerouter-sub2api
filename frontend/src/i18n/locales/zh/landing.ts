@@ -13,6 +13,8 @@ export default {
     dashboard: '控制台',
     login: '登录',
     getStarted: '立即开始',
+    // 后台未配置新用户赠送额度时使用的无金额 CTA（避免文案承诺不存在的优惠）
+    ctaGeneric: '立即开始',
     goToDashboard: '进入控制台',
     models: '模型',
     // 新增：面向用户的价值主张

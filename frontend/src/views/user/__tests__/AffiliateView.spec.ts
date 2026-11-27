@@ -37,7 +37,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key,
+      // 带参数时把参数一并渲染出来，便于断言动态金额（如注册奖励）。
+      t: (key: string, params?: Record<string, unknown>) =>
+        params ? `${key}:${JSON.stringify(params)}` : key,
     }),
   }
 })
@@ -45,20 +47,37 @@ vi.mock('vue-i18n', async (importOriginal) => {
 describe('AffiliateView', () => {
   const affiliateCode = 'affiliate-code-that-is-long-enough-to-overflow-a-mobile-viewport'
 
+  const baseDetail = () => ({
+    user_id: 1,
+    aff_code: affiliateCode,
+    inviter_id: null,
+    aff_count: 0,
+    aff_quota: 0,
+    aff_frozen_quota: 0,
+    aff_history_quota: 0,
+    effective_rebate_rate_percent: 10,
+    register_reward: 0,
+    invitees: [],
+  })
+
+  async function mountAndLoad(detail: Record<string, unknown>) {
+    getAffiliateDetail.mockResolvedValue(detail)
+    const wrapper = mount(AffiliateView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+        },
+      },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     copyToClipboard.mockResolvedValue(true)
-    getAffiliateDetail.mockResolvedValue({
-      user_id: 1,
-      aff_code: affiliateCode,
-      inviter_id: null,
-      aff_count: 0,
-      aff_quota: 0,
-      aff_frozen_quota: 0,
-      aff_history_quota: 0,
-      effective_rebate_rate_percent: 10,
-      invitees: [],
-    })
+    getAffiliateDetail.mockResolvedValue(baseDetail())
   })
 
   it('stacks long values and copy controls on mobile while retaining desktop rows', async () => {
@@ -112,5 +131,25 @@ describe('AffiliateView', () => {
       `${window.location.origin}/register?aff=${encodeURIComponent(affiliateCode)}`,
       'affiliate.linkCopied',
     )
+  })
+
+  it('renders the registration reward from the backend setting instead of a hardcoded amount', async () => {
+    const wrapper = await mountAndLoad({ ...baseDetail(), register_reward: 1 })
+
+    // 金额来自 detail.register_reward（后台 affiliate_register_reward 设置），
+    // 不再写死在 i18n 文案里，整数金额不带多余小数位。
+    expect(wrapper.text()).toContain('affiliate.tips.registerReward:{"amount":"$1"}')
+  })
+
+  it('keeps decimals for non-integer registration rewards', async () => {
+    const wrapper = await mountAndLoad({ ...baseDetail(), register_reward: 1.25 })
+
+    expect(wrapper.text()).toContain('affiliate.tips.registerReward:{"amount":"$1.25"}')
+  })
+
+  it('hides the registration reward line when the reward is disabled', async () => {
+    const wrapper = await mountAndLoad({ ...baseDetail(), register_reward: 0 })
+
+    expect(wrapper.text()).not.toContain('affiliate.tips.registerReward')
   })
 })

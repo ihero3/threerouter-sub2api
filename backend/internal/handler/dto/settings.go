@@ -485,6 +485,11 @@ type PublicSettings struct {
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
+	// NewUserCredits 新用户注册赠送额度（美元）；InviteRegisterReward 邀请注册奖励（美元）。
+	// 0 表示不发放，前端据此隐藏对应营销文案。
+	NewUserCredits       float64 `json:"new_user_credits"`
+	InviteRegisterReward float64 `json:"invite_register_reward"`
+
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`

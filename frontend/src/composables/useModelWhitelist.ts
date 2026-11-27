@@ -153,9 +153,13 @@ const qwenModels = [
   'qwen2.5-coder-32b-instruct', 'qwen2.5-coder-14b-instruct', 'qwen2.5-coder-7b-instruct',
   'qwen3-235b-a22b',
   'qwq-32b', 'qwq-32b-preview',
-  // 千问 Qwen-Audio-TTS 非实时语音合成（SpeechSynthesizer）
+  // 千问 Qwen TTS / 统一音频生成（非实时 HTTP）
   'qwen-audio-3.1-tts-flash', 'qwen-audio-3.1-tts-plus',
-  'qwen-audio-3.0-tts-flash', 'qwen-audio-3.0-tts-plus'
+  'qwen-audio-3.0-tts-flash', 'qwen-audio-3.0-tts-plus',
+  'qwen-audio-3.1-tts-next',
+  'qwen3-tts-flash',
+  'cosyvoice-v3.5-plus', 'cosyvoice-v3.5-flash',
+  'cosyvoice-v3-plus', 'cosyvoice-v3-flash', 'cosyvoice-v2'
 ]
 
 // DeepSeek

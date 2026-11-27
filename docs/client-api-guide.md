@@ -31,7 +31,8 @@ Content-Type: application/json
 | `POST /v1/videos/generations`（`/v1/videos` 同） | 生视频 | 提交后轮询；带 `?wait=N` 可由服务端同步等待 |
 
 配套查询端点：`GET /v1/media/{id}` 查状态、`GET /v1/media/{id}/content` 下载产物。
-音频用 `POST /v1/audio/speech`（同步返回音频字节）。
+音频用 `POST /v1/audio/speech`（同步返回音频字节）。MiniMax 音色复刻 / 音色查询 / 异步长文本 TTS 使用原生路径
+`/v1/files/upload`、`/v1/voice_clone`、`/v1/get_voice`、`/v1/t2a_async_v2` 等（见第 6 节）。
 
 **兼容保留（不推荐新接入）**
 
@@ -114,7 +115,7 @@ const img = await client.images.generate({
 | 图片 | `doubao-seedream-*`、`seedream-*`、`grok-imagine-image` | 同上 |
 | 视频 | `seedance-*`、`doubao-seedance-*`、`minimax-hailuo-*`、`minimax-h*`（含 `minimax-h3`）、`grok-imagine-video` | `/v1/videos/generations` 或 `/v1/media/generations` |
 | 视频 | `wan*-t2v`（文生视频）、`wan*-i2v`（图生视频）、`wan*-video`（全能：文生 / 图生首帧·首尾帧 / 参考生视频） | 同上 |
-| 音频 | `tts-*`、`speech-01`、`whisper-*` | `/v1/audio/speech` |
+| 音频 | `tts-*`、`speech-*`、`whisper-*`、`qwen-audio-*`、`qwen-audio-3.1-tts-next`、`qwen3-tts-flash`、`cosyvoice-*`、`deepseek-tts` | `/v1/audio/speech` |
 | 文本 | 其余全部（`gpt-4o`、`claude-*`、`deepseek-*`、`gemini-*` …） | `/v1/chat/completions` |
 
 > 新增模型会持续补充，判定逻辑在 `service.DispatchModelCapability`。
@@ -317,7 +318,72 @@ curl https://<站点>/v1/audio/speech \
   -d '{"model":"tts-1","input":"你好，世界","voice":"alloy"}' --output out.mp3
 ```
 
-同步返回音频字节（`audio/mpeg`）；异步任务回退到统一任务流程，按第 5 节轮询。
+同步返回音频字节，`Content-Type` 按真实格式声明（`audio/wav` / `audio/mpeg` / `audio/pcm` / `audio/ogg`，不再固定 `audio/mpeg`）；异步任务回退到统一任务流程，按第 5 节轮询。
+
+**千问 Qwen TTS**（非实时 HTTP）：
+
+```bash
+# Qwen-Audio-TTS / CosyVoice / Qwen3-TTS：OpenAI 风格字段即可
+curl https://<站点>/v1/audio/speech \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d '{"model":"qwen-audio-3.1-tts-flash","input":"你好，世界","voice":"longanhuan_v3.1","response_format":"wav","instruction":"用温柔的语气，语速稍慢"}' \
+  --output out.wav
+
+# 统一音频生成：一次生成多人对话 / 播客 / 音效（提示词里用 @voice1..3 引用参考音频）
+curl https://<站点>/v1/audio/speech \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d '{
+        "model":"qwen-audio-3.1-tts-next",
+        "input":"播客节目，两位主播闲聊。主播1（低沉男声）说：“最近怎么样？”主播2（明亮女声）笑着回答：“挺好的。”背景声：咖啡馆轻音乐。",
+        "references":[{"audio_url":"https://example.com/voice1.wav"}],
+        "response_format":"mp3"
+      }' --output podcast.mp3
+```
+
+- `response_format` 映射上游 `format`，`speed` 映射 `rate`；`instruction` / `language_hints` / `hot_fix` / `seed` / `language_type` / `instructions` 等原生字段原样透传。
+- `qwen-audio-3.1-tts-next` 用 `input.text_prompt`（≤3000 字符），参考音频最多 3 条（每条 ≤30s / 10MB），支持 `references: [{"audio_url"|"audio_data"}]` 或统一字段 `audio_url` / `audio_urls`。
+- 千问原生请求体（`{"model": ..., "input": {"text": ...}}`）也接受；流式 SSE 与 WebSocket 实时链路暂未中转。
+
+**MiniMax 音色复刻 / 异步长文本 TTS**（路径与官方文档一致）：
+
+```bash
+# 1. 上传复刻音频（可再上传一条 prompt_audio 增强相似度）
+FILE_ID=$(curl -s https://<站点>/v1/files/upload \
+  -H "Authorization: Bearer sk-xxx" \
+  -F "purpose=voice_clone" -F "model=speech-2.8-hd" \
+  -F "file=@clone_input.mp3" | jq -r '.file.file_id')
+
+# 2. 复刻音色：返回的 voice_id 是网关音色 ID（mmxvc_...），后续合成直接用它
+VOICE_ID=$(curl -s https://<站点>/v1/voice_clone \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d "{\"file_id\":$FILE_ID,\"voice_id\":\"MyVoice001\",
+       \"text\":\"这是试听文本\",\"model\":\"speech-2.8-hd\"}" | jq -r '.voice_id')
+
+# 3. 同步 TTS（网关音色会自动路由回复刻它的上游账号）
+curl https://<站点>/v1/audio/speech \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d "{\"model\":\"speech-2.8-hd\",\"input\":\"正式合成文本\",\"voice\":\"$VOICE_ID\"}" \
+  --output out.mp3
+
+# 4. 异步长文本 TTS：提交 -> 轮询 -> 下载
+TASK_ID=$(curl -s https://<站点>/v1/t2a_async_v2 \
+  -H "Authorization: Bearer sk-xxx" -H "Content-Type: application/json" \
+  -d "{\"model\":\"speech-2.8-hd\",\"text\":\"长文本…\",
+       \"voice_setting\":{\"voice_id\":\"$VOICE_ID\"},
+       \"audio_setting\":{\"format\":\"mp3\",\"audio_sample_rate\":32000}}" | jq -r '.task_id')
+
+curl "https://<站点>/v1/query/t2a_async_query_v2?task_id=$TASK_ID" \
+  -H "Authorization: Bearer sk-xxx"
+
+curl "https://<站点>/v1/files/retrieve_content?file_id=<查询返回的 file_id>" \
+  -H "Authorization: Bearer sk-xxx" --output long.mp3
+```
+
+- `file_id` / `task_id` 是**上游原始数字 ID**，账号归属由网关在 Redis 中保存（7 天）；同一用户才能查询/下载。
+- 复刻返回的 `voice_id` 是网关音色 ID；`get_voice` 返回的复刻音色也会被包装成网关音色 ID，系统音色保持原值。
+- 音色复刻带 `text` 试听、以及异步任务创建成功后，都会按 `usage_characters` 走分组「TTS 每百万字符价格」计费；失败/过期任务目前不自动退款。
+- `POST /v1/get_voice` 可查询系统音色、复刻音色；请求体额外接受 `model` 用于选择查询哪个上游账号（默认 `speech-2.8-hd`）。
+- WebSocket 实时 TTS 暂未中转；复刻音色 7 天内未被正式调用会被上游删除。
 
 音频同样会记入「使用记录」（`per_request` 计费模式），按分组音频配置计价：配了每秒价按秒、否则按分钟。openai 组与 composite 组都统计。
 

@@ -6,8 +6,10 @@ export default {
     title: 'More Credits, Less Spend',
     cta: 'Top Up Now',
     items: {
-      newUser: 'New users: $6 free',
-      refer: 'Refer a friend: $1',
+      // Amounts come from backend settings (new-user credits / invite reward);
+      // only placeholders live here so the copy follows the config automatically.
+      newUser: 'New users: {amount} free',
+      refer: 'Refer a friend: {amount}',
       topUp1: 'Top up $1 → get $5 free ($6 total)',
       topUp10: 'Top up $10 → get $50 free ($60 total)',
       deepseek: 'DeepSeek open model: $1 ≈ 30M tokens',

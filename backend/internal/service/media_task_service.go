@@ -101,6 +101,7 @@ type MediaTaskService struct {
 	openAIGatewayService *OpenAIGatewayService
 	adapter              *MediaAdapterRegistry
 	imageStorageSetting  *ImageStorageSettingService
+	miniMaxBindingStore  MiniMaxBindingStore
 	logger               *zap.Logger
 }
 
@@ -115,6 +116,7 @@ func NewMediaTaskService(
 	openAIGatewayService *OpenAIGatewayService,
 	adapter *MediaAdapterRegistry,
 	imageStorageSetting *ImageStorageSettingService,
+	miniMaxBindingStore MiniMaxBindingStore,
 ) *MediaTaskService {
 	return &MediaTaskService{
 		mediaTaskRepo:        mediaTaskRepo,
@@ -126,6 +128,7 @@ func NewMediaTaskService(
 		openAIGatewayService: openAIGatewayService,
 		adapter:              adapter,
 		imageStorageSetting:  imageStorageSetting,
+		miniMaxBindingStore:  miniMaxBindingStore,
 		logger:               logger.L(),
 	}
 }
@@ -159,6 +162,15 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	}
 
 	ctx := c.Request.Context()
+	// 网关音色 ID 携带签发它的上游账号：固定打回同一账号，避免复刻音色在多账号
+	// 轮转时随机落到没有该音色的账号上。
+	var pinnedAccount *Account
+	if kind == MediaKindAudio {
+		pinnedAccount, err = s.resolveMiniMaxVoicePin(ctx, userID, publicModel, req)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// 上游 create 脱离客户端取消链（见 mediaUpstreamCreateTimeout 注释）。
 	// 只有"选号"这类前置查询仍用原 ctx —— 客户端都走了，没必要再挑账号。
 	upstreamBase := context.WithoutCancel(ctx)
@@ -167,22 +179,28 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 	const maxAttempts = 100
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		account, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
-		if selectErr != nil || account == nil {
-			// 整单失败（选号耗尽 / 上游全部失败）也要在使用记录里留一条 0 费用行，
-			// 否则用户与运营在「用量明细」里完全看不到这次调用。
-			if lastUpstreamErr != nil {
-				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
-				return nil, lastUpstreamErr
+		var account *Account
+		if pinnedAccount != nil {
+			account = pinnedAccount
+		} else {
+			selected, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
+			if selectErr != nil || selected == nil {
+				// 整单失败（选号耗尽 / 上游全部失败）也要在使用记录里留一条 0 费用行，
+				// 否则用户与运营在「用量明细」里完全看不到这次调用。
+				if lastUpstreamErr != nil {
+					s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
+					return nil, lastUpstreamErr
+				}
+				if selectErr == nil {
+					selectErr = fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
+				}
+				if errors.Is(selectErr, ErrNoAvailableAccounts) {
+					s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
+					return nil, fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
+				}
+				return nil, fmt.Errorf("media_task_service: select account: %w", selectErr)
 			}
-			if selectErr == nil {
-				selectErr = fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
-			}
-			if errors.Is(selectErr, ErrNoAvailableAccounts) {
-				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
-				return nil, fmt.Errorf("%w for model %s", ErrNoAvailableMediaAccount, publicModel)
-			}
-			return nil, fmt.Errorf("media_task_service: select account: %w", selectErr)
+			account = selected
 		}
 
 		mapping := account.GetModelMapping()
@@ -211,11 +229,19 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			)
 			excluded[account.ID] = struct{}{}
 			lastUpstreamErr = fmt.Errorf("media_task_service: upstream create: %w", createErr)
+			if pinnedAccount != nil {
+				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
+				return nil, lastUpstreamErr
+			}
 			continue
 		}
 		if createResult == nil {
 			lastUpstreamErr = fmt.Errorf("media_task_service: upstream create returned empty result")
 			excluded[account.ID] = struct{}{}
+			if pinnedAccount != nil {
+				s.writeMediaTaskFailureUsageLog(ctx, kind, userID, apiKeyID, publicModel, req)
+				return nil, lastUpstreamErr
+			}
 			continue
 		}
 
@@ -230,7 +256,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			failureBody := createResult.UpstreamRaw
 			decision := classifyMediaUpstreamFailure(createResult.UpstreamStatusCode, failureBody)
 			s.recordMediaUpstreamFailure(c, ctx, account, createResult.UpstreamStatusCode, failureBody, publicModel)
-			if decision.ShouldFailover {
+			if decision.ShouldFailover && pinnedAccount == nil {
 				excluded[account.ID] = struct{}{}
 				lastUpstreamErr = fmt.Errorf("media_task_service: upstream failed with status %d: %s",
 					createResult.UpstreamStatusCode, createResult.ErrorMessage)
@@ -309,24 +335,24 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 		// 有对象存储就落存储换成稳定 URL；没有存储则无法按 URL 交付。
 		if kind == MediaKindAudio && record.Status == "succeeded" &&
 			record.MediaURL == "" && len(createResult.InlineBytes) > 0 {
-			if stored, ok := s.StoreMediaBytes(persistCtx, MediaKindAudio, "audio/mpeg", createResult.InlineBytes); ok {
+			if stored, ok := s.StoreMediaBytes(persistCtx, MediaKindAudio, mediaAudioContentTypeOrDefault(createResult.InlineContentType), createResult.InlineBytes); ok {
 				record.MediaURL = stored
 			}
 		}
-	// 兜底：任何模态报 succeeded 却无产物 = 上游给了空壳（扣钱不给货）。
-	// 视频有上游任务号但 URL 未到时，改为 processing 交给轮询取 URL，取不到由
-	// 超时兜底退预扣；其余（图片/音频无产物、视频连任务号都没有）降级为 failed，
-	// 让下面的失败分支退预扣 + 写 0 费用日志，绝不按 succeeded 无产物落终态。
-	if record.Status == "succeeded" && record.MediaURL == "" && len(record.MediaURLs) == 0 {
-		if kind == MediaKindVideo && strings.TrimSpace(record.UpstreamTaskID) != "" {
-			record.Status = "processing"
-		} else {
-			record.Status = "failed"
-			if strings.TrimSpace(record.ErrorMessage) == "" {
-				record.ErrorMessage = "upstream reported success but returned no artifact"
+		// 兜底：任何模态报 succeeded 却无产物 = 上游给了空壳（扣钱不给货）。
+		// 视频有上游任务号但 URL 未到时，改为 processing 交给轮询取 URL，取不到由
+		// 超时兜底退预扣；其余（图片/音频无产物、视频连任务号都没有）降级为 failed，
+		// 让下面的失败分支退预扣 + 写 0 费用日志，绝不按 succeeded 无产物落终态。
+		if record.Status == "succeeded" && record.MediaURL == "" && len(record.MediaURLs) == 0 {
+			if kind == MediaKindVideo && strings.TrimSpace(record.UpstreamTaskID) != "" {
+				record.Status = "processing"
+			} else {
+				record.Status = "failed"
+				if strings.TrimSpace(record.ErrorMessage) == "" {
+					record.ErrorMessage = "upstream reported success but returned no artifact"
+				}
 			}
 		}
-	}
 		if record.Status == "failed" && kind == MediaKindImage {
 			// 图片失败同样退还预扣并写 0 费用日志：此前图片失败既不退预扣也不可见。
 			imgInput := mediaImageBillingInputFromRecord(record, settledImageCount(req, createResult))
@@ -362,7 +388,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 					}
 					record.ReservedCost = reserved
 				}
-			} else if cost, costErr := s.calculateMediaCost(persistCtx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult)); costErr == nil && cost > 0 {
+			} else if cost, costErr := s.calculateMediaCost(persistCtx, kind, apiKeyID, publicModel, record.Resolution, 0, req.DurationSec, settledImageCount(req, createResult), createResult.BilledChars); costErr == nil && cost > 0 {
 				reserved, qErr := reserveAndTrackQuota(s.apiKeyService, persistCtx, apiKeyID, cost)
 				if qErr != nil {
 					s.logger.Warn("media_task_service: reserve quota used failed",
@@ -416,6 +442,11 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			audioInput := mediaAudioBillingInputFromRecord(saved)
 			audioInput.Account = account
 			audioInput.Meta = usageMeta
+			// 按字符计费的 adapter（DeepSeek TTS）在 create 结果里回传计费字符数，
+			// 优先采用；(record 侧的回读只作异步兜底，两者同口径)。
+			if createResult.BilledChars > 0 {
+				audioInput.BilledChars = createResult.BilledChars
+			}
 			// 与同步出图同因：结算返回的实际费用要回写任务行，否则管理端 COST 恒为 0。
 			actual := settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 			if err := s.mediaTaskRepo.UpdateCostUSD(persistCtx, saved.ID, actual); err != nil {
@@ -432,7 +463,7 @@ func (s *MediaTaskService) CreateTask(c *gin.Context, kind MediaKind, groupID *i
 			videoInput := &videoTaskBillingInput{
 				LocalID:              saved.LocalID,
 				UserID:               saved.UserID,
-				APIKeyID:              saved.APIKeyID,
+				APIKeyID:             saved.APIKeyID,
 				AccountID:            saved.AccountID,
 				Account:              account,
 				Model:                saved.PublicModel,
@@ -605,7 +636,7 @@ func (s *MediaTaskService) refreshTaskStatus(ctx context.Context, record *MediaT
 					zap.Error(estErr),
 				)
 			}
-		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec, parseMediaImageCount(record.RequestBody)); costErr == nil {
+		} else if cost, costErr := s.calculateMediaCost(ctx, record.MediaKind, record.APIKeyID, record.PublicModel, record.Resolution, result.DurationSec, record.DurationSec, parseMediaImageCount(record.RequestBody), mediaAudioBilledCharsFromRecord(record)); costErr == nil {
 			actual = cost
 		} else {
 			s.logger.Warn("media_task_service: calculate cost failed",
@@ -1001,7 +1032,7 @@ func settledImageCount(req *MediaCreateRequest, result *MediaCreateResult) int {
 
 // calculateMediaCost 按媒体类型计算费用。视频/图片/音频分别走对应计费器。
 // imageCount 只对图片生效：上游按张出图也按张收费，计费张数必须与实际出图数一致。
-func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, actualSec, requestedSec, imageCount int) (float64, error) {
+func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKind, apiKeyID int64, model, resolution string, actualSec, requestedSec, imageCount, billedChars int) (float64, error) {
 	if s == nil || s.billingService == nil || s.apiKeyService == nil {
 		return 0, fmt.Errorf("media_task_service: billing dependencies are not wired")
 	}
@@ -1026,7 +1057,7 @@ func (s *MediaTaskService) calculateMediaCost(ctx context.Context, kind MediaKin
 		return cost.ActualCost, nil
 	case MediaKindAudio:
 		// 与音频结算（media_audio_billing.go）共用同一算价实现：预扣与实际必须同口径。
-		cost, _ := calculateAudioTaskCostBreakdown(ctx, s.billingService, s.openAIGatewayService, apiKey, actualSec, requestedSec)
+		cost, _ := calculateAudioTaskCostBreakdown(ctx, s.billingService, s.openAIGatewayService, apiKey, model, actualSec, requestedSec, billedChars)
 		if cost == nil {
 			return 0, fmt.Errorf("media_task_service: audio cost calculation failed")
 		}
@@ -1055,6 +1086,31 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 		// 只影响音频，避免改变图片/视频既有协议的取值口径。
 		if v, ok := body["input"].(string); ok {
 			req.Prompt = v
+		}
+		// DeepSeek 官方 TTS 的原生字段名是 text（无 input/model），一并接受，
+		// 否则按官方文档写的请求会在必填校验处被我们拦成 400。
+		if strings.TrimSpace(req.Prompt) == "" {
+			if v, ok := body["text"].(string); ok {
+				req.Prompt = v
+			}
+		}
+	}
+	// 音频还接受千问原生的 input.text / input.text_prompt（非实时 TTS 与
+	// qwen-audio-3.1-tts-next 的字段名）。input 为对象时上面的 else-if
+	// 会吃掉分支，这里单独兜底，否则按千问文档写的请求会被误判成空 prompt。
+	if kind == MediaKindAudio && strings.TrimSpace(req.Prompt) == "" {
+		if input, ok := body["input"].(map[string]any); ok {
+			for _, key := range []string{"text", "text_prompt"} {
+				if v, ok := input[key].(string); ok && strings.TrimSpace(v) != "" {
+					req.Prompt = v
+					break
+				}
+			}
+		}
+		if strings.TrimSpace(req.Prompt) == "" {
+			if v, ok := body["text"].(string); ok {
+				req.Prompt = v
+			}
 		}
 	}
 	if v, ok := body["negative_prompt"].(string); ok {
@@ -1139,6 +1195,23 @@ func parseMediaCreateRequest(kind MediaKind, model string, body map[string]any) 
 		req.Extra = make(map[string]any, len(body))
 		for k, v := range body {
 			req.Extra[k] = v
+		}
+	}
+	// 音频原生协议常把参数放在 input 对象里（千问 input.voice / format /
+	// instruction / references 等）。统一平铺进 Extra 供 adapter 读取，
+	// 顶层同名字段优先，避免原生请求只带 input 时参数被整包丢弃。
+	if kind == MediaKindAudio {
+		if input, ok := body["input"].(map[string]any); ok {
+			for k, v := range input {
+				switch k {
+				case "prompt", "text", "text_prompt":
+					// 文本已解析到 req.Prompt，不作为上游参数重复下发。
+					continue
+				}
+				if _, exists := req.Extra[k]; !exists {
+					req.Extra[k] = v
+				}
+			}
 		}
 	}
 	// 图生视频契约：存在参考图（image/image_urls/media 素材中的图片项）时按图生视频
@@ -1319,13 +1392,28 @@ func deriveAudioSpeechBillingLocalID(userID int64, requestBody map[string]any) s
 	return "aud_" + fp
 }
 
+// AudioSpeechResult 是同步 /v1/audio/speech 的产物。
+// Bytes 与 URL 二选一：前者是上游直返的音频字节（含真实 MIME），后者是让
+// handler 302 的临时链接；两者皆空表示上游转成了异步任务，由 handler 走任务流程。
+type AudioSpeechResult struct {
+	Bytes       []byte
+	URL         string
+	ContentType string
+}
+
 // ResolveAudioSpeechBytes 同步处理 OpenAI 兼容 /v1/audio/speech。
 // 它选号 + 调 adapter，若上游返回原始音频字节则直接返回字节；
 // 若返回 URL 则返回 URL 让 handler 302。不写 media_tasks（同步端点）。
-func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.Context, groupID *int64, userID, apiKeyID int64, publicModel string, requestBody map[string]any) ([]byte, string, error) {
+func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.Context, groupID *int64, userID, apiKeyID int64, publicModel string, requestBody map[string]any) (*AudioSpeechResult, error) {
 	req, err := parseMediaCreateRequest(MediaKindAudio, publicModel, requestBody)
 	if err != nil {
-		return nil, "", fmt.Errorf("media_task_service: parse request: %w", err)
+		return nil, fmt.Errorf("media_task_service: parse request: %w", err)
+	}
+	// 网关音色 ID 携带签发它的上游账号：必须固定打回同一账号，否则复刻音色
+	// 在其它账号上不存在（多账号轮转时会随机失败）。
+	pinnedAccount, pinErr := s.resolveMiniMaxVoicePin(ctx, userID, publicModel, req)
+	if pinErr != nil {
+		return nil, pinErr
 	}
 	excluded := make(map[int64]struct{})
 	const maxAttempts = 100
@@ -1333,12 +1421,18 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 	upstreamBase := context.WithoutCancel(ctx)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		account, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
-		if selectErr != nil || account == nil {
-			if selectErr == nil {
-				selectErr = fmt.Errorf("media_task_service: no available account for model %s", publicModel)
+		var account *Account
+		if pinnedAccount != nil {
+			account = pinnedAccount
+		} else {
+			selected, selectErr := s.gatewayService.SelectAccountForModelWithExclusions(ctx, groupID, "", publicModel, excluded)
+			if selectErr != nil || selected == nil {
+				if selectErr == nil {
+					selectErr = fmt.Errorf("media_task_service: no available account for model %s", publicModel)
+				}
+				return nil, fmt.Errorf("media_task_service: select account: %w", selectErr)
 			}
-			return nil, "", fmt.Errorf("media_task_service: select account: %w", selectErr)
+			account = selected
 		}
 		upstreamModel := publicModel
 		if mapped := account.GetMappedModel(publicModel); mapped != "" {
@@ -1348,13 +1442,17 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 		req.UpstreamModel = upstreamModel
 		adapter, resolveErr := s.adapter.Resolve(MediaKindAudio, account.Platform, upstreamModel)
 		if resolveErr != nil {
-			return nil, "", fmt.Errorf("media_task_service: resolve adapter: %w", resolveErr)
+			return nil, fmt.Errorf("media_task_service: resolve adapter: %w", resolveErr)
 		}
 		createCtx, cancelCreate := context.WithTimeout(upstreamBase, mediaUpstreamCreateTimeout)
 		createResult, createErr := adapter.Create(createCtx, account, *req)
 		cancelCreate()
 		if createErr != nil {
 			s.recordMediaTransportFailure(c, ctx, account, createErr)
+			if pinnedAccount != nil {
+				// 固定账号失败时不能换号：换了音色就不存在了。
+				return nil, fmt.Errorf("media_task_service: upstream create: %w", createErr)
+			}
 			excluded[account.ID] = struct{}{}
 			continue
 		}
@@ -1362,11 +1460,11 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 			failureBody := createResult.UpstreamRaw
 			decision := classifyMediaUpstreamFailure(createResult.UpstreamStatusCode, failureBody)
 			s.recordMediaUpstreamFailure(c, ctx, account, createResult.UpstreamStatusCode, failureBody, publicModel)
-			if decision.ShouldFailover {
+			if decision.ShouldFailover && pinnedAccount == nil {
 				excluded[account.ID] = struct{}{}
 				continue
 			}
-			return nil, "", fmt.Errorf("media_task_service: upstream failed with status %d: %s", createResult.UpstreamStatusCode, createResult.ErrorMessage)
+			return nil, fmt.Errorf("media_task_service: upstream failed with status %d: %s", createResult.UpstreamStatusCode, createResult.ErrorMessage)
 		}
 		// 同步音频此前完全不计费（不写 media_tasks，也就没有预扣/结算）。
 		// 这里在返回前补一次结算：写 usage_logs + 扣余额/订阅，与异步音频任务同口径。
@@ -1389,19 +1487,38 @@ func (s *MediaTaskService) ResolveAudioSpeechBytes(c *gin.Context, ctx context.C
 				// 缺失时由音频算价内部兜底（与异步音频任务同默认时长口径）。
 				DurationSec:          req.DurationSec,
 				RequestedDurationSec: req.DurationSec,
+				// 按字符计费的厂商（DeepSeek TTS）由 adapter 回传计费字符数，
+				// >0 时算价改用「每百万字符」价，与官方计价单位一致。
+				BilledChars: createResult.BilledChars,
 			}
 			settleMediaAudioTaskSuccess(persistCtx, s.billingDeps(), audioInput)
 		}
 
 		// 同步字节直接返回；有 URL 返回 URL。
 		if len(createResult.InlineBytes) > 0 {
-			return createResult.InlineBytes, "audio/mpeg", nil
+			return &AudioSpeechResult{
+				Bytes:       createResult.InlineBytes,
+				ContentType: mediaAudioContentTypeOrDefault(createResult.InlineContentType),
+			}, nil
 		}
 		if createResult.InlineURL != "" {
-			return nil, createResult.InlineURL, nil
+			return &AudioSpeechResult{URL: createResult.InlineURL}, nil
 		}
 		// 既无字节也无 URL：视为异步任务，返回空让 handler 走任务 JSON。
-		return nil, "", nil
+		return nil, nil
 	}
-	return nil, "", fmt.Errorf("media_task_service: upstream audio speech exhausted")
+	return nil, fmt.Errorf("media_task_service: upstream audio speech exhausted")
+}
+
+// mediaAudioContentTypeOrDefault 归一化音频 MIME：adapter 未声明时沿用历史
+// 口径 audio/mpeg，避免改变既有厂商（MiniMax 等）的响应头。
+func mediaAudioContentTypeOrDefault(contentType string) string {
+	ct := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if ct == "" {
+		return "audio/mpeg"
+	}
+	if !strings.HasPrefix(ct, "audio/") {
+		return "audio/mpeg"
+	}
+	return ct
 }

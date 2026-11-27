@@ -99,7 +99,7 @@ func TestCalculateAudioTaskCostBreakdownPrefersPerSecondPrice(t *testing.T) {
 	billing := NewBillingService(nil, nil)
 	ctx := context.Background()
 
-	perSecCost, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, 30, 30)
+	perSecCost, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, "", 30, 30, 0)
 	if perSecCost == nil {
 		t.Fatal("per-second cost should not be nil")
 	}
@@ -109,14 +109,14 @@ func TestCalculateAudioTaskCostBreakdownPrefersPerSecondPrice(t *testing.T) {
 
 	// 去掉每秒价 → 走 realtime 按分钟
 	group.AudioPricePerSec = nil
-	realtimeCost, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, 60, 60)
+	realtimeCost, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, "", 60, 60, 0)
 	if realtimeCost == nil || realtimeCost.ActualCost <= 0 {
 		t.Fatalf("realtime cost = %v, want > 0", realtimeCost)
 	}
 
 	// 时长更长应当更贵（同一计费口径下的单调性）
-	short, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, 30, 30)
-	long, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, 120, 120)
+	short, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, "", 30, 30, 0)
+	long, _ := calculateAudioTaskCostBreakdown(ctx, billing, nil, apiKey, "", 120, 120, 0)
 	if long.ActualCost <= short.ActualCost {
 		t.Fatalf("longer audio should cost more: 30s=%v 120s=%v", short.ActualCost, long.ActualCost)
 	}

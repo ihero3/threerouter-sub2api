@@ -389,6 +389,9 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         service_quota_enabled: false,
         affiliate_enabled: false,
+        // 营销文案金额兜底为 0：公开设置拉取失败时不展示「送 $X」类文案。
+        new_user_credits: 0,
+        invite_register_reward: 0,
         allow_user_view_error_requests: false,
         mcp_enabled: false,
       })

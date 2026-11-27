@@ -455,6 +455,12 @@ type PublicSettings struct {
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
+	// NewUserCredits 新用户注册赠送额度（default_balance，美元）；0 表示不发放。
+	// InviteRegisterReward 邀请注册奖励（affiliate_register_reward，美元）；0 表示不发放。
+	// 两者都只用于前端营销文案展示，与真正的发放入口同源。
+	NewUserCredits       float64 `json:"new_user_credits"`
+	InviteRegisterReward float64 `json:"invite_register_reward"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

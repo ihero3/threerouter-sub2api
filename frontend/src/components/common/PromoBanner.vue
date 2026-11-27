@@ -47,23 +47,35 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
+import { usePromoAmounts } from '@/composables/usePromoAmounts'
 
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
+const { newUserCredits, newUserAmount, inviteReward, inviteAmount } = usePromoAmounts()
 
 // 点击广告进入后台充值页面（未登录时由路由守卫跳转到登录页）。
 function goRecharge() {
   router.push('/purchase')
 }
 
-const defaultItems = [
-  { key: 'newUser', emoji: '🎁' },
-  { key: 'refer', emoji: '👥' },
-  { key: 'topUp10', emoji: '💸' },
-  { key: 'deepseek', emoji: '⚡' },
-  { key: 'flowControl', emoji: '🚀' },
-] as const
+// 兜底文案（后台未配置站点推广文案时使用）：金额来自后台设置，
+// 未配置发放额度（0）时对应条目整条不展示，避免承诺不存在的优惠。
+const defaultItems = computed(() => {
+  const items: Array<{ emoji: string; text: string }> = []
+  if (newUserCredits.value > 0) {
+    items.push({ emoji: '🎁', text: t('promo.items.newUser', { amount: newUserAmount.value }) })
+  }
+  if (inviteReward.value > 0) {
+    items.push({ emoji: '👥', text: t('promo.items.refer', { amount: inviteAmount.value }) })
+  }
+  items.push(
+    { emoji: '💸', text: t('promo.items.topUp10') },
+    { emoji: '⚡', text: t('promo.items.deepseek') },
+    { emoji: '🚀', text: t('promo.items.flowControl') },
+  )
+  return items
+})
 
 // B 站可在后台配置自己的推广文案；A 站未配置时回落到 i18n。
 const sitePromo = computed(() => appStore.activeSiteProfile?.promo)
@@ -78,7 +90,7 @@ const promoItems = computed(() => {
   if (configured.length > 0) {
     return configured.map((text, i) => ({ emoji: ['🎁', '👥', '💸', '⚡'][i % 4], text }))
   }
-  return defaultItems.map(item => ({ emoji: item.emoji, text: t(`promo.items.${item.key}`) }))
+  return defaultItems.value
 })
 </script>
 

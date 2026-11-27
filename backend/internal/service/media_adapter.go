@@ -69,7 +69,14 @@ type MediaCreateResult struct {
 	UpstreamStatusCode int                 // 上游 HTTP 状态码，用于 failover 判定
 	UpstreamRaw        []byte              // 上游原始响应
 	InlineBytes        []byte              // 同步返回的原始字节（如音频二进制），与 InlineURL 二选一
-	ErrorMessage       string
+	// InlineContentType 是 InlineBytes 的真实 MIME。为空时沿用历史口径 audio/mpeg。
+	// 音频容器格式并不统一（DeepSeek 只有 wav/pcm、千问默认 wav、MiniMax 可 flac），
+	// 硬编码会让严格客户端按错误格式落盘，故由 adapter 声明实际格式。
+	InlineContentType string
+	// BilledChars 是按「字符」计费的音频（DeepSeek TTS）回传的计费字符数；
+	// 0 表示该产物沿用按时长计费的口径。
+	BilledChars  int
+	ErrorMessage string
 	// UpstreamEndpoint 是本次实际打到的上游端点路径（如 /v1/image_generation）。
 	// 只用于 usage_logs 明细展示（与文本链路的 upstream_endpoint 同口径），不参与路由。
 	UpstreamEndpoint string

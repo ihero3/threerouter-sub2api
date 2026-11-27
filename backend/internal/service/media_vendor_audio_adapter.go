@@ -183,17 +183,7 @@ func NewMiniMaxTTSAdapter() *MiniMaxTTSAdapter {
 	a := &MiniMaxTTSAdapter{}
 	a.mediaVendorAudioAdapter = newMediaVendorAudioAdapter("minimax-tts")
 	a.supports = func(platform, model string) bool {
-		m := strings.ToLower(strings.TrimSpace(model))
-		// T2A v2 官方模型（speech-2.8-hd/turbo、speech-2.6-*、speech-02-* 等）
-		// 不含 "tts" 也不含 "speech-01"，旧口径会漏判并落到 fallback 打错端点。
-		if strings.HasPrefix(m, "speech-") {
-			return true
-		}
-		// "tts" 只做精确匹配：宽泛 Contains 会抢走 qwen-audio-...-tts-flash
-		// 等其它厂商模型（MiniMax 注册在阿里之前，会打错端点）。
-		return strings.Contains(m, "minimax-tts") ||
-			m == "speech-01" ||
-			m == "tts"
+		return isMiniMaxTTSModel(model)
 	}
 	a.buildCreate = buildMiniMaxTTSBody
 	a.parseCreate = parseMiniMaxTTSResult
@@ -419,9 +409,10 @@ func NewAliyunTTSAdapter() *AliyunTTSAdapter {
 	a.mediaVendorAudioAdapter = newMediaVendorAudioAdapter("aliyun-tts")
 	a.supports = func(platform, model string) bool {
 		m := strings.ToLower(strings.TrimSpace(model))
+		// CosyVoice 统一交给 QwenAudioTTSAdapter：官方非实时链路已改为
+		// SpeechSynthesizer 端点，不再是这里的 multimodal-generation。
 		return strings.Contains(m, "aliyun-tts") ||
 			strings.Contains(m, "dashscope-tts") ||
-			strings.Contains(m, "cosyvoice") ||
 			strings.Contains(m, "qwen-tts")
 	}
 	a.buildCreate = buildAliyunTTSBody

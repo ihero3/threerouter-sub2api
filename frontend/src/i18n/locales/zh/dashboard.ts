@@ -800,7 +800,7 @@ export default {
       line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
       line3: '返利额度可随时转入账户余额。',
       line4: '新产生的返利需要经过冻结期后才能提现。',
-      registerReward: '每通过您的邀请链接成功注册 1 名新用户，您将立即获得 $6 注册奖励（直接计入返利额度）。',
+      registerReward: '每通过您的邀请链接成功注册 1 名新用户，您将立即获得 {amount} 注册奖励（直接计入返利额度）。',
       requireInviterRecharged: '需要您自己先充值过，被邀请用户的充值才会产生返利；双方都充值后才返。',
       rebateCapByInviterRecharge: '您累计获得的返利不会超过您自己累计实充的金额，额度用尽后新的返利不再计提。'
     }

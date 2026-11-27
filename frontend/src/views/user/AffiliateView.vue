@@ -184,6 +184,14 @@ const formattedRebateRate = computed(() => {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
 })
 
+// 注册奖励金额由后台「邀请注册奖励」设置决定（affiliate_register_reward），
+// 文案里不再写死金额：整数金额去掉多余的“.00”，例如 $1 而不是 $1.00。
+const formattedRegisterReward = computed(() => {
+  const v = detail.value?.register_reward ?? 0
+  const rounded = Math.round(v * 100) / 100
+  return Number.isInteger(rounded) ? `$${rounded}` : formatCurrency(rounded)
+})
+
 // 使用说明按后台开关动态拼装：管理员开启「邀请人需先充值」「返利不超过邀请人
 // 累计充值」时，把对应规则亮在邀请页，让邀请人明明白白；关闭时不显示。
 const tipLines = computed<string[]>(() => {
@@ -192,9 +200,12 @@ const tipLines = computed<string[]>(() => {
   const lines = [
     t('affiliate.tips.line1'),
     t('affiliate.tips.line2', { rate: `${formattedRebateRate.value}%` }),
-    t('affiliate.tips.registerReward'),
-    t('affiliate.tips.line3'),
   ]
+  // 注册奖励为 0 表示后台关闭发放，此时不展示这条说明，避免承诺不存在的奖励。
+  if ((d.register_reward ?? 0) > 0) {
+    lines.push(t('affiliate.tips.registerReward', { amount: formattedRegisterReward.value }))
+  }
+  lines.push(t('affiliate.tips.line3'))
   if (d.require_inviter_recharged) {
     lines.push(t('affiliate.tips.requireInviterRecharged'))
   }
