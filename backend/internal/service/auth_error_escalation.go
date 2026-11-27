@@ -101,13 +101,14 @@ const failover402RecoverProbeInterval = 24 * time.Hour
 // 探测——error_message 写入 [auto-recover at ...] 标记 + rate_limit_reset_at
 // （= now + 24h），让 AccountAutoRecoveryService 每 24h 把账号放回调度池试一次，
 // 充值后即可自动恢复，不再依赖管理员手动 recover-state。
+//
+// 2026-11-27：中转站账号不再享受「402 只做 3 分钟短冷却」的豁免。402 意味着这条
+// 上游凭据没有余额，换号治不了本——池里每个中转站账号都会陆续 402，3 分钟冷却
+// 结束后又被调度、又 402，用户只会持续收到上游错误。与其让它无限循环，不如停用
+// 账号并靠 24h 探测在充值后自动恢复；401/403 等真正「可能误伤健康 Key」的透传
+// 错误仍走 handleAuthError 的中转站短冷却分支（见 handleAuthErrorEscalating）。
 func (s *RateLimitService) handlePaymentRequiredError(ctx context.Context, account *Account, errorMsg string) {
 	if s == nil || s.accountRepo == nil || account == nil {
-		return
-	}
-	// 中转站账号：余额是中转站内部账户的事，沿用固定短冷却。
-	if account.IsRelayUpstream() {
-		s.handleAuthError(ctx, account, errorMsg)
 		return
 	}
 	probeAt := time.Now().Add(failover402RecoverProbeInterval)

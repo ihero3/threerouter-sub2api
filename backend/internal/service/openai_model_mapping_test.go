@@ -61,6 +61,74 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			expectedModel:               "gpt-5.5",
 		},
 		{
+			name: "messages dispatch model is chained through account mapping",
+			account: &Account{
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"deepseek-v4-pro": "deepseek-v4.1-flash-1017",
+					},
+				},
+			},
+			requestedModel:              "claude-3-5-haiku-20241022",
+			messagesDispatchMappedModel: "deepseek-v4-pro",
+			expectedModel:               "deepseek-v4.1-flash-1017",
+		},
+		{
+			name: "messages dispatch model is chained through exact claude mapping",
+			account: &Account{
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"claude-opus-5": "mimo-v2.6-pro",
+					},
+				},
+			},
+			requestedModel:              "claude-sonnet-4-5-20250929",
+			messagesDispatchMappedModel: "claude-opus-5",
+			expectedModel:               "mimo-v2.6-pro",
+		},
+		{
+			name: "unmapped messages dispatch model passes through",
+			account: &Account{
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"claude-opus-5": "deepseek-flash",
+					},
+				},
+			},
+			requestedModel:              "claude-3-5-haiku-20241022",
+			messagesDispatchMappedModel: "deepseek-v4-pro",
+			expectedModel:               "deepseek-v4-pro",
+		},
+		{
+			name: "production vip haiku chain reaches xiaomi upstream model",
+			account: &Account{
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"deepseek-v4-pro": "mimo-v2.6-pro",
+						"claude-opus-5":   "mimo-v2.6-pro",
+						"claude-opus-4.8": "mimo-v2.6-pro",
+					},
+				},
+			},
+			requestedModel:              "claude-3-5-haiku-20241022",
+			messagesDispatchMappedModel: "deepseek-v4-pro",
+			expectedModel:               "mimo-v2.6-pro",
+		},
+		{
+			name: "production vip sonnet chain reaches deepseek official model",
+			account: &Account{
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"claude-opus-5":   "deepseek-flash",
+						"claude-opus-4.8": "deepseek-flash",
+					},
+				},
+			},
+			requestedModel:              "claude-sonnet-5",
+			messagesDispatchMappedModel: "claude-opus-5",
+			expectedModel:               "deepseek-flash",
+		},
+		{
 			name: "account wildcard mapping overrides messages dispatch model",
 			account: &Account{
 				Credentials: map[string]any{

@@ -508,17 +508,17 @@ func isMigrationChecksumCompatible(name, dbChecksum, fileChecksum string) bool {
 
 func validateMigrationExecutionMode(name, content string) (bool, error) {
 	normalizedName := strings.ToLower(strings.TrimSpace(name))
-	upperContent := strings.ToUpper(content)
 	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
 
 	if !nonTx {
-		if strings.Contains(upperContent, "CONCURRENTLY") {
+		if strings.Contains(strings.ToUpper(stripSQLLineComment(content)), "CONCURRENTLY") {
 			return false, errors.New("CONCURRENTLY statements must be placed in *_notx.sql migrations")
 		}
 		return false, nil
 	}
 
-	if strings.Contains(upperContent, "BEGIN") || strings.Contains(upperContent, "COMMIT") || strings.Contains(upperContent, "ROLLBACK") {
+	executableContent := strings.ToUpper(stripSQLLineComment(content))
+	if strings.Contains(executableContent, "BEGIN") || strings.Contains(executableContent, "COMMIT") || strings.Contains(executableContent, "ROLLBACK") {
 		return false, errors.New("*_notx.sql must not contain transaction control statements (BEGIN/COMMIT/ROLLBACK)")
 	}
 
@@ -530,15 +530,16 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 		}
 
 		if strings.Contains(normalizedStmt, "CONCURRENTLY") {
-			isCreateIndex := strings.Contains(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
-			isDropIndex := strings.Contains(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
+			isCreateIndex := strings.HasPrefix(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
+			isDropIndex := strings.HasPrefix(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
 			if !isCreateIndex && !isDropIndex {
 				return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
 			}
-			if isCreateIndex && !strings.Contains(normalizedStmt, "IF NOT EXISTS") {
+			// Index names may contain "_id"; only the DDL clause may omit IF NOT EXISTS.
+			if isCreateIndex && !strings.Contains(normalizedStmt, " INDEX CONCURRENTLY IF NOT EXISTS ") {
 				return false, errors.New("CREATE INDEX CONCURRENTLY in *_notx.sql must include IF NOT EXISTS for idempotency")
 			}
-			if isDropIndex && !strings.Contains(normalizedStmt, "IF EXISTS") {
+			if isDropIndex && !strings.Contains(normalizedStmt, " INDEX CONCURRENTLY IF EXISTS ") {
 				return false, errors.New("DROP INDEX CONCURRENTLY in *_notx.sql must include IF EXISTS for idempotency")
 			}
 			continue
@@ -551,7 +552,73 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 }
 
 func splitSQLStatements(content string) []string {
-	parts := strings.Split(content, ";")
+	// Semicolons inside SQL line comments must not split statements.
+	var (
+		parts          []string
+		start          int
+		inLineComment  bool
+		inBlockComment bool
+		inSingleQuote  bool
+		inDoubleQuote  bool
+	)
+	for i := 0; i < len(content); i++ {
+		if inBlockComment {
+			if i+1 < len(content) && content[i] == '*' && content[i+1] == '/' {
+				inBlockComment = false
+				i++
+			}
+			continue
+		}
+		if inLineComment {
+			if content[i] == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+		if inSingleQuote {
+			if content[i] == '\'' {
+				if i+1 < len(content) && content[i+1] == '\'' {
+					i++
+					continue
+				}
+				inSingleQuote = false
+			}
+			continue
+		}
+		if inDoubleQuote {
+			if content[i] == '"' {
+				if i+1 < len(content) && content[i+1] == '"' {
+					i++
+					continue
+				}
+				inDoubleQuote = false
+			}
+			continue
+		}
+		if i+1 < len(content) && content[i] == '/' && content[i+1] == '*' {
+			inBlockComment = true
+			i++
+			continue
+		}
+		if i+1 < len(content) && content[i] == '-' && content[i+1] == '-' {
+			inLineComment = true
+			i++
+			continue
+		}
+		if content[i] == '\'' {
+			inSingleQuote = true
+			continue
+		}
+		if content[i] == '"' {
+			inDoubleQuote = true
+			continue
+		}
+		if content[i] == ';' {
+			parts = append(parts, content[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, content[start:])
 	out := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if strings.TrimSpace(part) == "" {

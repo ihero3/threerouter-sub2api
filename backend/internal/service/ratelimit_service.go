@@ -2649,6 +2649,7 @@ func parseOpenAIImageTryAgainCooldown(body []byte) time.Duration {
 
 const upstreamModelNotFoundCooldown = 30 * time.Minute
 const upstreamModelNotFoundReason = "upstream_404_model_not_found"
+const upstreamModelNotFound400Reason = "upstream_400_model_not_found"
 const upstreamModelNotFound401Reason = "upstream_401_model_not_found"
 const upstreamCodexPlanGatedModelCooldown = 30 * time.Minute
 const upstreamCodexPlanGatedModelReason = "upstream_400_codex_plan_gated_model"
@@ -2675,10 +2676,20 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	switch {
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
-	case statusCode == http.StatusUnauthorized && account.Type == AccountTypeAPIKey && account.IsOpenAICompatible() && isOpenAICompatibleModelNotFoundBody(responseBody):
-		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason
+	// plan-gated 必须排在通用 400 之前：它的正文也含 "model is not supported"，
+	// 但冷却时长/图片来源守卫都依赖专属 reason（#4828）。
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
+	case statusCode == http.StatusBadRequest && account.IsOpenAICompatible() &&
+		!isOpenAICodexPlanGatedModelError(statusCode, responseBody) &&
+		isOpenAICompatibleModelNotFoundBody(responseBody):
+		// OpenAI 兼容上游常用 400 + "Unsupported model X" 表达模型不存在。
+		// 与 404 同口径地按 (账号, 模型) 冷却，避免后续请求继续把同一份
+		// 必然失败的请求打到同一个账号上。Codex 套餐 gate 文案仍交给上面的
+		// 专属分支（仅 OAuth 账号适用），不被通用模型缺失分支接管。
+		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound400Reason
+	case statusCode == http.StatusUnauthorized && account.Type == AccountTypeAPIKey && account.IsOpenAICompatible() && isOpenAICompatibleModelNotFoundBody(responseBody):
+		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason
 	default:
 		return false
 	}

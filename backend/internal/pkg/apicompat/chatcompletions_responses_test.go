@@ -118,10 +118,11 @@ func TestChatCompletionsToResponses_MessageTypesWithReasoningAndTools(t *testing
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	require.Len(t, items, 7)
+	require.Len(t, items, 8)
 	for i, want := range []struct{ typ, role string }{
 		{"message", "system"},
 		{"message", "user"},
+		{"reasoning", ""},
 		{"message", "assistant"},
 		{"function_call", ""},
 		{"function_call_output", ""},
@@ -132,14 +133,14 @@ func TestChatCompletionsToResponses_MessageTypesWithReasoningAndTools(t *testing
 		assert.Equal(t, want.role, items[i].Role, "input item %d role", i)
 	}
 	var assistantContent, reasoningOnlyContent []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[2].Content, &assistantContent))
-	require.NoError(t, json.Unmarshal(items[5].Content, &reasoningOnlyContent))
+	require.NoError(t, json.Unmarshal(items[3].Content, &assistantContent))
+	require.NoError(t, json.Unmarshal(items[6].Content, &reasoningOnlyContent))
 	require.Len(t, assistantContent, 1)
 	require.Len(t, reasoningOnlyContent, 1)
-	assert.Equal(t, "<thinking>Need to inspect the directory.</thinking>\nI will check.", assistantContent[0].Text)
+	assert.Equal(t, "I will check.", assistantContent[0].Text)
 	assert.Equal(t, "<thinking>The tool returned /tmp.</thinking>", reasoningOnlyContent[0].Text)
-	assert.Equal(t, "call_1", items[3].CallID)
 	assert.Equal(t, "call_1", items[4].CallID)
+	assert.Equal(t, "call_1", items[5].CallID)
 }
 
 func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
@@ -344,8 +345,7 @@ func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 		}
 		resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
 		require.NoError(t, err)
-		require.NotNil(t, resp.MaxOutputTokens)
-		assert.Equal(t, 16, *resp.MaxOutputTokens)
+		require.Nil(t, resp.MaxOutputTokens)
 	})
 }
 

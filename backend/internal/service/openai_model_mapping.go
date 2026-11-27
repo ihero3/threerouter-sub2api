@@ -15,10 +15,22 @@ func resolveOpenAIForwardModel(account *Account, requestedModel, messagesDispatc
 	}
 
 	mappedModel, matched := account.ResolveMappedModel(requestedModel)
-	if !matched && messagesDispatchMappedModel != "" {
-		return messagesDispatchMappedModel
+	if matched {
+		return mappedModel
 	}
-	return mappedModel
+	if messagesDispatchMappedModel == "" {
+		return mappedModel
+	}
+	// 分组级「/v1/messages 调度映射」产出的是账号映射里的**公开模型名**
+	// （如 deepseek-v4-pro / claude-opus-5），不是最终上游模型名；账号级
+	// model_mapping 的 value 才是真正发给上游的模型 ID（如 mimo-v2.6-pro /
+	// deepseek-flash）。若不在这里二次解析，分组映射会绕过账号映射，把
+	// deepseek-v4-pro 这类公开名直接发给只支持自家模型的上游，造成
+	// "Unsupported model deepseek-v4-pro"（A1-顾-小米套餐 / A1-未智数 等）。
+	if resolved, resolvedMatched := account.ResolveMappedModel(messagesDispatchMappedModel); resolvedMatched {
+		return resolved
+	}
+	return messagesDispatchMappedModel
 }
 
 // openAIOAuthForeignModelPrefixes 列出明确属于其他厂商家族的模型名前缀。

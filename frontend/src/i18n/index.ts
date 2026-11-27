@@ -56,7 +56,7 @@ export async function loadLocaleMessages(locale: LocaleCode): Promise<void> {
 
 // 暴露一个手动强制重载函数给 DevTools 调用：window.__reloadLocales?.()
 if (typeof window !== 'undefined') {
-  ;(window as any).__reloadLocales = async () => {
+  void ((window as any).__reloadLocales = async () => {
     loadedLocales.clear()
     const enMod = await import(`./locales/en.ts?t=${Date.now()}`)
     const zhMod = await import(`./locales/zh.ts?t=${Date.now()}`)
@@ -65,7 +65,7 @@ if (typeof window !== 'undefined') {
     loadedLocales.add('en')
     loadedLocales.add('zh')
     console.info('[i18n] locales reloaded')
-  }
+  })
 }
 
 if (import.meta.hot) {
@@ -73,7 +73,7 @@ if (import.meta.hot) {
   import.meta.hot.accept(['./locales/en', './locales/zh'], () => {
     // 让浏览器彻底丢弃旧的 i18n 状态
     if (typeof window !== 'undefined' && (window as any).__reloadLocales) {
-      ;(window as any).__reloadLocales()
+      void ((window as any).__reloadLocales())
     }
   })
 }

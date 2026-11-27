@@ -358,7 +358,7 @@ func TestStream_FunctionCallFallbackCallIDPrefix(t *testing.T) {
 	for _, e := range events {
 		if e.Type == "response.output_item.added" && e.Item != nil && e.Item.Type == "function_call" {
 			require.Truef(t, strings.HasPrefix(e.Item.ID, "fc_"), "function_call item id must start with fc_, got %q", e.Item.ID)
-			require.Truef(t, strings.HasPrefix(e.Item.CallID, "call_"), "fallback call_id must start with call_, got %q", e.Item.CallID)
+			require.Truef(t, strings.HasPrefix(e.Item.CallID, "fc_"), "fallback call_id must start with fc_, got %q", e.Item.CallID)
 		}
 	}
 }

@@ -263,6 +263,11 @@ func TestAnthropicToChatCompletionsRequest_MaxTokensFloor(t *testing.T) {
 
 	out, err := AnthropicToChatCompletionsRequest(req)
 	require.NoError(t, err)
+	require.Nil(t, out.MaxCompletionTokens)
+
+	req.MaxTokens = minMaxOutputTokens
+	out, err = AnthropicToChatCompletionsRequest(req)
+	require.NoError(t, err)
 	require.NotNil(t, out.MaxCompletionTokens)
 	require.Equal(t, minMaxOutputTokens, *out.MaxCompletionTokens)
 }
@@ -270,18 +275,18 @@ func TestAnthropicToChatCompletionsRequest_MaxTokensFloor(t *testing.T) {
 func TestAnthropicToChatCompletionsRequestWithMinOutputTokens_ConfiguredFloor(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "claude-sonnet-4-20250514",
-		MaxTokens: 16,
+		MaxTokens: 1024,
 		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
 	}
 
 	out, err := AnthropicToChatCompletionsRequestWithMinOutputTokens(req, 64)
 	require.NoError(t, err)
 	require.NotNil(t, out.MaxCompletionTokens)
-	require.Equal(t, 64, *out.MaxCompletionTokens)
+	require.Equal(t, 1024, *out.MaxCompletionTokens)
 }
 
 func TestAnthropicToResponses_ConfiguredMaxTokensFloor(t *testing.T) {
-	for _, input := range []int{16, 64, 127} {
+	for _, input := range []int{512, 1024, 2048} {
 		req := &AnthropicRequest{
 			Model:     "claude-sonnet-4-20250514",
 			MaxTokens: input,
@@ -295,13 +300,13 @@ func TestAnthropicToResponses_ConfiguredMaxTokensFloor(t *testing.T) {
 
 	req := &AnthropicRequest{
 		Model:     "claude-sonnet-4-20250514",
-		MaxTokens: 1,
+		MaxTokens: 512,
 		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
 	}
 	out, err := AnthropicToResponsesWithMinOutputTokens(req, 16)
 	require.NoError(t, err)
 	require.NotNil(t, out.MaxOutputTokens)
-	require.Equal(t, 16, *out.MaxOutputTokens)
+	require.Equal(t, 512, *out.MaxOutputTokens)
 }
 
 func TestAnthropicToChatCompletionsRequest_ReasoningEffortMapping(t *testing.T) {

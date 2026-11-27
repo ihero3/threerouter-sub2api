@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,6 +36,14 @@ func TestLocalRateLimiterWindowAndReset(t *testing.T) {
 func TestRateLimiterFailureModes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	originalRun := rateLimitRun
+	rateLimitRun = func(context.Context, *redis.Client, string, int64) (int64, bool, error) {
+		return 0, false, errors.New("redis unavailable")
+	}
+	t.Cleanup(func() {
+		rateLimitRun = originalRun
+	})
+
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         "127.0.0.1:1",
 		DialTimeout:  50 * time.Millisecond,
@@ -61,7 +70,8 @@ func TestRateLimiterFailureModes(t *testing.T) {
 
 	failCloseRouter := gin.New()
 	failCloseRouter.Use(limiter.LimitWithOptions("test", 1, time.Second, RateLimitOptions{
-		FailureMode: RateLimitFailClose,
+		FailureMode:     RateLimitFailClose,
+		FallbackOnError: true,
 	}))
 	failCloseRouter.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})

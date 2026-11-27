@@ -1031,8 +1031,12 @@ func (s *SettingService) IsDisableSameAccountRetryEnabled(ctx context.Context) b
 }
 
 // IsDisableFailedAccountOnFailoverEnabled 检查出现 shouldFailoverUpstreamError 名单内
-// 错误时是否同时将出错的上游账号永久禁用（status=error 移出调度池，需管理员测试恢复）。
+// 错误时是否同时处罚出错的上游账号：开关开时做临时冷却（5xx 10min、其余 30min），
+// 429 带可信 reset 时禁用并到期自动恢复。
 // 默认关闭（保留原有行为：仅切换账号，不关闭）。
+//
+// 402（余额/计费不足）不受本开关影响：无论开关状态都停用账号并带 24h 自动复活探测
+// （见 gateway_upstream_response.go disablePaymentRequiredAccount）。
 func (s *SettingService) IsDisableFailedAccountOnFailoverEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).disableFailedAccountOnFailover
 }

@@ -746,7 +746,7 @@ export default {
         disableSameAccountRetry: '出错后禁止同账号重试',
         disableSameAccountRetryHint: '默认关闭 = 保留原有的同账号重试逻辑。开启后，上游返回可重试的错误时不再在同一账号上退避重试，而是直接进行 failover 切换（挑选其他上游账号）。',
         disableFailedAccountOnFailover: 'failover 时处罚出错账号',
-        disableFailedAccountOnFailoverHint: '默认关闭 = 仅 failover 切换到其他账号，不处罚出错账号。开启后，当上游返回 shouldFailoverUpstreamError 名单内的错误时，仅 402（余额/计费不足）永久禁用（每 24h 自动复活探测一次，充值后自动恢复，无需人工处理）；其余状态码一律临时冷却（5xx 10 分钟、其他 30 分钟），到期自动恢复调度，不再永久禁用。',
+        disableFailedAccountOnFailoverHint: '默认关闭 = 出错后仅 failover 切换到其他账号，不处罚出错账号。例外：402（余额/计费不足）不受本开关影响，始终停用出错账号并移出调度池（每 24h 自动复活探测一次，充值后自动恢复，无需人工处理）——没有额度时换号只会把同一个 402 抛给下一个账号，用户会持续收到上游错误。开启后，shouldFailoverUpstreamError 名单内的其余状态码也做处罚：404 临时冷却 30 分钟；401/403/405/5xx/无可信 reset 的 429 临时冷却（5xx 10 分钟、其他 30 分钟），到期自动恢复调度。',
         antigravityUserAgentVersion: 'Antigravity UA 版本',
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: '留空时使用 ANTIGRAVITY_USER_AGENT_VERSION 或内置默认值 1.23.2；填写后后台设置优先。',

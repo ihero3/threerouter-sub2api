@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	captcha "github.com/alibabacloud-go/captcha-20230305/client"
 	openapiutil "github.com/alibabacloud-go/darabonba-openapi/v2/utils"
@@ -64,18 +65,47 @@ func (v *aliyunCaptchaVerifier) VerifyCaptcha(ctx context.Context, cred service.
 // 其余错误（网络/超时等）原样返回。
 func normalizeAliyunCaptchaError(err error) error {
 	var teaErr *tea.SDKError
-	if errors.As(err, &teaErr) {
+	if errors.As(err, &teaErr) && aliyunSDKErrorHasBusinessCode(tea.StringValue(teaErr.Code), tea.IntValue(teaErr.StatusCode), tea.StringValue(teaErr.Message)) {
 		return &service.AliyunCaptchaAPIError{
 			Code:    tea.StringValue(teaErr.Code),
 			Message: tea.StringValue(teaErr.Message),
 		}
 	}
 	var daraErr *dara.SDKError
-	if errors.As(err, &daraErr) {
+	if errors.As(err, &daraErr) && aliyunSDKErrorHasBusinessCode(dara.StringValue(daraErr.Code), dara.IntValue(daraErr.StatusCode), dara.StringValue(daraErr.Message)) {
 		return &service.AliyunCaptchaAPIError{
 			Code:    dara.StringValue(daraErr.Code),
 			Message: dara.StringValue(daraErr.Message),
 		}
 	}
 	return err
+}
+
+func aliyunSDKErrorHasBusinessCode(code string, statusCode int, message string) bool {
+	code = strings.TrimSpace(code)
+	if code == "<nil>" {
+		code = ""
+	}
+	if code == "" {
+		return false
+	}
+	// Connection failures are wrapped by Tea as an SDKError with a 503 status and
+	// a generic "code: 503" message, but no OpenAPI Code. HTTP 5xx without a real
+	// service error code is transport/upstream availability, not a business verdict.
+	if statusCode >= 500 && aliyunCodeIsHTTPStatus(code) && strings.Contains(message, "request id: <nil>") {
+		return false
+	}
+	return true
+}
+
+func aliyunCodeIsHTTPStatus(code string) bool {
+	if len(code) != 3 && len(code) != 4 {
+		return false
+	}
+	for _, ch := range code {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }

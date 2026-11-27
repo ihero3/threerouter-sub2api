@@ -2446,26 +2446,6 @@ var (
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "usagelog_user_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41]},
-			},
-			{
-				Name:    "usagelog_api_key_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37]},
-			},
-			{
-				Name:    "usagelog_account_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[38]},
-			},
-			{
-				Name:    "usagelog_group_id",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39]},
-			},
-			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
 				Columns: []*schema.Column{UsageLogsColumns[42]},
@@ -2476,34 +2456,24 @@ var (
 				Columns: []*schema.Column{UsageLogsColumns[36]},
 			},
 			{
-				Name:    "usagelog_model",
+				Name:    "idx_usage_logs_user_created_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[2]},
+				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[36], UsageLogsColumns[0]},
 			},
 			{
-				Name:    "usagelog_requested_model",
+				Name:    "idx_usage_logs_api_key_created_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[3]},
+				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[36], UsageLogsColumns[0]},
 			},
 			{
-				Name:    "usagelog_request_id",
+				Name:    "idx_usage_logs_account_created_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[1]},
+				Columns: []*schema.Column{UsageLogsColumns[38], UsageLogsColumns[36], UsageLogsColumns[0]},
 			},
 			{
-				Name:    "usagelog_user_id_created_at",
+				Name:    "idx_usage_logs_created_ip_user",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[41], UsageLogsColumns[36]},
-			},
-			{
-				Name:    "usagelog_api_key_id_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[37], UsageLogsColumns[36]},
-			},
-			{
-				Name:    "usagelog_group_id_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[39], UsageLogsColumns[36]},
+				Columns: []*schema.Column{UsageLogsColumns[36], UsageLogsColumns[28], UsageLogsColumns[41]},
 			},
 		},
 	}
@@ -2558,6 +2528,14 @@ var (
 				Name:    "user_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{UsersColumns[3]},
+			},
+			{
+				Name:    "idx_users_register_ip_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsersColumns[26], UsersColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "register_ip <> ''",
+				},
 			},
 		},
 	}

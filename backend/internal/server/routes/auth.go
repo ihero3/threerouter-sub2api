@@ -25,6 +25,12 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
+	strictRateLimit := func(key string, limit int, window time.Duration) gin.HandlerFunc {
+		return rateLimiter.LimitWithOptions(key, limit, window, middleware.RateLimitOptions{
+			FailureMode:     middleware.RateLimitFailClose,
+			FallbackOnError: true,
+		})
+	}
 
 	// 公开接口
 	auth := v1.Group("/auth")
@@ -41,51 +47,27 @@ func RegisterAuthRoutes(
 		// 这里收紧阈值，并继续按可信客户端 IP 单一维度计数：同一 IP 下所有
 		// User-Agent 共享同一个桶，轮换 UA 无法打散计数、重新拿满额度。
 		if h.RegistrationClickCaptcha != nil {
-			auth.POST("/captcha/challenge", rateLimiter.LimitWithOptions("auth-captcha-challenge", 10, time.Minute, middleware.RateLimitOptions{
-				FailureMode: middleware.RateLimitFailClose,
-			}), h.RegistrationClickCaptcha.Challenge)
-			auth.POST("/captcha/verify", rateLimiter.LimitWithOptions("auth-captcha-verify", 15, time.Minute, middleware.RateLimitOptions{
-				FailureMode: middleware.RateLimitFailClose,
-			}), h.RegistrationClickCaptcha.Verify)
+			auth.POST("/captcha/challenge", strictRateLimit("auth-captcha-challenge", 10, time.Minute), h.RegistrationClickCaptcha.Challenge)
+			auth.POST("/captcha/verify", strictRateLimit("auth-captcha-verify", 15, time.Minute), h.RegistrationClickCaptcha.Verify)
 		}
 		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
-		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Register)
-		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Login)
-		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Login2FA)
-		auth.POST("/passkey/login/begin", rateLimiter.LimitWithOptions("passkey-login-begin", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Passkey.BeginLogin)
-		auth.POST("/passkey/login/finish", rateLimiter.LimitWithOptions("passkey-login-finish", 20, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Passkey.FinishLogin)
-		auth.POST("/send-verify-code", rateLimiter.LimitWithOptions("auth-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.SendVerifyCode)
+		auth.POST("/register", strictRateLimit("auth-register", 5, time.Minute), h.Auth.Register)
+		auth.POST("/login", strictRateLimit("auth-login", 20, time.Minute), h.Auth.Login)
+		auth.POST("/login/2fa", strictRateLimit("auth-login-2fa", 20, time.Minute), h.Auth.Login2FA)
+		auth.POST("/passkey/login/begin", strictRateLimit("passkey-login-begin", 20, time.Minute), h.Passkey.BeginLogin)
+		auth.POST("/passkey/login/finish", strictRateLimit("passkey-login-finish", 20, time.Minute), h.Passkey.FinishLogin)
+		auth.POST("/send-verify-code", strictRateLimit("auth-send-verify-code", 5, time.Minute), h.Auth.SendVerifyCode)
 		// 注册邮箱预检：规则校验 + 重复注册拦截，不发送验证码。
 		// 与注册接口同为 5/min：预检会返回 EMAIL_EXISTS，收紧限流以抑制邮箱枚举。
-		auth.POST("/registration/email-check", rateLimiter.LimitWithOptions("auth-registration-email-check", 5, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.CheckRegistrationEmail)
+		auth.POST("/registration/email-check", strictRateLimit("auth-registration-email-check", 5, time.Minute), h.Auth.CheckRegistrationEmail)
 		// Token刷新接口添加速率限制：每分钟最多 30 次（Redis 故障时 fail-close）
-		auth.POST("/refresh", rateLimiter.LimitWithOptions("refresh-token", 30, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.RefreshToken)
+		auth.POST("/refresh", strictRateLimit("refresh-token", 30, time.Minute), h.Auth.RefreshToken)
 		// 登出接口（公开，允许未认证用户调用以撤销Refresh Token）
 		auth.POST("/logout", h.Auth.Logout)
 		// 优惠码验证接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
-		auth.POST("/validate-promo-code", rateLimiter.LimitWithOptions("validate-promo", 10, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.ValidatePromoCode)
+		auth.POST("/validate-promo-code", strictRateLimit("validate-promo", 10, time.Minute), h.Auth.ValidatePromoCode)
 		// 邀请码验证接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
-		auth.POST("/validate-invitation-code", rateLimiter.LimitWithOptions("validate-invitation", 10, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.ValidateInvitationCode)
+		auth.POST("/validate-invitation-code", strictRateLimit("validate-invitation", 10, time.Minute), h.Auth.ValidateInvitationCode)
 		// 忘记密码接口添加速率限制：每分钟最多 5 次（Redis 故障时 fail-close）
 		auth.POST("/forgot-password", rateLimiter.LimitWithOptions("forgot-password", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

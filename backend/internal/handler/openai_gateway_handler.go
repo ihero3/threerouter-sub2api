@@ -1739,10 +1739,29 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 	h.anthropicErrorResponse(c, status, errType, message)
 }
 
+// openAIModelNotSupportedMessage 生成「模型不受支持」的客户端文案。优先使用
+// 请求开始时记录的客户端公开模型名；绝不使用账号映射后的内部上游模型名，
+// 避免把 deepseek-* 之类的映射细节泄露给以 claude-* 名义调用的客户端。
+func openAIModelNotSupportedMessage(c *gin.Context) string {
+	if c != nil {
+		if model := strings.TrimSpace(c.GetString(opsModelKey)); model != "" {
+			return fmt.Sprintf("Model %q is not supported by any available upstream account", model)
+		}
+	}
+	return service.OpenAIModelNotSupportedClientMessage
+}
+
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+	}
+	if failoverErr != nil && failoverErr.Reason == service.OpenAIModelNotSupportedReason {
+		upstreamMsg := service.SanitizeUpstreamErrorMessage(service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody))
+		service.SetOpsUpstreamError(c, failoverErr.StatusCode, upstreamMsg, "")
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		h.anthropicStreamingAwareError(c, http.StatusNotFound, "model_not_found", openAIModelNotSupportedMessage(c), streamStarted)
+		return
 	}
 	if failoverErr != nil && failoverErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(failoverErr)
@@ -3699,6 +3718,13 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", message, streamStarted)
 		return
 	}
+	if failoverErr.Reason == service.OpenAIModelNotSupportedReason {
+		upstreamMsg := service.SanitizeUpstreamErrorMessage(service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody))
+		service.SetOpsUpstreamError(c, failoverErr.StatusCode, upstreamMsg, "")
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		h.handleStreamingAwareError(c, http.StatusNotFound, "model_not_found", openAIModelNotSupportedMessage(c), streamStarted)
+		return
+	}
 	if failoverErr.Reason == service.OpenAIReasoningPassthroughReason {
 		h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", service.OpenAIReasoningPassthroughClientCode, service.OpenAIReasoningPassthroughClientMessage, streamStarted, false)
 		return
@@ -3734,7 +3760,7 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	if statusCode == http.StatusBadRequest && service.IsOpenAICompatibleModelNotFound400(responseBody) && !streamStarted {
 		upstreamMsg := service.SanitizeUpstreamErrorMessage(service.ExtractUpstreamErrorMessage(responseBody))
 		service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
-		service.WriteOpenAIUpstreamClientError(c, statusCode, responseBody, upstreamMsg)
+		h.handleStreamingAwareError(c, http.StatusNotFound, "model_not_found", openAIModelNotSupportedMessage(c), false)
 		return
 	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {

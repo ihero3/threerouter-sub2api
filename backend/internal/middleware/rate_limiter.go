@@ -27,6 +27,9 @@ const (
 // RateLimitOptions 限流可选配置
 type RateLimitOptions struct {
 	FailureMode RateLimitFailureMode
+	// 显式设置 Redis 故障时的降级策略。默认 false，保持既有 Handler 主动启用
+	// 进程内限流的调用方行为；需要 fail-close 的入口显式开启。
+	FallbackOnError bool
 	// IPv6PrefixBits 按网段（如 64）合并 IPv6 客户端计数，避免轮换同一分配内的地址绕过限流；0 表示按单个地址计数。
 	IPv6PrefixBits int
 }
@@ -62,6 +65,14 @@ var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, w
 		return 0, false, err
 	}
 	return count, repaired == 1, nil
+}
+
+// SetRateLimitRunForTest replaces the Redis counter for deterministic failure tests.
+// Callers must restore the returned function when the test ends.
+func SetRateLimitRunForTest(run func(context.Context, *redis.Client, string, int64) (int64, bool, error)) func(context.Context, *redis.Client, string, int64) (int64, bool, error) {
+	previous := rateLimitRun
+	rateLimitRun = run
+	return previous
 }
 
 // RateLimiter Redis 速率限制器
@@ -170,7 +181,7 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 		result, err := r.Allow(c.Request.Context(), scopedKey, limit, window)
 		if err != nil {
 			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", r.prefix+key, failureModeLabel(failureMode), err)
-			if failureMode == RateLimitFailClose {
+			if failureMode == RateLimitFailClose && opts.FallbackOnError {
 				// 限流存储故障（如 Redis OOM / 宕机）时降级为进程内限流：
 				// 仍保留防爆破能力，同时避免把整站用户一起挡在门外。
 				if r.fallback != nil && !r.fallback.allow(scopedKey, limit, window, time.Now()) {

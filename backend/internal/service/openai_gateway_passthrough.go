@@ -749,6 +749,12 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 	if isOpenAIRequestBodyTooLargeError(statusCode, "", responseBody) {
 		return true
 	}
+	// 透传模式下模型名由客户端决定、账号映射被绕过：同一模型在不同账号上的
+	// 可用性可能不同，400 模型不存在属账号能力不匹配，可换号重试。
+	if statusCode == http.StatusBadRequest && account != nil && account.IsOpenAICompatible() &&
+		isOpenAICompatibleModelNotFoundBody(responseBody) {
+		return true
+	}
 	if account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode) {
 		return true
 	}

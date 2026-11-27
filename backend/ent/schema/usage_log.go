@@ -193,20 +193,16 @@ func (UsageLog) Edges() []ent.Edge {
 // Indexes 定义数据库索引，优化查询性能。
 func (UsageLog) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("user_id"),
-		index.Fields("api_key_id"),
-		index.Fields("account_id"),
-		index.Fields("group_id"),
 		index.Fields("subscription_id"),
 		index.Fields("created_at"),
-		index.Fields("model"),
-		index.Fields("requested_model"),
-		index.Fields("request_id"),
-		// 复合索引用于时间范围查询
-		index.Fields("user_id", "created_at"),
-		index.Fields("api_key_id", "created_at"),
-		// 分组维度时间范围查询（线上由 SQL 迁移创建 group_id IS NOT NULL 的部分索引）
-		index.Fields("group_id", "created_at"),
+		// 列表页按 created_at DESC, id DESC 取最近记录；保留升序复合索引可通过
+		// 反向扫描服务倒序读取，并继续覆盖按时间范围聚合的查询。
+		index.Fields("user_id", "created_at", "id").
+			StorageKey("idx_usage_logs_user_created_id"),
+		index.Fields("api_key_id", "created_at", "id").
+			StorageKey("idx_usage_logs_api_key_created_id"),
+		index.Fields("account_id", "created_at", "id").
+			StorageKey("idx_usage_logs_account_created_id"),
 		// 共享 IP 聚合（GetSharedUsageIPs）：按时间窗过滤后按 ip 分组、对 user_id 去重。
 		// 线上由 migration 255 以 CONCURRENTLY 建同名索引，StorageKey 保持一致避免重复。
 		index.Fields("created_at", "ip_address", "user_id").

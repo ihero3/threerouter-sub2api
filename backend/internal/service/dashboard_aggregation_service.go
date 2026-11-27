@@ -274,8 +274,6 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 		"duration", time.Since(jobStart).String(),
 		"watermark_updated", updateErr == nil,
 	)
-
-	s.maybeCleanupRetention(ctx, now)
 }
 
 func (s *DashboardAggregationService) runScheduledGroupUsageSync() {
@@ -358,10 +356,17 @@ func (s *DashboardAggregationService) aggregateRange(ctx context.Context, start,
 }
 
 func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context, now time.Time) {
+	aggErr, usageErr, dedupErr := s.cleanupRetention(ctx, now)
+	if aggErr == nil && usageErr == nil && dedupErr == nil {
+		s.lastRetentionCleanup.Store(now)
+	}
+}
+
+func (s *DashboardAggregationService) cleanupRetention(ctx context.Context, now time.Time) (aggErr, usageErr, dedupErr error) {
 	lastAny := s.lastRetentionCleanup.Load()
 	if lastAny != nil {
 		if last, ok := lastAny.(time.Time); ok && now.Sub(last) < dashboardAggregationRetentionInterval {
-			return
+			return nil, nil, nil
 		}
 	}
 
@@ -369,7 +374,7 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	if err != nil {
 		// Never fall back to a shorter window after a settings read failure.
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 读取日志保留设置失败，跳过清理: %v", err)
-		return
+		return nil, err, nil
 	}
 	hourlyCutoff := now.AddDate(0, 0, -s.cfg.Retention.HourlyDays)
 	dailyCutoff := now.AddDate(0, 0, -s.cfg.Retention.DailyDays)
@@ -381,7 +386,6 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	dedupDays = max(dedupDays, usageDays)
 	dedupCutoff := now.AddDate(0, 0, -dedupDays)
 
-	var aggErr, usageErr, dedupErr error
 	if s.cfg.Enabled {
 		aggErr = s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
 	}
@@ -389,20 +393,46 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
 	}
 	if usageDays > 0 {
+		// Dashboard totals sum the pre-aggregated tables. If the aggregation
+		// job has never run, the first cleanup would otherwise delete raw rows
+		// without any aggregate copy. A stale nonzero watermark is still safe:
+		// the scheduled aggregation advances it every interval before cleanup.
+		watermark, watermarkErr := s.repo.GetAggregationWatermark(ctx)
+		if watermarkErr != nil {
+			usageErr = fmt.Errorf("read aggregation watermark before usage cleanup: %w", watermarkErr)
+		} else if watermark.After(time.Unix(0, 0)) {
+			// Fresh installs may retain longer than the aggregation lookback.
+			// Backfill only the weekly buckets immediately before cleanup; older
+			// unreachable history is left intact instead of being deleted without
+			// an aggregate copy. Operators may extend aggregate retention to cover
+			// that history and run a manual backfill.
+			backfillStart := usageCutoff.AddDate(0, 0, -max(s.cfg.Retention.DailyDays, 7))
+			if err := s.aggregateRange(ctx, backfillStart, usageCutoff); err != nil {
+				usageErr = fmt.Errorf("aggregate backfill before usage cleanup: %w", err)
+			}
+		} else {
+			backfillStart := usageCutoff.AddDate(0, 0, -s.cfg.Retention.DailyDays)
+			if backfillStart.After(usageCutoff) {
+				backfillStart = time.Unix(0, 0)
+			}
+			if err := s.aggregateRange(ctx, backfillStart, usageCutoff); err != nil {
+				usageErr = fmt.Errorf("initial aggregate backfill before usage cleanup: %w", err)
+			}
+		}
+	}
+	if usageDays > 0 && usageErr == nil {
 		usageErr = s.repo.CleanupUsageLogs(ctx, usageCutoff)
 	}
 	if usageErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
 	}
-	if usageDays > 0 {
+	if usageDays > 0 && usageErr == nil {
 		dedupErr = s.repo.CleanupUsageBillingDedup(ctx, dedupCutoff)
 	}
 	if dedupErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_billing_dedup 保留清理失败: %v", dedupErr)
 	}
-	if aggErr == nil && usageErr == nil && dedupErr == nil {
-		s.lastRetentionCleanup.Store(now)
-	}
+	return aggErr, usageErr, dedupErr
 }
 
 func (s *DashboardAggregationService) requestRetentionDays(ctx context.Context) (int, error) {

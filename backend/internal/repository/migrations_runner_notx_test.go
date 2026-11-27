@@ -43,9 +43,33 @@ func TestValidateMigrationExecutionMode(t *testing.T) {
 
 	t.Run("notx迁移允许幂等并发索引语句", func(t *testing.T) {
 		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", `
+-- 中文注释不应影响 CREATE INDEX 识别
+-- index cache－写入成本
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
 DROP INDEX CONCURRENTLY IF EXISTS idx_b;
 `)
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
+
+	t.Run("notx迁移中文注释按分号切分时仍可识别索引语句", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", `
+-- 中文注释；不应该阻塞迁移
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_a ON t(a);
+DROP INDEX CONCURRENTLY IF EXISTS idx_b;
+`)
+		require.True(t, nonTx)
+		require.NoError(t, err)
+	})
+
+	t.Run("索引名中的 id 不能冒充 IF NOT EXISTS", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode("001_add_idx_notx.sql", "CREATE INDEX CONCURRENTLY idx_not_exists ON t(a);")
+		require.False(t, nonTx)
+		require.Error(t, err)
+	})
+
+	t.Run("notx迁移允许 DROP 索引名包含 index", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode("001_drop_idx_notx.sql", "DROP INDEX CONCURRENTLY IF EXISTS idx_index_old;")
 		require.True(t, nonTx)
 		require.NoError(t, err)
 	})

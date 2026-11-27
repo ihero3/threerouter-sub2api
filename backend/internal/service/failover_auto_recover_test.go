@@ -316,6 +316,69 @@ func TestMaybeDisableAccountOnFailover_402_PermanentWithRecoverProbe(t *testing.
 	}
 }
 
+// 402 的处罚与 "Disable Failed Account on Failover" 开关解耦：开关只管其余状态码，
+// 402（没费用）始终停用账号——否则没有额度的账号会一直留在调度池里，每次请求
+// 都在它身上拿到 402，再把同样的错误换号抛给下一个账号。
+func TestMaybeDisableAccountOnFailover_402_DisablesEvenWhenSettingDisabled(t *testing.T) {
+	repo := &failoverDisableRepoStub{acct: &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true}}
+	before := time.Now()
+
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(false), repo,
+		repo.acct, http.StatusPaymentRequired, nil, alwaysFailover, "insufficient balance", nil)
+
+	if repo.updated == nil || repo.updated.Status != StatusError {
+		t.Fatal("402 must permanently disable the account even when the switch is off")
+	}
+	if repo.updated.RateLimitResetAt == nil ||
+		repo.updated.RateLimitResetAt.Before(before.Add(failover402RecoverProbeInterval-time.Minute)) {
+		t.Fatal("402 must still schedule the 24h auto-recover probe when the switch is off")
+	}
+	if !strings.Contains(repo.updated.ErrorMessage, FailoverAutoRecoverMessageTag) {
+		t.Fatalf("402 error message must carry auto-recover tag, got %q", repo.updated.ErrorMessage)
+	}
+}
+
+// 中转站账号 402：不再降级为 3 分钟短冷却。短冷却到期又被调度、又 402，会形成
+// 无限报错循环；余额不足是确定事实，只有停用 + 24h 探测才能在充值后自动恢复。
+func TestMaybeDisableAccountOnFailover_RelayUpstream_402_PermanentWithRecoverProbe(t *testing.T) {
+	repo := &failoverDisableRepoStub{acct: newRelayAccount(3)}
+	before := time.Now()
+
+	maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(false), repo,
+		repo.acct, http.StatusPaymentRequired, nil, alwaysFailover, "insufficient balance", nil)
+
+	if repo.tempCalled {
+		t.Fatal("relay 402 must not fall back to the relay short cooldown")
+	}
+	if repo.updated == nil || repo.updated.Status != StatusError {
+		t.Fatal("relay 402 must permanently disable the account")
+	}
+	if repo.updated.RateLimitResetAt == nil ||
+		repo.updated.RateLimitResetAt.Before(before.Add(failover402RecoverProbeInterval-time.Minute)) {
+		t.Fatal("relay 402 must schedule the 24h auto-recover probe")
+	}
+	if !strings.Contains(repo.updated.ErrorMessage, FailoverAutoRecoverMessageTag) {
+		t.Fatalf("relay 402 error message must carry auto-recover tag, got %q", repo.updated.ErrorMessage)
+	}
+}
+
+// 自带周期余额探测的账号（国产供应商 / Cline / Command Code / OpenCode Zen）：
+// 402 交给专属钱包分支做可自愈的临时停调，failover 处罚不得永久置 error
+// （探测任务只清自己写的临时停调，救不回 status=error 的账号）。
+func TestMaybeDisableAccountOnFailover_402_BalanceManagedAccountSkips(t *testing.T) {
+	for _, platform := range []string{PlatformDeepseek, PlatformKimi, PlatformCline, PlatformCommandCode} {
+		acct := &Account{ID: 4, Platform: platform, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true}
+		repo := &failoverDisableRepoStub{acct: acct}
+
+		maybeDisableAccountOnFailover(context.Background(), newFailoverDisableSettingService(true), repo,
+			acct, http.StatusPaymentRequired, nil, alwaysFailover, "insufficient balance", nil)
+
+		if repo.updated != nil || repo.tempCalled {
+			t.Fatalf("platform %s: balance-managed account must be left to its wallet/balance probe on 402", platform)
+		}
+	}
+}
+
 // 池模式账号完全跳过账号级惩罚：与 HandleUpstreamError 的池模式豁免口径一致，
 // 修复此前开关开启时池模式账号仍会被永久禁用的一致性缺口。
 func TestMaybeDisableAccountOnFailover_PoolMode_NoOp(t *testing.T) {

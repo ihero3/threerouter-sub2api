@@ -256,6 +256,55 @@ func TestDashboardAggregationService_CleanupDedupFailure_DoesNotRecord(t *testin
 	require.Equal(t, 1, repo.cleanupDedupCalls)
 }
 
+func TestDashboardAggregationService_InitialRetentionBackfillsBeforeUsageCleanup(t *testing.T) {
+	events := make([]string, 0, 4)
+	repo := &dashboardAggregationRepoTestStub{events: &events}
+	svc := &DashboardAggregationService{
+		repo: repo,
+		cfg: config.DashboardAggregationConfig{
+			Enabled: true,
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays:         3,
+				UsageBillingDedupDays: 4,
+				HourlyDays:            3,
+				DailyDays:             7,
+			},
+		},
+	}
+
+	now := time.Now().UTC()
+	svc.maybeCleanupRetention(context.Background(), now)
+
+	require.Equal(t, []string{"dashboard_aggregation"}, events[:1])
+	require.Equal(t, 1, repo.aggregateCalls)
+	require.Equal(t, 1, repo.cleanupUsageCalls)
+	require.Equal(t, now.AddDate(0, 0, -3), repo.cleanupUsageCutoff)
+	require.Equal(t, now.AddDate(0, 0, -3).AddDate(0, 0, -7), repo.lastStart)
+}
+
+func TestDashboardAggregationService_RetentionDoesNotDeleteAfterBackfillFailure(t *testing.T) {
+	repo := &dashboardAggregationRepoTestStub{aggregateErr: errors.New("aggregation unavailable")}
+	repo.watermark = time.Now().UTC().Add(-time.Hour)
+	svc := &DashboardAggregationService{
+		repo: repo,
+		cfg: config.DashboardAggregationConfig{
+			Enabled: true,
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays:         3,
+				UsageBillingDedupDays: 4,
+				HourlyDays:            3,
+				DailyDays:             7,
+			},
+		},
+	}
+
+	_, usageErr, _ := svc.cleanupRetention(context.Background(), time.Now().UTC())
+
+	require.Error(t, usageErr)
+	require.Zero(t, repo.cleanupUsageCalls)
+	require.Zero(t, repo.cleanupDedupCalls)
+}
+
 func TestDashboardAggregationService_PartitionFailure_DoesNotAggregate(t *testing.T) {
 	repo := &dashboardAggregationRepoTestStub{ensurePartitionErr: errors.New("partition failed")}
 	svc := &DashboardAggregationService{

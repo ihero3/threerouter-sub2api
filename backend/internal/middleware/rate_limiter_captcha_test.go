@@ -65,7 +65,7 @@ func performCaptchaRequest(router *gin.Engine, remoteAddr, userAgent string) *ht
 }
 
 func captchaFailCloseOptions() RateLimitOptions {
-	return RateLimitOptions{FailureMode: RateLimitFailClose}
+	return RateLimitOptions{FailureMode: RateLimitFailClose, FallbackOnError: true}
 }
 
 // 关键回归：同一 IP 携带不同 User-Agent 必须共享同一个限流桶。
@@ -174,7 +174,7 @@ func TestCaptchaRateLimitFailCloseStillLimitsOnRedisError(t *testing.T) {
 
 // IPv6 前缀归并仍生效：同一 /64 内轮换地址（且换 UA）仍共享同一额度。
 func TestCaptchaRateLimitIPv6PrefixStillSharesBudget(t *testing.T) {
-	opts := RateLimitOptions{FailureMode: RateLimitFailClose, IPv6PrefixBits: 64}
+	opts := RateLimitOptions{FailureMode: RateLimitFailClose, FallbackOnError: true, IPv6PrefixBits: 64}
 	router, callCounts := newCaptchaRateLimitTestRouter(t, "auth-captcha-challenge", 1, opts)
 
 	// 同一 /64 内轮换地址、并换 UA：仍应共享同一桶

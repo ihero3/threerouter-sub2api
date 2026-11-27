@@ -491,3 +491,43 @@ func TestForwardAsAnthropic_ResponsesSupportedAccountStillUsesResponsesEndpoint(
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.Equal(t, "ok", gjson.Get(rec.Body.String(), "content.0.text").String())
 }
+
+// 分组级 /v1/messages 调度映射产出的是公开模型名；转发时必须再经账号级
+// model_mapping 解析成真正的上游模型 ID，否则分组映射会绕过账号映射，
+// 把 deepseek-v4-pro / claude-opus-5 这类公开名直接发给只支持自家模型的
+// 上游（线上 A1-顾-小米套餐 → xiaomi、A1-未智数 → neutoken）。
+func TestForwardAsAnthropic_MessagesDispatchChainsThroughAccountMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"claude-3-5-haiku-20241022","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_dispatch_chain"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_chain","object":"chat.completion","model":"mimo-v2.6-pro","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	account := forceChatMessagesFallbackAccount()
+	account.Credentials["model_mapping"] = map[string]any{
+		"deepseek-v4-pro": "mimo-v2.6-pro",
+		"claude-opus-5":   "mimo-v2.6-pro",
+		"claude-opus-4.8": "mimo-v2.6-pro",
+	}
+
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "deepseek-v4-pro")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "mimo-v2.6-pro", gjson.GetBytes(upstream.lastBody, "model").String(),
+		"上游必须收到账号映射后的真实模型 ID，而不是分组公开别名")
+	require.Equal(t, "mimo-v2.6-pro", result.BillingModel)
+	require.Equal(t, "mimo-v2.6-pro", result.UpstreamModel)
+	require.Equal(t, "claude-3-5-haiku-20241022", gjson.Get(rec.Body.String(), "model").String(),
+		"响应模型必须回写为客户端请求的公开模型名")
+}

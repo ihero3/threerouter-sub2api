@@ -174,10 +174,18 @@ func TestIsOpenAICompatibleModelNotFound400(t *testing.T) {
 		{name: "model not found", body: `{"error":{"message":"Model not found: claude-x"}}`, want: true},
 		{name: "unknown model", body: `{"error":{"message":"unknown model: claude-x"}}`, want: true},
 		{name: "model unsupported", body: `{"error":{"message":"The requested model is not supported"}}`, want: true},
+		{name: "unsupported model with model name", body: `{"error":{"message":"Unsupported model deepseek-v4-pro"}}`, want: true},
+		{name: "unsupported model with numeric status code", body: `{"error":{"code":"400","message":"Unsupported model deepseek-v4-pro"}}`, want: true},
+		{name: "unsupported model structured code", body: `{"error":{"code":"unsupported_model","message":"rejected"}}`, want: true},
+		{name: "model does not exist", body: `{"error":{"message":"The model 'foo-9' does not exist"}}`, want: true},
 		{name: "plain text compatible gateway", body: `unknown provider for model claude-x`, want: true},
 		{name: "invalid parameter remains terminal", body: `{"error":{"code":"invalid_request_error","message":"Invalid value for temperature"}}`, want: false},
+		{name: "model output format remains terminal", body: `{"error":{"message":"This model output format is not supported"}}`, want: false},
+		{name: "the model output format remains terminal", body: `{"error":{"message":"The model output format is not supported"}}`, want: false},
+		{name: "quoted model not supported", body: `{"error":{"message":"The model 'foo-9' is not supported"}}`, want: true},
 		{name: "structured non-matching code overrides model not found message", body: `{"error":{"code":"invalid_request_error","message":"Model not found: claude-x"}}`, want: false},
 		{name: "structured non-matching error code overrides unsupported message", body: `{"error":{"code":"upstream_error","message":"The requested model is not supported"}}`, want: false},
+		{name: "numeric code does not hide unrelated 400", body: `{"error":{"code":"400","message":"Invalid value for temperature"}}`, want: false},
 		{name: "echoed phrase is ignored", body: `{"error":{"message":"Invalid request"},"echo":"model not found"}`, want: false},
 	}
 

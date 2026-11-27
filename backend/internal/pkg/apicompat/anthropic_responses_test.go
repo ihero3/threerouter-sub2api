@@ -206,7 +206,13 @@ func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
 
 	resp, err := AnthropicToResponses(req)
 	require.NoError(t, err)
-	assert.Equal(t, 128, *resp.MaxOutputTokens)
+	assert.Nil(t, resp.MaxOutputTokens)
+
+	req.MaxTokens = minMaxOutputTokens
+	resp, err = AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.MaxOutputTokens)
+	assert.Equal(t, minMaxOutputTokens, *resp.MaxOutputTokens)
 }
 
 // ---------------------------------------------------------------------------

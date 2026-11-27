@@ -459,10 +459,12 @@ func TestOpenAIGatewayForwardDoesNotRecurseWhenCompactFallbackAlsoFails(t *testi
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.bodies[1], "model").String())
 	var compactSignal *openAICompactFallbackSignal
 	require.False(t, errors.As(err, &compactSignal))
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	// 拍板（2026-09-24，本次落实）：400 message 必须是平台统一文案，不得回显上游原文
-	// "model not found"（code/type 仍保留，仅 message 统一化）。
-	require.Contains(t, recorder.Body.String(), "Upstream rejected the request")
+	// 模型不存在是确定性账号/上游能力问题，不再是未分类的 400：直接调用
+	// （无账号池可换号）时也返回明确的 model_not_found，而不是
+	// "Upstream rejected the request"。
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "model_not_found")
+	require.Contains(t, recorder.Body.String(), OpenAIModelNotSupportedClientMessage)
 	require.NotContains(t, recorder.Body.String(), "model not found", "不得下发上游原文")
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)

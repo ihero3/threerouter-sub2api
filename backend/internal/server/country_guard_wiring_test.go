@@ -15,7 +15,7 @@ import (
 func TestCountryGuardWiringIsPresent(t *testing.T) {
 	routerSrc, err := os.ReadFile("router.go")
 	require.NoError(t, err)
-	require.Contains(t, string(routerSrc), "NewCountryGuard(settingService, geoIPService)",
+	require.Contains(t, string(routerSrc), "NewCountryGuard(settingService, geoIPService, opsService)",
 		"全局中间件链必须挂载 CountryGuard")
 	require.Contains(t, string(routerSrc), "NewIPBlacklistGuard(settingService, opsService).Middleware()",
 		"CountryGuard 应与 IP 黑名单相邻、同在 SessionBindingContext 之后")

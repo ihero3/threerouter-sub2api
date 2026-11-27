@@ -1054,19 +1054,23 @@ func (r *userRepository) GetLatestUsedIPByUserIDs(ctx context.Context, userIDs [
 // 展示标「可疑」的 IP 同时会被扫描自动 abnormal 禁用 + 扣费（用户拍板 2026-11-20）。
 const sharedUsageIPsSQL = `
 	SELECT ip_address
-	FROM usage_logs
-	WHERE ip_address IS NOT NULL
-	  AND ip_address <> ''
-	  AND created_at >= now() - interval '10 days'
+	FROM (
+		SELECT ip_address, user_id
+		FROM usage_logs
+		WHERE ip_address IS NOT NULL
+		  AND ip_address <> ''
+		  AND created_at >= now() - interval '10 days'
+		GROUP BY ip_address, user_id
+	) distinct_ip_users
 	GROUP BY ip_address
-	HAVING COUNT(DISTINCT user_id) >= 5
+	HAVING COUNT(*) >= 5
 `
 
 // GetSharedUsageIPs 返回「最近 10 天内被 ≥5 个不同用户使用过」的客户端 IP 集合。
 // 用于管理端 Suspect 打标：某用户的最后使用 IP 若落在此集合，说明该 IP 同时被多个账号共用。
 // 阈值 5 为运营尺度（原为 2）；放宽以兼容公司/NAT/代理下的正常多人共用。
-// 注：usage_logs.ip_address 未建索引，海量数据下该全表聚合可能偏慢；如有性能压力，
-// 可对 ip_address（非空）建部分索引，或缩短时间窗口。
+// 注：查询先按 (ip_address, user_id) 去重再计数，避免在 COUNT(DISTINCT) 内重复排序，
+// 可命中 idx_usage_logs_created_ip_user 的覆盖索引；短 TTL 缓存吸收管理端重复刷新。
 func (r *userRepository) GetSharedUsageIPs(ctx context.Context) (map[string]bool, error) {
 	// Short-TTL cache: this aggregation scans all usage_logs in the 10-day window
 	// and is triggered on every admin user list page. Serve repeated reads from

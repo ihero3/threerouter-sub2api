@@ -196,8 +196,10 @@ func TestHandlePaymentRequiredError_CarriesRecoverProbe(t *testing.T) {
 	require.Contains(t, repo.lastErrorMsg, FailoverAutoRecoverMessageTag)
 }
 
-// 中转站账号 402：余额是中转站内部的事，只走 3min 短冷却，不禁用。
-func TestHandlePaymentRequiredError_RelayUpstreamTempCooldown(t *testing.T) {
+// 中转站账号 402：不再享受 3min 短冷却豁免——余额不足时换号治不了本，
+// 池里每个中转站账号都会陆续 402，短冷却到期又被调度，形成无限报错循环。
+// 因此与普通账号同口径：永久停用 + 24h 自动复活探测，充值后自动恢复。
+func TestHandlePaymentRequiredError_RelayUpstreamDisabledWithProbe(t *testing.T) {
 	repo := &authEscalationRepoStub{}
 	svc := newAuthEscalationService(repo, nil)
 	account := &Account{
@@ -206,13 +208,44 @@ func TestHandlePaymentRequiredError_RelayUpstreamTempCooldown(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{AccountExtraUpstreamRelay: true},
 	}
+	before := time.Now()
 
 	svc.handlePaymentRequiredError(context.Background(), account, "Payment required (402)")
 
-	require.Equal(t, 0, repo.setErrorCalls)
-	require.Equal(t, 0, repo.rateLimitedCalls)
-	require.Equal(t, 1, repo.tempCalls)
-	require.Contains(t, repo.lastTempReason, "Payment required (402)")
+	require.Equal(t, 1, repo.setErrorCalls, "relay 402 must also permanently disable the account")
+	require.Equal(t, 0, repo.tempCalls, "relay 402 must not fall back to the short temp cooldown")
+	require.Equal(t, 1, repo.rateLimitedCalls, "relay 402 must write the auto-recovery probe time")
+	require.True(t, repo.lastRateLimitedAt.After(before.Add(failover402RecoverProbeInterval-time.Minute)),
+		"probe interval must be ~24h, got %s", repo.lastRateLimitedAt)
+	require.Contains(t, repo.lastErrorMsg, "Payment required (402)")
+	require.Contains(t, repo.lastErrorMsg, FailoverAutoRecoverMessageTag)
+}
+
+// 完整链路（HandleUpstreamError → 402）同样口径：中转站账号永久停用 + 探测，
+// 不再走 relay 的 3 分钟短冷却——这是线上「没额度了账号一直回到调度池、一直报错」
+// 的直接原因。
+func TestHandleUpstreamError_RelayUpstream402_DisablesWithProbe(t *testing.T) {
+	repo := &authEscalationRepoStub{}
+	svc := newAuthEscalationService(repo, nil)
+	account := &Account{
+		ID:       912,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{AccountExtraUpstreamRelay: true},
+	}
+	before := time.Now()
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, http.StatusPaymentRequired, http.Header{},
+		[]byte(`{"error":{"message":"insufficient balance"}}`))
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.setErrorCalls, "relay 402 through HandleUpstreamError must disable the account")
+	require.Equal(t, 0, repo.tempCalls, "relay 402 must not be downgraded to the short temp cooldown")
+	require.Equal(t, 1, repo.rateLimitedCalls, "relay 402 must write the auto-recovery probe time")
+	require.True(t, repo.lastRateLimitedAt.After(before.Add(failover402RecoverProbeInterval-time.Minute)),
+		"probe interval must be ~24h, got %s", repo.lastRateLimitedAt)
+	require.Contains(t, repo.lastErrorMsg, "insufficient balance")
+	require.Contains(t, repo.lastErrorMsg, FailoverAutoRecoverMessageTag)
 }
 
 // ===== 成功/恢复清零升级计数 =====

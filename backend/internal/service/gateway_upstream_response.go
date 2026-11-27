@@ -558,6 +558,11 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 // 复活探测；其余状态码（401/403/405、无可信 reset 的 429、5xx）一律降级为临时
 // 冷却（5xx 10min、其余 30min），到期自动恢复调度，不再产生需要人工恢复的
 // status=error。池模式账号完全跳过账号级惩罚。
+//
+// 2026-11-27 补充：402 的处罚与上面的开关**解耦**（开关只管 401/403/404/429/5xx
+// 的处罚），因此即便开关关闭，402 仍会停用账号——没有余额时换号只是把同一个 402
+// 抛给下一个账号，用户看到的只会是一连串上游错误。中转站账号同样适用（此前只做
+// 3 分钟冷却，冷却到期又被调度，形成无限报错循环）。
 
 // isUpstreamCapabilityDenied 判断上游错误是否属于「账号/分组功能能力限制」类 403。
 // 这类错误的语义是"这个账号/分组没开通 X 功能"（如图像生成、某些高级 API），
@@ -710,6 +715,25 @@ func maybeDisableAccountOnFailover(
 			account.ID, statusCode, truncateString(strings.TrimSpace(upstreamMsg), 150))
 		return
 	}
+	// 402（余额/计费不足）是唯一「没费用就关号」的处罚，且不受
+	// "Disable Failed Account on Failover" 开关约束：
+	//   - 换号治不了本：没有余额时池里每个账号都会陆续 402，用户只会收到一连串
+	//     上游错误；中转站账号旧逻辑只做 3 分钟临时冷却，冷却结束又被调度、又 402，
+	//     形成「一直服务不了、一直报错」的循环；
+	//   - 语义明确且可自愈：充值后必然恢复，因此永久停用（status=error）但带 24h
+	//     自动复活探测，由 AccountAutoRecoveryService 自动放回调度池。
+	// 本分支必须位于开关检查之前，保证开关状态不改变 402 的处罚口径。
+	if statusCode == http.StatusPaymentRequired {
+		// 国产供应商 / Cline / Command Code / OpenCode Zen 自带周期余额探测：
+		// 402 由 HandleUpstreamError 的专属钱包分支做可自愈的临时停调，这里不插手
+		// （永久 status=error 后探测任务救不回来，它只清自己写入的临时停调）。
+		if isBalanceManagedAccount(account) {
+			return
+		}
+		disablePaymentRequiredAccount(ctx, accountRepo, account, upstreamMsg)
+		return
+	}
+
 	if !settingService.IsDisableFailedAccountOnFailoverEnabled(ctx) {
 		return
 	}
@@ -745,6 +769,7 @@ func maybeDisableAccountOnFailover(
 	// 中转站账号：上游透传的账号级错误不代表本账号 Key 失效，永久禁用会误杀
 	// 仍能服务其他模型/其他时段的健康 Key。降级为临时冷却，到期自动恢复调度。
 	// 429 已带可信重置时间的保持原有自动恢复逻辑（recoverAt != nil），不在此覆盖。
+	// 402（余额不足）不在此列：它已在开关检查之前被永久禁用 + 24h 探测（见上）。
 	if recoverAt == nil && account.IsRelayUpstream() {
 		until := time.Now().Add(relayUpstreamCooldown)
 		if err := accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
@@ -765,25 +790,6 @@ func maybeDisableAccountOnFailover(
 		return
 	}
 	now := time.Now()
-
-	// 402（余额/计费不足）是唯一允许永久禁用的状态码（用户哲学：只有没费用才关号），
-	// 但必须带自动复活探测：error_message 写 [auto-recover at ...] 标记 +
-	// rate_limit_reset_at = now + 24h，AccountAutoRecoveryService 每 24h 把账号
-	// 放回调度池试一次，充值后无需人工恢复。
-	if statusCode == http.StatusPaymentRequired {
-		probeAt := now.Add(failover402RecoverProbeInterval)
-		msg = ensureFailoverAutoRecoverTag(msg, probeAt)
-		acct.Status = StatusError
-		acct.RateLimitedAt = &now
-		acct.RateLimitResetAt = &probeAt
-		acct.ErrorMessage = msg
-		if err := accountRepo.Update(ctx, acct); err != nil {
-			logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: failed to disable account %d: %v", account.ID, err)
-			return
-		}
-		logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d disabled after upstream HTTP 402, auto-recover probe at %s", account.ID, probeAt.Format(time.RFC3339))
-		return
-	}
 
 	// 429 带可信 reset：保持原有「禁用 + 到期自动恢复」逻辑（恢复时间来自上游）。
 	if recoverAt != nil {
@@ -809,6 +815,58 @@ func maybeDisableAccountOnFailover(
 		return
 	}
 	logger.LegacyPrintf("service.gateway", "DisableFailedAccountOnFailover: account %d temp cooldown until %s after upstream HTTP %d", account.ID, until.Format(time.RFC3339), statusCode)
+}
+
+// isBalanceManagedAccount 判断账号的 402（余额/不足）是否由专属钱包/余额探测链路接管。
+//
+// 国产供应商（Kimi/DeepSeek/Zhipu）、Cline、Command Code、OpenCode Zen 都有周期
+// 余额/积分探测任务：402 时只做可自愈的临时停调，充值后由探测任务清除临时停调。
+// 这些账号不能被 failover 处罚永久置为 status=error——探测任务只清自己写入的临时
+// 停调，救不回 error 状态，账号会一直停在调度池外，只能人工恢复。
+func isBalanceManagedAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	return account.IsCNProvider() || account.IsCline() || account.IsCommandCode() || account.IsOpenCodeZen()
+}
+
+// disablePaymentRequiredAccount 把 402（余额/计费不足）账号永久停用
+// （status=error、移出调度池），并写入 24h 自动复活探测：
+//   - error_message 追加 [auto-recover at ...] 标记；
+//   - rate_limit_reset_at = now + 24h。
+//
+// AccountAutoRecoveryService 每分钟扫描一次，到期后把带标记的 error 账号放回调度池
+// 试一次，充值后无需人工恢复。这一处罚与 "Disable Failed Account on Failover"
+// 开关无关：没有余额时 failover 只是把同一个 402 转嫁给下一个账号，用户会持续收到
+// 上游错误；中转站（upstream_relay）账号同样适用，否则 3 分钟冷却到期后又被调度，
+// 形成无限报错循环。
+func disablePaymentRequiredAccount(ctx context.Context, accountRepo failoverDisableRepo, account *Account, upstreamMsg string) {
+	if accountRepo == nil || account == nil {
+		return
+	}
+	acct, err := accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "DisablePaymentRequired: failed to load account %d: %v", account.ID, err)
+		return
+	}
+	if acct.Status == StatusError {
+		return
+	}
+	now := time.Now()
+	probeAt := now.Add(failover402RecoverProbeInterval)
+	msg := "Auto-disabled on upstream failover: HTTP 402"
+	if trimmed := strings.TrimSpace(upstreamMsg); trimmed != "" {
+		msg = fmt.Sprintf("%s (%s)", msg, truncateString(trimmed, 200))
+	}
+	acct.Status = StatusError
+	acct.RateLimitedAt = &now
+	acct.RateLimitResetAt = &probeAt
+	acct.ErrorMessage = ensureFailoverAutoRecoverTag(msg, probeAt)
+	if err := accountRepo.Update(ctx, acct); err != nil {
+		logger.LegacyPrintf("service.gateway", "DisablePaymentRequired: failed to disable account %d: %v", account.ID, err)
+		return
+	}
+	logger.LegacyPrintf("service.gateway", "DisablePaymentRequired: account %d disabled after upstream HTTP 402, auto-recover probe at %s", account.ID, probeAt.Format(time.RFC3339))
 }
 
 // failoverServerErrorTempCooldown / failoverClientErrorTempCooldown 是 failover

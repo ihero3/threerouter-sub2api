@@ -19,6 +19,7 @@ import (
 var (
 	usageLogStaticInsertShapeRe = regexp.MustCompile(`(?s)INSERT INTO usage_logs \((.*?)\) VALUES \((.*?)\)`)
 	usageLogPlaceholderRe       = regexp.MustCompile(`\$(\d+)`)
+	usageLogColumnListRe        = regexp.MustCompile(`(?s)(?:INSERT INTO usage_logs \(|WITH input \()\s*(.*?)\)`)
 )
 
 // newSQLCapturingMock 返回把实际下发 SQL 记录到 captured 的 sqlmock；语句一律视为匹配，
@@ -43,13 +44,9 @@ func requireStaticInsertMatchesArgTypes(t *testing.T, query string) {
 	require.Len(t, m, 3, "unrecognised INSERT shape:\n%s", query)
 
 	want := len(usageLogInsertArgTypes)
-	columns := 0
-	for _, col := range strings.Split(m[1], ",") {
-		if strings.TrimSpace(col) != "" {
-			columns++
-		}
-	}
-	require.Equal(t, want, columns, "INSERT column list must match usageLogInsertArgTypes")
+	columns := normalizedUsageLogColumns(m[1])
+	require.Equal(t, want, len(columns), "INSERT column list must match usageLogInsertArgTypes")
+	require.Equal(t, usageLogInsertColumnNames[:], columns, "INSERT column order must match usageLogInsertColumnNames")
 
 	seen := make(map[int]struct{}, want)
 	for _, ph := range usageLogPlaceholderRe.FindAllStringSubmatch(m[2], -1) {
@@ -142,4 +139,65 @@ func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
 	require.False(t, nullArg.Valid, "absent upstream request id must be NULL")
 
 	require.Contains(t, usageLogSelectColumns, "upstream_request_id")
+}
+
+func TestUsageLogGeneratedInsertColumnListsMatchArgTypes(t *testing.T) {
+	log := &service.UsageLog{
+		UserID:    1,
+		APIKeyID:  2,
+		AccountID: 3,
+		RequestID: "req-generated-columns",
+		Model:     "gpt-5",
+		AccountStatsCost: func() *float64 {
+			value := 0.1
+			return &value
+		}(),
+		CreatedAt: time.Now().UTC(),
+	}
+	prepared := prepareUsageLogInsert(log)
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+
+	queries := []string{
+		usageLogNoResultInsertSQL,
+		mustBuildUsageLogBatchQuery(t, prepared),
+		mustBuildUsageLogBestEffortQuery(t, prepared),
+	}
+	for _, query := range queries {
+		matches := usageLogColumnListRe.FindAllStringSubmatch(query, -1)
+		require.NotEmpty(t, matches)
+		for _, match := range matches {
+			columns := normalizedUsageLogColumns(match[1])
+			if len(columns) == 0 || columns[0] != "user_id" {
+				continue
+			}
+			require.Equal(t, len(usageLogInsertArgTypes), len(columns), "generated INSERT column count mismatch")
+		}
+	}
+}
+
+func mustBuildUsageLogBatchQuery(t *testing.T, prepared usageLogInsertPrepared) string {
+	t.Helper()
+	query, _ := buildUsageLogBatchInsertQuery([]string{"req-generated-columns"}, map[string]usageLogInsertPrepared{
+		"req-generated-columns": prepared,
+	})
+	return query
+}
+
+func mustBuildUsageLogBestEffortQuery(t *testing.T, prepared usageLogInsertPrepared) string {
+	t.Helper()
+	query, _ := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared})
+	return query
+}
+
+func normalizedUsageLogColumns(raw string) []string {
+	parts := strings.Split(raw, ",")
+	columns := make([]string, 0, len(parts))
+	for _, part := range parts {
+		column := strings.TrimSpace(part)
+		if column == "" {
+			continue
+		}
+		columns = append(columns, column)
+	}
+	return columns
 }

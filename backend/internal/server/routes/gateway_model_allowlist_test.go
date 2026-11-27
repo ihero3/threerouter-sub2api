@@ -70,32 +70,34 @@ func TestGatewayRoutesGroupModelAllowlistMountedOnEveryGatewayRoute(t *testing.T
 	source := string(routeSource)
 
 	// rootRoute helper：apiKeyAuth 之后、compositeTarget 之前。
-	rootHelper := regexp.MustCompile(regexp.QuoteMeta(`r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)`))
+	rootHelper := regexp.MustCompile(regexp.QuoteMeta(`r.Handle(method, path, ipLimit, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)`))
 	require.Regexp(t, rootHelper, source,
 		"root alias helper must place the allowlist between apiKeyAuth and compositeTarget")
 
-	chains := []struct {
-		group     string
-		auth      string
-		marker    string
-		composite string
-	}{
-		{group: "gateway", auth: "gin.HandlerFunc(apiKeyAuth)", marker: "gateway.Use(groupModelAllowlist)", composite: "gateway.Use(compositeTarget)"},
-		{group: "gemini", auth: "middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg)", marker: "gemini.Use(groupModelAllowlist)", composite: "gemini.Use(compositeGeminiTarget)"},
-		{group: "antigravityV1", auth: "gin.HandlerFunc(apiKeyAuth)", marker: "antigravityV1.Use(groupModelAllowlist)", composite: "antigravityV1.Use(requireGroupAnthropic)"},
-		{group: "antigravityV1Beta", auth: "middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg)", marker: "antigravityV1Beta.Use(groupModelAllowlist)", composite: "antigravityV1Beta.Use(requireGroupGoogle)"},
+	billing := regexp.MustCompile(regexp.QuoteMeta(`gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)`))
+	require.Regexp(t, billing, source,
+		"billing introspection must stay ahead of group assignment for simple-mode 404s")
+	require.Less(t, strings.Index(source, `gateway.GET("/sub2api/billing"`), strings.Index(source, `gateway.Use(compositeTarget)`),
+		"billing introspection must not depend on the model allowlist")
+
+	requireRouteOrder := func(auth, marker, composite string) {
+		t.Helper()
+		authIndex := strings.Index(source, auth)
+		markerIndex := strings.Index(source, marker)
+		compositeIndex := strings.Index(source, composite)
+		require.NotEqual(t, -1, authIndex, "auth middleware missing: %s", auth)
+		require.NotEqual(t, -1, markerIndex, "allowlist middleware missing: %s", marker)
+		require.NotEqual(t, -1, compositeIndex, "composite middleware missing: %s", composite)
+		require.Less(t, authIndex, markerIndex, "%s must follow auth", marker)
+		require.Less(t, markerIndex, compositeIndex, "%s must precede %s", marker, composite)
 	}
-	for _, chain := range chains {
-		re := regexp.MustCompile(
-			regexp.QuoteMeta(chain.group+".Use("+chain.auth) +
-				`[\s\S]{0,400}?` + regexp.QuoteMeta(chain.marker) +
-				`[\s\S]{0,400}?` + regexp.QuoteMeta(chain.composite))
-		require.Regexp(t, re, source,
-			"%s chain must mount groupModelAllowlist after auth and before %s", chain.group, chain.composite)
-	}
+	requireRouteOrder("gateway.Use(gin.HandlerFunc(apiKeyAuth))", "gateway.Use(groupModelAllowlist)", "gateway.Use(compositeTarget)")
+	requireRouteOrder("gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))", "gemini.Use(groupModelAllowlist)", "gemini.Use(compositeGeminiTarget)")
+	requireRouteOrder("antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))", "antigravityV1.Use(groupModelAllowlist)", "antigravityV1.Use(requireGroupAnthropic)")
+	requireRouteOrder("antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))", "antigravityV1Beta.Use(groupModelAllowlist)", "antigravityV1Beta.Use(requireGroupGoogle)")
 
 	// codexDirect 链是一条 Use 调用，直接断言顺序。
-	codexDirect := regexp.MustCompile(regexp.QuoteMeta(`codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)`))
+	codexDirect := regexp.MustCompile(regexp.QuoteMeta(`codexDirect.Use(ipLimit, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)`))
 	require.Regexp(t, codexDirect, source, "codexDirect chain must mount the allowlist after auth and before compositeTarget")
 
 	// 所有带 apiKeyAuth 的根路径路由必须收敛到 rootRoute，避免漏挂。

@@ -363,20 +363,106 @@ func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
 	return isOpenAICompatibleModelNotFoundBody(respBody)
 }
 
+// openAICompatibleModelNotFoundCodes 是上游用结构化 error.code 明确表达
+// 「当前账号/上游没有这个模型」的取值。命中即视为账号能力问题。
+var openAICompatibleModelNotFoundCodes = map[string]struct{}{
+	"model_not_found":     {},
+	"model_not_available": {},
+	"model_not_supported": {},
+	"unsupported_model":   {},
+	"invalid_model":       {},
+}
+
+func isOpenAICompatibleModelNotFoundCode(code string) bool {
+	_, ok := openAICompatibleModelNotFoundCodes[strings.ToLower(strings.TrimSpace(code))]
+	return ok
+}
+
+// isOpaqueOpenAICompatibleErrorCode 判断 code 是否不携带分类语义，从而不应
+// 压住正文判定。为空，或只是把 HTTP 状态码回填进 code 字段（线上真实报文
+// {"error":{"code":"400","message":"Unsupported model deepseek-v4-pro"}}）都属此类。
+// 反之 semantic 非模型错误码（invalid_request_error / upstream_error 等）仍然
+// 优先于正文，避免把上游回显的请求内容误判成模型不存在。
+func isOpaqueOpenAICompatibleErrorCode(code string) bool {
+	code = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(code)), "http_")
+	if code == "" {
+		return true
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// openAICompatibleModelNotFoundPhrases 覆盖各类 OpenAI 兼容上游（含中转站）
+// 对「模型不存在/不支持」的常见措辞。只匹配模型级短语，避免把普通参数错误
+// （如 "model output format is not supported"）误判为模型不存在。
+var openAICompatibleModelNotFoundPhrases = []string{
+	"unknown provider for model",
+	"unknown model",
+	"model not found",
+	"model does not exist",
+	"model was not found",
+	"model is not supported",
+	"model is unsupported",
+	"model is unavailable",
+	"model is not available",
+	"unsupported model",
+	"no such model",
+	"does not support the requested model",
+	"not supported by any configured account",
+	"not supported by any account",
+}
+
+func containsOpenAICompatibleModelNotFoundPhrase(msg string) bool {
+	if msg == "" {
+		return false
+	}
+	for _, phrase := range openAICompatibleModelNotFoundPhrases {
+		if strings.Contains(msg, phrase) {
+			return true
+		}
+	}
+	// 模型名夹在主语和结论之间时（"The model 'foo-9' does not exist"），
+	// 固定短语无法连续匹配。仅在消息以模型为主语时放宽，避免把
+	// "This model output format is not supported" 之类的能力错误误判。
+	if strings.HasPrefix(msg, "the model ") ||
+		strings.HasPrefix(msg, "model ") ||
+		strings.HasPrefix(msg, "the requested model ") ||
+		strings.HasPrefix(msg, "requested model ") {
+		if strings.Contains(msg, " does not exist") ||
+			strings.Contains(msg, " was not found") ||
+			strings.Contains(msg, " is unavailable") ||
+			strings.Contains(msg, " is not available") {
+			return true
+		}
+		// "The model output format is not supported" 讲的是输出能力，不是模型
+		// 不存在；只有消息里带引号/反引号的模型标识时才接受支持性否定。
+		if strings.ContainsAny(msg, "'\"`") {
+			return strings.Contains(msg, " is not supported") ||
+				strings.Contains(msg, " is unsupported") ||
+				strings.Contains(msg, " does not support")
+		}
+	}
+	return false
+}
+
 func isOpenAICompatibleModelNotFoundBody(respBody []byte) bool {
+	if len(respBody) == 0 {
+		return false
+	}
 	code := strings.TrimSpace(extractUpstreamErrorCode(respBody))
-	if code != "" {
-		return strings.EqualFold(code, "model_not_found")
+	if !isOpaqueOpenAICompatibleErrorCode(code) {
+		return isOpenAICompatibleModelNotFoundCode(code)
 	}
 
 	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 	if msg == "" && !gjson.ValidBytes(respBody) {
 		msg = strings.ToLower(strings.TrimSpace(string(respBody)))
 	}
-	return strings.Contains(msg, "unknown provider for model") ||
-		strings.Contains(msg, "unknown model") ||
-		strings.Contains(msg, "model not found") ||
-		strings.Contains(msg, "model is not supported")
+	return containsOpenAICompatibleModelNotFoundPhrase(msg)
 }
 
 // IsOpenAICompatibleModelNotFound400 reports whether an OpenAI-compatible 400
@@ -384,6 +470,16 @@ func isOpenAICompatibleModelNotFoundBody(respBody []byte) bool {
 func IsOpenAICompatibleModelNotFound400(respBody []byte) bool {
 	return isOpenAICompatibleModelNotFound400(respBody)
 }
+
+// OpenAIModelNotSupportedReason 标识「选中账号的上游不支持该模型」类确定性
+// 400。属账号能力不匹配：可换号重试，全部候选都不支持时向客户端返回明确的
+// model_not_found，而不是未分类的 400。
+const OpenAIModelNotSupportedReason = GatewayFailureReason("openai_model_not_supported")
+
+// OpenAIModelNotSupportedClientMessage 是所有候选账号都不支持请求模型时
+// 回给客户端的兜底文案（不点名内部映射后的上游模型）。网关 handler 优先
+// 使用客户端请求的公开模型名拼出更具体的文案。
+const OpenAIModelNotSupportedClientMessage = "The requested model is not supported by any available upstream account"
 
 // OpenAIRequestBodyTooLargeClientMessage is the fixed downstream message used
 // after all account-specific request body limit failovers are exhausted.
@@ -570,6 +666,20 @@ func newOpenAIUpstreamFailoverError(
 		failoverErr.NextAccountAction = NextAccountRetry
 		failoverErr.ClientStatusCode = http.StatusBadRequest
 		failoverErr.ClientMessage = openAIUnsupportedFeatureClientMessage
+	}
+	// 400「Unsupported model X / model not found」是确定性账号能力不匹配：本账号
+	// 换多少次都失败，但换一个映射/接入了该模型的上游账号仍可能成功，因此可换号。
+	// 与普通参数 400 区分开，避免把所有候选账号都撞一遍后只给客户端一句
+	// "Upstream rejected the request"（无法定位是被映射后的哪个模型挡住）。
+	// 只在尚未命中更特定分类时生效，避免覆盖 max_completion_tokens 等专属原因。
+	if failoverErr.Reason == "" && statusCode == http.StatusBadRequest && isOpenAICompatibleModelNotFoundBody(responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = OpenAIModelNotSupportedReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusNotFound
+		failoverErr.ClientMessage = OpenAIModelNotSupportedClientMessage
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
@@ -934,6 +1044,22 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	// 回真实状态码 + invalid_request_error + 真实 message；/v1/images 还额外透传
 	// code/param。原生 Responses 是唯一漏掉的一条。
 	if isOpenAIDeterministicClientError(resp.StatusCode) {
+		// 没有账号选择器可消费 failover 哨兵（直接/单账号调用）时，模型不存在
+		// 也不能退化成 "Upstream rejected the request"：给客户端明确的 404。
+		if resp.StatusCode == http.StatusBadRequest && account != nil && account.IsOpenAICompatible() &&
+			isOpenAICompatibleModelNotFoundBody(body) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalModelConfiguration)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "model_not_found",
+					"message": OpenAIModelNotSupportedClientMessage,
+				},
+			})
+			if upstreamMsg == "" {
+				return nil, fmt.Errorf("upstream error: %d model not supported", resp.StatusCode)
+			}
+			return nil, fmt.Errorf("upstream error: %d model not supported: %s", resp.StatusCode, upstreamMsg)
+		}
 		writeOpenAIUpstreamClientError(c, resp.StatusCode, body)
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -1112,6 +1238,21 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
+	// 单账号/无账号池模式或上游平台自身判定不换号时，无法通过换号自愈；
+	// 「上游不支持该模型」仍需以明确的 model_not_found 回给客户端，而不是
+	// 未分类的 400 通用文案。放在 shouldDisable 早退之前，避免被裸
+	// UpstreamFailoverError 吞掉原因后由 handler 映射成通用上游错误。
+	if resp.StatusCode == http.StatusBadRequest && account != nil && account.IsOpenAICompatible() &&
+		isOpenAICompatibleModelNotFoundBody(body) {
+		MarkResponseCommitted(c)
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		writeError(c, http.StatusNotFound, "model_not_found", OpenAIModelNotSupportedClientMessage)
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: 400 model not supported")
+		}
+		return nil, fmt.Errorf("upstream error: 400 model not supported: %s", upstreamMsg)
+	}
+
 	if shouldDisable {
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
