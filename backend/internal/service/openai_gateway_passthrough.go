@@ -749,6 +749,10 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 	if isOpenAIRequestBodyTooLargeError(statusCode, "", responseBody) {
 		return true
 	}
+	// 透传模式的参数错误同样是确定性的客户端问题：换号不会成功，禁止放大。
+	if isOpenAICompatibleClientParameterError(statusCode, responseBody) {
+		return false
+	}
 	// 透传模式下模型名由客户端决定、账号映射被绕过：同一模型在不同账号上的
 	// 可用性可能不同，400 模型不存在属账号能力不匹配，可换号重试。
 	if statusCode == http.StatusBadRequest && account != nil && account.IsOpenAICompatible() &&
@@ -960,6 +964,11 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 	})
+	// 参数错误归因客户端：Ops 记为 request/client_request，不再算上游故障。
+	clientParameterError := resp.StatusCode == http.StatusBadRequest && isOpenAICompatibleClientParameterError(resp.StatusCode, body)
+	if clientParameterError {
+		MarkOpsRequestScopedError(c, openAIUpstreamClientErrorFallbackType)
+	}
 	// context-window 超限是确定性请求失败（shouldFailoverOpenAIPassthroughResponse
 	// 已保证不切号），其文案对客户端可操作（如触发自动压缩）；在净化信封内保留
 	// 脱敏后的上游消息，而不是抹成通用文案。

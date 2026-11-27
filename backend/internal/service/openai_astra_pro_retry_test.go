@@ -57,7 +57,7 @@ func TestOpenAIGatewayService_OAuthAstraProModeRejectionPassesThrough(t *testing
 	require.Equal(t, "model_specific_rejection", gjson.Get(respJSON, "error.code").String())
 	require.Equal(t, "reasoning.mode", gjson.Get(respJSON, "error.param").String())
 	// 本地策略：上游错误原文一律不下发客户端，统一用平台话术。
-	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(respJSON, "error.message").String())
+	require.Equal(t, OpenAIClientParameterErrorClientMessage, gjson.Get(respJSON, "error.message").String())
 }
 
 // TestOpenAIGatewayService_OAuthAstraProModeKeptAcrossRejectedFieldRetry reuses

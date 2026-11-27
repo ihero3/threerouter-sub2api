@@ -96,6 +96,12 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// 客户端参数错误只与请求体有关，与账号健康无关：不得因一次非法参数请求
+	// 停用/冷却账号，也不得写入模型级冷却（同一上游仍在服务其他用户）。
+	if account != nil && account.IsOpenAICompatible() && isOpenAICompatibleClientParameterError(statusCode, responseBody) {
+		slog.Info("openai_client_parameter_error_skipped", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
 	// 两类「意外」502（通用 "Upstream request failed"、上游响应流被中断）目前多为上游
 	// 瞬时抖动，不代表账号本身不可用：跳过永久停用与所有冷却/降权，账号保持正常调度。
 	unexpectedIncident := isUnexpectedOpenAIUpstream502(statusCode, responseBody)

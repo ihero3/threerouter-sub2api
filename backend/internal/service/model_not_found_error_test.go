@@ -178,6 +178,11 @@ func TestIsOpenAICompatibleModelNotFound400(t *testing.T) {
 		{name: "unsupported model with numeric status code", body: `{"error":{"code":"400","message":"Unsupported model deepseek-v4-pro"}}`, want: true},
 		{name: "unsupported model structured code", body: `{"error":{"code":"unsupported_model","message":"rejected"}}`, want: true},
 		{name: "model does not exist", body: `{"error":{"message":"The model 'foo-9' does not exist"}}`, want: true},
+		// #161357：DeepSeek 官方把「模型不在支持清单」包在通用 invalid_request_error 里，
+		// 结构化 code 不能压掉正文的模型能力语义。
+		{name: "deepseek supported model list mismatch", body: `{"error":{"code":"invalid_request_error","message":"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed claude-opus-5.","param":null,"type":"invalid_request_error"}}`, want: true},
+		{name: "deepseek supported model list bare field", body: `{"error":{"message":"The supported model names are a, b, but you passed c."}}`, want: true},
+		{name: "supported list phrase without passed model", body: `{"error":{"message":"The supported API model names are deepseek-flash, deepseek-v4-pro."}}`, want: false},
 		{name: "plain text compatible gateway", body: `unknown provider for model claude-x`, want: true},
 		{name: "invalid parameter remains terminal", body: `{"error":{"code":"invalid_request_error","message":"Invalid value for temperature"}}`, want: false},
 		{name: "model output format remains terminal", body: `{"error":{"message":"This model output format is not supported"}}`, want: false},

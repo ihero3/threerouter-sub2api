@@ -3859,6 +3859,10 @@ func (h *OpenAIGatewayHandler) handleFailoverExhaustedSimple(c *gin.Context, sta
 
 func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
 	switch statusCode {
+	case 400:
+		// 400 是确定性请求参数错误，不是链路故障：保留真实 400，并给用户可操作的
+		// 参数提示（旧映射成 502 upstream_error 会诱发客户端重试风暴）。
+		return http.StatusBadRequest, "invalid_request_error", service.OpenAIClientParameterErrorClientMessage
 	case 401:
 		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
 	case 403:

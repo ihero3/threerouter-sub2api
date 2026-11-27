@@ -130,7 +130,7 @@ func TestHandleErrorResponse_Deterministic400IsNotRewrappedAs502(t *testing.T) {
 	require.Equal(t, "input[8].tools[1].tools[2].parameters", gjson.Get(body, "error.param").String(),
 		"param 是客户端定位哪个字段非法的唯一线索")
 	// 拍板：400 message 必须是平台统一文案，不得回显上游原文（type/code/param 仍保留）。
-	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String())
+	require.Equal(t, OpenAIClientParameterErrorClientMessage, gjson.Get(body, "error.message").String())
 	require.NotContains(t, body, "Invalid schema for function 'automation_update'", "不得下发上游原文")
 	require.NotContains(t, body, "Upstream request failed")
 
@@ -188,7 +188,7 @@ func TestHandleErrorResponse_Deterministic400WithoutUpstreamMetadata(t *testing.
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	body := rec.Body.String()
 	require.Equal(t, "invalid_request_error", gjson.Get(body, "error.type").String())
-	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String(),
+	require.Equal(t, OpenAIClientParameterErrorClientMessage, gjson.Get(body, "error.message").String(),
 		"拍板：message 必须是平台统一文案，不得回显上游原文 Invalid 'input': expected an array.")
 	require.False(t, gjson.Get(body, "error.code").Exists(), "上游没给 code 就不要编一个")
 	require.False(t, gjson.Get(body, "error.param").Exists(), "上游没给 param 就不要编一个")
@@ -338,7 +338,7 @@ func TestWriteOpenAIUpstreamClientError_PayloadShape(t *testing.T) {
 			body := rec.Body.String()
 			require.Equal(t, tc.wantType, gjson.Get(body, "error.type").String())
 			// 拍板：400 message 必须是平台统一文案，不得回显上游原文。
-			require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gjson.Get(body, "error.message").String())
+			require.Equal(t, OpenAIClientParameterErrorClientMessage, gjson.Get(body, "error.message").String())
 			if tc.wantCode == "" {
 				require.False(t, gjson.Get(body, "error.code").Exists())
 			} else {

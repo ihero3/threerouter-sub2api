@@ -574,3 +574,29 @@ func TestRateLimitService_HandleUpstreamError_UnsupportedModel400UsesModelRateLi
 	require.Equal(t, upstreamModelNotFound400Reason, call.reason)
 	require.WithinDuration(t, time.Now().Add(upstreamModelNotFoundCooldown), call.resetAt, 5*time.Second)
 }
+
+// DeepSeek 官方把「模型不在支持清单」包在 invalid_request_error 里（#161357）：
+// 结构化 code 是通用参数错误，但正文已明确是模型能力问题，仍须按模型级冷却、
+// 不能被参数错误守卫吞掉。
+func TestRateLimitService_HandleUpstreamError_DeepSeekSupportedModelListUsesModelRateLimit(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAIModelNotFoundTempAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{},
+		[]byte(`{"error":{"code":"invalid_request_error","message":"The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed claude-opus-5.","param":null,"type":"invalid_request_error"}}`),
+		"claude-opus-5",
+	)
+
+	require.True(t, handled)
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	call := repo.modelRateLimitCalls[0]
+	require.Equal(t, account.ID, call.accountID)
+	require.Equal(t, "claude-opus-5", call.scope)
+	require.Equal(t, upstreamModelNotFound400Reason, call.reason)
+}

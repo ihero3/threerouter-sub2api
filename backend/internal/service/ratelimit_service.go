@@ -353,6 +353,13 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	// 上游 400 明确是请求参数非法（如 "Invalid request parameters."）时，账号本身
+	// 仍然健康：同一份请求体换任何账号都会被同样拒绝。不得冷却/停用账号，也不得
+	// 让自定义错误码/临时不可调度规则把一次客户端错误扩大成上游故障。
+	if account != nil && account.IsOpenAICompatible() && isOpenAICompatibleClientParameterError(statusCode, responseBody) {
+		slog.Info("upstream_client_parameter_error_skipped", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
@@ -2871,6 +2878,11 @@ func matchTempUnschedulableRules(account *Account, statusCode int, responseBody 
 
 func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
+		return false
+	}
+	// 客户端参数错误即使命中管理员配置的 400 关键字规则，也不应冷却上游账号：
+	// 规则命中的是「请求体里的某个参数」，与账号健康无关。
+	if account.IsOpenAICompatible() && isOpenAICompatibleClientParameterError(statusCode, responseBody) {
 		return false
 	}
 	if !account.IsTempUnschedulableEnabled() {

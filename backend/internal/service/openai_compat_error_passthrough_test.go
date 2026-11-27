@@ -79,7 +79,7 @@ func TestHandleCompatErrorResponse_Deterministic400DoesNotLeakUpstream(t *testin
 	t.Parallel()
 
 	// 拍板（2026-09-24，本次落实）：确定性 400 的 message 不再回显上游原文，
-	// 统一用平台文案（openAIUpstreamClientErrorFallbackMessage）。type/code/param 等
+	// 统一用「参数非法」平台文案（OpenAIClientParameterErrorClientMessage）。type/code/param 等
 	// 结构化字段仍由调用方自行处理，本处只校验 message 不含上游文本。
 	body := `{"error":{"type":"invalid_request_error","message":"Invalid schema for function 'foo': got None"}}`
 
@@ -95,7 +95,7 @@ func TestHandleCompatErrorResponse_Deterministic400DoesNotLeakUpstream(t *testin
 	}
 	_, err := (&OpenAIGatewayService{}).handleCompatErrorResponse(resp, c, newCompatErrorAccount(), writeError)
 	require.Error(t, err)
-	require.Equal(t, openAIUpstreamClientErrorFallbackMessage, gotMsg, "400 message 必须是平台统一文案")
+	require.Equal(t, OpenAIClientParameterErrorClientMessage, gotMsg, "400 message 必须是平台统一文案")
 	require.NotContains(t, gotMsg, "Invalid schema for function 'foo'", "不得下发上游原文")
 }
 

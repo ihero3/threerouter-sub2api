@@ -340,6 +340,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
+	// 请求参数非法是确定性客户端错误：同一份请求体换号也必然失败，不得触发
+	// failover（否则一次 400 被放大成 N 次上游调用），也不得让调用方误判为
+	// 账号能力不足。可换号的专属 400 已在上面先行返回。
+	if isOpenAICompatibleClientParameterError(statusCode, upstreamBody) {
+		return false
+	}
 	// A missing model is account/provider availability, not a malformed client
 	// request. Keep this unconditional exception inside the OpenAI-compatible
 	// gateway and require an eligible account so Anthropic/Gemini paths retain
@@ -453,6 +459,16 @@ func isOpenAICompatibleModelNotFoundBody(respBody []byte) bool {
 	if len(respBody) == 0 {
 		return false
 	}
+	// DeepSeek 官方在请求模型不在其支持清单时返回 400，但把结构化 code 填成
+	// 通用的 invalid_request_error，只有正文说明是模型不支持：
+	//   {"error":{"code":"invalid_request_error","message":
+	//    "The supported API model names are deepseek-flash, deepseek-v4-pro,
+	//     but you passed claude-opus-5."}}
+	// 若继续让通用 code 压掉正文，会把「账号不服务该模型」误判成客户端参数错误，
+	// 既不换号也不给用户 model_not_found（线上 #161357，2026-11-27 01:11）。
+	if isOpenAISupportedModelListMismatch(respBody) {
+		return true
+	}
 	code := strings.TrimSpace(extractUpstreamErrorCode(respBody))
 	if !isOpaqueOpenAICompatibleErrorCode(code) {
 		return isOpenAICompatibleModelNotFoundCode(code)
@@ -463,6 +479,20 @@ func isOpenAICompatibleModelNotFoundBody(respBody []byte) bool {
 		msg = strings.ToLower(strings.TrimSpace(string(respBody)))
 	}
 	return containsOpenAICompatibleModelNotFoundPhrase(msg)
+}
+
+// isOpenAISupportedModelListMismatch 识别「请求模型不在上游支持清单」的专用报文。
+// DeepSeek 官方把这类错误包进 invalid_request_error，但正文同时给出支持模型清单
+// 和实际传入的模型名，语义明确是模型级能力不匹配（属账号能力，可换号）。
+// 只匹配两个短语同时出现，避免把普通参数错误误判为模型不可用。
+func isOpenAISupportedModelListMismatch(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+	if msg == "" {
+		return false
+	}
+	hasSupportedList := strings.Contains(msg, "supported api model names") ||
+		strings.Contains(msg, "supported model names")
+	return hasSupportedList && strings.Contains(msg, "but you passed")
 }
 
 // IsOpenAICompatibleModelNotFound400 reports whether an OpenAI-compatible 400
@@ -1279,18 +1309,22 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	// 拍板（2026-09-24，本次落实）：上游原文一律不下发客户端。确定性 400 / context-window
 	// 不再回显上游 message，统一用平台文案；errType 仍保留 invalid_request_error 等结构化
 	// 分类。与原生 handleErrorResponse 路径同口径（两条路径 400 message 都是统一话术）。
+	// 参数错误归因客户端：Ops 记为 request/client_request，不再算上游故障。
+	if resp.StatusCode == http.StatusBadRequest && isOpenAICompatibleClientParameterError(resp.StatusCode, body) {
+		MarkOpsRequestScopedError(c, openAIUpstreamClientErrorFallbackType)
+	}
 	clientMsg := openAIUpstreamClientMessage(resp.StatusCode)
 	writeError(c, resp.StatusCode, errType, clientMsg)
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
 // openAIUpstreamClientMessage 与 handleErrorResponse 原生路径的兜底文案一致：
-// 按状态码给出平台话术，绝不回显上游原文。确定性 400 也在此处给出统一文案
-// （openAIUpstreamClientErrorFallbackMessage），不再由调用方透传 upstreamMsg。
+// 按状态码给出平台话术，绝不回显上游原文。确定性 400 统一给「参数非法」提示
+// （OpenAIClientParameterErrorClientMessage），不再由调用方透传 upstreamMsg。
 func openAIUpstreamClientMessage(statusCode int) string {
 	switch statusCode {
 	case http.StatusBadRequest:
-		return openAIUpstreamClientErrorFallbackMessage
+		return OpenAIClientParameterErrorClientMessage
 	case http.StatusUnauthorized:
 		return "Upstream authentication failed, please contact administrator"
 	case http.StatusPaymentRequired:

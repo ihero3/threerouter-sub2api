@@ -384,7 +384,7 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonFailover400UsesSharedErrorHan
 	require.Equal(t, "error", gjson.Get(rec.Body.String(), "type").String())
 	require.Equal(t, "invalid_request_error", gjson.Get(rec.Body.String(), "error.type").String())
 	// 客户端只能拿到平台统一文案；上游原文（"invalid roles"）绝不下发。
-	require.Equal(t, "Upstream rejected the request", gjson.Get(rec.Body.String(), "error.message").String())
+	require.Equal(t, OpenAIClientParameterErrorClientMessage, gjson.Get(rec.Body.String(), "error.message").String())
 	require.NotContains(t, rec.Body.String(), "invalid roles")
 
 	statusVal, ok := c.Get(OpsUpstreamStatusCodeKey)
